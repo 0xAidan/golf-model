@@ -18,6 +18,7 @@ Output: per-player course_fit_score (0-100, higher = better fit)
 """
 
 from src import db
+from src.course_profile import load_course_profile, course_to_model_weights
 
 
 def _rank_to_score(rank: float, field_size: int) -> float:
@@ -43,9 +44,13 @@ def _rounds_confidence(rounds_played: float, max_rounds: float = 30.0) -> float:
     return min(1.0, 0.3 + 0.7 * (rounds_played / max_rounds))
 
 
-def compute_course_fit(tournament_id: int, weights: dict) -> dict:
+def compute_course_fit(tournament_id: int, weights: dict,
+                       course_name: str = None) -> dict:
     """
     Compute course fit score for every player in the tournament.
+
+    If a course profile exists (from screenshots), uses its skill difficulty
+    ratings to adjust which SG categories matter more at this course.
 
     Returns: {player_key: {"score": float, "components": dict, "confidence": float}}
     """
@@ -88,12 +93,28 @@ def compute_course_fit(tournament_id: int, weights: dict) -> dict:
     if field_size == 0:
         return {}
 
-    # Get weight values
+    # Get base weight values
     w_sg_tot = weights.get("course_sg_tot", 0.30)
     w_sg_app = weights.get("course_sg_app", 0.25)
     w_sg_ott = weights.get("course_sg_ott", 0.20)
     w_sg_putt = weights.get("course_sg_putt", 0.15)
     w_par_eff = weights.get("course_par_eff", 0.10)
+
+    # Apply course profile adjustments if available
+    if course_name:
+        profile = load_course_profile(course_name)
+        if profile:
+            adj = course_to_model_weights(profile)
+            w_sg_ott *= adj.get("course_sg_ott_mult", 1.0)
+            w_sg_app *= adj.get("course_sg_app_mult", 1.0)
+            w_sg_putt *= adj.get("course_sg_putt_mult", 1.0)
+            # Re-normalize so weights still sum to ~1.0
+            total = w_sg_tot + w_sg_app + w_sg_ott + w_sg_putt + w_par_eff
+            w_sg_tot /= total
+            w_sg_app /= total
+            w_sg_ott /= total
+            w_sg_putt /= total
+            w_par_eff /= total
 
     results = {}
     for pk, data in player_data.items():

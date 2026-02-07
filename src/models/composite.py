@@ -13,7 +13,8 @@ from src.models.form import compute_form
 from src.models.momentum import compute_momentum
 
 
-def compute_composite(tournament_id: int, weights: dict = None) -> list[dict]:
+def compute_composite(tournament_id: int, weights: dict = None,
+                      course_name: str = None) -> list[dict]:
     """
     Compute composite edge score for all players in the tournament.
 
@@ -37,7 +38,7 @@ def compute_composite(tournament_id: int, weights: dict = None) -> list[dict]:
         weights = db.get_active_weights()
 
     # Compute each sub-model
-    course_scores = compute_course_fit(tournament_id, weights)
+    course_scores = compute_course_fit(tournament_id, weights, course_name=course_name)
     form_scores = compute_form(tournament_id, weights)
     momentum_scores = compute_momentum(tournament_id, weights)
 

@@ -71,7 +71,22 @@ def main():
           f"form={weights.get('form', 0.4):.0%}, "
           f"momentum={weights.get('momentum', 0.2):.0%}")
 
-    composite = compute_composite(tournament_id, weights)
+    # Check for course profile
+    from src.course_profile import load_course_profile, course_to_model_weights
+    if args.course:
+        profile = load_course_profile(args.course)
+        if profile:
+            adj = course_to_model_weights(profile)
+            ratings = profile.get("skill_ratings", {})
+            print(f"  Course profile loaded: {args.course}")
+            for k in ["sg_ott", "sg_app", "sg_arg", "sg_putting"]:
+                if k in ratings:
+                    print(f"    {k}: {ratings[k]} ({adj.get(f'course_{k}_mult', 1.0)}x weight)")
+        else:
+            print(f"  No course profile found for '{args.course}'")
+            print(f"  (Run: python3 course.py --screenshots data/course_images/ --course \"{args.course}\")")
+
+    composite = compute_composite(tournament_id, weights, course_name=args.course)
     print(f"  Scored {len(composite)} players")
 
     if not composite:
