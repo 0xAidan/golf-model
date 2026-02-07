@@ -751,6 +751,16 @@ function renderDashboard(data, el) {
     html += '<div class="stat-box"><div class="number">' + (data.tournaments || []).length + '</div><div class="label">Tournaments</div></div>';
     html += '</div>';
 
+    // Insights (plain English)
+    const insights = a.insights || [];
+    if (insights.length) {
+        html += '<h2>What the Model Has Learned</h2><div class="card-section">';
+        for (const ins of insights) {
+            html += '<div class="pick" style="padding:5px 0;"><span style="color:#4ade80;margin-right:8px;">→</span>' + ins + '</div>';
+        }
+        html += '</div>';
+    }
+
     // By bet type
     if (a.by_bet_type && Object.keys(a.by_bet_type).length) {
         html += '<h2>By Bet Type</h2><table><tr><th>Type</th><th>Picks</th><th>Hits</th><th>Rate</th></tr>';
@@ -763,12 +773,37 @@ function renderDashboard(data, el) {
     // Factor analysis
     const fa = a.factor_analysis;
     if (fa && Object.keys(fa).length) {
-        html += '<h2>Factor Analysis</h2><p style="color:#94a3b8;font-size:0.85em;">Higher edge = that factor is more predictive of hits</p>';
-        html += '<table><tr><th>Factor</th><th>Avg Hit</th><th>Avg Miss</th><th>Edge</th></tr>';
+        html += '<h2>Factor Analysis</h2><p style="color:#94a3b8;font-size:0.85em;">Higher edge = that factor is more predictive of hits. Predictive power shows separation between hits and misses.</p>';
+        html += '<table><tr><th>Factor</th><th>Avg Hit</th><th>Avg Miss</th><th>Edge</th><th>Power</th></tr>';
         for (const [f, s] of Object.entries(fa)) {
             const edgeColor = s.edge > 0 ? '#4ade80' : s.edge < 0 ? '#ef4444' : '#94a3b8';
-            html += '<tr><td>' + f + '</td><td class="num">' + s.avg_hit.toFixed(1) + '</td><td class="num">' + s.avg_miss.toFixed(1) + '</td><td class="num" style="color:' + edgeColor + '">' + (s.edge > 0 ? '+' : '') + s.edge.toFixed(1) + '</td></tr>';
+            const pp = s.predictive_power !== undefined ? s.predictive_power.toFixed(2) : '—';
+            html += '<tr><td>' + f + '</td><td class="num">' + s.avg_hit.toFixed(1) + '</td><td class="num">' + s.avg_miss.toFixed(1) + '</td><td class="num" style="color:' + edgeColor + '">' + (s.edge > 0 ? '+' : '') + s.edge.toFixed(1) + '</td><td class="num">' + pp + '</td></tr>';
         }
+        html += '</table>';
+    }
+
+    // Score thresholds
+    const th = a.score_thresholds;
+    if (th && Object.keys(th).length) {
+        html += '<h2>Score Thresholds</h2><p style="color:#94a3b8;font-size:0.85em;">Do higher-ranked picks hit more? This tells us if the composite score is working.</p>';
+        html += '<table><tr><th>Group</th><th>Min Composite</th><th>Picks</th><th>Hits</th><th>Rate</th></tr>';
+        for (const [label, t] of Object.entries(th)) {
+            const rateColor = t.hit_rate > (a.hit_rate || 0) ? '#4ade80' : '#ef4444';
+            html += '<tr><td>' + label.replace(/_/g, ' ') + '</td><td class="num">' + t.composite_cutoff + '</td><td class="num">' + t.picks_above + '</td><td class="num">' + t.hits_above + '</td><td class="num" style="color:' + rateColor + '">' + (t.hit_rate * 100).toFixed(1) + '%</td></tr>';
+        }
+        html += '</table>';
+    }
+
+    // Data source insights
+    const di = a.data_insights;
+    if (di) {
+        html += '<h2>Data Quality Impact</h2><p style="color:#94a3b8;font-size:0.85em;">Does uploading more data improve picks?</p>';
+        html += '<table><tr><th>Data Available</th><th>Tournaments</th><th>Avg Hit Rate</th></tr>';
+        if (di.with_course_data) html += '<tr><td>With course-specific data</td><td class="num">' + di.with_course_data.tournaments + '</td><td class="num">' + (di.with_course_data.avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
+        if (di.without_course_data) html += '<tr><td>Without course data</td><td class="num">' + di.without_course_data.tournaments + '</td><td class="num">' + (di.without_course_data.avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
+        if (di['5plus_files']) html += '<tr><td>5+ CSV files uploaded</td><td class="num">' + di['5plus_files'].tournaments + '</td><td class="num">' + (di['5plus_files'].avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
+        if (di.under_5_files) html += '<tr><td>Under 5 CSV files</td><td class="num">' + di.under_5_files.tournaments + '</td><td class="num">' + (di.under_5_files.avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
         html += '</table>';
     }
 

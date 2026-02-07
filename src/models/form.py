@@ -4,11 +4,13 @@ Form Score
 Uses recent form data (all courses) across multiple timeframes
 to score how well each player is playing right now.
 
+AUTO-DISCOVERS available round windows and metric categories from
+whatever data you uploaded — no hardcoded windows.
+
 Inputs (from metrics where data_mode = 'recent_form'):
-  - Strokes gained ranks across timeframes (all rounds, 12r, 16r, 24r)
-  - 12-month form data
+  - Strokes gained ranks across ANY timeframes uploaded
+  - Any metric category uploaded (ott, approach, putting, etc.)
   - Betsperts sim probabilities (win %, top 5/10/20 %)
-  - Rolling averages (L4, L8, L20, L50)
 
 Output: per-player form_score (0-100, higher = better form)
 """
@@ -27,11 +29,47 @@ def _pct_to_score(pct: float) -> float:
     """Convert a probability percentage to a 0-100 score."""
     if pct is None:
         return 50.0
-    # Sim percentages are already 0-1 range typically
-    # Scale so that top values get high scores
-    # A 18% win rate (like Scheffler) should be ~95+
-    # A 1% win rate should be ~50-60
     return min(100.0, 50.0 + pct * 300)
+
+
+def _window_sort_key(w: str) -> int:
+    """Sort round windows from largest (oldest) to smallest (most recent)."""
+    if w == "all":
+        return 9999
+    try:
+        return int(w)
+    except ValueError:
+        return 5000
+
+
+def _discover_available_windows(tournament_id: int) -> list[str]:
+    """Find all round windows that have recent_form strokes_gained data."""
+    conn = db.get_conn()
+    rows = conn.execute(
+        """SELECT DISTINCT round_window FROM metrics
+           WHERE tournament_id = ? AND data_mode = 'recent_form'
+             AND metric_category = 'strokes_gained'
+             AND round_window IS NOT NULL""",
+        (tournament_id,),
+    ).fetchall()
+    conn.close()
+    windows = [r["round_window"] for r in rows]
+    # Sort: largest/oldest first, smallest/newest last
+    windows.sort(key=_window_sort_key, reverse=True)
+    return windows
+
+
+def _discover_available_categories(tournament_id: int) -> list[str]:
+    """Find all metric categories with recent_form data."""
+    conn = db.get_conn()
+    rows = conn.execute(
+        """SELECT DISTINCT metric_category FROM metrics
+           WHERE tournament_id = ? AND data_mode = 'recent_form'
+             AND metric_category NOT IN ('meta', 'sim', 'recent_form', 'cheat_sheet')""",
+        (tournament_id,),
+    ).fetchall()
+    conn.close()
+    return [r["metric_category"] for r in rows]
 
 
 def _get_sg_ranks_for_window(tournament_id: int, round_window: str) -> dict:
@@ -60,13 +98,11 @@ def _get_sim_data(tournament_id: int) -> dict:
 
 
 def _get_all_form_metrics(tournament_id: int) -> dict:
-    """Get all recent form metrics organized by player."""
-    all_metrics = db.get_metrics_by_category(
-        tournament_id, "strokes_gained", data_mode="recent_form"
-    )
-    # Also get other form categories
-    for cat in ["ott", "approach", "putting", "scoring",
-                "par3_efficiency", "par4_efficiency", "par5_efficiency"]:
+    """Get ALL recent form metrics organized by player, auto-discovering categories."""
+    categories = _discover_available_categories(tournament_id)
+
+    all_metrics = []
+    for cat in categories:
         all_metrics.extend(
             db.get_metrics_by_category(tournament_id, cat, data_mode="recent_form")
         )
@@ -85,12 +121,15 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
     """
     Compute form score for every player.
 
-    Returns: {player_key: {"score": float, "components": dict}}
+    Auto-discovers whatever round windows and categories you uploaded.
+    Returns: {player_key: {"score": float, "components": dict, "windows_used": list}}
     """
-    # Get SG ranks across available windows
-    windows_to_check = ["all", "8", "12", "16", "24", "36", "50"]
+    # Auto-discover available windows
+    available_windows = _discover_available_windows(tournament_id)
+
+    # Get SG ranks for each available window
     sg_by_window = {}
-    for w in windows_to_check:
+    for w in available_windows:
         ranks = _get_sg_ranks_for_window(tournament_id, w)
         if ranks:
             sg_by_window[w] = ranks
@@ -98,7 +137,7 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
     # Get sim data
     sim_data = _get_sim_data(tournament_id)
 
-    # Get all form data
+    # Get all form data (auto-discovers categories)
     all_form = _get_all_form_metrics(tournament_id)
 
     # Collect all players
@@ -112,10 +151,7 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
         return {}
 
     # Weight config
-    w_16r = weights.get("form_16r", 0.35)
-    w_12month = weights.get("form_12month", 0.25)
     w_sim = weights.get("form_sim", 0.25)
-    w_rolling = weights.get("form_rolling", 0.15)
 
     # SG sub-weights
     w_sg_tot = weights.get("form_sg_tot", 0.40)
@@ -127,83 +163,156 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
     # Determine field sizes per window
     field_sizes = {w: len(r) for w, r in sg_by_window.items()}
 
+    # Classify windows into "recent" (<=16 rounds) vs "baseline" (>16 rounds)
+    recent_windows = []
+    baseline_windows = []
+    for w in available_windows:
+        if w == "all":
+            baseline_windows.append(w)
+        else:
+            try:
+                n = int(w)
+                if n <= 20:
+                    recent_windows.append(w)
+                else:
+                    baseline_windows.append(w)
+            except ValueError:
+                baseline_windows.append(w)
+
+    # Sort recent: smallest (most recent) first for priority
+    recent_windows.sort(key=lambda x: _window_sort_key(x))
+    # Sort baseline: largest (most data) first for priority
+    baseline_windows.sort(key=lambda x: _window_sort_key(x), reverse=True)
+
+    # Dynamic weighting: more windows available = each gets less weight
+    # But recent windows get more weight than baseline
+    n_windows = len(sg_by_window)
+    if n_windows == 0:
+        recent_weight = 0.0
+        baseline_weight = 0.0
+    elif n_windows == 1:
+        recent_weight = 0.75 * (1.0 - w_sim)
+        baseline_weight = 0.0
+    else:
+        recent_weight = 0.45 * (1.0 - w_sim)
+        baseline_weight = 0.30 * (1.0 - w_sim)
+
     results = {}
     for pk in all_players:
         components = {}
+        windows_used = []
 
-        # ── Recent window score (16r or closest available) ────
-        recent_score = 50.0
-        for w in ["16", "12", "8"]:
+        # ── Recent window scores (use all available, weighted by recency) ──
+        recent_scores = []
+        for w in recent_windows:
             if w in sg_by_window and pk in sg_by_window[w]:
-                recent_score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
-                break
+                score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
+                recent_scores.append((w, score))
+                windows_used.append(f"recent:{w}")
+        if recent_scores:
+            # Weight more recent windows higher
+            # First (most recent) gets weight n, second gets n-1, etc.
+            n = len(recent_scores)
+            total_w = sum(range(1, n + 1))
+            recent_score = sum(
+                score * (n - i) / total_w for i, (_, score) in enumerate(recent_scores)
+            )
+        else:
+            recent_score = 50.0
         components["recent"] = recent_score
 
-        # ── Baseline score (all rounds or 12-month) ────
-        baseline_score = 50.0
-        for w in ["all", "50", "36", "24"]:
+        # ── Baseline window scores ──
+        baseline_scores = []
+        for w in baseline_windows:
             if w in sg_by_window and pk in sg_by_window[w]:
-                baseline_score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
-                break
+                score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
+                baseline_scores.append((w, score))
+                windows_used.append(f"baseline:{w}")
+        if baseline_scores:
+            baseline_score = sum(s for _, s in baseline_scores) / len(baseline_scores)
+        else:
+            baseline_score = 50.0
         components["baseline"] = baseline_score
 
-        # ── Sim probability score ────
+        # ── Sim probability score ──
         sim_score = 50.0
         if pk in sim_data:
             sd = sim_data[pk]
-            # Weight: win% matters most, then top10, top20
             win_pct = sd.get("Win %", 0) or 0
             top10_pct = sd.get("Top 10 %", 0) or 0
             top20_pct = sd.get("Top 20 %", 0) or 0
             make_cut = sd.get("Make Cut", 0) or 0
-
-            # Normalize: a 10% win rate is elite, 0.1% is low
             sim_score = (
                 0.30 * _pct_to_score(win_pct)
                 + 0.30 * min(100, top10_pct * 120)
                 + 0.25 * min(100, top20_pct * 100)
                 + 0.15 * min(100, make_cut * 90)
             )
+            windows_used.append("sim")
         components["sim"] = sim_score
 
-        # ── Multi-SG score (from best available window) ────
+        # ── Multi-SG score (from best available recent window) ──
         form_data = all_form.get(pk, {})
-        best_window = "16"
-        for w in ["16", "12", "all", "24"]:
+        # Find the best (most recent) window that has SG:TOT data
+        best_window = None
+        for w in recent_windows + baseline_windows:
             if f"{w}_strokes_gained_SG:TOT" in form_data:
                 best_window = w
                 break
+        if best_window is None:
+            # Try any available window
+            for key in form_data:
+                if "strokes_gained_SG:TOT" in key:
+                    best_window = key.split("_")[0]
+                    break
 
-        fs = field_sizes.get(best_window, 120)
-        sg_scores = {
-            "tot": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:TOT"), fs),
-            "app": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:APP")
-                                  or form_data.get(f"{best_window}_approach_SG:APP"), fs),
-            "ott": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:OTT")
-                                  or form_data.get(f"{best_window}_ott_SG:OTT"), fs),
-            "putt": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:P"), fs),
-            "arg": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:ARG"), fs),
-        }
-        multi_sg = (
-            w_sg_tot * sg_scores["tot"]
-            + w_sg_app * sg_scores["app"]
-            + w_sg_ott * sg_scores["ott"]
-            + w_sg_putt * sg_scores["putt"]
-            + w_sg_arg * sg_scores["arg"]
-        )
+        if best_window:
+            fs = field_sizes.get(best_window, 120)
+            sg_scores = {
+                "tot": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:TOT"), fs),
+                "app": _rank_to_score(
+                    form_data.get(f"{best_window}_strokes_gained_SG:APP")
+                    or form_data.get(f"{best_window}_approach_SG:APP"), fs),
+                "ott": _rank_to_score(
+                    form_data.get(f"{best_window}_strokes_gained_SG:OTT")
+                    or form_data.get(f"{best_window}_ott_SG:OTT"), fs),
+                "putt": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:P"), fs),
+                "arg": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:ARG"), fs),
+            }
+            multi_sg = (
+                w_sg_tot * sg_scores["tot"]
+                + w_sg_app * sg_scores["app"]
+                + w_sg_ott * sg_scores["ott"]
+                + w_sg_putt * sg_scores["putt"]
+                + w_sg_arg * sg_scores["arg"]
+            )
+            windows_used.append(f"sg_detail:{best_window}")
+        else:
+            multi_sg = 50.0
         components["multi_sg"] = multi_sg
 
-        # ── Weighted total ────
-        score = (
-            w_16r * recent_score
-            + w_12month * baseline_score
-            + w_sim * sim_score
-            + w_rolling * multi_sg
-        )
+        # ── Weighted total ──
+        remaining = 1.0 - w_sim
+        multi_sg_weight = remaining * 0.25
+
+        # Adjust if we have fewer window types
+        if not recent_scores and not baseline_scores:
+            # Only sim + multi_sg
+            score = 0.5 * sim_score + 0.5 * multi_sg
+        elif not recent_scores:
+            score = baseline_weight * 2 * baseline_score + w_sim * sim_score + multi_sg_weight * multi_sg
+        else:
+            score = (
+                recent_weight * recent_score
+                + baseline_weight * baseline_score
+                + w_sim * sim_score
+                + multi_sg_weight * multi_sg
+            )
 
         results[pk] = {
             "score": round(score, 2),
             "components": {k: round(v, 2) for k, v in components.items()},
+            "windows_used": windows_used,
         }
 
     return results
