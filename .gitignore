@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+data/golf.db
+data/csvs/*.csv
+output/*.md
+.DS_Store
+*.egg-info/
+dist/
+build/
