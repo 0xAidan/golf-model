@@ -453,12 +453,17 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         </div>
 
         <h2>2. Upload Betsperts CSVs</h2>
-        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-            <input type="file" id="fileInput" multiple accept=".csv">
-            <p style="font-size:1.1em; margin-bottom:8px;">Drop CSV files here or click to select</p>
+        <div style="margin-bottom:10px;">
+            <button onclick="document.getElementById('fileInput').click()" style="margin-right:10px;">Click to Select CSV Files</button>
+            <button class="secondary" onclick="clearFiles()">Clear All</button>
+            <input type="file" id="fileInput" multiple accept=".csv" style="display:none">
+        </div>
+        <div class="dropzone" id="dropzone">
+            <p style="font-size:1.1em; margin-bottom:8px;">Or drag and drop CSV files here</p>
             <p style="font-size:0.85em;">Cheat sheets, sim, 12r, 24r, course data, rolling averages — drop them all</p>
         </div>
-        <div id="fileList" class="file-list"></div>
+        <div id="fileCount" style="margin:8px 0; font-weight:600; color:#4ade80;"></div>
+        <div id="fileList" class="file-list" style="max-height:200px; overflow-y:auto;"></div>
 
         <h2>3. Run Model</h2>
         <button id="analyzeBtn" onclick="runAnalysis()" disabled>Analyze</button>
@@ -516,29 +521,80 @@ let selectedFiles = [];
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const fileList = document.getElementById('fileList');
+const fileCount = document.getElementById('fileCount');
 
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('dragover');
-    addFiles(e.dataTransfer.files);
+// Drag and drop — handle all events to prevent browser defaults
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+    dropzone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
+    document.body.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
 });
-fileInput.addEventListener('change', e => addFiles(e.target.files));
+dropzone.addEventListener('dragenter', () => dropzone.classList.add('dragover'));
+dropzone.addEventListener('dragover', () => dropzone.classList.add('dragover'));
+dropzone.addEventListener('dragleave', e => {
+    // Only remove highlight if we actually left the dropzone
+    if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('dragover');
+});
+dropzone.addEventListener('drop', e => {
+    dropzone.classList.remove('dragover');
+    const items = e.dataTransfer.items;
+    const files = e.dataTransfer.files;
+    // Try items first (more reliable for large batches)
+    if (items && items.length > 0) {
+        const collected = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const f = items[i].getAsFile();
+                if (f) collected.push(f);
+            }
+        }
+        if (collected.length > 0) { addFiles(collected); return; }
+    }
+    // Fallback to files
+    if (files && files.length > 0) { addFiles(files); }
+});
 
-function addFiles(fileListObj) {
-    for (const f of fileListObj) {
-        if (f.name.toLowerCase().endsWith('.csv') && !selectedFiles.some(s => s.name === f.name)) {
-            selectedFiles.push(f);
+// File picker button
+fileInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files.length > 0) {
+        addFiles(e.target.files);
+    }
+    // Reset input so same files can be selected again if needed
+    fileInput.value = '';
+});
+
+function addFiles(fileListOrArray) {
+    const arr = Array.from(fileListOrArray);
+    let added = 0;
+    for (const f of arr) {
+        if (f && f.name && f.name.toLowerCase().endsWith('.csv')) {
+            if (!selectedFiles.some(s => s.name === f.name)) {
+                selectedFiles.push(f);
+                added++;
+            }
         }
     }
+    renderFiles();
+    if (added > 0) {
+        fileCount.style.color = '#4ade80';
+        fileCount.textContent = selectedFiles.length + ' CSV files ready (' + added + ' just added)';
+    }
+}
+
+function clearFiles() {
+    selectedFiles = [];
     renderFiles();
 }
 
 function renderFiles() {
-    fileList.innerHTML = selectedFiles.map(f =>
-        '<div class="file-item">' + f.name + '</div>'
-    ).join('');
+    if (selectedFiles.length === 0) {
+        fileCount.textContent = '';
+        fileList.innerHTML = '';
+    } else {
+        fileCount.textContent = selectedFiles.length + ' CSV files ready';
+        fileList.innerHTML = selectedFiles.map(f =>
+            '<div class="file-item">' + f.name + ' <span style="color:#666;font-size:0.8em;">(' + (f.size/1024).toFixed(0) + ' KB)</span></div>'
+        ).join('');
+    }
     document.getElementById('analyzeBtn').disabled =
         !selectedFiles.length || !document.getElementById('tournament').value;
 }
