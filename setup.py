@@ -193,23 +193,25 @@ def main():
 
     # ── Step 4: Anthropic API Key ─────────────────────────────
     _clear()
-    _banner(4, total_steps, "Anthropic API Key (Course Profiles)")
+    _banner(4, total_steps, "Anthropic API Key (Optional)")
 
-    print("  Used for extracting course data from Betsperts screenshots")
-    print("  (Course Facts, Off the Tee, Approach tables, etc.)")
+    print("  Anthropic (Claude) is an ALTERNATIVE AI provider.")
+    print("  If you set up OpenAI in step 3, you DON'T need this.")
     print()
-    print("  This is optional — only needed if you want to upload")
-    print("  course profile screenshots.")
+    print("  OpenAI already handles:")
+    print("    - AI brain (analysis, decisions, memory)")
+    print("    - Course profile screenshot extraction (vision)")
     print()
-    print("  Get your key at: https://console.anthropic.com/settings/keys")
+    print("  Only add Anthropic if you specifically want to use Claude")
+    print("  as your AI brain provider (set AI_BRAIN_PROVIDER=anthropic).")
     print()
 
-    anthropic_key = _ask("Anthropic API key (press Enter to skip)")
+    anthropic_key = _ask("Anthropic API key (press Enter to skip — recommended)")
     if anthropic_key:
         env_keys["ANTHROPIC_API_KEY"] = anthropic_key
         print("\n  Saved.")
     else:
-        print("\n  Skipped. Course profile screenshots won't be available.")
+        print("\n  Skipped (OpenAI handles everything).")
 
     print()
     input("  Press Enter to continue...")

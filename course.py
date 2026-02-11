@@ -69,11 +69,12 @@ def main():
         return
 
     if args.screenshots and args.course:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
-            print("\nERROR: Set your Anthropic API key first:")
-            print("  export ANTHROPIC_API_KEY=your_key_here")
-            print("\nGet a key at: https://console.anthropic.com/settings/keys")
+            print("\nERROR: Set an AI API key for vision extraction:")
+            print("  export OPENAI_API_KEY=your_key_here     (preferred)")
+            print("  export ANTHROPIC_API_KEY=your_key_here   (alternative)")
+            print("\nGet a key at: https://platform.openai.com/api-keys")
             sys.exit(1)
 
         if not os.path.isdir(args.screenshots):

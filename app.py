@@ -433,11 +433,12 @@ async def upload_course_profile(
     course: str = Form(...),
     files: list[UploadFile] = File(...),
 ):
-    """Upload course screenshots for AI extraction."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
+    """Upload course screenshots for AI extraction (OpenAI or Anthropic vision)."""
+    has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    if not has_openai and not has_anthropic:
         return JSONResponse(
-            {"error": "ANTHROPIC_API_KEY not set. Required for course profile extraction."},
+            {"error": "No vision API key set. Set OPENAI_API_KEY or ANTHROPIC_API_KEY."},
             status_code=400,
         )
 
@@ -445,6 +446,8 @@ async def upload_course_profile(
         from src.course_profile import extract_from_folder, save_course_profile, course_to_model_weights
     except Exception as e:
         return JSONResponse({"error": f"Import error: {e}"}, status_code=500)
+    # Use whichever key is available (extract_from_folder auto-detects provider)
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     # Save uploaded images to temp folder
     temp_dir = tempfile.mkdtemp(prefix="course_imgs_")
@@ -859,7 +862,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
             Upload Betsperts course screenshots (Course Facts, Off the Tee, Approach, Around Green, Putting, Scoring tables).
             Claude Vision extracts structured data for course-specific weight adjustments.
-            <strong>Requires ANTHROPIC_API_KEY.</strong>
+            <strong>Requires OPENAI_API_KEY or ANTHROPIC_API_KEY.</strong>
         </p>
         <div class="form-row">
             <div>

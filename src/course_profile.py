@@ -1,12 +1,12 @@
 """
 Course Profile System
 
-Extracts course data from Betsperts screenshots using Claude Vision,
+Extracts course data from screenshots using AI vision (OpenAI or Anthropic),
 stores it as a JSON profile, and feeds it into the model.
 
 Usage:
     # From screenshots:
-    python course.py --screenshots data/course_images/ --course "Pebble Beach" --tournament "AT&T Pebble Beach 2026"
+    python course.py --screenshots data/course_images/ --course "Pebble Beach"
 
     # Saves to data/courses/pebble_beach.json for reuse next year
 
@@ -15,6 +15,8 @@ Course profiles store:
     - Skill difficulty ratings (SG:OTT, SG:APP, SG:ARG, SG:Putting)
     - Stat comparisons (tour avg vs course-specific with relative differences)
     - Correlated courses
+
+Provider priority: OpenAI (if OPENAI_API_KEY set) > Anthropic (if ANTHROPIC_API_KEY set)
 """
 
 import os
@@ -28,6 +30,12 @@ try:
     HAS_ANTHROPIC = True
 except ImportError:
     HAS_ANTHROPIC = False
+
+try:
+    from openai import OpenAI
+    HAS_OPENAI = True
+except ImportError:
+    HAS_OPENAI = False
 
 COURSES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "courses")
 
@@ -98,20 +106,96 @@ If a field is not visible in the image, omit it or set to null.
 """
 
 
-def extract_from_image(image_path: str, api_key: str) -> dict:
-    """Extract course data from a single screenshot using Claude Vision."""
-    if not HAS_ANTHROPIC:
-        raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
+def _get_vision_provider() -> str:
+    """Determine which vision API to use. OpenAI preferred (structured output)."""
+    if HAS_OPENAI and os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    if HAS_ANTHROPIC and os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return "none"
 
+
+def extract_from_image(image_path: str, api_key: str = None) -> dict:
+    """
+    Extract course data from a single screenshot using AI vision.
+
+    Uses OpenAI (if OPENAI_API_KEY set) or Anthropic (if ANTHROPIC_API_KEY set).
+    The api_key parameter is kept for backward compatibility but the function
+    will auto-detect the provider from environment variables.
+    """
     # Read and encode image
     with open(image_path, "rb") as f:
         image_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    # Determine media type
     ext = os.path.splitext(image_path)[1].lower()
     media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                    ".gif": "image/gif", ".webp": "image/webp"}
     media_type = media_types.get(ext, "image/png")
+
+    provider = _get_vision_provider()
+
+    # Override: if api_key looks like an Anthropic key and no OpenAI key is set
+    if api_key and not os.environ.get("OPENAI_API_KEY"):
+        provider = "anthropic"
+
+    if provider == "openai":
+        response_text = _extract_with_openai(image_data, media_type)
+    elif provider == "anthropic":
+        key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        response_text = _extract_with_anthropic(image_data, media_type, key)
+    else:
+        raise RuntimeError(
+            "No vision API available. Set OPENAI_API_KEY or ANTHROPIC_API_KEY. "
+            "Install: pip install openai  (or: pip install anthropic)"
+        )
+
+    # Clean up markdown code blocks
+    if response_text.startswith("```"):
+        response_text = response_text.split("\n", 1)[1]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        print(f"  Warning: Could not parse JSON from AI response for {image_path}")
+        print(f"  Raw response: {response_text[:200]}...")
+        return {"raw_text": response_text}
+
+
+def _extract_with_openai(image_data: str, media_type: str) -> str:
+    """Extract course data using OpenAI GPT-4o vision."""
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{media_type};base64,{image_data}",
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": EXTRACTION_PROMPT,
+                },
+            ],
+        }],
+        max_tokens=4096,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content.strip()
+
+
+def _extract_with_anthropic(image_data: str, media_type: str, api_key: str) -> str:
+    """Extract course data using Anthropic Claude vision."""
+    if not HAS_ANTHROPIC:
+        raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
@@ -135,22 +219,7 @@ def extract_from_image(image_path: str, api_key: str) -> dict:
             ],
         }],
     )
-
-    # Parse response
-    response_text = message.content[0].text.strip()
-    # Clean up if wrapped in markdown code blocks
-    if response_text.startswith("```"):
-        response_text = response_text.split("\n", 1)[1]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        print(f"  Warning: Could not parse JSON from Claude response for {image_path}")
-        print(f"  Raw response: {response_text[:200]}...")
-        return {"raw_text": response_text}
+    return message.content[0].text.strip()
 
 
 def extract_from_folder(folder_path: str, api_key: str) -> dict:
