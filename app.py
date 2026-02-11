@@ -15,6 +15,13 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Load .env file if present (for API keys)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; keys must be in environment
+
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
@@ -135,7 +142,8 @@ async def run_analysis(
                         odds_by_market[m].append(o)
                     for market, market_odds in odds_by_market.items():
                         best = get_best_odds(market_odds)
-                        vb = find_value_bets(composite, best, bet_type=market.replace("top_", "top"))
+                        vb = find_value_bets(composite, best, bet_type=market.replace("top_", "top"),
+                                            tournament_id=tournament_id)
                         value_bets[market.replace("top_", "top")] = vb
                     odds_status = f"Fetched {len(all_odds)} odds"
                 else:
@@ -336,6 +344,310 @@ async def do_retune():
     """Retune weights based on results."""
     result = retune(dry_run=False)
     return result
+
+
+# ── Data Golf Endpoints ────────────────────────────────────────────
+
+@app.post("/api/backfill")
+async def backfill_data(request: Request):
+    """Backfill historical round data from Data Golf API."""
+    try:
+        from src.datagolf import backfill_rounds
+    except Exception as e:
+        return JSONResponse({"error": f"Import error: {e}"}, status_code=500)
+
+    data = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    tours = data.get("tours", ["pga"])
+    years = data.get("years", [2024, 2025, 2026])
+
+    try:
+        summary = backfill_rounds(tours=tours, years=years)
+        return {"success": True, "summary": summary}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/sync-datagolf")
+async def sync_datagolf(request: Request):
+    """Sync DG predictions, decompositions, and field for a tournament."""
+    try:
+        from src.datagolf import sync_tournament
+        from src.rolling_stats import compute_rolling_metrics, get_field_from_metrics
+    except Exception as e:
+        return JSONResponse({"error": f"Import error: {e}"}, status_code=500)
+
+    data = await request.json()
+    tournament_name = data.get("tournament", "")
+    course = data.get("course", "")
+    tour = data.get("tour", "pga")
+    course_num = data.get("course_num")
+
+    if not tournament_name:
+        return JSONResponse({"error": "Tournament name required"}, status_code=400)
+
+    tournament_id = get_or_create_tournament(tournament_name, course)
+
+    results = {"tournament_id": tournament_id, "steps": {}}
+
+    # 1. Sync DG predictions + field
+    try:
+        sync_result = sync_tournament(tournament_id, tour=tour)
+        results["steps"]["dg_sync"] = sync_result
+    except Exception as e:
+        results["steps"]["dg_sync"] = {"error": str(e)}
+
+    # 2. Compute rolling stats from stored rounds
+    try:
+        field = get_field_from_metrics(tournament_id)
+        if field:
+            rolling_result = compute_rolling_metrics(
+                tournament_id, field, course_num=course_num
+            )
+            results["steps"]["rolling_stats"] = rolling_result
+        else:
+            results["steps"]["rolling_stats"] = {"status": "no_field", "message": "No players in field yet"}
+    except Exception as e:
+        results["steps"]["rolling_stats"] = {"error": str(e)}
+
+    return {"success": True, **results}
+
+
+@app.get("/api/backfill-status")
+async def backfill_status():
+    """Get the status of historical data backfill."""
+    from src.db import get_rounds_backfill_status, get_rounds_count
+    return {
+        "total_rounds": get_rounds_count(),
+        "by_tour_year": get_rounds_backfill_status(),
+    }
+
+
+# ── Course Profile Endpoints ──────────────────────────────────────
+
+@app.post("/api/course-profile")
+async def upload_course_profile(
+    course: str = Form(...),
+    files: list[UploadFile] = File(...),
+):
+    """Upload course screenshots for AI extraction."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse(
+            {"error": "ANTHROPIC_API_KEY not set. Required for course profile extraction."},
+            status_code=400,
+        )
+
+    try:
+        from src.course_profile import extract_from_folder, save_course_profile, course_to_model_weights
+    except Exception as e:
+        return JSONResponse({"error": f"Import error: {e}"}, status_code=500)
+
+    # Save uploaded images to temp folder
+    temp_dir = tempfile.mkdtemp(prefix="course_imgs_")
+    try:
+        for f in files:
+            if f.filename and any(f.filename.lower().endswith(ext)
+                                  for ext in (".png", ".jpg", ".jpeg", ".webp")):
+                fpath = os.path.join(temp_dir, f.filename)
+                with open(fpath, "wb") as out:
+                    content = await f.read()
+                    out.write(content)
+
+        # Extract data from images
+        data = extract_from_folder(temp_dir, api_key)
+        if not data or (not data.get("course_facts") and not data.get("skill_ratings")):
+            return JSONResponse({"error": "No data could be extracted from the screenshots."}, status_code=400)
+
+        # Save profile
+        filepath = save_course_profile(course, data)
+        adjustments = course_to_model_weights(data)
+
+        return {
+            "success": True,
+            "course": course,
+            "filepath": filepath,
+            "facts_count": len(data.get("course_facts", {})),
+            "ratings_count": len(data.get("skill_ratings", {})),
+            "stats_count": len(data.get("stat_comparisons", [])),
+            "weight_adjustments": {k: v for k, v in adjustments.items() if k != "course_profile"},
+            "profile_summary": {
+                "skill_ratings": data.get("skill_ratings", {}),
+                "course_facts": {k: v for k, v in data.get("course_facts", {}).items()
+                                 if k in ("par", "yardage", "course_type", "greens_surface",
+                                          "greens_speed", "avg_scoring_conditions")},
+            },
+        }
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@app.get("/api/saved-courses")
+async def list_saved_courses():
+    """List all saved course profiles."""
+    from src.course_profile import list_saved_courses, load_course_profile, course_to_model_weights
+    courses = list_saved_courses()
+    result = []
+    for name in courses:
+        profile = load_course_profile(name)
+        adj = course_to_model_weights(profile) if profile else {}
+        result.append({
+            "name": name,
+            "ratings": profile.get("skill_ratings", {}) if profile else {},
+            "adjustments": {k: v for k, v in adj.items() if k != "course_profile"},
+        })
+    return result
+
+
+# ── AI Brain Endpoints ─────────────────────────────────────────────
+
+@app.get("/api/ai-status")
+async def ai_status():
+    """Check AI brain configuration and status."""
+    from src.ai_brain import get_ai_status
+    return get_ai_status()
+
+
+@app.post("/api/ai/pre-analysis")
+async def ai_pre_analysis(request: Request):
+    """Run AI pre-tournament analysis."""
+    from src.ai_brain import pre_tournament_analysis, is_ai_available
+    if not is_ai_available():
+        return JSONResponse({"error": "AI brain not configured. Set OPENAI_API_KEY."}, status_code=400)
+
+    if not _last_analysis:
+        return JSONResponse({"error": "Run analysis first (upload CSVs or sync DG)."}, status_code=400)
+
+    tournament_id = _last_analysis.get("tournament_id")
+    composite = _last_analysis.get("composite", [])
+    course = _last_analysis.get("course", "")
+
+    # Load course profile if available
+    course_profile = None
+    if course:
+        from src.course_profile import load_course_profile
+        course_profile = load_course_profile(course)
+
+    result = pre_tournament_analysis(
+        tournament_id=tournament_id,
+        composite_results=composite,
+        course_profile=course_profile,
+        tournament_name=_last_analysis.get("tournament", ""),
+        course_name=course,
+    )
+    return result
+
+
+@app.post("/api/ai/betting-decisions")
+async def ai_betting_decisions(request: Request):
+    """Get AI betting decisions."""
+    from src.ai_brain import make_betting_decisions, is_ai_available
+    if not is_ai_available():
+        return JSONResponse({"error": "AI brain not configured."}, status_code=400)
+
+    if not _last_analysis:
+        return JSONResponse({"error": "Run analysis first."}, status_code=400)
+
+    tournament_id = _last_analysis.get("tournament_id")
+    value_bets = _last_analysis.get("value_bets", {})
+    course = _last_analysis.get("course", "")
+
+    # Get pre-analysis if it exists
+    from src.db import get_ai_decisions
+    prior = get_ai_decisions(tournament_id=tournament_id, phase="pre_analysis")
+    pre_analysis = json.loads(prior[0]["output_json"]) if prior else None
+
+    result = make_betting_decisions(
+        tournament_id=tournament_id,
+        value_bets_by_type=value_bets,
+        pre_analysis=pre_analysis,
+        tournament_name=_last_analysis.get("tournament", ""),
+        course_name=course,
+    )
+    return result
+
+
+@app.post("/api/ai/post-review")
+async def ai_post_review(request: Request):
+    """Run AI post-tournament review and learning."""
+    from src.ai_brain import post_tournament_review, is_ai_available
+    from src.learning import score_picks_for_tournament
+    if not is_ai_available():
+        return JSONResponse({"error": "AI brain not configured."}, status_code=400)
+
+    data = await request.json()
+    tournament_name = data.get("tournament", "")
+    if not tournament_name:
+        return JSONResponse({"error": "Tournament name required."}, status_code=400)
+
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM tournaments WHERE name = ?", (tournament_name,)).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"error": f"Tournament '{tournament_name}' not found."}, status_code=404)
+
+    tid = row["id"]
+    course = row["course"] or ""
+
+    # Score picks first
+    scoring = score_picks_for_tournament(tid)
+
+    result = post_tournament_review(
+        tournament_id=tid,
+        scoring_result=scoring,
+        tournament_name=tournament_name,
+        course_name=course,
+    )
+    return {"scoring": scoring, "review": result}
+
+
+# ── Learning Endpoints ─────────────────────────────────────────────
+
+@app.post("/api/learn")
+async def post_tournament_learn_endpoint(request: Request):
+    """Full post-tournament learning cycle."""
+    from src.learning import post_tournament_learn
+
+    data = await request.json()
+    tournament_name = data.get("tournament", "")
+    event_id = data.get("event_id")
+    year = data.get("year")
+    course_num = data.get("course_num")
+    course_name = data.get("course_name")
+
+    if not tournament_name:
+        return JSONResponse({"error": "Tournament name required."}, status_code=400)
+
+    conn = get_conn()
+    row = conn.execute("SELECT id FROM tournaments WHERE name = ?", (tournament_name,)).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"error": f"Tournament '{tournament_name}' not found."}, status_code=404)
+
+    result = post_tournament_learn(
+        tournament_id=row["id"],
+        event_id=event_id,
+        year=year,
+        course_num=course_num,
+        course_name=course_name or "",
+    )
+    return result
+
+
+@app.get("/api/calibration")
+async def get_calibration():
+    """Get model calibration and ROI data."""
+    from src.learning import compute_calibration
+    return compute_calibration()
+
+
+@app.get("/api/ai-memories")
+async def get_memories(topic: str = None):
+    """Get AI brain memories, optionally filtered by topic."""
+    from src.db import get_ai_memories, get_all_ai_memory_topics
+    topics = [topic] if topic else None
+    memories = get_ai_memories(topics=topics)
+    all_topics = get_all_ai_memory_topics()
+    return {"memories": memories, "topics": all_topics}
 
 
 # ── HTML Page (everything in one file) ──────────────────────────────

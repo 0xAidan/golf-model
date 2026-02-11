@@ -66,8 +66,13 @@ def compute_course_fit(tournament_id: int, weights: dict,
             db.get_metrics_by_category(tournament_id, cat, data_mode="course_specific")
         )
 
-    if not course_metrics:
-        # No course-specific data uploaded; return empty
+    # Also pull DG decomposition data (course-adjusted SG predictions)
+    dg_decomp = db.get_metrics_by_category(
+        tournament_id, "dg_decomposition", data_mode="course_specific"
+    )
+
+    if not course_metrics and not dg_decomp:
+        # No course-specific data at all; return empty
         return {}
 
     # Organize by player
@@ -79,6 +84,14 @@ def compute_course_fit(tournament_id: int, weights: dict,
         key = f"{m['metric_category']}_{m['metric_name']}"
         player_data[pk][key] = m["metric_value"]
 
+    # Add DG decomposition data
+    player_dg_decomp = {}
+    for m in dg_decomp:
+        pk = m["player_key"]
+        if pk not in player_dg_decomp:
+            player_dg_decomp[pk] = {}
+        player_dg_decomp[pk][m["metric_name"]] = m["metric_value"]
+
     # Also get rounds played (meta)
     meta_metrics = db.get_metrics_by_category(
         tournament_id, "meta", data_mode="course_specific"
@@ -88,6 +101,11 @@ def compute_course_fit(tournament_id: int, weights: dict,
         if pk not in player_data:
             player_data[pk] = {}
         player_data[pk][f"meta_{m['metric_name']}"] = m["metric_value"]
+
+    # Merge: include players that only appear in DG decomp
+    for pk in player_dg_decomp:
+        if pk not in player_data:
+            player_data[pk] = {}
 
     field_size = len(player_data)
     if field_size == 0:
@@ -161,6 +179,37 @@ def compute_course_fit(tournament_id: int, weights: dict,
 
         # Apply confidence modifier (scales toward 50 if few rounds)
         score = 50.0 + confidence * (score - 50.0)
+
+        # ── Blend with DG decomposition if available ──
+        dg_data = player_dg_decomp.get(pk)
+        if dg_data:
+            # Convert DG decomposition SG values to a 0-100 score
+            # by ranking within the field of DG decomposition players
+            dg_sg_total = dg_data.get("dg_sg_total")
+            if dg_sg_total is not None:
+                # Collect all DG totals for ranking
+                all_dg_totals = [
+                    d.get("dg_sg_total", 0) for d in player_dg_decomp.values()
+                    if d.get("dg_sg_total") is not None
+                ]
+                if all_dg_totals:
+                    # Percentile-based score
+                    below = sum(1 for v in all_dg_totals if v < dg_sg_total)
+                    dg_score = 100.0 * below / max(len(all_dg_totals) - 1, 1)
+                    components["dg_decomp"] = round(dg_score, 2)
+
+                    # Blend: if we have course history, DG gets ~30% weight
+                    # If no course history (confidence low), DG gets ~70%
+                    if confidence >= 0.5:
+                        dg_weight = 0.30
+                    else:
+                        dg_weight = 0.70
+                    score = (1 - dg_weight) * score + dg_weight * dg_score
+        elif not course_metrics:
+            # No course history metrics at all, only DG decomp for this player
+            # Use DG decomposition as primary signal (already handled above
+            # for players in player_dg_decomp but not player_data)
+            pass
 
         results[pk] = {
             "score": round(score, 2),
