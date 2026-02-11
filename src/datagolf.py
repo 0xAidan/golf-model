@@ -21,6 +21,16 @@ from src.player_normalizer import normalize_name, display_name
 BASE_URL = "https://feeds.datagolf.com"
 
 
+def _safe_float(val) -> float | None:
+    """Safely convert a value to float, returning None for non-numeric."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _get_api_key() -> str:
     key = os.environ.get("DATAGOLF_API_KEY", "")
     if not key:
@@ -44,9 +54,20 @@ def _call_api(endpoint: str, params: dict = None) -> dict | list:
     params.setdefault("file_format", "json")
 
     url = f"{BASE_URL}/{endpoint}"
-    resp = requests.get(url, params=params, timeout=120)
-    resp.raise_for_status()
-    return resp.json()
+    try:
+        resp = requests.get(url, params=params, timeout=120)
+        resp.raise_for_status()
+    except requests.exceptions.Timeout:
+        raise RuntimeError(f"Data Golf API timeout on {endpoint} (120s)")
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(f"Data Golf API HTTP error on {endpoint}: {e}")
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Data Golf API connection error on {endpoint}: {e}")
+
+    try:
+        return resp.json()
+    except ValueError:
+        raise RuntimeError(f"Data Golf API returned non-JSON for {endpoint}: {resp.text[:200]}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -247,16 +268,19 @@ def _store_predictions_as_metrics(predictions: list | dict,
     Map DG pre-tournament predictions into the metrics table
     as sim-equivalent data (so form.py and value.py can use them).
     """
-    # Handle response format: may be a dict with nested structure
-    if isinstance(predictions, dict):
-        player_list = predictions.get("baseline_history_fit", [])
-        if not player_list:
-            player_list = predictions.get("baseline", [])
-        if not player_list:
-            # Try as flat list
-            player_list = [predictions]
-    elif isinstance(predictions, list):
+    # Handle response format: DG may return a list directly or a dict wrapper
+    if isinstance(predictions, list):
         player_list = predictions
+    elif isinstance(predictions, dict):
+        # Try common wrapper keys
+        player_list = []
+        for key in ["baseline_history_fit", "baseline", "data", "players"]:
+            if key in predictions and isinstance(predictions[key], list):
+                player_list = predictions[key]
+                break
+        if not player_list and "player_name" in predictions:
+            # Single player dict
+            player_list = [predictions]
     else:
         return 0
 
@@ -294,7 +318,8 @@ def _store_predictions_as_metrics(predictions: list | dict,
         }
 
         for metric_name, value in {**prob_fields, **prob_fields_ch}.items():
-            if value is not None:
+            fval = _safe_float(value)
+            if fval is not None:
                 metric_rows.append({
                     "tournament_id": tournament_id,
                     "csv_import_id": import_id,
@@ -304,12 +329,13 @@ def _store_predictions_as_metrics(predictions: list | dict,
                     "data_mode": "recent_form",
                     "round_window": "all",
                     "metric_name": metric_name,
-                    "metric_value": float(value),
+                    "metric_value": fval,
                     "metric_text": None,
                 })
 
         # Store dg_id as meta
-        if p.get("dg_id"):
+        dg_id_val = _safe_float(p.get("dg_id"))
+        if dg_id_val is not None:
             metric_rows.append({
                 "tournament_id": tournament_id,
                 "csv_import_id": import_id,
@@ -319,7 +345,7 @@ def _store_predictions_as_metrics(predictions: list | dict,
                 "data_mode": "recent_form",
                 "round_window": "all",
                 "metric_name": "dg_id",
-                "metric_value": float(p["dg_id"]),
+                "metric_value": dg_id_val,
                 "metric_text": None,
             })
 
@@ -342,11 +368,14 @@ def _store_decompositions_as_metrics(decompositions: list | dict,
                                      tournament_id: int) -> int:
     """Map DG decompositions into metrics as course-specific data."""
     if isinstance(decompositions, dict):
-        player_list = decompositions if "player_name" in decompositions else []
-        if not player_list:
+        if "player_name" in decompositions:
+            # Single player dict — wrap in list
+            player_list = [decompositions]
+        else:
             # Try common wrapper keys
+            player_list = []
             for key in ["data", "players", "decompositions"]:
-                if key in decompositions:
+                if key in decompositions and isinstance(decompositions[key], list):
                     player_list = decompositions[key]
                     break
     elif isinstance(decompositions, list):
@@ -383,7 +412,8 @@ def _store_decompositions_as_metrics(decompositions: list | dict,
         }
 
         for metric_name, value in sg_fields.items():
-            if value is not None:
+            fval = _safe_float(value)
+            if fval is not None:
                 metric_rows.append({
                     "tournament_id": tournament_id,
                     "csv_import_id": import_id,
@@ -393,7 +423,7 @@ def _store_decompositions_as_metrics(decompositions: list | dict,
                     "data_mode": "course_specific",
                     "round_window": "all",
                     "metric_name": metric_name,
-                    "metric_value": float(value),
+                    "metric_value": fval,
                     "metric_text": None,
                 })
 
@@ -413,12 +443,16 @@ def fetch_field_updates(tour: str = "pga") -> list[dict]:
 def _store_field_as_metrics(field_data: list | dict,
                             tournament_id: int) -> int:
     """Store field updates (salaries, tee times) as meta metrics."""
-    if isinstance(field_data, dict):
-        player_list = field_data.get("field", [])
-        if not player_list:
-            player_list = [field_data] if "player_name" in field_data else []
-    elif isinstance(field_data, list):
+    if isinstance(field_data, list):
         player_list = field_data
+    elif isinstance(field_data, dict):
+        player_list = []
+        for key in ["field", "data", "players"]:
+            if key in field_data and isinstance(field_data[key], list):
+                player_list = field_data[key]
+                break
+        if not player_list and "player_name" in field_data:
+            player_list = [field_data]
     else:
         return 0
 
@@ -461,22 +495,25 @@ def _store_field_as_metrics(field_data: list | dict,
                     "metric_value": None,
                     "metric_text": str(tee_time_text),
                 })
-            elif value is not None:
-                metric_rows.append({
-                    "tournament_id": tournament_id,
-                    "csv_import_id": import_id,
-                    "player_key": pkey,
-                    "player_display": pdisp,
-                    "metric_category": "meta",
-                    "data_mode": "recent_form",
-                    "round_window": "all",
-                    "metric_name": metric_name,
-                    "metric_value": float(value),
-                    "metric_text": None,
-                })
+            else:
+                fval = _safe_float(value)
+                if fval is not None:
+                    metric_rows.append({
+                        "tournament_id": tournament_id,
+                        "csv_import_id": import_id,
+                        "player_key": pkey,
+                        "player_display": pdisp,
+                        "metric_category": "meta",
+                        "data_mode": "recent_form",
+                        "round_window": "all",
+                        "metric_name": metric_name,
+                        "metric_value": fval,
+                        "metric_text": None,
+                    })
 
         # Store dg_id as meta for cross-referencing
-        if p.get("dg_id"):
+        dg_id_val = _safe_float(p.get("dg_id"))
+        if dg_id_val is not None:
             metric_rows.append({
                 "tournament_id": tournament_id,
                 "csv_import_id": import_id,
@@ -486,7 +523,7 @@ def _store_field_as_metrics(field_data: list | dict,
                 "data_mode": "recent_form",
                 "round_window": "all",
                 "metric_name": "dg_id",
-                "metric_value": float(p["dg_id"]),
+                "metric_value": dg_id_val,
                 "metric_text": None,
             })
 
@@ -503,14 +540,39 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     Full tournament sync: fetch predictions, decompositions, and field updates
     from Data Golf and store in the metrics table.
 
+    Also auto-updates round data for the current year so rolling stats
+    include the most recently completed events.
+
     Call this before running the analysis pipeline.
     """
+    from datetime import datetime as _dt
+
     summary = {
         "predictions": 0,
         "decompositions": 0,
         "field": 0,
+        "rounds_updated": 0,
         "errors": [],
     }
+
+    # 0. Auto-update rounds for current year (fast — skips existing data)
+    try:
+        current_year = _dt.now().year
+        print(f"  Updating {tour.upper()} {current_year} round data...")
+        raw = fetch_historical_rounds(tour=tour, event_id="all", year=current_year)
+        rows = _parse_rounds_response(raw, tour, current_year)
+        before = db.get_rounds_count()
+        db.store_rounds(rows)
+        after = db.get_rounds_count()
+        new_rounds = after - before
+        summary["rounds_updated"] = new_rounds
+        if new_rounds > 0:
+            print(f"    → {new_rounds} new rounds added")
+        else:
+            print(f"    → Already up to date")
+    except Exception as e:
+        summary["errors"].append(f"rounds_update: {e}")
+        print(f"    → Round update error (non-fatal): {e}")
 
     # 1. Pre-tournament predictions
     try:

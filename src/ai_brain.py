@@ -573,7 +573,8 @@ def post_tournament_review(tournament_id: int,
     prior_ctx = ""
     for d in prior_decisions:
         if d["phase"] in ("pre_analysis", "betting_decisions"):
-            prior_ctx += f"\n--- {d['phase']} ---\n{d['output_json'][:1000]}\n"
+            output = d.get("output_json") or ""
+            prior_ctx += f"\n--- {d['phase']} ---\n{output[:1000]}\n"
 
     scoring_ctx = "No scoring data."
     if scoring_result:

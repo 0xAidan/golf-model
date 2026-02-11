@@ -142,9 +142,10 @@ async def run_analysis(
                         odds_by_market[m].append(o)
                     for market, market_odds in odds_by_market.items():
                         best = get_best_odds(market_odds)
-                        vb = find_value_bets(composite, best, bet_type=market.replace("top_", "top"),
+                        bt = "outright" if market == "outrights" else market.replace("top_", "top")
+                        vb = find_value_bets(composite, best, bet_type=bt,
                                             tournament_id=tournament_id)
-                        value_bets[market.replace("top_", "top")] = vb
+                        value_bets[bt] = vb
                     odds_status = f"Fetched {len(all_odds)} odds"
                 else:
                     odds_status = "API returned no odds"
@@ -376,7 +377,10 @@ async def sync_datagolf(request: Request):
     except Exception as e:
         return JSONResponse({"error": f"Import error: {e}"}, status_code=500)
 
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid or missing JSON body"}, status_code=400)
     tournament_name = data.get("tournament", "")
     course = data.get("course", "")
     tour = data.get("tour", "pga")
@@ -574,7 +578,10 @@ async def ai_post_review(request: Request):
     if not is_ai_available():
         return JSONResponse({"error": "AI brain not configured."}, status_code=400)
 
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid or missing JSON body"}, status_code=400)
     tournament_name = data.get("tournament", "")
     if not tournament_name:
         return JSONResponse({"error": "Tournament name required."}, status_code=400)
@@ -607,7 +614,10 @@ async def post_tournament_learn_endpoint(request: Request):
     """Full post-tournament learning cycle."""
     from src.learning import post_tournament_learn
 
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid or missing JSON body"}, status_code=400)
     tournament_name = data.get("tournament", "")
     event_id = data.get("event_id")
     year = data.get("year")
@@ -661,9 +671,9 @@ HTML_PAGE = """<!DOCTYPE html>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; }
-.container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
 h1 { font-size: 1.6em; margin-bottom: 5px; color: #fff; }
-h2 { font-size: 1.2em; margin: 20px 0 10px; color: #4ade80; border-bottom: 1px solid #333; padding-bottom: 5px; }
+h2 { font-size: 1.15em; margin: 20px 0 10px; color: #4ade80; border-bottom: 1px solid #333; padding-bottom: 5px; }
 h3 { font-size: 1em; margin: 15px 0 8px; color: #94a3b8; }
 
 /* Tabs */
@@ -741,455 +751,596 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 <body>
 <div class="container">
     <h1>Golf Betting Model</h1>
-    <p style="color:#94a3b8; font-size:0.85em;">Quantitative picks: course fit + form + momentum</p>
+    <p style="color:#94a3b8; font-size:0.85em;">Data Golf + AI Brain + Self-Improving Model</p>
 
     <div class="tabs">
-        <div class="tab active" onclick="showTab('upload')">Upload & Analyze</div>
-        <div class="tab" onclick="showTab('card')">Betting Card</div>
-        <div class="tab" onclick="showTab('results')">Enter Results</div>
+        <div class="tab active" onclick="showTab('setup')">Setup & Sync</div>
+        <div class="tab" onclick="showTab('predictions')">Predictions</div>
+        <div class="tab" onclick="showTab('ai')">AI Brain</div>
+        <div class="tab" onclick="showTab('data')">Add Data</div>
         <div class="tab" onclick="showTab('dashboard')">Dashboard</div>
     </div>
 
-    <!-- ── Upload & Analyze ──────────────────────────────── -->
-    <div id="tab-upload" class="tab-content active">
-        <h2>1. Set Tournament</h2>
+    <!-- ══ SETUP & SYNC TAB ══════════════════════════════ -->
+    <div id="tab-setup" class="tab-content active">
+        <h2>1. Tournament Setup</h2>
         <div class="form-row">
             <div>
                 <label>Tournament Name</label>
-                <input id="tournament" type="text" placeholder="e.g. WM Phoenix Open 2026" style="width:100%">
+                <input id="tournament" type="text" placeholder="e.g. Genesis Invitational 2026" style="width:100%">
             </div>
             <div>
                 <label>Course Name</label>
-                <input id="course" type="text" placeholder="e.g. TPC Scottsdale" style="width:100%">
+                <input id="course" type="text" placeholder="e.g. Riviera" style="width:100%">
+            </div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label>Tour</label>
+                <select id="tour" style="width:100%">
+                    <option value="pga">PGA Tour</option>
+                    <option value="euro">DP World Tour</option>
+                    <option value="kft">Korn Ferry Tour</option>
+                    <option value="alt">LIV Golf</option>
+                </select>
+            </div>
+            <div>
+                <label>DG Course Number (optional)</label>
+                <input id="courseNum" type="number" placeholder="e.g. 5 for Pebble Beach" style="width:100%">
             </div>
         </div>
 
-        <h2>2. Upload Betsperts CSVs</h2>
+        <h2>2. Sync Data Golf</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">Pulls predictions, field updates, and computes rolling stats from stored round data. This is the main data source — no CSVs needed.</p>
+        <button id="syncBtn" onclick="syncDG()">Sync Data Golf</button>
+        <button class="secondary" onclick="runCsvAnalysis()" style="margin-left:10px;">Run CSV Analysis Instead</button>
+        <div id="syncStatus" style="margin-top:10px;"></div>
+
+        <h2>3. Backfill Status</h2>
+        <div id="backfillStatus"><div class="status loading"><span class="spinner"></span>Loading...</div></div>
+        <button class="secondary" onclick="runBackfill()" style="margin-top:10px;">Backfill Historical Data (PGA 2024-2026)</button>
+        <div id="backfillResult" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- ══ PREDICTIONS TAB ═══════════════════════════════ -->
+    <div id="tab-predictions" class="tab-content">
+        <div id="predictionsContent">
+            <div class="status info">No analysis run yet. Go to Setup & Sync first.</div>
+        </div>
+    </div>
+
+    <!-- ══ AI BRAIN TAB ══════════════════════════════════ -->
+    <div id="tab-ai" class="tab-content">
+        <h2>AI Brain Status</h2>
+        <div id="aiStatus"><div class="status loading"><span class="spinner"></span>Checking...</div></div>
+
+        <h2>Pre-Tournament Analysis</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">AI analyzes the field, course, and memories to find qualitative edges.</p>
+        <button onclick="runAiPreAnalysis()">Run Pre-Tournament Analysis</button>
+        <div id="aiPreResult" style="margin-top:10px;"></div>
+
+        <h2>Betting Decisions</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">AI reviews value bets and makes portfolio-level betting recommendations.</p>
+        <button onclick="runAiBetting()">Get Betting Decisions</button>
+        <div id="aiBetResult" style="margin-top:10px;"></div>
+
+        <h2>Post-Tournament Review</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">AI reviews results, learns from mistakes, stores insights in memory.</p>
         <div style="margin-bottom:10px;">
-            <button onclick="document.getElementById('fileInput').click()" style="margin-right:10px;">Click to Select CSV Files</button>
+            <label>Tournament to review</label>
+            <select id="reviewTournament" style="width:100%;"><option value="">Loading...</option></select>
+        </div>
+        <button onclick="runAiPostReview()">Run Post-Tournament Review</button>
+        <div id="aiPostResult" style="margin-top:10px;"></div>
+
+        <h2>AI Memories</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">Persistent learnings the AI has accumulated over time.</p>
+        <div id="aiMemories"><div class="status info">Click to load memories</div></div>
+        <button class="secondary" onclick="loadMemories()" style="margin-top:10px;">Load Memories</button>
+    </div>
+
+    <!-- ══ ADD DATA TAB ══════════════════════════════════ -->
+    <div id="tab-data" class="tab-content">
+        <h2>Upload Betsperts CSVs (Optional Supplement)</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">Data Golf provides the core data. CSVs add extra granularity (lie-specific scrambling, approach by yardage, etc.)</p>
+        <div style="margin-bottom:10px;">
+            <button onclick="document.getElementById('fileInput').click()" style="margin-right:10px;">Select CSV Files</button>
             <button class="secondary" onclick="clearFiles()">Clear All</button>
             <input type="file" id="fileInput" multiple accept=".csv" style="display:none">
         </div>
         <div class="dropzone" id="dropzone">
-            <p style="font-size:1.1em; margin-bottom:8px;">Or drag and drop CSV files here</p>
-            <p style="font-size:0.85em;">Cheat sheets, sim, 12r, 24r, course data, rolling averages — drop them all</p>
+            <p style="font-size:1.1em; margin-bottom:8px;">Drag and drop CSV files here</p>
+            <p style="font-size:0.85em;">Cheat sheets, sim, strokes gained, OTT, approach, putting, around green, course-specific data</p>
         </div>
         <div id="fileCount" style="margin:8px 0; font-weight:600; color:#4ade80;"></div>
         <div id="fileList" class="file-list" style="max-height:200px; overflow-y:auto;"></div>
 
-        <h2>3. Run Model</h2>
-        <button id="analyzeBtn" onclick="runAnalysis()" disabled>Analyze</button>
-        <div id="analyzeStatus"></div>
-    </div>
-
-    <!-- ── Betting Card ──────────────────────────────────── -->
-    <div id="tab-card" class="tab-content">
-        <div id="cardContent">
-            <div class="status info">No analysis run yet. Go to Upload & Analyze first.</div>
+        <h2>Upload Course Profile Screenshots</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+            Upload Betsperts course screenshots (Course Facts, Off the Tee, Approach, Around Green, Putting, Scoring tables).
+            Claude Vision extracts structured data for course-specific weight adjustments.
+            <strong>Requires ANTHROPIC_API_KEY.</strong>
+        </p>
+        <div class="form-row">
+            <div>
+                <label>Course Name (for this profile)</label>
+                <input id="profileCourse" type="text" placeholder="e.g. Pebble Beach" style="width:100%">
+            </div>
         </div>
-    </div>
+        <div style="margin-bottom:10px;">
+            <button onclick="document.getElementById('imgInput').click()">Select Screenshot Images</button>
+            <input type="file" id="imgInput" multiple accept=".png,.jpg,.jpeg,.webp" style="display:none">
+        </div>
+        <div id="imgList" style="margin:8px 0; font-size:0.85em; color:#94a3b8;"></div>
+        <button onclick="uploadCourseProfile()">Extract Course Profile</button>
+        <div id="courseProfileResult" style="margin-top:10px;"></div>
 
-    <!-- ── Enter Results ─────────────────────────────────── -->
-    <div id="tab-results" class="tab-content">
+        <h2>Saved Course Profiles</h2>
+        <div id="savedCourses"><div class="status info">Loading...</div></div>
+
         <h2>Enter Tournament Results</h2>
         <div style="margin-bottom:15px;">
             <label>Tournament</label>
-            <select id="resultsTournament" style="width:100%;">
-                <option value="">Loading...</option>
-            </select>
+            <select id="resultsTournament" style="width:100%;"><option value="">Loading...</option></select>
         </div>
         <label>Results (one per line: Player Name, Finish)</label>
-        <textarea id="resultsText" class="results-input" placeholder="Scottie Scheffler, 1&#10;Xander Schauffele, T3&#10;Tom Kim, CUT&#10;..."></textarea>
+        <textarea id="resultsText" class="results-input" placeholder="Scottie Scheffler, 1&#10;Xander Schauffele, T3&#10;Tom Kim, CUT"></textarea>
         <div style="margin-top:10px;">
-            <button onclick="submitResults()">Save Results</button>
+            <button onclick="submitResults()">Save Results & Score Picks</button>
         </div>
         <div id="resultsStatus"></div>
     </div>
 
-    <!-- ── Dashboard ─────────────────────────────────────── -->
+    <!-- ══ DASHBOARD TAB ═════════════════════════════════ -->
     <div id="tab-dashboard" class="tab-content">
-        <div id="dashboardContent">
-            <div class="status info">Loading...</div>
-        </div>
+        <div id="dashboardContent"><div class="status info">Loading...</div></div>
     </div>
 </div>
 
 <script>
 // ── Tab switching ──
+const TAB_NAMES = ['setup','predictions','ai','data','dashboard'];
 function showTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
-        t.classList.toggle('active', t.textContent.toLowerCase().includes(name.substring(0, 4)));
+        t.classList.toggle('active', TAB_NAMES[i] === name);
     });
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById('tab-' + name).classList.add('active');
+    const el = document.getElementById('tab-' + name);
+    if (el) el.classList.add('active');
 
-    if (name === 'card') loadCard();
-    if (name === 'results') loadTournaments();
+    if (name === 'predictions') loadPredictions();
+    if (name === 'ai') { loadAiStatus(); loadTournaments(); }
+    if (name === 'data') { loadTournaments(); loadSavedCourses(); }
     if (name === 'dashboard') loadDashboard();
+    if (name === 'setup') loadBackfillStatus();
 }
 
-// ── File upload ──
+<script>
+// ══ FILE UPLOAD ══
 let selectedFiles = [];
+let selectedImages = [];
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
-const fileList = document.getElementById('fileList');
-const fileCount = document.getElementById('fileCount');
+const imgInput = document.getElementById('imgInput');
 
-// Drag and drop — handle all events to prevent browser defaults
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+['dragenter','dragover','dragleave','drop'].forEach(evt => {
     dropzone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
     document.body.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
 });
 dropzone.addEventListener('dragenter', () => dropzone.classList.add('dragover'));
 dropzone.addEventListener('dragover', () => dropzone.classList.add('dragover'));
-dropzone.addEventListener('dragleave', e => {
-    // Only remove highlight if we actually left the dropzone
-    if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('dragover');
-});
+dropzone.addEventListener('dragleave', e => { if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('dragover'); });
 dropzone.addEventListener('drop', e => {
     dropzone.classList.remove('dragover');
-    const items = e.dataTransfer.items;
     const files = e.dataTransfer.files;
-    // Try items first (more reliable for large batches)
-    if (items && items.length > 0) {
-        const collected = [];
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].kind === 'file') {
-                const f = items[i].getAsFile();
-                if (f) collected.push(f);
-            }
-        }
-        if (collected.length > 0) { addFiles(collected); return; }
+    if (files && files.length > 0) addFiles(files);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) addFiles(e.target.files); fileInput.value = ''; });
+imgInput.addEventListener('change', e => {
+    if (e.target.files.length) {
+        selectedImages = Array.from(e.target.files);
+        document.getElementById('imgList').textContent = selectedImages.map(f=>f.name).join(', ');
     }
-    // Fallback to files
-    if (files && files.length > 0) { addFiles(files); }
+    imgInput.value = '';
 });
 
-// File picker button
-fileInput.addEventListener('change', e => {
-    if (e.target.files && e.target.files.length > 0) {
-        addFiles(e.target.files);
-    }
-    // Reset input so same files can be selected again if needed
-    fileInput.value = '';
-});
-
-function addFiles(fileListOrArray) {
-    const arr = Array.from(fileListOrArray);
-    let added = 0;
-    for (const f of arr) {
-        if (f && f.name && f.name.toLowerCase().endsWith('.csv')) {
-            if (!selectedFiles.some(s => s.name === f.name)) {
-                selectedFiles.push(f);
-                added++;
-            }
-        }
+function addFiles(fl) {
+    for (const f of Array.from(fl)) {
+        if (f.name.toLowerCase().endsWith('.csv') && !selectedFiles.some(s=>s.name===f.name)) selectedFiles.push(f);
     }
     renderFiles();
-    if (added > 0) {
-        fileCount.style.color = '#4ade80';
-        fileCount.textContent = selectedFiles.length + ' CSV files ready (' + added + ' just added)';
-    }
 }
-
-function clearFiles() {
-    selectedFiles = [];
-    renderFiles();
-}
-
+function clearFiles() { selectedFiles = []; renderFiles(); }
 function renderFiles() {
-    if (selectedFiles.length === 0) {
-        fileCount.textContent = '';
-        fileList.innerHTML = '';
-    } else {
-        fileCount.textContent = selectedFiles.length + ' CSV files ready';
-        fileList.innerHTML = selectedFiles.map(f =>
-            '<div class="file-item">' + f.name + ' <span style="color:#666;font-size:0.8em;">(' + (f.size/1024).toFixed(0) + ' KB)</span></div>'
-        ).join('');
-    }
-    document.getElementById('analyzeBtn').disabled =
-        !selectedFiles.length || !document.getElementById('tournament').value;
+    const fc = document.getElementById('fileCount');
+    const fl = document.getElementById('fileList');
+    fc.textContent = selectedFiles.length ? selectedFiles.length + ' CSV files ready' : '';
+    fl.innerHTML = selectedFiles.map(f=>'<div class="file-item">'+f.name+' <span style="color:#666;font-size:0.8em;">('+Math.round(f.size/1024)+' KB)</span></div>').join('');
 }
 
-document.getElementById('tournament').addEventListener('input', renderFiles);
-document.getElementById('course').addEventListener('input', renderFiles);
-
-// ── Run analysis ──
-async function runAnalysis() {
-    const btn = document.getElementById('analyzeBtn');
-    const status = document.getElementById('analyzeStatus');
-    btn.disabled = true;
-    status.innerHTML = '<div class="status loading"><span class="spinner"></span>Running model... this may take 10-20 seconds</div>';
-
-    const form = new FormData();
-    form.append('tournament', document.getElementById('tournament').value);
-    form.append('course', document.getElementById('course').value);
-    for (const f of selectedFiles) form.append('files', f);
-
+// ══ SYNC DATA GOLF ══
+async function syncDG() {
+    const t = document.getElementById('tournament').value;
+    const c = document.getElementById('course').value;
+    const tour = document.getElementById('tour').value;
+    const cn = document.getElementById('courseNum').value;
+    if (!t) { alert('Enter a tournament name first'); return; }
+    const el = document.getElementById('syncStatus');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Syncing Data Golf... (predictions + rolling stats, may take 30-60s)</div>';
     try {
-        const resp = await fetch('/api/analyze', { method: 'POST', body: form });
+        const resp = await fetch('/api/sync-datagolf', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({tournament:t, course:c, tour:tour, course_num:cn?parseInt(cn):null})
+        });
         const data = await resp.json();
-        if (data.error) {
-            status.innerHTML = '<div class="status error">' + data.error + '</div>';
-            btn.disabled = false;
-            return;
-        }
-        let html = '<div class="status success">Analysis complete: ' + data.players_scored + ' players scored from ' + data.files_imported + ' files.</div>';
-        if (data.files_skipped && data.files_skipped.length) {
-            html += '<div class="status info">Skipped (already imported): ' + data.files_skipped.join(', ') + '</div>';
-        }
-        html += '<div style="margin-top:10px;"><button onclick="showTab(\'card\')">View Betting Card →</button></div>';
-        status.innerHTML = html;
-    } catch (e) {
-        status.innerHTML = '<div class="status error">Error: ' + e.message + '</div>';
-        btn.disabled = false;
-    }
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        const steps = data.steps || {};
+        let html = '<div class="status success">Sync complete!</div>';
+        if (steps.dg_sync) html += '<div class="status info">DG Sync: '+JSON.stringify(steps.dg_sync).substring(0,200)+'</div>';
+        if (steps.rolling_stats) html += '<div class="status info">Rolling Stats: '+(steps.rolling_stats.total_metrics||0)+' metrics computed for '+(steps.rolling_stats.players_in_field||0)+' players</div>';
+        html += '<div style="margin-top:10px;"><button onclick="showTab(\'predictions\')">View Predictions →</button></div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
 }
 
-// ── Betting Card ──
-async function loadCard() {
-    const el = document.getElementById('cardContent');
+async function runCsvAnalysis() {
+    const t = document.getElementById('tournament').value;
+    const c = document.getElementById('course').value;
+    if (!t || !selectedFiles.length) { alert('Enter tournament name and select CSV files'); return; }
+    const el = document.getElementById('syncStatus');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Running CSV analysis...</div>';
+    const form = new FormData();
+    form.append('tournament', t); form.append('course', c);
+    for (const f of selectedFiles) form.append('files', f);
+    try {
+        const resp = await fetch('/api/analyze', {method:'POST', body:form});
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        el.innerHTML = '<div class="status success">CSV analysis complete: '+data.players_scored+' players scored.</div><div style="margin-top:10px;"><button onclick="showTab(\'predictions\')">View Predictions →</button></div>';
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+// ══ BACKFILL ══
+async function loadBackfillStatus() {
+    const el = document.getElementById('backfillStatus');
+    try {
+        const resp = await fetch('/api/backfill-status');
+        const data = await resp.json();
+        if (!data.total_rounds) { el.innerHTML='<div class="status info">No historical data yet. Click Backfill to load 2-3 years of PGA Tour rounds.</div>'; return; }
+        let html = '<div class="stats-grid"><div class="stat-box"><div class="number">'+data.total_rounds.toLocaleString()+'</div><div class="label">Total Rounds</div></div></div>';
+        if (data.by_tour_year && data.by_tour_year.length) {
+            html += '<table><tr><th>Tour</th><th>Year</th><th>Rounds</th><th>Players</th><th>Events</th></tr>';
+            for (const r of data.by_tour_year) html += '<tr><td>'+r.tour.toUpperCase()+'</td><td>'+r.year+'</td><td class="num">'+r.round_count+'</td><td class="num">'+r.player_count+'</td><td class="num">'+r.event_count+'</td></tr>';
+            html += '</table>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error loading status</div>'; }
+}
+
+async function runBackfill() {
+    const el = document.getElementById('backfillResult');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Backfilling PGA 2024-2026... (may take 1-2 minutes)</div>';
+    try {
+        const resp = await fetch('/api/backfill', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tours:['pga'],years:[2024,2025,2026]})});
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        el.innerHTML = '<div class="status success">Backfill complete! '+JSON.stringify(data.summary)+'</div>';
+        loadBackfillStatus();
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+// ══ PREDICTIONS ══
+async function loadPredictions() {
+    const el = document.getElementById('predictionsContent');
     try {
         const resp = await fetch('/api/card');
         const data = await resp.json();
-        if (data.error) {
-            el.innerHTML = '<div class="status info">' + data.error + '</div>';
-            return;
-        }
-        renderCard(data, el);
-    } catch (e) {
-        el.innerHTML = '<div class="status error">Error loading card</div>';
-    }
+        if (data.error) { el.innerHTML='<div class="status info">'+data.error+'</div>'; return; }
+        renderPredictions(data, el);
+    } catch(e) { el.innerHTML='<div class="status error">Error loading predictions</div>'; }
 }
 
 function trendIcon(dir) {
-    const map = { hot: '<span class="trend-hot">↑↑</span>', warming: '<span class="trend-warm">↑</span>',
-                  cooling: '<span class="trend-cool">↓</span>', cold: '<span class="trend-cold">↓↓</span>' };
-    return map[dir] || '—';
+    return {hot:'<span class="trend-hot">↑↑</span>', warming:'<span class="trend-warm">↑</span>',
+            cooling:'<span class="trend-cool">↓</span>', cold:'<span class="trend-cold">↓↓</span>'}[dir] || '—';
 }
 
-function reason(r) {
-    let parts = [];
-    if (r.course_fit > 65) parts.push('course ' + r.course_fit.toFixed(0));
-    if (r.form > 65) parts.push('form ' + r.form.toFixed(0));
-    if (r.momentum_direction === 'hot') parts.push('trending hot (+' + (r.momentum_trend||0).toFixed(0) + ')');
-    if (r.momentum_direction === 'cold') parts.push('cold (' + (r.momentum_trend||0).toFixed(0) + ')');
-    if ((r.course_rounds||0) >= 16) parts.push(Math.round(r.course_rounds) + ' rds');
-    return parts.join(' · ') || 'composite edge';
-}
-
-function renderCard(data, el) {
-    const c = data.composite;
+function renderPredictions(data, el) {
+    const c = data.composite || [];
     const vb = data.value_bets || {};
-    let html = '<h2>' + data.tournament + ' — ' + (data.course || '') + '</h2>';
-    html += '<p style="color:#94a3b8;font-size:0.8em;">Generated: ' + new Date(data.timestamp).toLocaleString() + ' · Weights: course ' + ((data.weights.course_fit||0.4)*100).toFixed(0) + '% / form ' + ((data.weights.form||0.4)*100).toFixed(0) + '% / momentum ' + ((data.weights.momentum||0.2)*100).toFixed(0) + '%</p>';
+    const w = data.weights || {};
+    let html = '<h2>'+data.tournament+' — '+(data.course||'')+'</h2>';
+    html += '<p style="color:#94a3b8;font-size:0.8em;">Generated: '+new Date(data.timestamp).toLocaleString()+' · Weights: course '+((w.course_fit||0.4)*100).toFixed(0)+'% / form '+((w.form||0.4)*100).toFixed(0)+'% / momentum '+((w.momentum||0.2)*100).toFixed(0)+'%</p>';
 
-    // Rankings table
-    html += '<h2>Model Rankings (Top 25)</h2><table><tr><th>#</th><th>Player</th><th>Composite</th><th>Course</th><th>Form</th><th>Momentum</th><th>Trend</th></tr>';
-    for (let i = 0; i < Math.min(25, c.length); i++) {
+    // Model rankings
+    html += '<h2>Model Rankings</h2><table><tr><th>#</th><th>Player</th><th>Composite</th><th>Course Fit</th><th>Form</th><th>Momentum</th><th>Trend</th></tr>';
+    for (let i = 0; i < Math.min(40, c.length); i++) {
         const r = c[i];
-        const cls = r.rank === 1 ? 'rank-1' : r.rank <= 5 ? 'rank-top5' : '';
-        html += '<tr class="' + cls + '"><td class="num">' + r.rank + '</td><td>' + r.player_display + '</td><td class="num">' + r.composite.toFixed(1) + '</td><td class="num">' + r.course_fit.toFixed(1) + '</td><td class="num">' + r.form.toFixed(1) + '</td><td class="num">' + r.momentum.toFixed(1) + '</td><td>' + trendIcon(r.momentum_direction) + '</td></tr>';
+        const cls = r.rank===1?'rank-1':r.rank<=5?'rank-top5':'';
+        html += '<tr class="'+cls+'"><td class="num">'+r.rank+'</td><td>'+r.player_display+(r.ai_adjustment?(' <span style="color:#fbbf24;font-size:0.8em;">(AI '+(r.ai_adjustment>0?'+':'')+r.ai_adjustment+')</span>'):'')+
+            '</td><td class="num">'+r.composite.toFixed(1)+'</td><td class="num">'+r.course_fit.toFixed(1)+'</td><td class="num">'+r.form.toFixed(1)+'</td><td class="num">'+r.momentum.toFixed(1)+'</td><td>'+trendIcon(r.momentum_direction)+'</td></tr>';
     }
     html += '</table>';
 
-    // Picks sections
-    const sections = [
-        { title: 'Outright Winner', n: 5 },
-        { title: 'Top 5 Finish', n: 6 },
-        { title: 'Top 10 Finish', n: 10 },
-        { title: 'Top 20 Finish', n: 15 },
-    ];
+    // Value bets
+    for (const [bt, bets] of Object.entries(vb)) {
+        const valueBets = bets.filter(b=>b.is_value);
+        if (!valueBets.length) continue;
+        html += '<h2>Value Bets: '+bt+'</h2><table><tr><th>Player</th><th>Model %</th><th>Market %</th><th>Odds</th><th>EV</th><th>Source</th><th>Book</th></tr>';
+        for (const b of valueBets.slice(0,15)) {
+            const evColor = b.ev > 0.15 ? '#4ade80' : b.ev > 0.05 ? '#86efac' : '#fbbf24';
+            html += '<tr><td>'+b.player_display+'</td><td class="num">'+(b.model_prob*100).toFixed(1)+'%</td><td class="num">'+(b.market_prob*100).toFixed(1)+'%</td><td class="num">'+b.best_odds+'</td><td class="num" style="color:'+evColor+'">'+b.ev_pct+'</td><td style="font-size:0.8em;color:#94a3b8;">'+(b.prob_source||'')+'</td><td style="font-size:0.8em;">'+b.best_book+'</td></tr>';
+        }
+        html += '</table>';
+    }
+
+    // Quick picks by section
+    const sections = [{title:'Outright',n:5},{title:'Top 5',n:6},{title:'Top 10',n:10},{title:'Top 20',n:15}];
     for (const sec of sections) {
-        html += '<h2>' + sec.title + '</h2><div class="card-section">';
-        for (let i = 0; i < Math.min(sec.n, c.length); i++) {
-            const r = c[i];
-            html += '<div class="pick"><span class="name">#' + r.rank + ' ' + r.player_display + '</span><span class="reason">' + reason(r) + '</span></div>';
+        html += '<h2>'+sec.title+' Picks</h2><div class="card-section">';
+        for (let i=0;i<Math.min(sec.n,c.length);i++) {
+            const r=c[i]; let parts=[];
+            if(r.course_fit>65)parts.push('course '+r.course_fit.toFixed(0));
+            if(r.form>65)parts.push('form '+r.form.toFixed(0));
+            if(r.momentum_direction==='hot')parts.push('hot');
+            html+='<div class="pick"><span class="name">#'+r.rank+' '+r.player_display+'</span><span class="reason">'+(parts.join(' · ')||'composite edge')+'</span></div>';
         }
         html += '</div>';
     }
 
-    // Matchups
-    html += '<h2>Matchup Edges</h2><div class="card-section">';
-    const matchups = findMatchups(c);
-    for (const m of matchups.slice(0, 8)) {
-        html += '<div class="pick matchup"><span class="name">' + m.pick + '</span><span class="vs">over</span><span>' + m.opp + '</span><span class="edge">+' + m.edge.toFixed(1) + ' pts · ' + m.reason + '</span></div>';
-    }
-    html += '</div>';
-
-    // Fades
-    html += '<h2>Fades (Avoid)</h2><div class="card-section">';
-    for (let i = c.length - 10; i < c.length; i++) {
-        if (i < 0) continue;
-        const r = c[i];
-        if (r.composite < 42 || r.momentum_direction === 'cold') {
-            html += '<div class="pick"><span class="name fade">' + r.player_display + '</span><span class="reason">composite ' + r.composite.toFixed(1) + ' · ' + reason(r) + '</span></div>';
-        }
-    }
-    html += '</div>';
-
     el.innerHTML = html;
 }
 
-function findMatchups(composite) {
-    let matchups = [];
-    const seen = new Set();
-    for (let i = 0; i < composite.length; i++) {
-        if (seen.has(composite[i].player_key)) continue;
-        for (let j = i + 1; j < Math.min(i + 30, composite.length); j++) {
-            if (seen.has(composite[j].player_key)) continue;
-            const gap = composite[i].composite - composite[j].composite;
-            if (gap < 4) continue;
-            let reasons = [];
-            if (composite[i].course_fit - composite[j].course_fit > 5) reasons.push('course +' + (composite[i].course_fit - composite[j].course_fit).toFixed(0));
-            if (composite[i].form - composite[j].form > 5) reasons.push('form +' + (composite[i].form - composite[j].form).toFixed(0));
-            matchups.push({ pick: composite[i].player_display, pick_key: composite[i].player_key, opp: composite[j].player_display, opp_key: composite[j].player_key, edge: gap, reason: reasons.join(', ') || 'composite +' + gap.toFixed(0) });
-            seen.add(composite[i].player_key);
-            break;
+// ══ AI BRAIN ══
+async function loadAiStatus() {
+    const el = document.getElementById('aiStatus');
+    try {
+        const resp = await fetch('/api/ai-status');
+        const data = await resp.json();
+        if (data.available) {
+            el.innerHTML = '<div class="status success">AI Brain: '+data.provider.toUpperCase()+' ('+data.model+') · '+data.memory_count+' memories across '+data.memory_topics.length+' topics</div>';
+        } else {
+            el.innerHTML = '<div class="status error">AI Brain not configured. Set OPENAI_API_KEY in .env</div>';
         }
-    }
-    return matchups.sort((a, b) => b.edge - a.edge);
+    } catch(e) { el.innerHTML='<div class="status error">Error checking AI status</div>'; }
 }
 
-// ── Results ──
+async function runAiPreAnalysis() {
+    const el = document.getElementById('aiPreResult');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Running AI pre-tournament analysis... (10-20 seconds)</div>';
+    try {
+        const resp = await fetch('/api/ai/pre-analysis', {method:'POST'});
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        let html = '<div class="card-section">';
+        html += '<h3>Course Narrative</h3><p style="color:#e0e0e0;">'+data.course_narrative+'</p>';
+        html += '<h3>Key Factors</h3><ul style="margin-left:20px;color:#94a3b8;">';
+        for (const f of data.key_factors||[]) html += '<li>'+f+'</li>';
+        html += '</ul>';
+        if (data.players_to_watch && data.players_to_watch.length) {
+            html += '<h3>Players to Watch</h3>';
+            for (const p of data.players_to_watch) html += '<div class="pick"><span class="name">'+p.player+'</span> <span class="value-tag">+'+(p.adjustment||0)+'</span><span class="reason">'+p.edge+'</span></div>';
+        }
+        if (data.players_to_fade && data.players_to_fade.length) {
+            html += '<h3>Players to Fade</h3>';
+            for (const p of data.players_to_fade) html += '<div class="pick"><span class="name fade">'+p.player+'</span> <span style="color:#ef4444;font-size:0.8em;">'+(p.adjustment||0)+'</span><span class="reason">'+p.reason+'</span></div>';
+        }
+        html += '<p style="margin-top:10px;color:#94a3b8;font-size:0.85em;">Confidence: '+(data.confidence||'?')+'</p>';
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+async function runAiBetting() {
+    const el = document.getElementById('aiBetResult');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>AI making betting decisions... (10-20 seconds)</div>';
+    try {
+        const resp = await fetch('/api/ai/betting-decisions', {method:'POST'});
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        let html = '<div class="card-section">';
+        for (const d of data.decisions||[]) {
+            html += '<div class="pick"><span class="name">'+d.player+'</span> <span class="value-tag">'+d.bet_type+' @ '+d.odds+'</span><span class="reason">'+d.recommended_stake+' · '+d.confidence+' · '+d.reasoning+'</span></div>';
+        }
+        html += '<h3>Portfolio Notes</h3><p style="color:#94a3b8;">'+data.portfolio_notes+'</p>';
+        if (data.pass_notes) html += '<h3>Passing On</h3><p style="color:#94a3b8;">'+data.pass_notes+'</p>';
+        html += '<p style="color:#4ade80;margin-top:10px;">Total: '+data.total_units+' units · Expected ROI: '+data.expected_roi+'</p>';
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+async function runAiPostReview() {
+    const t = document.getElementById('reviewTournament').value;
+    if (!t) { alert('Select a tournament to review'); return; }
+    const el = document.getElementById('aiPostResult');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>AI reviewing tournament... (10-20 seconds)</div>';
+    try {
+        const resp = await fetch('/api/ai/post-review', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tournament:t})});
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        const r = data.review || data;
+        let html = '<div class="card-section">';
+        html += '<h3>Summary</h3><p style="color:#e0e0e0;">'+r.summary+'</p>';
+        html += '<h3>What Worked</h3><p style="color:#4ade80;">'+r.what_worked+'</p>';
+        html += '<h3>What Missed</h3><p style="color:#ef4444;">'+r.what_missed+'</p>';
+        if (r.learnings && r.learnings.length) {
+            html += '<h3>Learnings Stored</h3>';
+            for (const l of r.learnings) html += '<div class="pick"><span style="color:#4ade80;">['+l.topic+']</span> <span class="reason">'+l.insight+' (conf: '+l.confidence+')</span></div>';
+        }
+        html += '<p style="color:#94a3b8;margin-top:10px;font-size:0.85em;">Calibration: '+r.calibration_note+'</p>';
+        html += '</div>';
+        if (data.scoring) el.innerHTML = '<div class="status info">Scoring: '+data.scoring.hits+'/'+data.scoring.scored+' hits ('+((data.scoring.hit_rate||0)*100).toFixed(0)+'%) · P/L: '+data.scoring.total_profit+' units</div>' + html;
+        else el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+async function loadMemories() {
+    const el = document.getElementById('aiMemories');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Loading...</div>';
+    try {
+        const resp = await fetch('/api/ai-memories');
+        const data = await resp.json();
+        if (!data.memories || !data.memories.length) { el.innerHTML='<div class="status info">No memories yet. Run a post-tournament review first.</div>'; return; }
+        let html = '<p style="color:#94a3b8;font-size:0.85em;margin-bottom:8px;">Topics: '+data.topics.join(', ')+'</p>';
+        html += '<table><tr><th>Topic</th><th>Insight</th><th>Confidence</th><th>Age</th></tr>';
+        for (const m of data.memories) {
+            let age = '';
+            if (m.created_at) { const d = Math.round((Date.now()-new Date(m.created_at).getTime())/(1000*60*60*24)); age = d+'d ago'; }
+            html += '<tr><td style="color:#4ade80;">'+m.topic+'</td><td>'+m.insight+'</td><td class="num">'+(m.confidence||'?')+'</td><td style="color:#94a3b8;font-size:0.8em;">'+age+'</td></tr>';
+        }
+        html += '</table>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error loading memories</div>'; }
+}
+
+// ══ COURSE PROFILES ══
+async function uploadCourseProfile() {
+    const course = document.getElementById('profileCourse').value;
+    if (!course || !selectedImages.length) { alert('Enter course name and select screenshot images'); return; }
+    const el = document.getElementById('courseProfileResult');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Extracting course data from screenshots... (30-60 seconds)</div>';
+    const form = new FormData();
+    form.append('course', course);
+    for (const f of selectedImages) form.append('files', f);
+    try {
+        const resp = await fetch('/api/course-profile', {method:'POST', body:form});
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        let html = '<div class="status success">Course profile saved for '+data.course+'!</div>';
+        const ps = data.profile_summary || {};
+        if (ps.skill_ratings) {
+            html += '<div class="card-section"><h3>Skill Difficulty Ratings</h3>';
+            for (const [k,v] of Object.entries(ps.skill_ratings)) html += '<div style="padding:2px 0;"><span style="color:#94a3b8;">'+k+':</span> <span style="color:#4ade80;">'+v+'</span></div>';
+            html += '</div>';
+        }
+        if (data.weight_adjustments) {
+            html += '<div class="card-section"><h3>Weight Multipliers</h3>';
+            for (const [k,v] of Object.entries(data.weight_adjustments)) html += '<div style="padding:2px 0;"><span style="color:#94a3b8;">'+k+':</span> '+v+'x</div>';
+            html += '</div>';
+        }
+        el.innerHTML = html;
+        loadSavedCourses();
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+async function loadSavedCourses() {
+    const el = document.getElementById('savedCourses');
+    try {
+        const resp = await fetch('/api/saved-courses');
+        const data = await resp.json();
+        if (!data.length) { el.innerHTML='<div class="status info">No saved course profiles yet.</div>'; return; }
+        let html = '<table><tr><th>Course</th><th>SG:OTT</th><th>SG:APP</th><th>SG:ARG</th><th>SG:Putting</th></tr>';
+        for (const c of data) {
+            const r = c.ratings || {};
+            html += '<tr><td>'+c.name+'</td><td>'+(r.sg_ott||'—')+'</td><td>'+(r.sg_app||'—')+'</td><td>'+(r.sg_arg||'—')+'</td><td>'+(r.sg_putting||'—')+'</td></tr>';
+        }
+        html += '</table>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error loading courses</div>'; }
+}
+
+// ══ RESULTS ══
 async function loadTournaments() {
     try {
         const resp = await fetch('/api/tournaments');
         const data = await resp.json();
-        const sel = document.getElementById('resultsTournament');
-        sel.innerHTML = data.map(t => '<option value="' + t.name + '">' + t.name + (t.course ? ' (' + t.course + ')' : '') + '</option>').join('');
-    } catch (e) {}
+        const opts = data.map(t=>'<option value="'+t.name+'">'+t.name+(t.course?' ('+t.course+')':'')+'</option>').join('');
+        document.querySelectorAll('#resultsTournament, #reviewTournament').forEach(sel => { sel.innerHTML = opts; });
+    } catch(e) {}
 }
 
 async function submitResults() {
     const tournament = document.getElementById('resultsTournament').value;
     const text = document.getElementById('resultsText').value;
     const status = document.getElementById('resultsStatus');
-
-    if (!tournament || !text.trim()) {
-        status.innerHTML = '<div class="status error">Enter a tournament and results</div>';
-        return;
-    }
-
-    const lines = text.trim().split('\\n').filter(l => l.trim());
-    const results = lines.map(l => {
-        const parts = l.split(',').map(p => p.trim());
-        return { player: parts[0] || '', finish: parts[1] || '' };
-    }).filter(r => r.player && r.finish);
-
-    status.innerHTML = '<div class="status loading"><span class="spinner"></span>Saving...</div>';
-
+    if (!tournament || !text.trim()) { status.innerHTML='<div class="status error">Enter tournament and results</div>'; return; }
+    const lines = text.trim().split('\\n').filter(l=>l.trim());
+    const results = lines.map(l=>{const p=l.split(',').map(s=>s.trim()); return {player:p[0]||'',finish:p[1]||''};}).filter(r=>r.player&&r.finish);
+    status.innerHTML='<div class="status loading"><span class="spinner"></span>Saving...</div>';
     try {
-        const resp = await fetch('/api/results', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tournament, results }),
-        });
+        const resp = await fetch('/api/results', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tournament,results})});
         const data = await resp.json();
-        if (data.error) {
-            status.innerHTML = '<div class="status error">' + data.error + '</div>';
-        } else {
-            status.innerHTML = '<div class="status success">Saved ' + data.results_saved + ' results. Scored ' + data.picks_scored + ' picks: ' + data.hits + ' hits (' + data.hit_rate + ')</div>';
-        }
-    } catch (e) {
-        status.innerHTML = '<div class="status error">Error: ' + e.message + '</div>';
-    }
+        if (data.error) { status.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        status.innerHTML='<div class="status success">Saved '+data.results_saved+' results. Scored '+data.picks_scored+' picks: '+data.hits+' hits ('+data.hit_rate+')</div>';
+    } catch(e) { status.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
 }
 
-// ── Dashboard ──
+// ══ DASHBOARD ══
 async function loadDashboard() {
     const el = document.getElementById('dashboardContent');
     try {
-        const resp = await fetch('/api/dashboard');
-        const data = await resp.json();
-        renderDashboard(data, el);
-    } catch (e) {
-        el.innerHTML = '<div class="status error">Error loading dashboard</div>';
-    }
+        const [dashResp, calResp] = await Promise.all([fetch('/api/dashboard'), fetch('/api/calibration')]);
+        const data = await dashResp.json();
+        const cal = await calResp.json();
+        renderDashboard(data, cal, el);
+    } catch(e) { el.innerHTML='<div class="status error">Error loading dashboard</div>'; }
 }
 
-function renderDashboard(data, el) {
+function renderDashboard(data, cal, el) {
     const a = data.analysis || {};
-    let html = '<h2>Performance</h2>';
-
-    html += '<div class="stats-grid">';
-    html += '<div class="stat-box"><div class="number">' + (a.total_picks || 0) + '</div><div class="label">Total Picks</div></div>';
-    html += '<div class="stat-box"><div class="number">' + (a.total_hits || 0) + '</div><div class="label">Hits</div></div>';
-    html += '<div class="stat-box"><div class="number">' + (a.total_picks ? (a.hit_rate * 100).toFixed(1) + '%' : '—') + '</div><div class="label">Hit Rate</div></div>';
-    html += '<div class="stat-box"><div class="number">' + (data.tournaments || []).length + '</div><div class="label">Tournaments</div></div>';
+    let html = '<h2>Performance</h2><div class="stats-grid">';
+    html += '<div class="stat-box"><div class="number">'+(a.total_picks||0)+'</div><div class="label">Total Picks</div></div>';
+    html += '<div class="stat-box"><div class="number">'+(a.total_hits||0)+'</div><div class="label">Hits</div></div>';
+    html += '<div class="stat-box"><div class="number">'+(a.total_picks?(a.hit_rate*100).toFixed(1)+'%':'—')+'</div><div class="label">Hit Rate</div></div>';
+    html += '<div class="stat-box"><div class="number">'+(data.tournaments||[]).length+'</div><div class="label">Tournaments</div></div>';
     html += '</div>';
 
-    // Insights (plain English)
+    // Calibration & ROI
+    if (cal && cal.roi) {
+        html += '<h2>ROI & Calibration</h2><div class="stats-grid">';
+        html += '<div class="stat-box"><div class="number" style="color:'+(cal.roi.roi_pct>=0?'#4ade80':'#ef4444')+'">'+cal.roi.roi_pct+'%</div><div class="label">ROI</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(cal.roi.total_profit>=0?'+':'')+cal.roi.total_profit+'</div><div class="label">Profit (units)</div></div>';
+        html += '<div class="stat-box"><div class="number">'+cal.roi.total_bets+'</div><div class="label">Value Bets</div></div>';
+        if (cal.brier_score) html += '<div class="stat-box"><div class="number">'+cal.brier_score.toFixed(4)+'</div><div class="label">Brier Score</div></div>';
+        html += '</div>';
+
+        if (cal.model_comparison) {
+            const mc = cal.model_comparison;
+            html += '<h3>Model Comparison (Brier Score - lower is better)</h3><div class="stats-grid">';
+            html += '<div class="stat-box"><div class="number">'+mc.model_brier.toFixed(4)+'</div><div class="label">Our Model</div></div>';
+            html += '<div class="stat-box"><div class="number">'+mc.dg_brier.toFixed(4)+'</div><div class="label">Data Golf</div></div>';
+            html += '<div class="stat-box"><div class="number">'+mc.market_brier.toFixed(4)+'</div><div class="label">Market</div></div>';
+            html += '</div>';
+        }
+
+        if (cal.calibration && cal.calibration.length) {
+            html += '<h3>Calibration Curve</h3><table><tr><th>Predicted Range</th><th>Count</th><th>Predicted Avg</th><th>Actual Rate</th><th>Gap</th></tr>';
+            for (const b of cal.calibration) {
+                const gapColor = Math.abs(b.gap) < 0.03 ? '#4ade80' : '#fbbf24';
+                html += '<tr><td>'+b.bucket+'</td><td class="num">'+b.count+'</td><td class="num">'+(b.predicted_avg*100).toFixed(1)+'%</td><td class="num">'+(b.actual_rate*100).toFixed(1)+'%</td><td class="num" style="color:'+gapColor+'">'+(b.gap>0?'+':'')+(b.gap*100).toFixed(1)+'%</td></tr>';
+            }
+            html += '</table>';
+        }
+    }
+
+    // Insights
     const insights = a.insights || [];
     if (insights.length) {
-        html += '<h2>What the Model Has Learned</h2><div class="card-section">';
-        for (const ins of insights) {
-            html += '<div class="pick" style="padding:5px 0;"><span style="color:#4ade80;margin-right:8px;">→</span>' + ins + '</div>';
-        }
+        html += '<h2>Model Insights</h2><div class="card-section">';
+        for (const ins of insights) html += '<div class="pick" style="padding:5px 0;"><span style="color:#4ade80;margin-right:8px;">→</span>'+ins+'</div>';
         html += '</div>';
     }
 
     // By bet type
     if (a.by_bet_type && Object.keys(a.by_bet_type).length) {
         html += '<h2>By Bet Type</h2><table><tr><th>Type</th><th>Picks</th><th>Hits</th><th>Rate</th></tr>';
-        for (const [bt, s] of Object.entries(a.by_bet_type)) {
-            html += '<tr><td>' + bt + '</td><td class="num">' + s.picks + '</td><td class="num">' + s.hits + '</td><td class="num">' + (s.hit_rate * 100).toFixed(1) + '%</td></tr>';
-        }
-        html += '</table>';
-    }
-
-    // Factor analysis
-    const fa = a.factor_analysis;
-    if (fa && Object.keys(fa).length) {
-        html += '<h2>Factor Analysis</h2><p style="color:#94a3b8;font-size:0.85em;">Higher edge = that factor is more predictive of hits. Predictive power shows separation between hits and misses.</p>';
-        html += '<table><tr><th>Factor</th><th>Avg Hit</th><th>Avg Miss</th><th>Edge</th><th>Power</th></tr>';
-        for (const [f, s] of Object.entries(fa)) {
-            const edgeColor = s.edge > 0 ? '#4ade80' : s.edge < 0 ? '#ef4444' : '#94a3b8';
-            const pp = s.predictive_power !== undefined ? s.predictive_power.toFixed(2) : '—';
-            html += '<tr><td>' + f + '</td><td class="num">' + s.avg_hit.toFixed(1) + '</td><td class="num">' + s.avg_miss.toFixed(1) + '</td><td class="num" style="color:' + edgeColor + '">' + (s.edge > 0 ? '+' : '') + s.edge.toFixed(1) + '</td><td class="num">' + pp + '</td></tr>';
-        }
-        html += '</table>';
-    }
-
-    // Score thresholds
-    const th = a.score_thresholds;
-    if (th && Object.keys(th).length) {
-        html += '<h2>Score Thresholds</h2><p style="color:#94a3b8;font-size:0.85em;">Do higher-ranked picks hit more? This tells us if the composite score is working.</p>';
-        html += '<table><tr><th>Group</th><th>Min Composite</th><th>Picks</th><th>Hits</th><th>Rate</th></tr>';
-        for (const [label, t] of Object.entries(th)) {
-            const rateColor = t.hit_rate > (a.hit_rate || 0) ? '#4ade80' : '#ef4444';
-            html += '<tr><td>' + label.replace(/_/g, ' ') + '</td><td class="num">' + t.composite_cutoff + '</td><td class="num">' + t.picks_above + '</td><td class="num">' + t.hits_above + '</td><td class="num" style="color:' + rateColor + '">' + (t.hit_rate * 100).toFixed(1) + '%</td></tr>';
-        }
-        html += '</table>';
-    }
-
-    // Data source insights
-    const di = a.data_insights;
-    if (di) {
-        html += '<h2>Data Quality Impact</h2><p style="color:#94a3b8;font-size:0.85em;">Does uploading more data improve picks?</p>';
-        html += '<table><tr><th>Data Available</th><th>Tournaments</th><th>Avg Hit Rate</th></tr>';
-        if (di.with_course_data) html += '<tr><td>With course-specific data</td><td class="num">' + di.with_course_data.tournaments + '</td><td class="num">' + (di.with_course_data.avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
-        if (di.without_course_data) html += '<tr><td>Without course data</td><td class="num">' + di.without_course_data.tournaments + '</td><td class="num">' + (di.without_course_data.avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
-        if (di['5plus_files']) html += '<tr><td>5+ CSV files uploaded</td><td class="num">' + di['5plus_files'].tournaments + '</td><td class="num">' + (di['5plus_files'].avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
-        if (di.under_5_files) html += '<tr><td>Under 5 CSV files</td><td class="num">' + di.under_5_files.tournaments + '</td><td class="num">' + (di.under_5_files.avg_hit_rate * 100).toFixed(1) + '%</td></tr>';
+        for (const [bt,s] of Object.entries(a.by_bet_type)) html += '<tr><td>'+bt+'</td><td class="num">'+s.picks+'</td><td class="num">'+s.hits+'</td><td class="num">'+(s.hit_rate*100).toFixed(1)+'%</td></tr>';
         html += '</table>';
     }
 
     // Weights
     const w = data.weights || {};
-    html += '<h2>Current Weights</h2>';
-    html += '<div class="stats-grid">';
-    html += '<div class="stat-box"><div class="number">' + ((w.course_fit || 0.4) * 100).toFixed(0) + '%</div><div class="label">Course Fit</div></div>';
-    html += '<div class="stat-box"><div class="number">' + ((w.form || 0.4) * 100).toFixed(0) + '%</div><div class="label">Form</div></div>';
-    html += '<div class="stat-box"><div class="number">' + ((w.momentum || 0.2) * 100).toFixed(0) + '%</div><div class="label">Momentum</div></div>';
+    html += '<h2>Current Weights</h2><div class="stats-grid">';
+    html += '<div class="stat-box"><div class="number">'+((w.course_fit||0.4)*100).toFixed(0)+'%</div><div class="label">Course Fit</div></div>';
+    html += '<div class="stat-box"><div class="number">'+((w.form||0.4)*100).toFixed(0)+'%</div><div class="label">Form</div></div>';
+    html += '<div class="stat-box"><div class="number">'+((w.momentum||0.2)*100).toFixed(0)+'%</div><div class="label">Momentum</div></div>';
     html += '</div>';
-    html += '<div style="margin-top:15px;"><button class="secondary" onclick="doRetune()">Retune Weights from Results</button> <span id="retuneStatus" style="margin-left:10px;font-size:0.85em;"></span></div>';
+    html += '<div style="margin-top:15px;"><button class="secondary" onclick="doRetune()">Retune Weights</button> <span id="retuneStatus" style="margin-left:10px;font-size:0.85em;"></span></div>';
 
     // Tournaments
     html += '<h2>Tournaments</h2><table><tr><th>Name</th><th>Course</th><th>Picks</th><th>Results</th><th>Hits</th></tr>';
-    for (const t of (data.tournaments || [])) {
-        html += '<tr><td>' + t.name + '</td><td>' + (t.course || '—') + '</td><td class="num">' + t.picks + '</td><td class="num">' + t.results + '</td><td class="num">' + t.hits + '/' + t.outcomes + '</td></tr>';
-    }
+    for (const t of (data.tournaments||[])) html += '<tr><td>'+t.name+'</td><td>'+(t.course||'—')+'</td><td class="num">'+t.picks+'</td><td class="num">'+t.results+'</td><td class="num">'+t.hits+'/'+t.outcomes+'</td></tr>';
     html += '</table>';
 
     el.innerHTML = html;
@@ -1199,13 +1350,16 @@ async function doRetune() {
     const el = document.getElementById('retuneStatus');
     el.innerHTML = '<span class="spinner"></span>Retuning...';
     try {
-        const resp = await fetch('/api/retune', { method: 'POST' });
+        const resp = await fetch('/api/retune', {method:'POST'});
         const data = await resp.json();
         if (data.message) el.innerHTML = data.message;
-        else if (data.saved) { el.innerHTML = '<span style="color:#4ade80;">Weights updated!</span>'; loadDashboard(); }
+        else if (data.saved) { el.innerHTML='<span style="color:#4ade80;">Weights updated!</span>'; loadDashboard(); }
         else el.innerHTML = 'Dry run complete.';
-    } catch (e) { el.innerHTML = '<span style="color:#ef4444;">Error</span>'; }
+    } catch(e) { el.innerHTML='<span style="color:#ef4444;">Error</span>'; }
 }
+
+// ══ INIT ══
+loadBackfillStatus();
 </script>
 </body>
 </html>"""

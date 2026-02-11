@@ -200,9 +200,10 @@ def main():
             # Find value for each market
             for market, market_odds in odds_by_market.items():
                 best = get_best_odds(market_odds)
-                vb = find_value_bets(composite, best, bet_type=market.replace("top_", "top"),
+                bt = "outright" if market == "outrights" else market.replace("top_", "top")
+                vb = find_value_bets(composite, best, bet_type=bt,
                                     tournament_id=tournament_id)
-                value_bets[market.replace("top_", "top")] = vb
+                value_bets[bt] = vb
                 value_count = sum(1 for v in vb if v.get("is_value"))
                 print(f"  {market}: {value_count} value plays found")
         else:

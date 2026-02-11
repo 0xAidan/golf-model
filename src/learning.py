@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Optional
 
 from src import db
-from src.player_normalizer import normalize_name, display_name
+from src.player_normalizer import display_name
 
 
 # ═══════════════════════════════════════════════════════════════════

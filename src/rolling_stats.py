@@ -337,7 +337,7 @@ def compute_rolling_metrics(tournament_id: int,
         "traditional_stat_metrics": trad_computed,
         "course_specific_metrics": course_computed,
         "players_in_field": len(field_player_keys),
-        "windows_computed": ROUND_WINDOWS + ["all"],
+        "windows_computed": [str(w) for w in ROUND_WINDOWS] + ["all"],
     }
 
     return summary
