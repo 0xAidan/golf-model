@@ -3,6 +3,7 @@ __pycache__/
 .env
 data/golf.db
 data/csvs/*.csv
+data/course_images/
 output/*.md
 .DS_Store
 *.egg-info/

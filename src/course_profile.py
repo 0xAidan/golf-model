@@ -1,12 +1,12 @@
 """
 Course Profile System
 
-Extracts course data from Betsperts screenshots using Claude Vision,
+Extracts course data from screenshots using AI vision (OpenAI or Anthropic),
 stores it as a JSON profile, and feeds it into the model.
 
 Usage:
     # From screenshots:
-    python course.py --screenshots data/course_images/ --course "Pebble Beach" --tournament "AT&T Pebble Beach 2026"
+    python course.py --screenshots data/course_images/ --course "Pebble Beach"
 
     # Saves to data/courses/pebble_beach.json for reuse next year
 
@@ -15,6 +15,8 @@ Course profiles store:
     - Skill difficulty ratings (SG:OTT, SG:APP, SG:ARG, SG:Putting)
     - Stat comparisons (tour avg vs course-specific with relative differences)
     - Correlated courses
+
+Provider priority: OpenAI (if OPENAI_API_KEY set) > Anthropic (if ANTHROPIC_API_KEY set)
 """
 
 import os
@@ -28,6 +30,12 @@ try:
     HAS_ANTHROPIC = True
 except ImportError:
     HAS_ANTHROPIC = False
+
+try:
+    from openai import OpenAI
+    HAS_OPENAI = True
+except ImportError:
+    HAS_OPENAI = False
 
 COURSES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "courses")
 
@@ -98,20 +106,96 @@ If a field is not visible in the image, omit it or set to null.
 """
 
 
-def extract_from_image(image_path: str, api_key: str) -> dict:
-    """Extract course data from a single screenshot using Claude Vision."""
-    if not HAS_ANTHROPIC:
-        raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
+def _get_vision_provider() -> str:
+    """Determine which vision API to use. OpenAI preferred (structured output)."""
+    if HAS_OPENAI and os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    if HAS_ANTHROPIC and os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return "none"
 
+
+def extract_from_image(image_path: str, api_key: str = None) -> dict:
+    """
+    Extract course data from a single screenshot using AI vision.
+
+    Uses OpenAI (if OPENAI_API_KEY set) or Anthropic (if ANTHROPIC_API_KEY set).
+    The api_key parameter is kept for backward compatibility but the function
+    will auto-detect the provider from environment variables.
+    """
     # Read and encode image
     with open(image_path, "rb") as f:
         image_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    # Determine media type
     ext = os.path.splitext(image_path)[1].lower()
     media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                    ".gif": "image/gif", ".webp": "image/webp"}
     media_type = media_types.get(ext, "image/png")
+
+    provider = _get_vision_provider()
+
+    # Override: if api_key looks like an Anthropic key and no OpenAI key is set
+    if api_key and not os.environ.get("OPENAI_API_KEY"):
+        provider = "anthropic"
+
+    if provider == "openai":
+        response_text = _extract_with_openai(image_data, media_type)
+    elif provider == "anthropic":
+        key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        response_text = _extract_with_anthropic(image_data, media_type, key)
+    else:
+        raise RuntimeError(
+            "No vision API available. Set OPENAI_API_KEY or ANTHROPIC_API_KEY. "
+            "Install: pip install openai  (or: pip install anthropic)"
+        )
+
+    # Clean up markdown code blocks
+    if response_text.startswith("```"):
+        response_text = response_text.split("\n", 1)[1]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        print(f"  Warning: Could not parse JSON from AI response for {image_path}")
+        print(f"  Raw response: {response_text[:200]}...")
+        return {"raw_text": response_text}
+
+
+def _extract_with_openai(image_data: str, media_type: str) -> str:
+    """Extract course data using OpenAI GPT-4o vision."""
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{media_type};base64,{image_data}",
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": EXTRACTION_PROMPT,
+                },
+            ],
+        }],
+        max_tokens=4096,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content.strip()
+
+
+def _extract_with_anthropic(image_data: str, media_type: str, api_key: str) -> str:
+    """Extract course data using Anthropic Claude vision."""
+    if not HAS_ANTHROPIC:
+        raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
@@ -135,22 +219,7 @@ def extract_from_image(image_path: str, api_key: str) -> dict:
             ],
         }],
     )
-
-    # Parse response
-    response_text = message.content[0].text.strip()
-    # Clean up if wrapped in markdown code blocks
-    if response_text.startswith("```"):
-        response_text = response_text.split("\n", 1)[1]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        print(f"  Warning: Could not parse JSON from Claude response for {image_path}")
-        print(f"  Raw response: {response_text[:200]}...")
-        return {"raw_text": response_text}
+    return message.content[0].text.strip()
 
 
 def extract_from_folder(folder_path: str, api_key: str) -> dict:
@@ -236,6 +305,92 @@ def list_saved_courses() -> list[str]:
         for f in os.listdir(COURSES_DIR)
         if f.endswith(".json")
     ]
+
+
+def generate_profile_from_decompositions(decomp_data: dict) -> dict | None:
+    """
+    Auto-generate a basic course profile from DG player decomposition data.
+
+    The spread (max - min) of each fit adjustment tells us how much that
+    skill differentiates players at this course. Larger spread = harder/
+    more important skill. This lets us create a profile without screenshots.
+
+    Used as a fallback when no manual course profile exists.
+    """
+    players = decomp_data.get("players", [])
+    if not players or len(players) < 20:
+        return None
+
+    course_name = decomp_data.get("course_name", "Unknown")
+    event_name = decomp_data.get("event_name", "Unknown")
+
+    # Compute the spread (impact) of each fit component
+    def _spread(field):
+        vals = [p.get(field) for p in players if p.get(field) is not None]
+        if len(vals) < 10:
+            return 0.0
+        return max(vals) - min(vals)
+
+    sg_cat_spread = _spread("strokes_gained_category_adjustment")
+    drive_dist_spread = _spread("driving_distance_adjustment")
+    drive_acc_spread = _spread("driving_accuracy_adjustment")
+    approach_spread = _spread("cf_approach_comp")
+    short_spread = _spread("cf_short_comp")
+    total_fit_spread = _spread("total_fit_adjustment")
+
+    # Convert spreads to difficulty ratings
+    # Calibrated from typical PGA Tour ranges:
+    # OTT (driving): combine distance + accuracy spread
+    ott_impact = drive_dist_spread + drive_acc_spread
+    # APP (approach): approach comp + part of SG category
+    app_impact = approach_spread + sg_cat_spread * 0.4
+    # ARG (around green): short comp
+    arg_impact = short_spread
+    # Putting: remainder of SG category adjustment
+    putt_impact = sg_cat_spread * 0.3
+
+    def _impact_to_rating(impact, thresholds):
+        """Convert impact score to difficulty rating."""
+        if impact >= thresholds[0]:
+            return "Very Difficult"
+        elif impact >= thresholds[1]:
+            return "Difficult"
+        elif impact >= thresholds[2]:
+            return "Average"
+        elif impact >= thresholds[3]:
+            return "Easy"
+        else:
+            return "Very Easy"
+
+    # Thresholds calibrated from typical PGA Tour decomposition ranges
+    skill_ratings = {
+        "sg_ott": _impact_to_rating(ott_impact, [0.15, 0.10, 0.06, 0.03]),
+        "sg_app": _impact_to_rating(app_impact, [0.25, 0.15, 0.08, 0.04]),
+        "sg_arg": _impact_to_rating(arg_impact, [0.10, 0.06, 0.03, 0.015]),
+        "sg_putting": _impact_to_rating(putt_impact, [0.20, 0.12, 0.06, 0.03]),
+    }
+
+    profile = {
+        "course_facts": {
+            "tournament": event_name,
+            "course_name": course_name,
+            "source": "auto_generated_from_dg_decompositions",
+        },
+        "skill_ratings": skill_ratings,
+        "fit_spreads": {
+            "ott_impact": round(ott_impact, 4),
+            "app_impact": round(app_impact, 4),
+            "arg_impact": round(arg_impact, 4),
+            "putt_impact": round(putt_impact, 4),
+            "total_fit_spread": round(total_fit_spread, 4),
+            "sg_category_spread": round(sg_cat_spread, 4),
+        },
+    }
+
+    # Auto-save the profile
+    save_course_profile(course_name, profile)
+
+    return profile
 
 
 def course_to_model_weights(profile: dict) -> dict:

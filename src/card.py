@@ -39,13 +39,17 @@ def generate_card(tournament_name: str,
                   course_name: str,
                   composite_results: list[dict],
                   value_bets: dict = None,
-                  output_dir: str = "output") -> str:
+                  output_dir: str = "output",
+                  ai_pre_analysis: dict = None,
+                  ai_decisions: dict = None) -> str:
     """
     Generate a markdown betting card.
 
     composite_results: from composite.compute_composite()
     value_bets: dict keyed by bet_type ('outright', 'top5', etc.)
                 each value is a list from value.find_value_bets()
+    ai_pre_analysis: AI pre-tournament analysis (optional)
+    ai_decisions: AI betting decisions (optional)
 
     Returns the file path of the generated card.
     """
@@ -56,6 +60,8 @@ def generate_card(tournament_name: str,
     lines.append(f"# {tournament_name} — Betting Card")
     lines.append(f"**Course:** {course_name}")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    if ai_pre_analysis:
+        lines.append(f"**AI Analysis:** Enabled ({ai_pre_analysis.get('confidence', 0):.0%} confidence)")
     lines.append("")
 
     # ── Quick Reference: Top 15 Composite Rankings ──────────────
@@ -72,6 +78,78 @@ def generate_card(tournament_name: str,
             f"| {r['course_fit']:.1f} | {r['form']:.1f} | {r['momentum']:.1f} | {trend_symbol} |"
         )
     lines.append("")
+
+    # ── AI Analysis Section ───────────────────────────────────
+    if ai_pre_analysis:
+        lines.append("## AI Analysis")
+        lines.append("")
+
+        narrative = ai_pre_analysis.get("course_narrative", "")
+        if narrative:
+            lines.append(f"**Course Narrative:** {narrative}")
+            lines.append("")
+
+        key_factors = ai_pre_analysis.get("key_factors", [])
+        if key_factors:
+            lines.append("**Key Factors:**")
+            for kf in key_factors:
+                lines.append(f"- {kf}")
+            lines.append("")
+
+        watch = ai_pre_analysis.get("players_to_watch", [])
+        if watch:
+            lines.append("**Players to Watch (AI sees edge):**")
+            lines.append("")
+            lines.append("| Player | Adjustment | Edge |")
+            lines.append("|--------|------------|------|")
+            for p in watch:
+                adj = p.get("adjustment", 0)
+                sign = "+" if adj > 0 else ""
+                lines.append(f"| {p['player']} | {sign}{adj:.1f} | {p['edge']} |")
+            lines.append("")
+
+        fades = ai_pre_analysis.get("players_to_fade", [])
+        if fades:
+            lines.append("**Players to Fade (AI sees risk):**")
+            lines.append("")
+            lines.append("| Player | Adjustment | Reason |")
+            lines.append("|--------|------------|--------|")
+            for p in fades:
+                adj = p.get("adjustment", 0)
+                sign = "+" if adj > 0 else ""
+                lines.append(f"| {p['player']} | {sign}{adj:.1f} | {p['reason']} |")
+            lines.append("")
+
+    # ── AI Betting Decisions Section ──────────────────────────
+    if ai_decisions:
+        decisions_list = ai_decisions.get("decisions", [])
+        if decisions_list:
+            lines.append("## AI Recommended Bets")
+            lines.append("")
+            lines.append("| Player | Bet Type | Odds | Stake | Confidence | Reasoning |")
+            lines.append("|--------|----------|------|-------|------------|-----------|")
+            for d in decisions_list:
+                lines.append(
+                    f"| {d['player']} | {d['bet_type']} | {d.get('odds', '?')} "
+                    f"| {d.get('recommended_stake', '?')} | {d.get('confidence', '?')} "
+                    f"| {d.get('reasoning', '')} |"
+                )
+            lines.append("")
+
+            portfolio_notes = ai_decisions.get("portfolio_notes", "")
+            if portfolio_notes:
+                lines.append(f"**Portfolio Notes:** {portfolio_notes}")
+                lines.append("")
+
+            pass_notes = ai_decisions.get("pass_notes", "")
+            if pass_notes:
+                lines.append(f"**Passing On:** {pass_notes}")
+                lines.append("")
+
+            total_units = ai_decisions.get("total_units", 0)
+            expected_roi = ai_decisions.get("expected_roi", "N/A")
+            lines.append(f"**Total Units:** {total_units} | **Expected ROI:** {expected_roi}")
+            lines.append("")
 
     # ── Outright ────────────────────────────────────────────────
     lines.append("## Outright Winner")
@@ -150,8 +228,10 @@ def generate_card(tournament_name: str,
 
     # ── Model Info ─────────────────────────────────────────────
     lines.append("---")
+    ai_tag = " AI-adjusted." if ai_pre_analysis else ""
     lines.append(f"*Model: {len(composite_results)} players scored. "
-                 f"Course data: {'Yes' if any(r.get('course_rounds', 0) > 0 for r in composite_results) else 'No'}.*")
+                 f"Course data: {'Yes' if any(r.get('course_rounds', 0) > 0 for r in composite_results) else 'No'}."
+                 f"{ai_tag}*")
 
     # Write to file
     os.makedirs(output_dir, exist_ok=True)
@@ -165,22 +245,49 @@ def generate_card(tournament_name: str,
     return filepath
 
 
-def _write_value_section(lines: list, value_bets: list, top_n: int = 5):
-    """Write a value bet section with odds and EV."""
-    shown = 0
-    for vb in value_bets:
-        if shown >= top_n:
-            break
-        tag = "**VALUE** " if vb.get("is_value") else ""
-        lines.append(
-            f"- {tag}**{vb['player_display']}** "
-            f"(#{vb['rank']}) — "
-            f"odds {_fmt_odds(vb['best_odds'])} ({vb['best_book']}), "
-            f"model {vb['model_prob']:.1%} vs market {vb['market_prob']:.1%}, "
-            f"EV {vb['ev_pct']}"
-        )
-        shown += 1
-    lines.append("")
+def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
+    """Write a value bet section with odds and EV.
+
+    Separates positive-EV bets (true value) from negative-EV bets
+    (closest to value). When no positive-EV bets exist, shows the
+    closest-to-value options with a clear label.
+    """
+    positive_ev = [vb for vb in value_bets if vb.get("is_value")]
+    negative_ev = [vb for vb in value_bets if not vb.get("is_value")]
+
+    if positive_ev:
+        for vb in positive_ev[:top_n]:
+            better = ""
+            if vb.get("better_odds_note"):
+                better = f" *(better: {vb['better_odds_note']})*"
+            lines.append(
+                f"- **VALUE** **{vb['player_display']}** "
+                f"(#{vb['rank']}) — "
+                f"{_fmt_odds(vb['best_odds'])} @ {vb['best_book']}, "
+                f"model {vb['model_prob']:.1%} vs market {vb['market_prob']:.1%}, "
+                f"EV {vb['ev_pct']}{better}"
+            )
+        lines.append("")
+    else:
+        book = value_bets[0].get("best_book", "market") if value_bets else "market"
+        lines.append(f"*No positive-EV bets found at {book}. Closest to value:*")
+        lines.append("")
+
+    # Show negative-EV bets (closest to value) if we have room
+    remaining = top_n - len(positive_ev)
+    if remaining > 0 and negative_ev:
+        for vb in negative_ev[:remaining]:
+            better = ""
+            if vb.get("better_odds_note"):
+                better = f" *(better: {vb['better_odds_note']})*"
+            lines.append(
+                f"- **{vb['player_display']}** "
+                f"(#{vb['rank']}) — "
+                f"{_fmt_odds(vb['best_odds'])} @ {vb['best_book']}, "
+                f"model {vb['model_prob']:.1%} vs market {vb['market_prob']:.1%}, "
+                f"EV {vb['ev_pct']}{better}"
+            )
+        lines.append("")
 
 
 def _suggest_matchups(composite_results: list[dict], min_gap: float = 3.0) -> list[dict]:

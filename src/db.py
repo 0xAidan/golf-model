@@ -2,12 +2,18 @@
 SQLite database for storing all parsed data, picks, results, and weights.
 
 Tables:
-  tournaments      – one row per tournament
-  csv_imports      – one row per imported CSV file
-  metrics          – long/narrow: one row per (player, metric_name, source)
-  picks            – logged picks with model scores
-  results          – actual tournament outcomes
-  weight_sets      – stored model weight configurations
+  tournaments             – one row per tournament
+  csv_imports             – one row per imported CSV / API import
+  metrics                 – long/narrow: one row per (player, metric_name, source)
+  picks                   – logged picks with model scores
+  results                 – actual tournament outcomes
+  pick_outcomes           – hit/miss + profit for each pick
+  weight_sets             – stored model weight configurations
+  rounds                  – round-level data from Data Golf historical API
+  course_weight_profiles  – per-course learned weight overrides
+  prediction_log          – calibration tracking (model vs market vs actual)
+  ai_memory               – persistent AI brain memory
+  ai_decisions            – logged AI analysis/decisions
 """
 
 import sqlite3
@@ -46,6 +52,7 @@ def init_db():
             data_mode TEXT,          -- 'course_specific' or 'recent_form'
             round_window TEXT,       -- 'all', '8', '12', '16', '24', etc.
             row_count INTEGER,
+            source TEXT DEFAULT 'betsperts',  -- 'betsperts', 'datagolf', 'computed'
             imported_at TEXT DEFAULT (datetime('now'))
         );
 
@@ -105,6 +112,9 @@ def init_db():
             pick_id INTEGER REFERENCES picks(id),
             hit INTEGER,            -- 1 if bet won, 0 if lost
             actual_finish TEXT,
+            odds_decimal REAL,      -- odds at time of pick
+            stake REAL,             -- units wagered
+            profit REAL,            -- actual P/L
             notes TEXT,
             entered_at TEXT DEFAULT (datetime('now'))
         );
@@ -119,9 +129,139 @@ def init_db():
             roi REAL,
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        -- ═══ Data Golf round-level data ═══
+        CREATE TABLE IF NOT EXISTS rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dg_id INTEGER NOT NULL,
+            player_name TEXT,
+            player_key TEXT,            -- normalize_name(player_name)
+            tour TEXT,
+            season INTEGER,
+            year INTEGER,
+            event_id TEXT,
+            event_name TEXT,
+            event_completed TEXT,        -- date string YYYY-MM-DD
+            course_name TEXT,
+            course_num INTEGER,
+            course_par INTEGER,
+            round_num INTEGER,           -- 1, 2, 3, 4
+            score INTEGER,
+            sg_total REAL,
+            sg_ott REAL,
+            sg_app REAL,
+            sg_arg REAL,
+            sg_putt REAL,
+            sg_t2g REAL,
+            driving_dist REAL,
+            driving_acc REAL,
+            gir REAL,
+            scrambling REAL,
+            prox_fw REAL,
+            prox_rgh REAL,
+            great_shots REAL,
+            poor_shots REAL,
+            birdies INTEGER,
+            pars INTEGER,
+            bogies INTEGER,
+            doubles_or_worse INTEGER,
+            eagles_or_better INTEGER,
+            fin_text TEXT,               -- final finish position for the event
+            teetime TEXT,
+            start_hole INTEGER,
+            UNIQUE(dg_id, event_id, year, round_num)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rounds_player
+            ON rounds(dg_id, event_completed DESC);
+        CREATE INDEX IF NOT EXISTS idx_rounds_course
+            ON rounds(course_num, dg_id);
+        CREATE INDEX IF NOT EXISTS idx_rounds_event
+            ON rounds(event_id, year);
+        CREATE INDEX IF NOT EXISTS idx_rounds_player_key
+            ON rounds(player_key, event_completed DESC);
+
+        -- ═══ Course-specific learned weights ═══
+        CREATE TABLE IF NOT EXISTS course_weight_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_num INTEGER,
+            course_name TEXT,
+            weights_json TEXT,           -- course-specific weight overrides
+            tournaments_used INTEGER,    -- how many tournaments of data
+            last_updated TEXT DEFAULT (datetime('now')),
+            confidence REAL              -- 0-1, based on sample size
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_course_weights_num
+            ON course_weight_profiles(course_num);
+
+        -- ═══ Calibration / prediction tracking ═══
+        CREATE TABLE IF NOT EXISTS prediction_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            player_key TEXT,
+            bet_type TEXT,
+            model_prob REAL,             -- our composite probability
+            dg_prob REAL,                -- data golf's probability
+            market_implied_prob REAL,    -- from odds
+            actual_outcome INTEGER,      -- 1=hit, 0=miss
+            odds_decimal REAL,
+            profit REAL,                 -- actual P/L if bet at those odds
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ═══ AI brain persistent memory ═══
+        CREATE TABLE IF NOT EXISTS ai_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,          -- 'pebble_beach', 'top10_strategy', etc.
+            insight TEXT NOT NULL,
+            source_tournament_id INTEGER,
+            confidence REAL,             -- 0-1, decays over time
+            created_at TEXT DEFAULT (datetime('now')),
+            expires_at TEXT              -- insights fade; recency matters
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_memory_topic
+            ON ai_memory(topic, confidence DESC);
+
+        CREATE TABLE IF NOT EXISTS ai_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            phase TEXT,                  -- 'pre_analysis', 'betting_decisions', 'post_review'
+            input_summary TEXT,          -- abbreviated context sent to AI
+            output_json TEXT,            -- full AI response
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
+
+    # ── Migrations for existing databases ──
+    _run_migrations(conn)
+
     conn.close()
+
+
+def _run_migrations(conn: sqlite3.Connection):
+    """Add columns/tables that may be missing in older databases."""
+    # Add source column to csv_imports if missing
+    try:
+        conn.execute("SELECT source FROM csv_imports LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE csv_imports ADD COLUMN source TEXT DEFAULT 'betsperts'")
+        conn.commit()
+
+    # Add profit tracking columns to pick_outcomes if missing
+    for col, col_type, default in [
+        ("odds_decimal", "REAL", None),
+        ("stake", "REAL", None),
+        ("profit", "REAL", None),
+    ]:
+        try:
+            conn.execute(f"SELECT {col} FROM pick_outcomes LIMIT 1")
+        except sqlite3.OperationalError:
+            default_clause = f" DEFAULT {default}" if default is not None else ""
+            conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
+            conn.commit()
 
 
 # ── Tournament helpers ──────────────────────────────────────────────
@@ -146,13 +286,14 @@ def get_or_create_tournament(name: str, course: str = None, date: str = None) ->
 
 # ── CSV import helpers ──────────────────────────────────────────────
 
-def log_csv_import(tournament_id, filename, file_type, data_mode, round_window, row_count) -> int:
+def log_csv_import(tournament_id, filename, file_type, data_mode, round_window,
+                   row_count, source="betsperts") -> int:
     conn = get_conn()
     cur = conn.execute(
         """INSERT INTO csv_imports
-           (tournament_id, filename, file_type, data_mode, round_window, row_count)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (tournament_id, filename, file_type, data_mode, round_window, row_count),
+           (tournament_id, filename, file_type, data_mode, round_window, row_count, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (tournament_id, filename, file_type, data_mode, round_window, row_count, source),
     )
     import_id = cur.lastrowid
     conn.commit()
@@ -322,6 +463,302 @@ def save_weights(name: str, weights: dict, active: bool = True):
     )
     conn.commit()
     conn.close()
+
+
+# ── Rounds helpers (Data Golf historical data) ─────────────────────
+
+def store_rounds(rounds_list: list[dict]):
+    """Bulk insert round data. Uses INSERT OR IGNORE for dedup on UNIQUE constraint."""
+    if not rounds_list:
+        return
+    conn = get_conn()
+    conn.executemany(
+        """INSERT OR IGNORE INTO rounds
+           (dg_id, player_name, player_key, tour, season, year,
+            event_id, event_name, event_completed,
+            course_name, course_num, course_par, round_num,
+            score, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g,
+            driving_dist, driving_acc, gir, scrambling, prox_fw, prox_rgh,
+            great_shots, poor_shots,
+            birdies, pars, bogies, doubles_or_worse, eagles_or_better,
+            fin_text, teetime, start_hole)
+           VALUES (:dg_id, :player_name, :player_key, :tour, :season, :year,
+                    :event_id, :event_name, :event_completed,
+                    :course_name, :course_num, :course_par, :round_num,
+                    :score, :sg_total, :sg_ott, :sg_app, :sg_arg, :sg_putt, :sg_t2g,
+                    :driving_dist, :driving_acc, :gir, :scrambling, :prox_fw, :prox_rgh,
+                    :great_shots, :poor_shots,
+                    :birdies, :pars, :bogies, :doubles_or_worse, :eagles_or_better,
+                    :fin_text, :teetime, :start_hole)""",
+        rounds_list,
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_player_recent_rounds(dg_id: int, limit: int = 24) -> list[dict]:
+    """Get last N rounds for a player, ordered most recent first."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM rounds
+           WHERE dg_id = ? AND sg_total IS NOT NULL
+           ORDER BY event_completed DESC, round_num DESC
+           LIMIT ?""",
+        (dg_id, limit),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_player_recent_rounds_by_key(player_key: str, limit: int = 24) -> list[dict]:
+    """Get last N rounds for a player by normalized name key."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM rounds
+           WHERE player_key = ? AND sg_total IS NOT NULL
+           ORDER BY event_completed DESC, round_num DESC
+           LIMIT ?""",
+        (player_key, limit),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_player_course_rounds(dg_id: int, course_num: int) -> list[dict]:
+    """Get all rounds at a specific course for a player."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM rounds
+           WHERE dg_id = ? AND course_num = ? AND sg_total IS NOT NULL
+           ORDER BY event_completed DESC, round_num DESC""",
+        (dg_id, course_num),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_rounds_backfill_status() -> list[dict]:
+    """Show which tours/years are stored and how many rounds each has."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT tour, year, COUNT(*) as round_count,
+                  COUNT(DISTINCT dg_id) as player_count,
+                  COUNT(DISTINCT event_id) as event_count
+           FROM rounds
+           GROUP BY tour, year
+           ORDER BY tour, year"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_rounds_count() -> int:
+    """Total rounds stored."""
+    conn = get_conn()
+    row = conn.execute("SELECT COUNT(*) as cnt FROM rounds").fetchone()
+    conn.close()
+    return row["cnt"] if row else 0
+
+
+def get_dg_id_for_player(player_key: str) -> int | None:
+    """Look up dg_id from rounds table by player_key."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT dg_id FROM rounds WHERE player_key = ? LIMIT 1",
+        (player_key,),
+    ).fetchone()
+    conn.close()
+    return row["dg_id"] if row else None
+
+
+def get_event_results(event_id: str, year: int) -> list[dict]:
+    """Get finish positions for all players in an event (for auto-results)."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT DISTINCT dg_id, player_name, player_key, fin_text
+           FROM rounds
+           WHERE event_id = ? AND year = ?""",
+        (event_id, year),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── Course weight profile helpers ──────────────────────────────────
+
+def get_course_weight_profile(course_num: int) -> dict | None:
+    """Get learned weight profile for a course."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT * FROM course_weight_profiles WHERE course_num = ?",
+        (course_num,),
+    ).fetchone()
+    conn.close()
+    if row:
+        result = dict(row)
+        result["weights"] = json.loads(result["weights_json"])
+        return result
+    return None
+
+
+def save_course_weight_profile(course_num: int, course_name: str,
+                               weights: dict, tournaments_used: int,
+                               confidence: float):
+    """Save or update course-specific weight profile."""
+    conn = get_conn()
+    conn.execute(
+        """INSERT INTO course_weight_profiles
+           (course_num, course_name, weights_json, tournaments_used, confidence, last_updated)
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(course_num) DO UPDATE SET
+               weights_json = excluded.weights_json,
+               tournaments_used = excluded.tournaments_used,
+               confidence = excluded.confidence,
+               last_updated = datetime('now')""",
+        (course_num, course_name, json.dumps(weights), tournaments_used, confidence),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ── Prediction log helpers ─────────────────────────────────────────
+
+def log_predictions(predictions: list[dict]):
+    """Store predictions for calibration tracking."""
+    if not predictions:
+        return
+    conn = get_conn()
+    conn.executemany(
+        """INSERT INTO prediction_log
+           (tournament_id, player_key, bet_type, model_prob, dg_prob,
+            market_implied_prob, actual_outcome, odds_decimal, profit)
+           VALUES (:tournament_id, :player_key, :bet_type, :model_prob, :dg_prob,
+                    :market_implied_prob, :actual_outcome, :odds_decimal, :profit)""",
+        predictions,
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_calibration_data(min_tournaments: int = 3) -> list[dict]:
+    """Get all prediction log entries for calibration analysis."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM prediction_log ORDER BY created_at"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── AI memory helpers ──────────────────────────────────────────────
+
+def store_ai_memory(topic: str, insight: str, source_tournament_id: int = None,
+                    confidence: float = 0.5, expires_days: int = 180):
+    """Store an AI brain learning/insight."""
+    conn = get_conn()
+    expires_at = None
+    if expires_days:
+        from datetime import timedelta
+        expires_at = (datetime.now() + timedelta(days=expires_days)).isoformat()
+    conn.execute(
+        """INSERT INTO ai_memory (topic, insight, source_tournament_id, confidence, expires_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (topic, insight, source_tournament_id, confidence, expires_at),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_ai_memories(topics: list[str] = None, limit: int = 50) -> list[dict]:
+    """Retrieve relevant AI memories, filtered by topic. Excludes expired."""
+    conn = get_conn()
+    sql = """SELECT * FROM ai_memory
+             WHERE (expires_at IS NULL OR expires_at > datetime('now'))"""
+    params = []
+    if topics:
+        placeholders = ",".join("?" for _ in topics)
+        sql += f" AND topic IN ({placeholders})"
+        params.extend(topics)
+    sql += " ORDER BY confidence DESC, created_at DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_ai_memory_topics() -> list[str]:
+    """Get all distinct memory topics."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT DISTINCT topic FROM ai_memory
+           WHERE expires_at IS NULL OR expires_at > datetime('now')
+           ORDER BY topic"""
+    ).fetchall()
+    conn.close()
+    return [r["topic"] for r in rows]
+
+
+# ── AI decisions helpers ───────────────────────────────────────────
+
+def store_ai_decision(tournament_id: int, phase: str,
+                      input_summary: str, output_json: str):
+    """Log an AI brain decision/analysis."""
+    conn = get_conn()
+    conn.execute(
+        """INSERT INTO ai_decisions (tournament_id, phase, input_summary, output_json)
+           VALUES (?, ?, ?, ?)""",
+        (tournament_id, phase, input_summary, output_json),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_ai_decisions(tournament_id: int = None, phase: str = None) -> list[dict]:
+    """Retrieve AI decisions, optionally filtered."""
+    conn = get_conn()
+    sql = "SELECT * FROM ai_decisions WHERE 1=1"
+    params = []
+    if tournament_id:
+        sql += " AND tournament_id = ?"
+        params.append(tournament_id)
+    if phase:
+        sql += " AND phase = ?"
+        params.append(phase)
+    sql += " ORDER BY created_at DESC"
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── Weights helpers with course-aware lookup ───────────────────────
+
+def get_weights_for_course(course_num: int = None) -> dict:
+    """
+    Get weights, blending global with course-specific if available.
+
+    If a course_weight_profile exists and has enough confidence,
+    blend it with global weights.
+    """
+    global_weights = get_active_weights()
+    if course_num is None:
+        return global_weights
+
+    profile = get_course_weight_profile(course_num)
+    if profile is None or profile.get("confidence", 0) < 0.3:
+        return global_weights
+
+    # Blend: higher confidence = more course-specific influence
+    conf = profile["confidence"]
+    course_w = profile["weights"]
+    blended = {}
+    for key in global_weights:
+        if key in course_w:
+            blended[key] = round(
+                global_weights[key] * (1 - conf) + course_w[key] * conf, 4
+            )
+        else:
+            blended[key] = global_weights[key]
+    return blended
 
 
 # Initialize on import

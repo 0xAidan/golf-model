@@ -66,8 +66,31 @@ def compute_course_fit(tournament_id: int, weights: dict,
             db.get_metrics_by_category(tournament_id, cat, data_mode="course_specific")
         )
 
-    if not course_metrics:
-        # No course-specific data uploaded; return empty
+    # Also pull DG decomposition data (course-adjusted SG predictions)
+    dg_decomp = db.get_metrics_by_category(
+        tournament_id, "dg_decomposition", data_mode="course_specific"
+    )
+
+    # Pull DG approach skill data (detailed by yardage/lie bucket)
+    dg_approach_metrics = db.get_metrics_by_category(tournament_id, "dg_approach")
+    player_dg_approach = {}
+    for m in dg_approach_metrics:
+        pk = m["player_key"]
+        if pk not in player_dg_approach:
+            player_dg_approach[pk] = {}
+        player_dg_approach[pk][m["metric_name"]] = m["metric_value"]
+
+    # Pull DG skill ratings (true SG per category)
+    dg_skill_metrics = db.get_metrics_by_category(tournament_id, "dg_skill")
+    player_dg_skill = {}
+    for m in dg_skill_metrics:
+        pk = m["player_key"]
+        if pk not in player_dg_skill:
+            player_dg_skill[pk] = {}
+        player_dg_skill[pk][m["metric_name"]] = m["metric_value"]
+
+    if not course_metrics and not dg_decomp and not player_dg_skill:
+        # No course-specific data at all; return empty
         return {}
 
     # Organize by player
@@ -79,6 +102,14 @@ def compute_course_fit(tournament_id: int, weights: dict,
         key = f"{m['metric_category']}_{m['metric_name']}"
         player_data[pk][key] = m["metric_value"]
 
+    # Add DG decomposition data
+    player_dg_decomp = {}
+    for m in dg_decomp:
+        pk = m["player_key"]
+        if pk not in player_dg_decomp:
+            player_dg_decomp[pk] = {}
+        player_dg_decomp[pk][m["metric_name"]] = m["metric_value"]
+
     # Also get rounds played (meta)
     meta_metrics = db.get_metrics_by_category(
         tournament_id, "meta", data_mode="course_specific"
@@ -88,6 +119,17 @@ def compute_course_fit(tournament_id: int, weights: dict,
         if pk not in player_data:
             player_data[pk] = {}
         player_data[pk][f"meta_{m['metric_name']}"] = m["metric_value"]
+
+    # Merge: include players that only appear in DG decomp, skill, or approach
+    for pk in player_dg_decomp:
+        if pk not in player_data:
+            player_data[pk] = {}
+    for pk in player_dg_skill:
+        if pk not in player_data:
+            player_data[pk] = {}
+    for pk in player_dg_approach:
+        if pk not in player_data:
+            player_data[pk] = {}
 
     field_size = len(player_data)
     if field_size == 0:
@@ -161,6 +203,99 @@ def compute_course_fit(tournament_id: int, weights: dict,
 
         # Apply confidence modifier (scales toward 50 if few rounds)
         score = 50.0 + confidence * (score - 50.0)
+
+        # ── Blend with DG decomposition if available ──
+        dg_data = player_dg_decomp.get(pk)
+        if dg_data:
+            dg_sg_total = dg_data.get("dg_sg_total")
+            if dg_sg_total is not None:
+                all_dg_totals = [
+                    d.get("dg_sg_total", 0) for d in player_dg_decomp.values()
+                    if d.get("dg_sg_total") is not None
+                ]
+                if all_dg_totals:
+                    below = sum(1 for v in all_dg_totals if v < dg_sg_total)
+                    dg_score = 100.0 * below / max(len(all_dg_totals) - 1, 1)
+                    components["dg_decomp"] = round(dg_score, 2)
+
+                    if confidence >= 0.5:
+                        dg_weight = 0.30
+                    else:
+                        dg_weight = 0.70
+                    score = (1 - dg_weight) * score + dg_weight * dg_score
+
+        # ── Blend with DG skill ratings (true ability per SG category) ──
+        dg_sk = player_dg_skill.get(pk)
+        if dg_sk:
+            # Build a course-weighted skill score using DG's true SG values
+            # Use the course profile weights to emphasize the right categories
+            sk_app = dg_sk.get("dg_sg_app")
+            sk_ott = dg_sk.get("dg_sg_ott")
+            sk_arg = dg_sk.get("dg_sg_arg")
+            sk_putt = dg_sk.get("dg_sg_putt")
+            sk_total = dg_sk.get("dg_sg_total")
+
+            # Rank each skill among all players in the field who have data
+            def _percentile_score(val, all_vals):
+                if val is None or not all_vals:
+                    return None
+                below = sum(1 for v in all_vals if v < val)
+                return 100.0 * below / max(len(all_vals) - 1, 1)
+
+            all_apps = [d.get("dg_sg_app") for d in player_dg_skill.values() if d.get("dg_sg_app") is not None]
+            all_otts = [d.get("dg_sg_ott") for d in player_dg_skill.values() if d.get("dg_sg_ott") is not None]
+            all_args = [d.get("dg_sg_arg") for d in player_dg_skill.values() if d.get("dg_sg_arg") is not None]
+            all_putts = [d.get("dg_sg_putt") for d in player_dg_skill.values() if d.get("dg_sg_putt") is not None]
+
+            # Course-weighted skill: emphasize the categories that matter at this course
+            skill_components = {}
+            weighted_sum = 0.0
+            weight_total = 0.0
+
+            for cat_name, val, all_vals, weight in [
+                ("skill_app", sk_app, all_apps, w_sg_app),
+                ("skill_ott", sk_ott, all_otts, w_sg_ott),
+                ("skill_putt", sk_putt, all_putts, w_sg_putt),
+            ]:
+                pctile = _percentile_score(val, all_vals)
+                if pctile is not None:
+                    skill_components[cat_name] = round(pctile, 2)
+                    weighted_sum += weight * pctile
+                    weight_total += weight
+
+            if weight_total > 0:
+                dg_skill_fit = weighted_sum / weight_total
+                components["dg_skill_fit"] = round(dg_skill_fit, 2)
+
+                # Blend in: DG skill ratings get 15% of total score
+                # (on top of decomp blend above)
+                skill_blend = 0.15
+                score = (1 - skill_blend) * score + skill_blend * dg_skill_fit
+
+        # ── Blend with DG approach skill (yardage-specific) ──
+        dg_app = player_dg_approach.get(pk)
+        if dg_app:
+            # Composite approach SG is stored as a pre-computed average
+            approach_composite = dg_app.get("approach_sg_composite")
+            if approach_composite is not None:
+                # Rank among all players with approach data
+                all_composites = [
+                    d.get("approach_sg_composite") for d in player_dg_approach.values()
+                    if d.get("approach_sg_composite") is not None
+                ]
+                if all_composites:
+                    below = sum(1 for v in all_composites if v < approach_composite)
+                    app_score = 100.0 * below / max(len(all_composites) - 1, 1)
+                    components["dg_approach"] = round(app_score, 2)
+
+                    # Weight approach data higher at approach-heavy courses
+                    # w_sg_app already accounts for course profile
+                    app_blend = min(0.12, w_sg_app * 0.4)
+                    score = (1 - app_blend) * score + app_blend * app_score
+
+        elif not course_metrics and not dg_data and not dg_sk:
+            # No data at all for this player — keep neutral 50
+            pass
 
         results[pk] = {
             "score": round(score, 2),
