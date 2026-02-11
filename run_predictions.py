@@ -46,10 +46,14 @@ from src.datagolf import (
     _store_decompositions_as_metrics,
     _store_field_as_metrics,
     _safe_float,
+    fetch_all_outright_odds,
+    fetch_matchup_odds,
 )
 from src.rolling_stats import compute_rolling_metrics
 from src.models.composite import compute_composite
 from src.course_profile import load_course_profile, course_to_model_weights
+from src.odds import get_best_odds
+from src.value import find_value_bets
 from src.card import generate_card
 from src.player_normalizer import normalize_name, display_name
 
@@ -304,6 +308,31 @@ def main():
         print("\n❌ No players scored. Check data.")
         sys.exit(1)
 
+    # ── Fetch live odds from Data Golf ──────────────────────────
+    print_header("Step 7: Fetching Live Sportsbook Odds")
+    print("  Pulling odds from DraftKings, FanDuel, BetMGM, Pinnacle...")
+
+    all_odds_by_market = safe_api_call("outright odds", fetch_all_outright_odds, "pga")
+    if all_odds_by_market is None:
+        all_odds_by_market = {}
+
+    value_bets = {}
+    for market_key, odds_list in all_odds_by_market.items():
+        if not odds_list:
+            continue
+        best = get_best_odds(odds_list)
+        # Map market to bet type
+        bt = "outright" if market_key == "outrights" else market_key.replace("top_", "top")
+        vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid)
+        value_bets[bt] = vb
+        value_count = sum(1 for v in vb if v.get("is_value"))
+        book_count = len(set(o["bookmaker"] for o in odds_list))
+        print(f"    {market_key}: {len(best)} players, {book_count} books, "
+              f"{value_count} value plays")
+
+    if not all_odds_by_market:
+        print("    ⚠ Could not fetch odds (may not be posted yet)")
+
     # ── Output predictions ────────────────────────────────────
     print_header(f"PREDICTIONS: {event_name}")
     print(f"  Course: {courses}")
@@ -342,6 +371,27 @@ def main():
               f"{r['course_fit']:>7.1f} {r['form']:>6.1f} {r['momentum']:>5.1f} "
               f"{trend:>5}  {win_str:>7}  {t10_str:>7}")
 
+    # ── Value bets with real sportsbook odds ──────────────────
+    for bt_label, bt_key in [("OUTRIGHT WINNER", "outright"),
+                              ("TOP 5 FINISH", "top5"),
+                              ("TOP 10 FINISH", "top10"),
+                              ("TOP 20 FINISH", "top20")]:
+        vb_list = value_bets.get(bt_key, [])
+        value_only = [v for v in vb_list if v.get("is_value")]
+        if not value_only:
+            continue
+
+        print()
+        print_header(f"VALUE BETS: {bt_label}")
+        print(f"  {'Player':<25} {'Rank':>4}  {'Best Odds':>10} {'Book':<12} "
+              f"{'Model%':>7} {'Market%':>8} {'EV':>7}  Source")
+        print("  " + "─" * 88)
+        for v in value_only[:10]:
+            odds_str = f"+{v['best_odds']}" if v["best_odds"] > 0 else str(v["best_odds"])
+            print(f"  {v['player_display']:<25} #{v['rank']:>2}  {odds_str:>10} "
+                  f"{v['best_book']:<12} {v['model_prob']:>6.1%} "
+                  f"{v['market_prob']:>7.1%} {v['ev']:>+6.1%}  {v['prob_source']}")
+
     # ── Key insights ──────────────────────────────────────────
     print()
     print_header("KEY INSIGHTS")
@@ -376,26 +426,13 @@ def main():
             print(f"    {r['player_display']:<25} momentum={r['momentum']:.1f}  "
                   f"(rank #{r['rank']})")
 
-    # Value highlights: high course fit + hot momentum
-    print("\n  Value Plays (Course Fit > 65 + Hot Momentum):")
-    value_plays = [r for r in composite
-                   if r.get("course_fit", 0) > 65 and r.get("momentum_direction") == "hot"
-                   and r["rank"] > 5]
-    if value_plays:
-        for r in value_plays[:5]:
-            print(f"    {r['player_display']:<25} #{r['rank']}  "
-                  f"course={r['course_fit']:.1f}  form={r['form']:.1f}  "
-                  f"momentum={r['momentum']:.1f}")
-    else:
-        print("    (none matching criteria)")
-
     # ── Generate card ─────────────────────────────────────────
-    print_header("Step 7: Generating Betting Card")
+    print_header("Step 8: Generating Betting Card")
     filepath = generate_card(
         event_name,
         primary_course,
         composite,
-        {},  # no live odds — add ODDS_API_KEY to get live odds
+        value_bets,
         output_dir="output",
     )
     print(f"  Card saved to: {filepath}")

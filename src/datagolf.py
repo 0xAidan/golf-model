@@ -670,6 +670,150 @@ def auto_ingest_results(tournament_id: int, event_id: str,
     }
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  Betting Tools — Live Odds from Sportsbooks
+# ═══════════════════════════════════════════════════════════════════
+
+# Sportsbook display names
+BOOK_NAMES = {
+    "draftkings": "DraftKings", "fanduel": "FanDuel", "betmgm": "BetMGM",
+    "caesars": "Caesars", "bovada": "Bovada", "pinnacle": "Pinnacle",
+    "bet365": "bet365", "betonline": "BetOnline", "betway": "Betway",
+    "pointsbet": "PointsBet", "williamhill": "WilliamHill", "unibet": "Unibet",
+    "skybet": "SkyBet", "betcris": "Betcris", "circa": "Circa",
+}
+
+# Keys in the response that are NOT sportsbooks
+NON_BOOK_KEYS = {"player_name", "dg_id", "datagolf", "am"}
+
+
+def _parse_american_odds(val) -> int | None:
+    """Parse American odds from a string like '+4000' or '-150' or 'n/a'."""
+    if val is None or val == "n/a" or val == "":
+        return None
+    try:
+        return int(str(val).replace("+", ""))
+    except (ValueError, TypeError):
+        return None
+
+
+def fetch_outright_odds(market: str = "win", tour: str = "pga",
+                        odds_format: str = "american") -> list[dict]:
+    """
+    Fetch live outright odds from Data Golf's betting tools.
+
+    market: 'win', 'top_5', 'top_10', 'top_20', 'make_cut', 'frl'
+    Returns list of {player, bookmaker, price, implied_prob, market}
+    in the same format that odds.py uses.
+    """
+    from src.odds import american_to_implied_prob
+
+    raw = _call_api("betting-tools/outrights", {
+        "tour": tour,
+        "market": market,
+        "odds_format": odds_format,
+    })
+
+    odds_list = raw.get("odds", []) if isinstance(raw, dict) else []
+
+    # Map DG market names to our internal bet_type names
+    market_name_map = {
+        "win": "outrights", "top_5": "top_5", "top_10": "top_10",
+        "top_20": "top_20", "make_cut": "make_cut", "frl": "frl",
+    }
+    display_market = market_name_map.get(market, market)
+
+    results = []
+    for player in odds_list:
+        if not isinstance(player, dict):
+            continue
+        player_name = player.get("player_name", "")
+        if not player_name:
+            continue
+
+        # Extract odds from each sportsbook
+        for book_key, book_display in BOOK_NAMES.items():
+            odds_val = player.get(book_key)
+            if odds_val is None or odds_val == "n/a" or odds_val == "":
+                continue
+
+            price = _parse_american_odds(odds_val)
+            if price is None:
+                continue
+
+            impl_prob = american_to_implied_prob(price)
+            results.append({
+                "player": display_name(player_name),
+                "bookmaker": book_display,
+                "price": price,
+                "implied_prob": round(impl_prob, 4),
+                "market": display_market,
+            })
+
+        # Also extract DG's own model odds for reference
+        dg_odds = player.get("datagolf", {})
+        if isinstance(dg_odds, dict):
+            for dg_key, dg_label in [("baseline_history_fit", "DG-CH"),
+                                      ("baseline", "DG-Base")]:
+                dg_price = _parse_american_odds(dg_odds.get(dg_key))
+                if dg_price is not None:
+                    results.append({
+                        "player": display_name(player_name),
+                        "bookmaker": dg_label,
+                        "price": dg_price,
+                        "implied_prob": round(american_to_implied_prob(dg_price), 4),
+                        "market": display_market,
+                    })
+
+    return results
+
+
+def fetch_matchup_odds(market: str = "tournament_matchups", tour: str = "pga",
+                        odds_format: str = "american") -> list[dict]:
+    """
+    Fetch live matchup/3-ball odds from Data Golf's betting tools.
+
+    market: 'tournament_matchups', 'round_matchups', '3_balls'
+    Returns list of matchup dicts.
+    """
+    raw = _call_api("betting-tools/matchups", {
+        "tour": tour,
+        "market": market,
+        "odds_format": odds_format,
+    })
+
+    if isinstance(raw, dict):
+        return raw.get("match_list", [])
+    return []
+
+
+def fetch_all_outright_odds(tour: str = "pga") -> dict:
+    """
+    Fetch odds for all outright markets and return organized by market.
+
+    Returns: {market_name: [list of odds dicts]}
+    """
+    import time
+    all_odds = {}
+
+    for market in ["win", "top_5", "top_10", "top_20"]:
+        time.sleep(1)  # Respect rate limits
+        try:
+            odds = fetch_outright_odds(market=market, tour=tour)
+            if odds:
+                # Map to internal market names
+                market_name_map = {
+                    "win": "outrights", "top_5": "top_5",
+                    "top_10": "top_10", "top_20": "top_20",
+                }
+                key = market_name_map.get(market, market)
+                all_odds[key] = odds
+        except Exception as e:
+            print(f"    ⚠ {market} odds error: {e}")
+
+    return all_odds
+
+
 def get_current_event_info(tour: str = "pga") -> dict | None:
     """
     Get the current/upcoming event info from the schedule.
