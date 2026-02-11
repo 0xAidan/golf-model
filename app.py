@@ -922,29 +922,46 @@ function showTab(name) {
 // ══ FILE UPLOAD ══
 let selectedFiles = [];
 let selectedImages = [];
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-const imgInput = document.getElementById('imgInput');
 
-['dragenter','dragover','dragleave','drop'].forEach(evt => {
-    dropzone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
-    document.body.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
-});
-dropzone.addEventListener('dragenter', () => dropzone.classList.add('dragover'));
-dropzone.addEventListener('dragover', () => dropzone.classList.add('dragover'));
-dropzone.addEventListener('dragleave', e => { if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('dragover'); });
-dropzone.addEventListener('drop', e => {
-    dropzone.classList.remove('dragover');
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) addFiles(files);
-});
-fileInput.addEventListener('change', e => { if (e.target.files.length) addFiles(e.target.files); fileInput.value = ''; });
-imgInput.addEventListener('change', e => {
-    if (e.target.files.length) {
-        selectedImages = Array.from(e.target.files);
-        document.getElementById('imgList').textContent = selectedImages.map(f=>f.name).join(', ');
-    }
-    imgInput.value = '';
+// Deferred init — bind file/drop events after DOM is fully ready
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const imgInput = document.getElementById('imgInput');
+
+        if (dropzone) {
+            ['dragenter','dragover','dragleave','drop'].forEach(evt => {
+                dropzone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
+            });
+            document.body.addEventListener('dragover', e => { e.preventDefault(); });
+            document.body.addEventListener('drop', e => { e.preventDefault(); });
+            dropzone.addEventListener('dragenter', () => dropzone.classList.add('dragover'));
+            dropzone.addEventListener('dragover', () => dropzone.classList.add('dragover'));
+            dropzone.addEventListener('dragleave', e => { if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('dragover'); });
+            dropzone.addEventListener('drop', e => {
+                dropzone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files && files.length > 0) addFiles(files);
+            });
+        }
+        if (fileInput) {
+            fileInput.addEventListener('change', e => { if (e.target.files.length) addFiles(e.target.files); fileInput.value = ''; });
+        }
+        if (imgInput) {
+            imgInput.addEventListener('change', e => {
+                if (e.target.files.length) {
+                    selectedImages = Array.from(e.target.files);
+                    const el = document.getElementById('imgList');
+                    if (el) el.textContent = selectedImages.map(f=>f.name).join(', ');
+                }
+                imgInput.value = '';
+            });
+        }
+    } catch(err) { console.error('File upload init error:', err); }
+
+    // Load initial data
+    loadBackfillStatus();
 });
 
 function addFiles(fl) {
@@ -1361,8 +1378,6 @@ async function doRetune() {
     } catch(e) { el.innerHTML='<span style="color:#ef4444;">Error</span>'; }
 }
 
-// ══ INIT ══
-loadBackfillStatus();
 </script>
 </body>
 </html>"""
