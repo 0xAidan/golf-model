@@ -671,6 +671,232 @@ def auto_ingest_results(tournament_id: int, event_id: str,
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Player Skill Ratings, Rankings & Approach Skill
+# ═══════════════════════════════════════════════════════════════════
+
+def fetch_skill_ratings() -> list[dict]:
+    """
+    Fetch DG's true player skill estimates by SG category.
+
+    Returns list of player dicts with:
+      sg_total, sg_ott, sg_app, sg_arg, sg_putt, driving_dist, driving_acc
+    These are strokes-gained PER ROUND estimates, properly adjusted
+    for field strength across all tours. More accurate than simple
+    rolling averages.
+    """
+    data = _call_api("preds/skill-ratings", {"display": "value"})
+    return data.get("players", []) if isinstance(data, dict) else []
+
+
+def fetch_dg_rankings() -> list[dict]:
+    """
+    Fetch top 500 DG rankings with global skill estimates + OWGR rank.
+
+    Each player has: dg_skill_estimate, datagolf_rank, owgr_rank, primary_tour
+    """
+    data = _call_api("preds/get-dg-rankings")
+    return data.get("rankings", []) if isinstance(data, dict) else []
+
+
+def fetch_approach_skill(period: str = "l24") -> list[dict]:
+    """
+    Fetch detailed approach performance stats by yardage/lie bucket.
+
+    period: 'l24' (last 24 months), 'l12', 'ytd'
+    Returns per-player approach stats broken down by:
+      50-100, 100-150, 150-200, 200+ yards from fairway and rough.
+      Each bucket has: sg_per_shot, proximity, gir_rate, good_shot_rate, poor_shot_avoid_rate
+    """
+    data = _call_api("preds/approach-skill", {"period": period})
+    return data.get("data", data.get("players", [])) if isinstance(data, dict) else []
+
+
+def store_skill_ratings_as_metrics(tournament_id: int, field_player_keys: list[str]) -> int:
+    """
+    Fetch DG skill ratings and store as metrics for field players.
+
+    These provide a high-confidence baseline skill signal that's
+    better than rolling averages (adjusted for field strength across tours).
+    """
+    players = fetch_skill_ratings()
+    if not players:
+        return 0
+
+    # Build lookup by player_key
+    skill_by_key = {}
+    for p in players:
+        pkey = normalize_name(p.get("player_name", ""))
+        if pkey:
+            skill_by_key[pkey] = p
+
+    import_id = db.log_csv_import(
+        tournament_id, "dg_skill_ratings", "dg_skill",
+        "recent_form", "all", len(players), source="datagolf"
+    )
+
+    metric_rows = []
+    for pk in field_player_keys:
+        p = skill_by_key.get(pk)
+        if not p:
+            continue
+        pdisp = display_name(p.get("player_name", ""))
+
+        fields = {
+            "dg_sg_total": p.get("sg_total"),
+            "dg_sg_ott": p.get("sg_ott"),
+            "dg_sg_app": p.get("sg_app"),
+            "dg_sg_arg": p.get("sg_arg"),
+            "dg_sg_putt": p.get("sg_putt"),
+            "dg_driving_dist": p.get("driving_dist"),
+            "dg_driving_acc": p.get("driving_acc"),
+        }
+        for metric_name, value in fields.items():
+            fval = _safe_float(value)
+            if fval is not None:
+                metric_rows.append({
+                    "tournament_id": tournament_id,
+                    "csv_import_id": import_id,
+                    "player_key": pk,
+                    "player_display": pdisp,
+                    "metric_category": "dg_skill",
+                    "data_mode": "recent_form",
+                    "round_window": "all",
+                    "metric_name": metric_name,
+                    "metric_value": fval,
+                    "metric_text": None,
+                })
+
+    db.store_metrics(metric_rows)
+    return len(metric_rows)
+
+
+def store_rankings_as_metrics(tournament_id: int, field_player_keys: list[str]) -> int:
+    """Fetch DG rankings and store rank + skill estimate for field players."""
+    rankings = fetch_dg_rankings()
+    if not rankings:
+        return 0
+
+    rank_by_key = {}
+    for r in rankings:
+        pkey = normalize_name(r.get("player_name", ""))
+        if pkey:
+            rank_by_key[pkey] = r
+
+    import_id = db.log_csv_import(
+        tournament_id, "dg_rankings", "dg_ranking",
+        "recent_form", "all", len(rankings), source="datagolf"
+    )
+
+    metric_rows = []
+    for pk in field_player_keys:
+        r = rank_by_key.get(pk)
+        if not r:
+            continue
+        pdisp = display_name(r.get("player_name", ""))
+
+        for metric_name, value in [
+            ("dg_rank", r.get("datagolf_rank")),
+            ("owgr_rank", r.get("owgr_rank")),
+            ("dg_skill_estimate", r.get("dg_skill_estimate")),
+        ]:
+            fval = _safe_float(value)
+            if fval is not None:
+                metric_rows.append({
+                    "tournament_id": tournament_id,
+                    "csv_import_id": import_id,
+                    "player_key": pk,
+                    "player_display": pdisp,
+                    "metric_category": "dg_ranking",
+                    "data_mode": "recent_form",
+                    "round_window": "all",
+                    "metric_name": metric_name,
+                    "metric_value": fval,
+                    "metric_text": None,
+                })
+
+    db.store_metrics(metric_rows)
+    return len(metric_rows)
+
+
+def store_approach_skill_as_metrics(tournament_id: int, field_player_keys: list[str]) -> int:
+    """
+    Fetch detailed approach skill data and store for field players.
+
+    Stores SG per shot and proximity for each yardage/lie bucket.
+    Critical for course-fit analysis at approach-heavy courses.
+    """
+    players = fetch_approach_skill("l24")
+    if not players:
+        return 0
+
+    app_by_key = {}
+    for p in players:
+        pkey = normalize_name(p.get("player_name", ""))
+        if pkey:
+            app_by_key[pkey] = p
+
+    import_id = db.log_csv_import(
+        tournament_id, "dg_approach_skill", "dg_approach",
+        "recent_form", "all", len(players), source="datagolf"
+    )
+
+    # Key approach buckets to store
+    buckets = ["50_100", "100_150", "150_200", "200_plus"]
+    lies = ["fw", "rgh"]
+    stats = ["sg_per_shot", "proximity_per_shot", "gir_rate"]
+
+    metric_rows = []
+    for pk in field_player_keys:
+        p = app_by_key.get(pk)
+        if not p:
+            continue
+        pdisp = display_name(p.get("player_name", pk))
+
+        for bucket in buckets:
+            for lie in lies:
+                for stat in stats:
+                    field_name = f"{bucket}_{lie}_{stat}"
+                    fval = _safe_float(p.get(field_name))
+                    if fval is not None:
+                        metric_rows.append({
+                            "tournament_id": tournament_id,
+                            "csv_import_id": import_id,
+                            "player_key": pk,
+                            "player_display": pdisp,
+                            "metric_category": "dg_approach",
+                            "data_mode": "recent_form",
+                            "round_window": "all",
+                            "metric_name": field_name,
+                            "metric_value": fval,
+                            "metric_text": None,
+                        })
+
+        # Also store overall approach SG composite (average across buckets)
+        sg_vals = []
+        for bucket in buckets:
+            for lie in lies:
+                v = _safe_float(p.get(f"{bucket}_{lie}_sg_per_shot"))
+                if v is not None:
+                    sg_vals.append(v)
+        if sg_vals:
+            metric_rows.append({
+                "tournament_id": tournament_id,
+                "csv_import_id": import_id,
+                "player_key": pk,
+                "player_display": pdisp,
+                "metric_category": "dg_approach",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "approach_sg_composite",
+                "metric_value": round(sum(sg_vals) / len(sg_vals), 4),
+                "metric_text": None,
+            })
+
+    db.store_metrics(metric_rows)
+    return len(metric_rows)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Betting Tools — Live Odds from Sportsbooks
 # ═══════════════════════════════════════════════════════════════════
 
@@ -796,7 +1022,7 @@ def fetch_all_outright_odds(tour: str = "pga") -> dict:
     import time
     all_odds = {}
 
-    for market in ["win", "top_5", "top_10", "top_20"]:
+    for market in ["win", "top_5", "top_10", "top_20", "frl"]:
         time.sleep(1)  # Respect rate limits
         try:
             odds = fetch_outright_odds(market=market, tour=tour)
@@ -805,6 +1031,7 @@ def fetch_all_outright_odds(tour: str = "pga") -> dict:
                 market_name_map = {
                     "win": "outrights", "top_5": "top_5",
                     "top_10": "top_10", "top_20": "top_20",
+                    "frl": "frl",
                 }
                 key = market_name_map.get(market, market)
                 all_odds[key] = odds

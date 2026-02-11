@@ -248,6 +248,7 @@ def main():
                     tournament_id=tournament_id,
                     value_bets_by_type=value_bets,
                     pre_analysis=pre_analysis,
+                    composite_results=composite,
                     tournament_name=args.tournament,
                     course_name=args.course or "",
                 )

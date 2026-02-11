@@ -117,11 +117,38 @@ def _get_all_form_metrics(tournament_id: int) -> dict:
     return player_data
 
 
+def _get_dg_skill_data(tournament_id: int) -> dict:
+    """Get DG true skill ratings (sg_total, sg_ott, sg_app, sg_arg, sg_putt)."""
+    metrics = db.get_metrics_by_category(tournament_id, "dg_skill")
+    player_skills = {}
+    for m in metrics:
+        pk = m["player_key"]
+        if pk not in player_skills:
+            player_skills[pk] = {}
+        player_skills[pk][m["metric_name"]] = m["metric_value"]
+    return player_skills
+
+
+def _get_dg_ranking_data(tournament_id: int) -> dict:
+    """Get DG ranking data (global rank, OWGR rank, skill estimate)."""
+    metrics = db.get_metrics_by_category(tournament_id, "dg_ranking")
+    player_ranks = {}
+    for m in metrics:
+        pk = m["player_key"]
+        if pk not in player_ranks:
+            player_ranks[pk] = {}
+        player_ranks[pk][m["metric_name"]] = m["metric_value"]
+    return player_ranks
+
+
 def compute_form(tournament_id: int, weights: dict) -> dict:
     """
     Compute form score for every player.
 
     Auto-discovers whatever round windows and categories you uploaded.
+    Also incorporates DG skill ratings (true ability) and DG rankings
+    when available — these are the most accurate baseline signals.
+
     Returns: {player_key: {"score": float, "components": dict, "windows_used": list}}
     """
     # Auto-discover available windows
@@ -140,12 +167,20 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
     # Get all form data (auto-discovers categories)
     all_form = _get_all_form_metrics(tournament_id)
 
+    # Get DG skill ratings (true player ability — field-strength adjusted)
+    dg_skill_data = _get_dg_skill_data(tournament_id)
+
+    # Get DG rankings
+    dg_ranking_data = _get_dg_ranking_data(tournament_id)
+
     # Collect all players
     all_players = set()
     for ranks in sg_by_window.values():
         all_players.update(ranks.keys())
     all_players.update(sim_data.keys())
     all_players.update(all_form.keys())
+    all_players.update(dg_skill_data.keys())
+    all_players.update(dg_ranking_data.keys())
 
     if not all_players:
         return {}
@@ -291,22 +326,73 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
             multi_sg = 50.0
         components["multi_sg"] = multi_sg
 
+        # ── DG Skill Rating score (true player ability) ──
+        dg_skill_score = 50.0
+        has_dg_skill = False
+        if pk in dg_skill_data:
+            dg_sk = dg_skill_data[pk]
+            dg_sg_total = dg_sk.get("dg_sg_total")
+            if dg_sg_total is not None:
+                # Rank this player's DG SG:Total among all players who have it
+                all_dg_totals = [
+                    d.get("dg_sg_total", 0) for d in dg_skill_data.values()
+                    if d.get("dg_sg_total") is not None
+                ]
+                if all_dg_totals:
+                    below = sum(1 for v in all_dg_totals if v < dg_sg_total)
+                    dg_skill_score = 100.0 * below / max(len(all_dg_totals) - 1, 1)
+                    has_dg_skill = True
+                    windows_used.append("dg_skill")
+        components["dg_skill"] = dg_skill_score
+
+        # ── DG Ranking score (global rank signal) ──
+        dg_rank_score = 50.0
+        has_dg_rank = False
+        if pk in dg_ranking_data:
+            dg_rk = dg_ranking_data[pk]
+            dg_rank = dg_rk.get("dg_rank")
+            if dg_rank is not None:
+                # Invert: rank 1 = 100, rank 500 = 0
+                dg_rank_score = max(0.0, 100.0 * (1.0 - (dg_rank - 1) / 499))
+                has_dg_rank = True
+                windows_used.append("dg_ranking")
+        components["dg_ranking"] = dg_rank_score
+
         # ── Weighted total ──
+        # DG skill ratings are the most accurate available signal,
+        # so they get significant weight when available.
         remaining = 1.0 - w_sim
-        multi_sg_weight = remaining * 0.25
+        multi_sg_weight = remaining * 0.20
+
+        # DG skill weight: 15% of total when available
+        dg_skill_weight = 0.15 if has_dg_skill else 0.0
+        # DG rank weight: 5% of total when available
+        dg_rank_weight = 0.05 if has_dg_rank else 0.0
+        # Reduce other weights proportionally to make room
+        dg_total_weight = dg_skill_weight + dg_rank_weight
 
         # Adjust if we have fewer window types
         if not recent_scores and not baseline_scores:
-            # Only sim + multi_sg
-            score = 0.5 * sim_score + 0.5 * multi_sg
+            # Only sim + multi_sg + DG signals
+            non_dg = 1.0 - dg_total_weight
+            score = (non_dg * 0.5) * sim_score + (non_dg * 0.5) * multi_sg
+            score += dg_skill_weight * dg_skill_score + dg_rank_weight * dg_rank_score
         elif not recent_scores:
-            score = baseline_weight * 2 * baseline_score + w_sim * sim_score + multi_sg_weight * multi_sg
+            adj_factor = 1.0 - dg_total_weight
+            score = (adj_factor * baseline_weight * 2 * baseline_score
+                     + adj_factor * w_sim * sim_score
+                     + adj_factor * multi_sg_weight * multi_sg
+                     + dg_skill_weight * dg_skill_score
+                     + dg_rank_weight * dg_rank_score)
         else:
+            adj_factor = 1.0 - dg_total_weight
             score = (
-                recent_weight * recent_score
-                + baseline_weight * baseline_score
-                + w_sim * sim_score
-                + multi_sg_weight * multi_sg
+                adj_factor * recent_weight * recent_score
+                + adj_factor * baseline_weight * baseline_score
+                + adj_factor * w_sim * sim_score
+                + adj_factor * multi_sg_weight * multi_sg
+                + dg_skill_weight * dg_skill_score
+                + dg_rank_weight * dg_rank_score
             )
 
         results[pk] = {

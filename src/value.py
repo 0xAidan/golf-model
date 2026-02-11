@@ -14,9 +14,15 @@ Probability priority:
   4. Softmax approximation from composite scores (fallback)
 """
 
+import os
+
 from src.odds import american_to_implied_prob, american_to_decimal
 from src.player_normalizer import normalize_name
 from src import db
+
+# Default EV threshold: 2% for sharp books (bet365, Pinnacle).
+# Override via env var EV_THRESHOLD (e.g. "0.05" for 5%).
+DEFAULT_EV_THRESHOLD = float(os.environ.get("EV_THRESHOLD", "0.02"))
 
 
 def compute_ev(model_prob: float, american_odds: int) -> float:
@@ -58,6 +64,7 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
         "top10": 1.6,
         "top20": 2.0,       # More spread out
         "make_cut": 3.0,
+        "frl": 0.6,         # Very peaked — one player leads after R1
     }
     temp = temp_by_type.get(bet_type, 1.5)
 
@@ -74,6 +81,7 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
         "top10": 10.0 / field_size * 2.5,
         "top20": 20.0 / field_size * 2.0,
         "make_cut": 0.65 * 1.5,  # ~65% make cut baseline
+        "frl": 1.0 / field_size * 4.0,  # Similar to outright — one leader
     }
     cal = calibration.get(bet_type, 1.0)
 
@@ -160,7 +168,7 @@ def _get_best_prob(player_probs: dict, bet_type: str) -> float | None:
 def find_value_bets(composite_results: list[dict],
                     odds_by_player: dict,
                     bet_type: str = "top20",
-                    ev_threshold: float = 0.05,
+                    ev_threshold: float = None,
                     tournament_id: int = None) -> list[dict]:
     """
     Compare model scores to market odds and find value.
@@ -168,7 +176,7 @@ def find_value_bets(composite_results: list[dict],
     composite_results: from composite.compute_composite()
     odds_by_player: from odds.get_best_odds() (keyed by lowercase name)
     bet_type: 'outright', 'top5', 'top10', 'top20'
-    ev_threshold: minimum EV to flag as value (0.05 = 5%)
+    ev_threshold: minimum EV to flag as value (default from EV_THRESHOLD env or 2%)
     tournament_id: if provided, uses DG calibrated probabilities
 
     Probability priority:
@@ -178,6 +186,9 @@ def find_value_bets(composite_results: list[dict],
 
     Returns list of value bets sorted by EV (best first).
     """
+    if ev_threshold is None:
+        ev_threshold = DEFAULT_EV_THRESHOLD
+
     all_scores = [r["composite"] for r in composite_results]
 
     # Load DG probabilities if tournament_id is available
@@ -204,14 +215,29 @@ def find_value_bets(composite_results: list[dict],
         model_prob = None
         prob_source = "softmax"
 
-        # 1. DG calibrated probabilities (best)
+        # 1. DG calibrated probabilities from pre-tournament predictions (best)
         if pkey in dg_probs:
             dg_prob = _get_best_prob(dg_probs[pkey], bet_type)
             if dg_prob and dg_prob > 0:
                 model_prob = dg_prob
                 prob_source = "datagolf_ch" if f"{bet_type}_ch" in dg_probs[pkey] else "datagolf"
 
-        # 2. Softmax fallback from composite scores
+        # 2. DG model prices from odds endpoint (for FRL and other markets
+        #    where pre-tournament probs aren't available)
+        if model_prob is None:
+            dg_model_prices = odds_entry.get("dg_model_prices", [])
+            if dg_model_prices:
+                # Prefer course-history model (DG-CH), fall back to baseline
+                for label in ["DG-CH", "DG-Base"]:
+                    for dp in dg_model_prices:
+                        if dp["bookmaker"] == label and dp.get("implied_prob"):
+                            model_prob = dp["implied_prob"]
+                            prob_source = "datagolf_ch" if label == "DG-CH" else "datagolf"
+                            break
+                    if model_prob is not None:
+                        break
+
+        # 3. Softmax fallback from composite scores
         if model_prob is None:
             model_prob = model_score_to_prob(r["composite"], all_scores, bet_type)
             prob_source = "softmax"
@@ -223,6 +249,22 @@ def find_value_bets(composite_results: list[dict],
         dg_prob_for_log = None
         if pkey in dg_probs:
             dg_prob_for_log = _get_best_prob(dg_probs[pkey], bet_type)
+
+        # Check if better odds exist at another book
+        best_available_price = odds_entry.get("best_price")
+        best_available_book = odds_entry.get("best_book")
+        better_odds_note = None
+
+        # Find the actual best across all books (might differ from preferred)
+        all_books = odds_entry.get("all_books", [])
+        for ab in all_books:
+            if ab["price"] > best_available_price:
+                best_available_price = ab["price"]
+                best_available_book = ab["bookmaker"]
+
+        if best_available_price > odds_entry["best_price"]:
+            better_price_str = f"+{best_available_price}" if best_available_price > 0 else str(best_available_price)
+            better_odds_note = f"{better_price_str} @ {best_available_book}"
 
         value_bets.append({
             "player_key": pkey,
@@ -237,6 +279,9 @@ def find_value_bets(composite_results: list[dict],
             "market_prob": round(market_prob, 4),
             "best_odds": odds_entry["best_price"],
             "best_book": odds_entry["best_book"],
+            "best_available_odds": best_available_price,
+            "best_available_book": best_available_book,
+            "better_odds_note": better_odds_note,
             "ev": round(ev, 4),
             "ev_pct": f"{ev * 100:.1f}%",
             "is_value": ev >= ev_threshold,

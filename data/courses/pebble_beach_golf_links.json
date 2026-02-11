@@ -1,0 +1,610 @@
+{
+  "course_facts": {
+    "course_name": "Pebble Beach Golf Links",
+    "tournament": "AT&T Pebble Beach Pro-Am (1947-2025)",
+    "par": 72,
+    "yardage": 6989,
+    "length_category": "Very Short",
+    "location": "West California",
+    "course_type": "Coastal",
+    "architect": "Jack Neville Douglas Grant",
+    "avg_scoring_conditions": "Easy",
+    "bunkers": 116,
+    "water_danger_holes": 1,
+    "elevation": "79 ft Sea Level",
+    "greens_surface": "Poa",
+    "greens_speed": "Slow",
+    "stimpmeter": 10.5,
+    "avg_greens_size": "3500 square ft Small",
+    "fairway_grass": "Mixed",
+    "rough_grass": "Rye",
+    "rough_length": "2.5\" Average",
+    "ott_club_type": "Less Than Driver",
+    "correlated_courses": [
+      "Spyglass Hill",
+      "Monterey Peninsula CC (Shore)",
+      "Port Royal GC",
+      "Sea Island GC (Seaside)",
+      "Harbour Town Golf Links",
+      "Waialae CC",
+      "Colonial CC",
+      "Riviera CC",
+      "El Camaleon GC",
+      "TPC Southwind"
+    ]
+  },
+  "skill_ratings": {
+    "sg_ott": "Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Easy",
+    "sg_putting": "Difficult",
+    "sg_putting_under_15ft": "Difficult",
+    "sg_putting_over_15ft": "Average",
+    "fairway_accuracy": "Easy",
+    "missed_fairway_penalty": "Average",
+    "rough_penalty": "Low",
+    "gir_accuracy": "Average",
+    "scrambling_rough": "Easy",
+    "scrambling_short_grass": "Easy",
+    "sand_saves": "Difficult",
+    "three_putt_avoidance": "Difficult",
+    "par3_scoring": "Average",
+    "par4_scoring": "Average",
+    "par5_scoring": "Average"
+  },
+  "stat_comparisons": [
+    {
+      "category": "Yardage Range",
+      "statistic": "50-100",
+      "tour_average": 9.1,
+      "course_value": 11.5,
+      "relative_difference_pct": 26.4
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "100-150",
+      "tour_average": 26.9,
+      "course_value": 32.4,
+      "relative_difference_pct": 20.4
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "150-175",
+      "tour_average": 19.3,
+      "course_value": 13.6,
+      "relative_difference_pct": -29.5
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "175-200",
+      "tour_average": 17.2,
+      "course_value": 12.4,
+      "relative_difference_pct": -27.9
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "200+",
+      "tour_average": 27.5,
+      "course_value": 30.0,
+      "relative_difference_pct": 9.1
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "200-225",
+      "tour_average": 10.9,
+      "course_value": 13.7,
+      "relative_difference_pct": 25.7
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "225-250",
+      "tour_average": 6.2,
+      "course_value": 7.1,
+      "relative_difference_pct": 14.5
+    },
+    {
+      "category": "Yardage Range",
+      "statistic": "250+",
+      "tour_average": 10.4,
+      "course_value": 9.2,
+      "relative_difference_pct": -11.5
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "SG: OTT per drive",
+      "tour_average": 0,
+      "course_value": -0.031,
+      "relative_difference_pct": -28.2
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Good Drive %",
+      "tour_average": 81.5,
+      "course_value": 85.6,
+      "relative_difference_pct": 18.6
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Driving Distance (yds)",
+      "tour_average": 291.9,
+      "course_value": 274.4,
+      "relative_difference_pct": -58.3
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Driver Usage %",
+      "tour_average": 68.9,
+      "course_value": 46.0,
+      "relative_difference_pct": -50.9
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Drives 320+ Yds %",
+      "tour_average": 14.5,
+      "course_value": 5.3,
+      "relative_difference_pct": -70.8
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Driving Accuracy %",
+      "tour_average": 60.5,
+      "course_value": 65.4,
+      "relative_difference_pct": 12.3
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Missed Fairway Penalty (per hole)",
+      "tour_average": 0.36,
+      "course_value": 0.33,
+      "relative_difference_pct": -8.3
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Rough Penalty (per hole)",
+      "tour_average": 0.27,
+      "course_value": 0.18,
+      "relative_difference_pct": -36.0
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Distance From Edge of Fairway (ft)",
+      "tour_average": 27.7,
+      "course_value": 30.1,
+      "relative_difference_pct": 16.0
+    },
+    {
+      "category": "Off the Tee",
+      "statistic": "Fairway Width (yds)",
+      "tour_average": 34.5,
+      "course_value": 41.0,
+      "relative_difference_pct": 26.0
+    },
+    {
+      "category": "Approach",
+      "statistic": "SG: APP per shot (overall)",
+      "tour_average": 0.0,
+      "course_value": -0.03,
+      "relative_difference_pct": -46.2
+    },
+    {
+      "category": "Approach",
+      "statistic": "SG: APP per shot (inside 150 yds)",
+      "tour_average": 0.0,
+      "course_value": -0.007,
+      "relative_difference_pct": -7.8
+    },
+    {
+      "category": "Approach",
+      "statistic": "SG: APP per shot (outside 150 yds)",
+      "tour_average": 0.0,
+      "course_value": -0.047,
+      "relative_difference_pct": -62.7
+    },
+    {
+      "category": "Approach",
+      "statistic": "GIR%",
+      "tour_average": 66.1,
+      "course_value": 67.6,
+      "relative_difference_pct": 4.3
+    },
+    {
+      "category": "Approach",
+      "statistic": "GIR% Fwy",
+      "tour_average": 77.0,
+      "course_value": 75.3,
+      "relative_difference_pct": -6.8
+    },
+    {
+      "category": "Approach",
+      "statistic": "GIR% Rough",
+      "tour_average": 51.6,
+      "course_value": 57.3,
+      "relative_difference_pct": 21.1
+    },
+    {
+      "category": "Approach",
+      "statistic": "GIR - Missed Fwy Penalty (Margin)",
+      "tour_average": 25.4,
+      "course_value": 18.0,
+      "relative_difference_pct": -29.6
+    },
+    {
+      "category": "Approach",
+      "statistic": "GIR% Fairway Bunkers",
+      "tour_average": 48.3,
+      "course_value": 49.2,
+      "relative_difference_pct": 2.6
+    },
+    {
+      "category": "Approach",
+      "statistic": "Average Approach Distance (Yds)",
+      "tour_average": 167.4,
+      "course_value": 156.0,
+      "relative_difference_pct": -32.6
+    },
+    {
+      "category": "Approach",
+      "statistic": "Overall Proximity (Ft)",
+      "tour_average": 37.2,
+      "course_value": 34.0,
+      "relative_difference_pct": -16.0
+    },
+    {
+      "category": "Approach",
+      "statistic": "Fairway Proximity (Ft)",
+      "tour_average": 32.3,
+      "course_value": 31.8,
+      "relative_difference_pct": -2.5
+    },
+    {
+      "category": "Approach",
+      "statistic": "Rough Proximity (Ft)",
+      "tour_average": 45.4,
+      "course_value": 37.7,
+      "relative_difference_pct": -35.0
+    },
+    {
+      "category": "Approach",
+      "statistic": "Proximity - Rough Penalty (Margin)",
+      "tour_average": 13.1,
+      "course_value": 5.9,
+      "relative_difference_pct": -48.0
+    },
+    {
+      "category": "Approach",
+      "statistic": "Birdie or Better % Fairway",
+      "tour_average": 23.1,
+      "course_value": 25.2,
+      "relative_difference_pct": 14.0
+    },
+    {
+      "category": "Approach",
+      "statistic": "Birdie or Better % Rough",
+      "tour_average": 15.6,
+      "course_value": 19.5,
+      "relative_difference_pct": 32.5
+    },
+    {
+      "category": "Approach",
+      "statistic": "BoB - Rough Penalty (Margin)",
+      "tour_average": 7.5,
+      "course_value": 5.7,
+      "relative_difference_pct": -22.5
+    },
+    {
+      "category": "Approach",
+      "statistic": "Going For Green %",
+      "tour_average": 59.0,
+      "course_value": 57.7,
+      "relative_difference_pct": -3.7
+    },
+    {
+      "category": "Approach",
+      "statistic": "Going For Green BoB%",
+      "tour_average": 58.5,
+      "course_value": 61.8,
+      "relative_difference_pct": 11.0
+    },
+    {
+      "category": "Approach",
+      "statistic": "Going For Green GIR%",
+      "tour_average": 22.9,
+      "course_value": 22.3,
+      "relative_difference_pct": -2.4
+    },
+    {
+      "category": "Approach",
+      "statistic": "Going For Green Proximity (Ft)",
+      "tour_average": 73.5,
+      "course_value": 65.1,
+      "relative_difference_pct": -21.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "SG: ARG per shot (overall)",
+      "tour_average": 0,
+      "course_value": 0.036,
+      "relative_difference_pct": 45.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "Scrambling %",
+      "tour_average": 58.9,
+      "course_value": 60.7,
+      "relative_difference_pct": 6.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Proximity to Hole (ft)",
+      "tour_average": 7.7,
+      "course_value": 7.1,
+      "relative_difference_pct": -15.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "SG: ARG per shot (short grass)",
+      "tour_average": 0,
+      "course_value": 0.058,
+      "relative_difference_pct": 72.5
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "Scrambling % (short grass)",
+      "tour_average": 60.6,
+      "course_value": 60.0,
+      "relative_difference_pct": -2.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Proximity (ft) (short grass)",
+      "tour_average": 6.4,
+      "course_value": 6.0,
+      "relative_difference_pct": -13.3
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Shot % (short grass)",
+      "tour_average": 40.3,
+      "course_value": 29.1,
+      "relative_difference_pct": -40.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "SG: ARG per shot (rough)",
+      "tour_average": 0.0,
+      "course_value": 0.06,
+      "relative_difference_pct": 54.5
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "Scrambling % (rough)",
+      "tour_average": 54.9,
+      "course_value": 63.2,
+      "relative_difference_pct": 27.7
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Proximity (ft) (rough)",
+      "tour_average": 8.7,
+      "course_value": 7.0,
+      "relative_difference_pct": -42.5
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Shot % (rough)",
+      "tour_average": 35.4,
+      "course_value": 40.3,
+      "relative_difference_pct": 17.5
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "SG: ARG per shot (bunker)",
+      "tour_average": 0.0,
+      "course_value": -0.03,
+      "relative_difference_pct": -27.3
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "Sand Save %",
+      "tour_average": 52.2,
+      "course_value": 48.7,
+      "relative_difference_pct": -17.5
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Proximity (ft) (sand)",
+      "tour_average": 9.7,
+      "course_value": 8.9,
+      "relative_difference_pct": -20.0
+    },
+    {
+      "category": "Around the Green",
+      "statistic": "ARG Shot % from Sand",
+      "tour_average": 24.4,
+      "course_value": 30.5,
+      "relative_difference_pct": 21.8
+    },
+    {
+      "category": "Putting",
+      "statistic": "SG: Putting per shot (overall)",
+      "tour_average": 0.0,
+      "course_value": -0.012,
+      "relative_difference_pct": -40.0
+    },
+    {
+      "category": "Putting",
+      "statistic": "SG: Putting per shot (0-5 feet)",
+      "tour_average": 0.0,
+      "course_value": -0.008,
+      "relative_difference_pct": -53.3
+    },
+    {
+      "category": "Putting",
+      "statistic": "SG: Putting per shot (5-15 feet)",
+      "tour_average": 0.0,
+      "course_value": -0.029,
+      "relative_difference_pct": -48.3
+    },
+    {
+      "category": "Putting",
+      "statistic": "SG: Putting per shot (15+ feet)",
+      "tour_average": 0.0,
+      "course_value": -0.002,
+      "relative_difference_pct": -2.2
+    },
+    {
+      "category": "Putting",
+      "statistic": "GIR Putting Average",
+      "tour_average": 1.764,
+      "course_value": 1.756,
+      "relative_difference_pct": -5.3
+    },
+    {
+      "category": "Putting",
+      "statistic": "One-Putt %",
+      "tour_average": 39.4,
+      "course_value": 39.8,
+      "relative_difference_pct": 3.3
+    },
+    {
+      "category": "Putting",
+      "statistic": "3-Putt %",
+      "tour_average": 2.83,
+      "course_value": 3.07,
+      "relative_difference_pct": 8.0
+    },
+    {
+      "category": "Putting",
+      "statistic": "3-Putt % 25+ Ft",
+      "tour_average": 8.92,
+      "course_value": 8.4,
+      "relative_difference_pct": -8.7
+    },
+    {
+      "category": "Putting",
+      "statistic": "Putting % 3-5 Ft",
+      "tour_average": 88.1,
+      "course_value": 85.1,
+      "relative_difference_pct": -60.0
+    },
+    {
+      "category": "Putting",
+      "statistic": "Putting % 4-8 Ft",
+      "tour_average": 69.2,
+      "course_value": 64.5,
+      "relative_difference_pct": -78.3
+    },
+    {
+      "category": "Putting",
+      "statistic": "Putting % 0-10 Ft",
+      "tour_average": 87.8,
+      "course_value": 86.5,
+      "relative_difference_pct": -32.5
+    },
+    {
+      "category": "Putting",
+      "statistic": "Putting % 5-15 Ft",
+      "tour_average": 46.3,
+      "course_value": 43.0,
+      "relative_difference_pct": -55.0
+    },
+    {
+      "category": "Putting",
+      "statistic": "Putting % 15-25 Ft",
+      "tour_average": 16.1,
+      "course_value": 14.2,
+      "relative_difference_pct": -38.0
+    },
+    {
+      "category": "Putting",
+      "statistic": "Putting % 20+ Ft",
+      "tour_average": 7.24,
+      "course_value": 7.27,
+      "relative_difference_pct": 0.5
+    },
+    {
+      "category": "Putting",
+      "statistic": "Approach Putt Proximity (Ft)",
+      "tour_average": 2.24,
+      "course_value": 1.93,
+      "relative_difference_pct": -62.0
+    },
+    {
+      "category": "Putting",
+      "statistic": "AVG Distance Total Putts Made/Rd (Ft)",
+      "tour_average": 73.1,
+      "course_value": 69.4,
+      "relative_difference_pct": -12.3
+    },
+    {
+      "category": "Putting",
+      "statistic": "AVG Distance Birdie Putts Made (Ft)",
+      "tour_average": 9.5,
+      "course_value": 8.6,
+      "relative_difference_pct": -45.0
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Birdie or Better %",
+      "tour_average": 21.3,
+      "course_value": 22.3,
+      "relative_difference_pct": 6.7
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Bogey %",
+      "tour_average": 16.3,
+      "course_value": 15.3,
+      "relative_difference_pct": -7.7
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Birdie/Bogey Ratio",
+      "tour_average": 1.44,
+      "course_value": 1.51,
+      "relative_difference_pct": 2.3
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Par 3 Scoring",
+      "tour_average": 3.06,
+      "course_value": 3.02,
+      "relative_difference_pct": -11.4
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Par 3 BoB %",
+      "tour_average": 13.2,
+      "course_value": 15.4,
+      "relative_difference_pct": 22.0
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Par 4 Scoring",
+      "tour_average": 4.03,
+      "course_value": 4.02,
+      "relative_difference_pct": -2.9
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Par 4 BoB %",
+      "tour_average": 17.1,
+      "course_value": 16.7,
+      "relative_difference_pct": -3.1
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Par 5 Scoring",
+      "tour_average": 4.62,
+      "course_value": 4.67,
+      "relative_difference_pct": 10.0
+    },
+    {
+      "category": "Scoring",
+      "statistic": "Par 5 BoB %",
+      "tour_average": 45.9,
+      "course_value": 43.1,
+      "relative_difference_pct": -8.0
+    }
+  ]
+}

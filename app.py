@@ -567,6 +567,7 @@ async def ai_betting_decisions(request: Request):
         tournament_id=tournament_id,
         value_bets_by_type=value_bets,
         pre_analysis=pre_analysis,
+        composite_results=_last_analysis.get("composite", None),
         tournament_name=_last_analysis.get("tournament", ""),
         course_name=course,
     )

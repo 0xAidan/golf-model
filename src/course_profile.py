@@ -307,6 +307,92 @@ def list_saved_courses() -> list[str]:
     ]
 
 
+def generate_profile_from_decompositions(decomp_data: dict) -> dict | None:
+    """
+    Auto-generate a basic course profile from DG player decomposition data.
+
+    The spread (max - min) of each fit adjustment tells us how much that
+    skill differentiates players at this course. Larger spread = harder/
+    more important skill. This lets us create a profile without screenshots.
+
+    Used as a fallback when no manual course profile exists.
+    """
+    players = decomp_data.get("players", [])
+    if not players or len(players) < 20:
+        return None
+
+    course_name = decomp_data.get("course_name", "Unknown")
+    event_name = decomp_data.get("event_name", "Unknown")
+
+    # Compute the spread (impact) of each fit component
+    def _spread(field):
+        vals = [p.get(field) for p in players if p.get(field) is not None]
+        if len(vals) < 10:
+            return 0.0
+        return max(vals) - min(vals)
+
+    sg_cat_spread = _spread("strokes_gained_category_adjustment")
+    drive_dist_spread = _spread("driving_distance_adjustment")
+    drive_acc_spread = _spread("driving_accuracy_adjustment")
+    approach_spread = _spread("cf_approach_comp")
+    short_spread = _spread("cf_short_comp")
+    total_fit_spread = _spread("total_fit_adjustment")
+
+    # Convert spreads to difficulty ratings
+    # Calibrated from typical PGA Tour ranges:
+    # OTT (driving): combine distance + accuracy spread
+    ott_impact = drive_dist_spread + drive_acc_spread
+    # APP (approach): approach comp + part of SG category
+    app_impact = approach_spread + sg_cat_spread * 0.4
+    # ARG (around green): short comp
+    arg_impact = short_spread
+    # Putting: remainder of SG category adjustment
+    putt_impact = sg_cat_spread * 0.3
+
+    def _impact_to_rating(impact, thresholds):
+        """Convert impact score to difficulty rating."""
+        if impact >= thresholds[0]:
+            return "Very Difficult"
+        elif impact >= thresholds[1]:
+            return "Difficult"
+        elif impact >= thresholds[2]:
+            return "Average"
+        elif impact >= thresholds[3]:
+            return "Easy"
+        else:
+            return "Very Easy"
+
+    # Thresholds calibrated from typical PGA Tour decomposition ranges
+    skill_ratings = {
+        "sg_ott": _impact_to_rating(ott_impact, [0.15, 0.10, 0.06, 0.03]),
+        "sg_app": _impact_to_rating(app_impact, [0.25, 0.15, 0.08, 0.04]),
+        "sg_arg": _impact_to_rating(arg_impact, [0.10, 0.06, 0.03, 0.015]),
+        "sg_putting": _impact_to_rating(putt_impact, [0.20, 0.12, 0.06, 0.03]),
+    }
+
+    profile = {
+        "course_facts": {
+            "tournament": event_name,
+            "course_name": course_name,
+            "source": "auto_generated_from_dg_decompositions",
+        },
+        "skill_ratings": skill_ratings,
+        "fit_spreads": {
+            "ott_impact": round(ott_impact, 4),
+            "app_impact": round(app_impact, 4),
+            "arg_impact": round(arg_impact, 4),
+            "putt_impact": round(putt_impact, 4),
+            "total_fit_spread": round(total_fit_spread, 4),
+            "sg_category_spread": round(sg_cat_spread, 4),
+        },
+    }
+
+    # Auto-save the profile
+    save_course_profile(course_name, profile)
+
+    return profile
+
+
 def course_to_model_weights(profile: dict) -> dict:
     """
     Convert course profile skill ratings into model weight adjustments.

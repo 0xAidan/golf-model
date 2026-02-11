@@ -136,31 +136,85 @@ def load_manual_odds(filepath: str) -> list[dict]:
 
 # ── Aggregate odds across books ─────────────────────────────────────
 
-def get_best_odds(odds_list: list[dict]) -> dict:
-    """
-    For each player, find the best (highest) price across all bookmakers.
+# DG model references — not real bettable sportsbooks
+_DG_MODEL_BOOKS = {"DG-CH", "DG-Base"}
 
-    Returns: {player_name_lower: {player, best_price, best_book, implied_prob, all_books: [...]}}
+# Default preferred sportsbook — set to the book you actually bet at.
+# EV calculations use this book's odds so results are actionable.
+PREFERRED_BOOK = os.environ.get("PREFERRED_BOOK", "bet365")
+
+
+def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
     """
+    For each player, find the best actionable odds.
+
+    If preferred_book is set, uses that book's odds for the primary price
+    (since that's where the user actually bets), and includes best-available
+    across all books as a reference.
+
+    DG model prices (DG-CH, DG-Base) are stored as reference but excluded
+    from the "best odds" since you can't actually bet at those prices.
+
+    Returns: {player_name_lower: {
+        player, best_price, best_book, implied_prob,
+        preferred_price, preferred_book,  # odds at the user's book
+        all_books, dg_model_prices
+    }}
+    """
+    if preferred_book is None:
+        preferred_book = PREFERRED_BOOK
+
     by_player = {}
     for o in odds_list:
         name = o["player"].lower().strip()
+        is_dg_model = o["bookmaker"] in _DG_MODEL_BOOKS
+
         if name not in by_player:
             by_player[name] = {
                 "player": o["player"],
-                "best_price": o["price"],
-                "best_book": o["bookmaker"],
-                "implied_prob": o["implied_prob"],
+                "best_price": None,
+                "best_book": None,
+                "implied_prob": None,
+                "preferred_price": None,
+                "preferred_book": preferred_book,
+                "preferred_implied_prob": None,
                 "market": o["market"],
                 "all_books": [],
+                "dg_model_prices": [],
             }
-        by_player[name]["all_books"].append({
-            "bookmaker": o["bookmaker"],
-            "price": o["price"],
-        })
-        if o["price"] > by_player[name]["best_price"]:
-            by_player[name]["best_price"] = o["price"]
-            by_player[name]["best_book"] = o["bookmaker"]
-            by_player[name]["implied_prob"] = o["implied_prob"]
 
-    return by_player
+        if is_dg_model:
+            by_player[name]["dg_model_prices"].append({
+                "bookmaker": o["bookmaker"],
+                "price": o["price"],
+                "implied_prob": o["implied_prob"],
+            })
+        else:
+            by_player[name]["all_books"].append({
+                "bookmaker": o["bookmaker"],
+                "price": o["price"],
+            })
+            # Track best across all books
+            if (by_player[name]["best_price"] is None
+                    or o["price"] > by_player[name]["best_price"]):
+                by_player[name]["best_price"] = o["price"]
+                by_player[name]["best_book"] = o["bookmaker"]
+                by_player[name]["implied_prob"] = o["implied_prob"]
+
+            # Track preferred book specifically
+            if (preferred_book
+                    and o["bookmaker"].lower() == preferred_book.lower()):
+                by_player[name]["preferred_price"] = o["price"]
+                by_player[name]["preferred_implied_prob"] = o["implied_prob"]
+
+    # When preferred book has odds, use those as primary (actionable) price.
+    # Fall back to best across all books if preferred book doesn't list that player.
+    for name, entry in by_player.items():
+        if entry["preferred_price"] is not None:
+            # User can bet at their preferred book
+            entry["best_price"] = entry["preferred_price"]
+            entry["best_book"] = preferred_book
+            entry["implied_prob"] = entry["preferred_implied_prob"]
+
+    # Remove players that have no real sportsbook odds
+    return {k: v for k, v in by_player.items() if v["best_price"] is not None}
