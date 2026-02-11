@@ -135,7 +135,7 @@ def main():
     print(f"  Rounds in database: {total_rounds}")
 
     years_needed = []
-    for year in [2024, 2025]:
+    for year in [2020, 2021, 2022, 2023, 2024, 2025]:
         found = any(r["tour"] == "pga" and r["year"] == year for r in status)
         if not found:
             years_needed.append(year)

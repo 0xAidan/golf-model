@@ -13,6 +13,7 @@ Usage:
     compute_rolling_metrics(tournament_id, field_player_keys, course_num)
 """
 
+from datetime import datetime, timedelta
 from src import db
 from src.player_normalizer import display_name
 
@@ -46,6 +47,55 @@ def _compute_average(rounds: list[dict], field: str) -> float | None:
     if not vals:
         return None
     return sum(vals) / len(vals)
+
+
+def _compute_recency_weighted_average(rounds: list[dict], field: str,
+                                       half_life_days: int = 365) -> float | None:
+    """
+    Compute a recency-weighted average of a field across rounds.
+
+    More recent rounds count more. Uses exponential decay:
+      weight = 2^(-days_old / half_life_days)
+
+    With half_life_days=365 (default):
+      - This year's rounds: ~100% weight
+      - 1 year old: 50% weight
+      - 2 years old: 25% weight
+      - 3 years old: 12.5% weight
+      - 5 years old: ~3% weight
+
+    This prevents old course history from being weighted equally with
+    recent performance, which is critical for accurate course fit scoring.
+    """
+    now = datetime.now()
+    weighted_sum = 0.0
+    weight_sum = 0.0
+
+    for r in rounds:
+        val = r.get(field)
+        if val is None:
+            continue
+
+        # Parse event_completed date to compute age
+        event_date_str = r.get("event_completed", "")
+        if event_date_str:
+            try:
+                event_date = datetime.strptime(event_date_str, "%Y-%m-%d")
+                days_old = max(0, (now - event_date).days)
+            except ValueError:
+                days_old = 365  # Default to 1 year if date is unparseable
+        else:
+            days_old = 365
+
+        # Exponential decay: halves every half_life_days
+        weight = 2.0 ** (-days_old / half_life_days)
+
+        weighted_sum += val * weight
+        weight_sum += weight
+
+    if weight_sum == 0:
+        return None
+    return weighted_sum / weight_sum
 
 
 def _rank_players(player_values: dict[str, float | None], higher_is_better: bool = True) -> dict[str, int]:
@@ -260,7 +310,7 @@ def compute_rolling_metrics(tournament_id: int,
             })
             trad_computed += 1
 
-    # ═══ 4. Course-specific averages ═══
+    # ═══ 4. Course-specific averages (recency-weighted) ═══
     if course_num:
         player_course_avgs = {}
         for pk in field_player_keys:
@@ -274,7 +324,12 @@ def compute_rolling_metrics(tournament_id: int,
 
             avgs = {}
             for sg_name, db_field in SG_CATEGORIES.items():
-                avgs[sg_name] = _compute_average(rounds, db_field)
+                # Use recency-weighted average: recent rounds at this course
+                # matter much more than rounds from 3-5 years ago.
+                # half_life=365 means 1-year-old rounds get 50% weight.
+                avgs[sg_name] = _compute_recency_weighted_average(
+                    rounds, db_field, half_life_days=365
+                )
             avgs["_rounds_used"] = len(rounds)
             player_course_avgs[pk] = avgs
 
