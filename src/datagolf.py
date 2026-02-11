@@ -114,17 +114,21 @@ def _parse_rounds_response(raw_data, tour: str, year: int) -> list[dict]:
     """
     rows = []
 
-    # raw_data can be a dict with top-level keys or a list of events
-    # depending on whether event_id='all' or specific
+    # raw_data can be:
+    #   1. A single event dict (when event_id is specific): {"scores": [...], "event_name": ...}
+    #   2. A dict keyed by event_id (when event_id='all'): {"14": {"scores": [...]}, "16": {...}}
+    #   3. A list of event dicts
     if isinstance(raw_data, dict):
-        # Single event or wrapper
         if "scores" in raw_data:
-            events = [raw_data]
-        elif "event_completed" in raw_data:
+            # Single event response
             events = [raw_data]
         else:
-            # Might be wrapped differently
-            events = [raw_data]
+            # Dict keyed by event_id — check if values look like event dicts
+            first_val = next(iter(raw_data.values()), None) if raw_data else None
+            if isinstance(first_val, dict) and ("scores" in first_val or "event_name" in first_val):
+                events = list(raw_data.values())
+            else:
+                events = [raw_data]
     elif isinstance(raw_data, list):
         events = raw_data
     else:
@@ -401,14 +405,17 @@ def _store_decompositions_as_metrics(decompositions: list | dict,
         if not pkey:
             continue
 
-        # DG decomposition fields (varies by response format)
+        # DG decomposition fields — actual API field names from preds/player-decompositions
         sg_fields = {
-            "dg_sg_total": p.get("sg_total") or p.get("total"),
-            "dg_sg_ott": p.get("sg_ott") or p.get("off_the_tee"),
-            "dg_sg_app": p.get("sg_app") or p.get("approach"),
-            "dg_sg_arg": p.get("sg_arg") or p.get("around_the_green"),
-            "dg_sg_putt": p.get("sg_putt") or p.get("putting"),
-            "dg_sg_t2g": p.get("sg_t2g") or p.get("tee_to_green"),
+            "dg_sg_total": p.get("final_pred") or p.get("sg_total") or p.get("total"),
+            "dg_baseline_pred": p.get("baseline_pred"),
+            "dg_total_fit_adj": p.get("total_fit_adjustment"),
+            "dg_total_ch_adj": p.get("total_course_history_adjustment"),
+            "dg_sg_category_adj": p.get("strokes_gained_category_adjustment"),
+            "dg_driving_dist_adj": p.get("driving_distance_adjustment"),
+            "dg_driving_acc_adj": p.get("driving_accuracy_adjustment"),
+            "dg_cf_approach": p.get("cf_approach_comp"),
+            "dg_cf_short": p.get("cf_short_comp"),
         }
 
         for metric_name, value in sg_fields.items():
