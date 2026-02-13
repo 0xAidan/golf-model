@@ -11,6 +11,8 @@ Handles all interactions with the Data Golf API:
 Requires DATAGOLF_API_KEY environment variable.
 """
 
+import hashlib
+import json
 import os
 import requests
 from typing import Optional
@@ -561,6 +563,19 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
         "rounds_updated": 0,
         "errors": [],
     }
+    payload_hasher = hashlib.sha256()
+    payload_segments = 0
+
+    def _update_payload_hash(payload):
+        nonlocal payload_segments
+        if payload is None:
+            return
+        try:
+            serialized = json.dumps(payload, sort_keys=True, default=str)
+        except TypeError:
+            serialized = str(payload)
+        payload_hasher.update(serialized.encode("utf-8"))
+        payload_segments += 1
 
     # 0. Auto-update rounds for current year (fast — skips existing data)
     try:
@@ -585,6 +600,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     try:
         print("  Fetching DG pre-tournament predictions...")
         preds = fetch_pre_tournament(tour)
+        _update_payload_hash(preds)
         n = _store_predictions_as_metrics(preds, tournament_id)
         summary["predictions"] = n
         print(f"    → {n} prediction metrics stored")
@@ -596,6 +612,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     try:
         print("  Fetching DG player decompositions...")
         decomps = fetch_decompositions(tour)
+        _update_payload_hash(decomps)
         n = _store_decompositions_as_metrics(decomps, tournament_id)
         summary["decompositions"] = n
         print(f"    → {n} decomposition metrics stored")
@@ -607,6 +624,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     try:
         print("  Fetching DG field updates...")
         field = fetch_field_updates(tour)
+        _update_payload_hash(field)
         n = _store_field_as_metrics(field, tournament_id)
         summary["field"] = n
         print(f"    → {n} field metrics stored")
@@ -616,6 +634,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
 
     total = summary["predictions"] + summary["decompositions"] + summary["field"]
     summary["total_metrics"] = total
+    summary["payload_hash"] = payload_hasher.hexdigest() if payload_segments else None
     return summary
 
 

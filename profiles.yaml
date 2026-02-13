@@ -1,0 +1,23 @@
+# Golf Model run profiles
+# Each profile defines default CLI/app inputs so recurring workflows
+# can be triggered with `--profile <name>` or via the FastAPI UI.
+# CLI flags still win when explicitly provided.
+
+profiles:
+  weekly:
+    description: "Default PGA weekly pipeline (DG sync + AI)"
+    sync: true
+    ai: true
+    folder: data/csvs
+    tour: pga
+    course_num: null
+    backfill_years: []
+    no_odds: false
+    output: output
+  csv_only:
+    description: "Legacy CSV ingestion without DG sync/odds"
+    sync: false
+    ai: false
+    no_odds: true
+    folder: data/csvs
+    output: output

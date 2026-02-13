@@ -232,6 +232,29 @@ def init_db():
             output_json TEXT,            -- full AI response
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            profile_name TEXT,
+            inputs_json TEXT,
+            status TEXT DEFAULT 'running',
+            started_at TEXT DEFAULT (datetime('now')),
+            finished_at TEXT,
+            sync_metrics INTEGER,
+            players_scored INTEGER,
+            value_bets INTEGER,
+            card_path TEXT,
+            ai_enabled INTEGER,
+            ai_cost_usd REAL,
+            api_spend_usd REAL,
+            dg_payload_hash TEXT,
+            duration_seconds REAL,
+            error TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_runs_started
+            ON runs(started_at DESC);
     """)
     conn.commit()
 
@@ -728,6 +751,40 @@ def get_ai_decisions(tournament_id: int = None, phase: str = None) -> list[dict]
     rows = conn.execute(sql, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Run logging helpers ───────────────────────────────────────────
+
+def log_run_start(tournament_id: int, profile_name: str | None, inputs: dict) -> int:
+    """Insert a row into the runs table and return its id."""
+    conn = get_conn()
+    inputs_json = json.dumps(inputs, sort_keys=True, default=str)
+    cur = conn.execute(
+        """INSERT INTO runs (tournament_id, profile_name, inputs_json)
+            VALUES (?, ?, ?)""",
+        (tournament_id, profile_name, inputs_json),
+    )
+    run_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return run_id
+
+
+def log_run_finish(run_id: int, status: str, **fields):
+    """Update a run row with completion metadata."""
+    conn = get_conn()
+    updates = ["status = ?", "finished_at = datetime('now')"]
+    params = [status]
+    for column, value in fields.items():
+        if value is None:
+            continue
+        updates.append(f"{column} = ?")
+        params.append(value)
+    params.append(run_id)
+    sql = f"UPDATE runs SET {', '.join(updates)} WHERE id = ?"
+    conn.execute(sql, params)
+    conn.commit()
+    conn.close()
 
 
 # ── Weights helpers with course-aware lookup ───────────────────────

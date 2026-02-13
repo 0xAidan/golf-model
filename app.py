@@ -26,26 +26,42 @@ from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
-from src.csv_parser import ingest_folder, classify_file_type, detect_data_mode, detect_round_window
 from src.db import (
-    get_or_create_tournament, get_active_weights, get_all_players,
-    get_conn, init_db, store_results, store_picks,
+    get_or_create_tournament,
+    get_conn,
+    init_db,
+    store_results,
+    store_picks,
 )
-from src.models.composite import compute_composite
 from src.models.weights import retune, analyze_pick_performance, get_current_weights
 from src.player_normalizer import normalize_name, display_name
-from src.odds import fetch_odds_api, load_manual_odds, get_best_odds
-from src.value import find_value_bets
+from src.services.golf_model_service import AnalysisConfig, GolfModelService
 
 import pandas as pd
 
 app = FastAPI(title="Golf Betting Model")
+service = GolfModelService()
 
 # Store last analysis in memory for the card page
 _last_analysis = {}
 
 CSV_DIR = os.path.join(os.path.dirname(__file__), "data", "csvs")
 os.makedirs(CSV_DIR, exist_ok=True)
+
+
+def _format_odds_status(summary: dict | None) -> str:
+    if not summary:
+        return "Odds skipped"
+    status = summary.get("status")
+    if status == "skipped":
+        return "Odds skipped"
+    if status == "no_odds":
+        return "No odds returned"
+    sources = summary.get("sources", [])
+    if sources:
+        total = sum(source.get("count", 0) for source in sources)
+        return f"Fetched {total} odds entries"
+    return "Odds processed"
 
 
 # ── API Endpoints ───────────────────────────────────────────────────
@@ -117,45 +133,33 @@ async def run_analysis(
             if os.path.exists(p):
                 os.remove(p)
 
-        # Ingest CSVs
-        summary = ingest_folder(upload_dir, tournament_id)
+        # Run the unified service (CSV-only mode for uploads)
+        odds_flag = None if os.environ.get("ODDS_API_KEY") else True
+        config = AnalysisConfig(
+            tournament=tournament,
+            course=course or None,
+            folder=upload_dir,
+            sync=False,
+            ai=False,
+            no_odds=odds_flag,
+        )
+        try:
+            result = service.run_analysis(config)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
 
-        # Run models
-        weights = get_active_weights()
-        composite = compute_composite(tournament_id, weights)
+        composite = result.composite
+        value_bets = result.value_bets
+        weights = result.weights
+        odds_status = _format_odds_status(result.odds_summary)
+        summary = {
+            fname: {"type": meta.get("type"), "rows": meta.get("rows", 0)}
+            for fname, meta in (result.csv_summary or {}).items()
+        }
 
-        # Try fetching odds (non-blocking)
-        value_bets = {}
-        odds_status = "No odds API key set"
-        if os.environ.get("ODDS_API_KEY"):
-            try:
-                all_odds = []
-                for market in ["outrights", "top_5", "top_10", "top_20"]:
-                    api_odds = fetch_odds_api(market)
-                    all_odds.extend(api_odds)
-                if all_odds:
-                    odds_by_market = {}
-                    for o in all_odds:
-                        m = o["market"]
-                        if m not in odds_by_market:
-                            odds_by_market[m] = []
-                        odds_by_market[m].append(o)
-                    for market, market_odds in odds_by_market.items():
-                        best = get_best_odds(market_odds)
-                        bt = "outright" if market == "outrights" else market.replace("top_", "top")
-                        vb = find_value_bets(composite, best, bet_type=bt,
-                                            tournament_id=tournament_id)
-                        value_bets[bt] = vb
-                    odds_status = f"Fetched {len(all_odds)} odds"
-                else:
-                    odds_status = "API returned no odds"
-            except Exception as e:
-                odds_status = f"Odds error: {e}"
-
-        # Store in memory
         _last_analysis = {
             "tournament": tournament,
-            "tournament_id": tournament_id,
+            "tournament_id": result.tournament_id,
             "course": course,
             "composite": composite,
             "value_bets": value_bets,
@@ -163,12 +167,11 @@ async def run_analysis(
             "timestamp": datetime.now().isoformat(),
         }
 
-        # Also log top picks to DB
         pick_rows = []
         for r in composite[:20]:
             for bt in ["outright", "top5", "top10", "top20"]:
                 pick_rows.append({
-                    "tournament_id": tournament_id,
+                    "tournament_id": result.tournament_id,
                     "bet_type": bt,
                     "player_key": r["player_key"],
                     "player_display": r["player_display"],
@@ -195,8 +198,9 @@ async def run_analysis(
             "files_skipped": skipped,
             "players_scored": len(composite),
             "odds_status": odds_status,
-            "summary": {fname: {"type": s.get("type"), "rows": s.get("rows", 0)}
-                        for fname, s in summary.items()},
+            "run_id": result.run_id,
+            "card_path": result.card_path,
+            "summary": summary,
         }
 
     finally:
