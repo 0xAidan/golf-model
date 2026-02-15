@@ -25,11 +25,15 @@ def _rank_to_score(rank: float, field_size: int) -> float:
     return 100.0 * (1.0 - (rank - 1) / (field_size - 1))
 
 
-def _pct_to_score(pct: float) -> float:
-    """Convert a probability percentage to a 0-100 score."""
+def _pct_to_score(pct: float, scale: float = 300.0) -> float:
+    """Convert a probability percentage to a 0-100 score.
+
+    Uses a consistent mapping: 50 = baseline (zero signal),
+    higher pct = higher score, clamped to 0-100.
+    """
     if pct is None:
         return 50.0
-    return min(100.0, 50.0 + pct * 300)
+    return max(0.0, min(100.0, 50.0 + pct * scale))
 
 
 def _window_sort_key(w: str) -> int:
@@ -270,18 +274,22 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
         components["baseline"] = baseline_score
 
         # ── Sim probability score ──
+        # All sub-components use _pct_to_score for unified 0-100 scaling.
         sim_score = 50.0
         if pk in sim_data:
             sd = sim_data[pk]
             win_pct = sd.get("Win %", 0) or 0
             top10_pct = sd.get("Top 10 %", 0) or 0
             top20_pct = sd.get("Top 20 %", 0) or 0
-            make_cut = sd.get("Make Cut", 0) or 0
+            make_cut = sd.get("Make Cut", 0) or sd.get("Make Cut %", 0) or 0
+            # Consistent _pct_to_score for all components (50 = baseline, 0-100)
+            # Win% uses higher scale because small % = big signal
+            # Weights sum to 1.0: 0.30 + 0.30 + 0.25 + 0.15 = 1.00
             sim_score = (
-                0.30 * _pct_to_score(win_pct)
-                + 0.30 * min(100, top10_pct * 120)
-                + 0.25 * min(100, top20_pct * 100)
-                + 0.15 * min(100, make_cut * 90)
+                0.30 * _pct_to_score(win_pct, scale=300.0)
+                + 0.30 * _pct_to_score(top10_pct, scale=120.0)
+                + 0.25 * _pct_to_score(top20_pct, scale=80.0)
+                + 0.15 * _pct_to_score(make_cut, scale=60.0)
             )
             windows_used.append("sim")
         components["sim"] = sim_score
@@ -352,48 +360,62 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
             dg_rk = dg_ranking_data[pk]
             dg_rank = dg_rk.get("dg_rank")
             if dg_rank is not None:
-                # Invert: rank 1 = 100, rank 500 = 0
-                dg_rank_score = max(0.0, 100.0 * (1.0 - (dg_rank - 1) / 499))
+                # Invert: rank 1 = 100, rank max = 0
+                # Use dynamic max_rank from the actual dataset
+                max_rank = max(
+                    (d.get("dg_rank", 1) for d in dg_ranking_data.values()
+                     if d.get("dg_rank") is not None),
+                    default=500
+                )
+                max_rank = max(max_rank, 2)  # avoid division by zero
+                dg_rank_score = max(0.0, 100.0 * (1.0 - (dg_rank - 1) / (max_rank - 1)))
                 has_dg_rank = True
                 windows_used.append("dg_ranking")
         components["dg_ranking"] = dg_rank_score
 
         # ── Weighted total ──
-        # DG skill ratings are the most accurate available signal,
-        # so they get significant weight when available.
-        remaining = 1.0 - w_sim
-        multi_sg_weight = remaining * 0.20
+        # Build a dict of available components with raw weights,
+        # then normalize so weights always sum to exactly 1.0.
+        raw_weights = {}
+        component_scores = {}
 
-        # DG skill weight: 15% of total when available
-        dg_skill_weight = 0.15 if has_dg_skill else 0.0
-        # DG rank weight: 5% of total when available
-        dg_rank_weight = 0.05 if has_dg_rank else 0.0
-        # Reduce other weights proportionally to make room
-        dg_total_weight = dg_skill_weight + dg_rank_weight
+        # Sim is always available (defaults to 50)
+        raw_weights["sim"] = w_sim
+        component_scores["sim"] = sim_score
 
-        # Adjust if we have fewer window types
-        if not recent_scores and not baseline_scores:
-            # Only sim + multi_sg + DG signals
-            non_dg = 1.0 - dg_total_weight
-            score = (non_dg * 0.5) * sim_score + (non_dg * 0.5) * multi_sg
-            score += dg_skill_weight * dg_skill_score + dg_rank_weight * dg_rank_score
-        elif not recent_scores:
-            adj_factor = 1.0 - dg_total_weight
-            score = (adj_factor * baseline_weight * 2 * baseline_score
-                     + adj_factor * w_sim * sim_score
-                     + adj_factor * multi_sg_weight * multi_sg
-                     + dg_skill_weight * dg_skill_score
-                     + dg_rank_weight * dg_rank_score)
+        # Multi-SG
+        raw_weights["multi_sg"] = 0.15
+        component_scores["multi_sg"] = multi_sg
+
+        # Recent form windows
+        if recent_scores:
+            raw_weights["recent"] = 0.25
+            component_scores["recent"] = recent_score
+
+        # Baseline form windows
+        if baseline_scores:
+            raw_weights["baseline"] = 0.15
+            component_scores["baseline"] = baseline_score
+
+        # DG skill ratings (highest quality signal)
+        if has_dg_skill:
+            raw_weights["dg_skill"] = 0.15
+            component_scores["dg_skill"] = dg_skill_score
+
+        # DG rankings
+        if has_dg_rank:
+            raw_weights["dg_ranking"] = 0.05
+            component_scores["dg_ranking"] = dg_rank_score
+
+        # Normalize weights to sum to exactly 1.0
+        total_weight = sum(raw_weights.values())
+        if total_weight > 0:
+            norm_weights = {k: v / total_weight for k, v in raw_weights.items()}
         else:
-            adj_factor = 1.0 - dg_total_weight
-            score = (
-                adj_factor * recent_weight * recent_score
-                + adj_factor * baseline_weight * baseline_score
-                + adj_factor * w_sim * sim_score
-                + adj_factor * multi_sg_weight * multi_sg
-                + dg_skill_weight * dg_skill_score
-                + dg_rank_weight * dg_rank_score
-            )
+            norm_weights = {"sim": 1.0}
+            component_scores = {"sim": sim_score}
+
+        score = sum(norm_weights[k] * component_scores[k] for k in norm_weights)
 
         results[pk] = {
             "score": round(score, 2),
