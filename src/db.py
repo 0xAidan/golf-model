@@ -262,6 +262,7 @@ def init_db():
             player_name TEXT,
             win_prob REAL, top5_prob REAL, top10_prob REAL,
             top20_prob REAL, make_cut_prob REAL, model_type TEXT,
+            actual_finish TEXT,
             UNIQUE(event_id, year, player_dg_id, model_type)
         );
 
@@ -460,6 +461,13 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.execute("SELECT year FROM tournaments LIMIT 1")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE tournaments ADD COLUMN year INTEGER")
+        conn.commit()
+
+    # Add actual_finish column to historical_predictions if missing
+    try:
+        conn.execute("SELECT actual_finish FROM historical_predictions LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE historical_predictions ADD COLUMN actual_finish TEXT")
         conn.commit()
 
     # Add UNIQUE constraints via indexes (safe to run repeatedly)
@@ -882,7 +890,7 @@ def log_predictions(predictions: list[dict]):
         return
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO prediction_log
+        """INSERT OR REPLACE INTO prediction_log
            (tournament_id, player_key, bet_type, model_prob, dg_prob,
             market_implied_prob, actual_outcome, odds_decimal, profit)
            VALUES (:tournament_id, :player_key, :bet_type, :model_prob, :dg_prob,
