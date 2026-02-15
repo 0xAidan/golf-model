@@ -90,22 +90,23 @@ class GolfModelService:
         # Step 5: Fetch DG skill ratings, rankings, approach skill
         field_keys = db.get_all_players(tid)
         result["field_size"] = len(field_keys)
+        print(f"  Field size: {len(field_keys)} players")
 
         if field_keys:
+            print("  Fetching DG skill ratings & rankings...")
             self._sync_skill_data(tid, field_keys)
 
         # Step 6: Compute rolling stats
+        print("  Computing rolling stats...")
         rolling = self._compute_rolling_stats(tid, field_keys, course_num)
         result["rolling_stats"] = rolling
 
         # Step 7: Load course profile
+        print("  Loading course profile...")
         profile = self._load_course_profile(course_name, sync_result.get("decompositions_raw"))
 
-        # Step 7b: Intel harvesting (non-blocking)
-        intel_summary = self._harvest_intel(field_keys, tid)
-        result["intel_summary"] = intel_summary
-
         # Step 8: Run composite model
+        print("  Running composite model...")
         weights = self._get_weights(course_num)
         composite = self._run_composite(tid, weights, course_name)
         result["composite_results"] = composite
@@ -115,27 +116,35 @@ class GolfModelService:
             result["errors"].append("No players scored")
             return result
 
+        print(f"    → {len(composite)} players scored")
+
         # Step 9: AI pre-tournament analysis (if enabled)
         ai_pre_analysis = None
         ai_decisions = None
 
         if enable_ai and self._is_ai_available():
+            print("  Running AI pre-tournament analysis...")
             ai_pre_analysis = self._run_ai_pre_analysis(
                 tid, composite, profile, tournament_name, course_name
             )
             if ai_pre_analysis:
                 composite = self._apply_ai_adjustments(composite, ai_pre_analysis)
                 result["composite_results"] = composite
+                print("    → AI adjustments applied")
 
         result["ai_pre_analysis"] = ai_pre_analysis
 
         # Step 10: Fetch odds and compute value bets
+        print("  Fetching odds & computing value bets...")
         all_odds = self._fetch_odds()
         value_bets = self._compute_value_bets(composite, all_odds, tid)
         result["value_bets"] = value_bets
+        total_vb = sum(len(v) for v in value_bets.values()) if isinstance(value_bets, dict) else 0
+        print(f"    → {total_vb} value bets found")
 
         # Step 11: AI betting decisions
         if enable_ai and ai_pre_analysis and self._is_ai_available() and value_bets:
+            print("  Getting AI betting decisions...")
             ai_decisions = self._run_ai_betting_decisions(
                 tid, value_bets, ai_pre_analysis, composite,
                 tournament_name, course_name
@@ -150,6 +159,7 @@ class GolfModelService:
             self._log_predictions(tid, value_bets)
 
         # Step 13: Generate card
+        print("  Generating betting card...")
         card_path = self._generate_card(
             tournament_name, course_name, composite,
             value_bets, output_dir,
