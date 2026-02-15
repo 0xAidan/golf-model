@@ -101,6 +101,10 @@ class GolfModelService:
         # Step 7: Load course profile
         profile = self._load_course_profile(course_name, sync_result.get("decompositions_raw"))
 
+        # Step 7b: Intel harvesting (non-blocking)
+        intel_summary = self._harvest_intel(field_keys, tid)
+        result["intel_summary"] = intel_summary
+
         # Step 8: Run composite model
         weights = self._get_weights(course_num)
         composite = self._run_composite(tid, weights, course_name)
@@ -230,6 +234,25 @@ class GolfModelService:
         except Exception as e:
             logger.warning(f"Rolling stats error: {e}")
             return {"error": str(e)}
+
+    def _harvest_intel(self, field_keys: list[str],
+                       tournament_id: int = None) -> dict | None:
+        """Harvest intel for field players (non-blocking, best-effort)."""
+        try:
+            from workers.intel_harvester import harvest_for_field
+            from src.player_normalizer import display_name
+
+            player_names = [display_name(pk) for pk in field_keys[:30]]
+            summary = harvest_for_field(
+                player_names,
+                use_ai=False,
+                tournament_id=tournament_id,
+            )
+            logger.info("Intel harvest: %d items stored", summary.get("items_stored", 0))
+            return summary
+        except Exception as e:
+            logger.warning("Intel harvest failed (non-fatal): %s", e)
+            return None
 
     def _load_course_profile(self, course_name: str,
                               decomps_raw=None) -> dict | None:
