@@ -237,6 +237,15 @@ def init_db():
             output_json TEXT,            -- full AI response
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        -- ═══ Pipeline run logging ═══
+        CREATE TABLE IF NOT EXISTS runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            status TEXT,                 -- 'complete', 'error', 'running'
+            result_json TEXT,            -- JSON blob with field_size, duration, errors
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
 
