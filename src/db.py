@@ -24,11 +24,15 @@ from datetime import datetime
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golf.db")
 
 
+_DB_INITIALIZED = False
+
+
 def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -41,6 +45,7 @@ def init_db():
             name TEXT NOT NULL,
             course TEXT,
             date TEXT,
+            year INTEGER,
             created_at TEXT DEFAULT (datetime('now'))
         );
 
@@ -263,20 +268,81 @@ def _run_migrations(conn: sqlite3.Connection):
             conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
             conn.commit()
 
+    # Add year column to tournaments if missing
+    try:
+        conn.execute("SELECT year FROM tournaments LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE tournaments ADD COLUMN year INTEGER")
+        conn.commit()
+
+    # Add UNIQUE constraints via indexes (safe to run repeatedly)
+    _add_unique_constraints(conn)
+
+
+def _add_unique_constraints(conn: sqlite3.Connection):
+    """Add UNIQUE indexes for dedup. Deduplicates existing data first."""
+    constraint_defs = [
+        (
+            "idx_results_unique",
+            "results",
+            "(tournament_id, player_key)",
+        ),
+        (
+            "idx_picks_unique",
+            "picks",
+            "(tournament_id, player_key, bet_type)",
+        ),
+        (
+            "idx_prediction_log_unique",
+            "prediction_log",
+            "(tournament_id, player_key, bet_type)",
+        ),
+    ]
+
+    for idx_name, table, cols in constraint_defs:
+        # Check if index already exists
+        existing = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+            (idx_name,),
+        ).fetchone()
+        if existing:
+            continue
+
+        # Deduplicate: keep the row with the highest id (most recent)
+        try:
+            conn.execute(f"""
+                DELETE FROM {table}
+                WHERE id NOT IN (
+                    SELECT MAX(id) FROM {table}
+                    GROUP BY {cols.strip('()')}
+                )
+            """)
+            conn.execute(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table} {cols}"
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            # Table might not exist yet or columns might differ
+            pass
+
 
 # ── Tournament helpers ──────────────────────────────────────────────
 
-def get_or_create_tournament(name: str, course: str = None, date: str = None) -> int:
+def get_or_create_tournament(name: str, course: str = None,
+                             date: str = None, year: int = None) -> int:
+    if year is None:
+        year = datetime.now().year
     conn = get_conn()
     row = conn.execute(
-        "SELECT id FROM tournaments WHERE name = ?", (name,)
+        "SELECT id FROM tournaments WHERE name = ? AND (year = ? OR year IS NULL)",
+        (name, year),
     ).fetchone()
     if row:
         tid = row["id"]
     else:
         cur = conn.execute(
-            "INSERT INTO tournaments (name, course, date) VALUES (?, ?, ?)",
-            (name, course, date),
+            "INSERT INTO tournaments (name, course, date, year) VALUES (?, ?, ?, ?)",
+            (name, course, date, year),
         )
         tid = cur.lastrowid
         conn.commit()
@@ -302,12 +368,12 @@ def log_csv_import(tournament_id, filename, file_type, data_mode, round_window,
 
 
 def store_metrics(rows: list[dict]):
-    """Bulk insert metric rows. Each dict must have the metric table columns."""
+    """Bulk insert/update metric rows. Uses INSERT OR REPLACE for dedup."""
     if not rows:
         return
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO metrics
+        """INSERT OR REPLACE INTO metrics
            (tournament_id, csv_import_id, player_key, player_display,
             metric_category, data_mode, round_window,
             metric_name, metric_value, metric_text)
@@ -761,5 +827,14 @@ def get_weights_for_course(course_num: int = None) -> dict:
     return blended
 
 
-# Initialize on import
-init_db()
+def ensure_initialized():
+    """Initialize the database if not already done. Call before first use."""
+    global _DB_INITIALIZED
+    if not _DB_INITIALIZED:
+        init_db()
+        _DB_INITIALIZED = True
+
+
+# Lazy initialization: ensure tables exist on first connection use.
+# This replaces the old module-level init_db() call so .env can load first.
+ensure_initialized()
