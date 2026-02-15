@@ -262,7 +262,11 @@ class GolfModelService:
                         course_name: str = None) -> list[dict]:
         """Run the composite model."""
         from src.models.composite import compute_composite
-        return compute_composite(tournament_id, weights, course_name=course_name)
+        return compute_composite(
+            tournament_id, weights,
+            course_name=course_name,
+            strategy_config=self.strategy_config,
+        )
 
     def _is_ai_available(self) -> bool:
         from src.ai_brain import is_ai_available
