@@ -40,54 +40,64 @@ def compute_ev(model_prob: float, american_odds: int) -> float:
 def model_score_to_prob(composite_score: float, all_scores: list[float],
                         bet_type: str = "top20") -> float:
     """
-    Convert a composite score to an approximate probability for a given bet type.
+    Convert a composite score to a properly normalized probability.
 
-    Uses a softmax-like approach: player's share of total "talent"
-    in the field, then calibrate based on bet type.
+    Uses true softmax normalization so probabilities sum to the correct
+    total for each bet type:
+      - outright: sum = 1.0 (one winner)
+      - top5: sum = 5.0
+      - top10: sum = 10.0
+      - top20: sum = 20.0
+      - make_cut: sum = 0.65 * field_size
+      - frl: sum = 1.0 (one first-round leader)
 
-    This is approximate — the sim probabilities from Betsperts are more
-    accurate when available. This fills in when we don't have sim data.
+    This is a fallback — DG calibrated probabilities are preferred.
     """
+    import math
+
     if not all_scores:
         return 0.0
 
-    # Shift scores to be positive (min score → small positive)
-    min_score = min(all_scores)
-    shifted = [s - min_score + 1.0 for s in all_scores]
-    player_shifted = composite_score - min_score + 1.0
-
-    # Temperature controls how peaked the distribution is
-    # Higher temp = more spread out
-    temp_by_type = {
-        "outright": 0.8,   # Very peaked — only a few can win
-        "top5": 1.2,
-        "top10": 1.6,
-        "top20": 2.0,       # More spread out
-        "make_cut": 3.0,
-        "frl": 0.6,         # Very peaked — one player leads after R1
-    }
-    temp = temp_by_type.get(bet_type, 1.5)
-
-    # Power-based probability
-    powered = [s ** temp for s in shifted]
-    total = sum(powered)
-    base_prob = (player_shifted ** temp) / total if total > 0 else 0.0
-
-    # Calibrate: for top20, roughly 20/field_size of players finish top 20
     field_size = len(all_scores)
-    calibration = {
-        "outright": 1.0 / field_size * 5.0,  # ~5x base rate for top player
-        "top5": 5.0 / field_size * 3.0,
-        "top10": 10.0 / field_size * 2.5,
-        "top20": 20.0 / field_size * 2.0,
-        "make_cut": 0.65 * 1.5,  # ~65% make cut baseline
-        "frl": 1.0 / field_size * 4.0,  # Similar to outright — one leader
-    }
-    cal = calibration.get(bet_type, 1.0)
 
-    # Scale so the sum of all probs roughly matches the base rate
-    prob = base_prob * cal * field_size
-    return max(0.001, min(0.99, prob))
+    # Temperature controls how peaked the distribution is.
+    # Higher temperature = more uniform (wider markets).
+    temp_by_type = {
+        "outright": 8.0,
+        "top5": 10.0,
+        "top10": 12.0,
+        "top20": 15.0,
+        "make_cut": 20.0,
+        "frl": 7.0,
+    }
+    temp = temp_by_type.get(bet_type, 12.0)
+
+    # Target sum: how many "winners" in this market
+    target_sum_by_type = {
+        "outright": 1.0,
+        "top5": 5.0,
+        "top10": 10.0,
+        "top20": 20.0,
+        "make_cut": 0.65 * field_size,
+        "frl": 1.0,
+    }
+    target_sum = target_sum_by_type.get(bet_type, 10.0)
+
+    # True softmax: exp(score / temperature) for each player
+    # Subtract max for numerical stability (prevents overflow)
+    max_score = max(all_scores)
+    exp_scores = [math.exp((s - max_score) / temp) for s in all_scores]
+    exp_total = sum(exp_scores)
+
+    if exp_total == 0:
+        return target_sum / field_size
+
+    # Player's softmax share, then scale to target sum
+    player_exp = math.exp((composite_score - max_score) / temp)
+    prob = (player_exp / exp_total) * target_sum
+
+    # Clamp individual probability to valid range
+    return max(0.001, min(0.95, prob))
 
 
 def _get_dg_probabilities(tournament_id: int) -> dict:
@@ -112,9 +122,14 @@ def _get_dg_probabilities(tournament_id: int) -> dict:
 
         # DG probabilities from preds/pre-tournament are stored as decimals (0-1)
         # or percentages (0-100) depending on odds_format.
-        # We requested percent format, so values might be like 0.05 (5%) or 5.0 (5%).
-        # Normalize: if > 1, assume it's a percentage; divide by 100.
+        # We requested percent format, so values could be 0.05 (5%) or 5.0 (5%).
+        # Heuristic: if value > 1.0, it's almost certainly a percentage.
+        # Secondary check: if ALL values for a player sum > 2.0, they're percentages.
         prob = val / 100.0 if val > 1.0 else val
+        # Safety: probabilities must be in (0, 1)
+        if prob > 1.0:
+            prob = prob / 100.0
+        prob = max(0.0001, min(0.9999, prob))
 
         # Map metric names to bet types
         # Prefer course-history versions when available
