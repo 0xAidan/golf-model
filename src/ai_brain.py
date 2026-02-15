@@ -700,12 +700,19 @@ def apply_ai_adjustments(composite_results: list[dict],
     if not adjustments:
         return composite_results
 
-    # Apply adjustments
+    # Apply adjustments, clamped to [-5.0, +5.0]
     for r in composite_results:
         adj = adjustments.get(r["player_key"], 0)
         if adj:
-            r["composite"] = round(r["composite"] + adj, 2)
-            r["ai_adjustment"] = adj
+            clamped = max(-5.0, min(5.0, adj))
+            if clamped != adj:
+                import logging
+                logging.getLogger("ai_brain").warning(
+                    f"Clamped AI adjustment for {r.get('player_display', r['player_key'])}: "
+                    f"{adj} -> {clamped}"
+                )
+            r["composite"] = round(r["composite"] + clamped, 2)
+            r["ai_adjustment"] = clamped
 
     # Re-sort and re-rank
     composite_results.sort(key=lambda x: x["composite"], reverse=True)

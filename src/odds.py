@@ -14,7 +14,6 @@ from typing import Optional
 
 # ── The Odds API ────────────────────────────────────────────────────
 
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 SPORT = "golf_pga"
 
@@ -26,6 +25,8 @@ def fetch_odds_api(market: str = "outrights") -> list[dict]:
     market: 'outrights', 'top_5', 'top_10', 'top_20'
     Returns: list of {player, bookmaker, price, implied_prob}
     """
+    # Read API key at call time so .env is loaded before this runs
+    ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
     if not ODDS_API_KEY:
         print("  No ODDS_API_KEY set. Skipping API odds fetch.")
         print("  Set it with: export ODDS_API_KEY=your_key_here")
@@ -139,9 +140,9 @@ def load_manual_odds(filepath: str) -> list[dict]:
 # DG model references — not real bettable sportsbooks
 _DG_MODEL_BOOKS = {"DG-CH", "DG-Base"}
 
-# Default preferred sportsbook — set to the book you actually bet at.
-# EV calculations use this book's odds so results are actionable.
-PREFERRED_BOOK = os.environ.get("PREFERRED_BOOK", "bet365")
+def _get_preferred_book() -> str:
+    """Get preferred book at call time so .env is loaded first."""
+    return os.environ.get("PREFERRED_BOOK", "bet365")
 
 
 def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
@@ -162,7 +163,7 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
     }}
     """
     if preferred_book is None:
-        preferred_book = PREFERRED_BOOK
+        preferred_book = _get_preferred_book()
 
     by_player = {}
     for o in odds_list:
