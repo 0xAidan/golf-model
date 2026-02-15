@@ -676,7 +676,8 @@ def main():
         print("  Running quantitative model only")
 
     # ── Fetch live odds from Data Golf ──────────────────────────
-    from src.odds import PREFERRED_BOOK as _pbook
+    from src.odds import _get_preferred_book
+    _pbook = _get_preferred_book()
     print_header("Step 7: Fetching Live Sportsbook Odds")
     print(f"  Primary book: {_pbook} (EV calculated against {_pbook} odds)")
     print("  Also tracking: DraftKings, FanDuel, BetMGM, Pinnacle, + 10 others")
@@ -863,7 +864,7 @@ def main():
               f"{trend:>5}  {win_str:>7}  {t10_str:>7}")
 
     # ── Value bets with real sportsbook odds ──────────────────
-    from src.odds import PREFERRED_BOOK
+    PREFERRED_BOOK = _get_preferred_book()
     for bt_label, bt_key in [("OUTRIGHT WINNER", "outright"),
                               ("TOP 5 FINISH", "top5"),
                               ("TOP 10 FINISH", "top10"),

@@ -654,6 +654,42 @@ async def get_calibration():
     return compute_calibration()
 
 
+@app.post("/api/run-service")
+async def run_service_analysis(request: Request):
+    """Run the full unified pipeline via GolfModelService."""
+    from src.services.golf_model_service import GolfModelService
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    service = GolfModelService(tour=data.get("tour", "pga"))
+    result = service.run_analysis(
+        tournament_name=data.get("tournament"),
+        course_name=data.get("course"),
+        event_id=data.get("event_id"),
+        course_num=data.get("course_num"),
+        enable_ai=data.get("enable_ai", True),
+        enable_backfill=data.get("enable_backfill", True),
+    )
+
+    # Store results for the card/predictions pages
+    global _last_analysis
+    if result.get("status") == "complete":
+        _last_analysis = {
+            "tournament": result.get("event_name", ""),
+            "tournament_id": result.get("tournament_id"),
+            "course": result.get("course_name", ""),
+            "composite": result.get("composite_results", []),
+            "value_bets": result.get("value_bets", {}),
+            "weights": get_active_weights(),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    return result
+
+
 @app.get("/api/ai-memories")
 async def get_memories(topic: str = None):
     """Get AI brain memories, optionally filtered by topic."""
@@ -662,6 +698,94 @@ async def get_memories(topic: str = None):
     memories = get_ai_memories(topics=topics)
     all_topics = get_all_ai_memory_topics()
     return {"memories": memories, "topics": all_topics}
+
+
+# ── Backtester & Experiments Endpoints ─────────────────────────────
+
+@app.get("/api/experiments")
+async def list_experiments():
+    """Get experiment leaderboard."""
+    try:
+        from backtester.experiments import get_experiment_leaderboard
+        return {"experiments": get_experiment_leaderboard(limit=50)}
+    except Exception as e:
+        return {"experiments": [], "error": str(e)}
+
+
+@app.post("/api/experiments/create")
+async def create_experiment_endpoint(request: Request):
+    """Create a new experiment."""
+    from backtester.experiments import create_experiment
+    from backtester.strategy import StrategyConfig
+    data = await request.json()
+    strategy = StrategyConfig(**(data.get("config", {})))
+    strategy.name = data.get("name", "manual")
+    exp_id = create_experiment(
+        hypothesis=data.get("hypothesis", "Manual experiment"),
+        strategy=strategy,
+        source="manual",
+        scope=data.get("scope", "global"),
+    )
+    return {"id": exp_id}
+
+
+@app.post("/api/experiments/{exp_id}/run")
+async def run_experiment_endpoint(exp_id: int):
+    """Run a pending experiment."""
+    from backtester.experiments import run_experiment, evaluate_significance
+    try:
+        result = run_experiment(exp_id)
+        sig = evaluate_significance(exp_id)
+        return {"result": result.to_dict(), "significance": sig}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/active-strategy")
+async def get_active_strategy():
+    """Get the current active strategy."""
+    try:
+        from backtester.experiments import get_active_strategy
+        strategy = get_active_strategy("global")
+        return {"strategy": strategy.__dict__}
+    except Exception as e:
+        return {"strategy": None, "error": str(e)}
+
+
+@app.get("/api/agent-status")
+async def get_agent_status():
+    """Get research agent status."""
+    conn = get_conn()
+    try:
+        pending = conn.execute("SELECT COUNT(*) FROM experiments WHERE status='pending'").fetchone()[0]
+        running = conn.execute("SELECT COUNT(*) FROM experiments WHERE status='running'").fetchone()[0]
+        completed = conn.execute("SELECT COUNT(*) FROM experiments WHERE status='completed'").fetchone()[0]
+        promoted = conn.execute("SELECT COUNT(*) FROM experiments WHERE promoted=1").fetchone()[0]
+        outliers = conn.execute("SELECT COUNT(*) FROM outlier_investigations").fetchone()[0]
+        weather_hours = conn.execute("SELECT COUNT(*) FROM tournament_weather").fetchone()[0]
+        return {
+            "experiments": {"pending": pending, "running": running, "completed": completed, "promoted": promoted},
+            "outlier_investigations": outliers,
+            "weather_data_hours": weather_hours,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/outlier-investigations")
+async def list_outlier_investigations():
+    """Get recent outlier investigations."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT event_id, year, player_key, predicted_rank, actual_finish,
+                   delta, root_cause, actionable, ai_explanation, created_at
+            FROM outlier_investigations
+            ORDER BY created_at DESC LIMIT 30
+        """).fetchall()
+        return {"investigations": [dict(r) for r in rows]}
+    except Exception:
+        return {"investigations": []}
 
 
 # ── HTML Page (everything in one file) ──────────────────────────────
@@ -761,6 +885,9 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         <div class="tab active" onclick="showTab('setup')">Setup & Sync</div>
         <div class="tab" onclick="showTab('predictions')">Predictions</div>
         <div class="tab" onclick="showTab('ai')">AI Brain</div>
+        <div class="tab" onclick="showTab('backtester')">Backtester</div>
+        <div class="tab" onclick="showTab('experiments')">Experiments</div>
+        <div class="tab" onclick="showTab('agent')">Agent</div>
         <div class="tab" onclick="showTab('data')">Add Data</div>
         <div class="tab" onclick="showTab('dashboard')">Dashboard</div>
     </div>
@@ -843,6 +970,60 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
         <button class="secondary" onclick="loadMemories()" style="margin-top:10px;">Load Memories</button>
     </div>
 
+    <!-- ══ BACKTESTER TAB ═══════════════════════════════ -->
+    <div id="tab-backtester" class="tab-content">
+        <h2>Run Backtest</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:15px;">
+            Simulate a betting strategy against historical data. Requires backfilled data + PIT stats.
+        </p>
+        <div class="form-row">
+            <div><label>Strategy Name</label><input id="btName" type="text" value="manual_test" style="width:100%"></div>
+            <div><label>Min EV Threshold</label><input id="btMinEv" type="number" step="0.01" value="0.05" style="width:100%"></div>
+        </div>
+        <div class="form-row">
+            <div><label>Stat Window (rounds)</label><select id="btWindow" style="width:100%"><option value="12">12 (hot form)</option><option value="24" selected>24 (balanced)</option><option value="50">50 (stability)</option></select></div>
+            <div><label>Years (comma-separated)</label><input id="btYears" type="text" value="2024,2025" style="width:100%"></div>
+        </div>
+        <div class="form-row">
+            <div><label>Softmax Temperature</label><input id="btTemp" type="number" step="0.1" value="1.0" style="width:100%"></div>
+            <div><label>Kelly Fraction</label><input id="btKelly" type="number" step="0.05" value="0.25" style="width:100%"></div>
+        </div>
+        <button onclick="runBacktest()">Run Backtest</button>
+        <div id="backtestResult" style="margin-top:15px;"></div>
+    </div>
+
+    <!-- ══ EXPERIMENTS TAB ══════════════════════════════ -->
+    <div id="tab-experiments" class="tab-content">
+        <h2>Experiment Leaderboard</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+            Strategies ranked by backtest ROI. Significant winners get promoted to active.
+        </p>
+        <div id="experimentsList"><div class="status loading"><span class="spinner"></span>Loading...</div></div>
+
+        <h2>Active Strategy</h2>
+        <div id="activeStrategy"><div class="status info">Loading...</div></div>
+
+        <h2>Create Experiment</h2>
+        <div class="form-row">
+            <div><label>Hypothesis</label><input id="expHypothesis" type="text" placeholder="e.g. Higher approach weight on long courses" style="width:100%"></div>
+        </div>
+        <button class="secondary" onclick="createExperiment()">Create & Queue</button>
+        <div id="createExpResult" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- ══ AGENT TAB ═══════════════════════════════════ -->
+    <div id="tab-agent" class="tab-content">
+        <h2>Research Agent Status</h2>
+        <p style="color:#94a3b8;font-size:0.85em;margin-bottom:15px;">
+            The autonomous agent runs 5 background threads: data collection, hypothesis generation,
+            experiment execution, outlier analysis, and Bayesian optimization.
+        </p>
+        <div id="agentStatus"><div class="status loading"><span class="spinner"></span>Loading...</div></div>
+
+        <h2>Recent Outlier Investigations</h2>
+        <div id="outlierList"><div class="status info">Loading...</div></div>
+    </div>
+
     <!-- ══ ADD DATA TAB ══════════════════════════════════ -->
     <div id="tab-data" class="tab-content">
         <h2>Upload Betsperts CSVs (Optional Supplement)</h2>
@@ -903,7 +1084,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 <script>
 // ── Tab switching ──
-const TAB_NAMES = ['setup','predictions','ai','data','dashboard'];
+const TAB_NAMES = ['setup','predictions','ai','backtester','experiments','agent','data','dashboard'];
 function showTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
         t.classList.toggle('active', TAB_NAMES[i] === name);
@@ -914,6 +1095,9 @@ function showTab(name) {
 
     if (name === 'predictions') loadPredictions();
     if (name === 'ai') { loadAiStatus(); loadTournaments(); }
+    if (name === 'backtester') {}
+    if (name === 'experiments') { loadExperiments(); loadActiveStrategy(); }
+    if (name === 'agent') { loadAgentStatus(); loadOutliers(); }
     if (name === 'data') { loadTournaments(); loadSavedCourses(); }
     if (name === 'dashboard') loadDashboard();
     if (name === 'setup') loadBackfillStatus();
@@ -1377,6 +1561,133 @@ async function doRetune() {
         else if (data.saved) { el.innerHTML='<span style="color:#4ade80;">Weights updated!</span>'; loadDashboard(); }
         else el.innerHTML = 'Dry run complete.';
     } catch(e) { el.innerHTML='<span style="color:#ef4444;">Error</span>'; }
+}
+
+// ══ BACKTESTER ══
+async function runBacktest() {
+    const el = document.getElementById('backtestResult');
+    el.innerHTML = '<div class="status loading"><span class="spinner"></span>Running backtest... this may take a minute</div>';
+    const config = {
+        name: document.getElementById('btName').value,
+        min_ev: parseFloat(document.getElementById('btMinEv').value),
+        stat_window: parseInt(document.getElementById('btWindow').value),
+        softmax_temp: parseFloat(document.getElementById('btTemp').value),
+        kelly_fraction: parseFloat(document.getElementById('btKelly').value),
+    };
+    const years = document.getElementById('btYears').value;
+    try {
+        // Create experiment then run it
+        const createResp = await fetch('/api/experiments/create', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name:config.name, hypothesis:'Manual backtest: '+config.name, config:config})
+        });
+        const createData = await createResp.json();
+        if (!createData.id) { el.innerHTML='<div class="status error">Failed to create experiment</div>'; return; }
+
+        const runResp = await fetch('/api/experiments/'+createData.id+'/run', {method:'POST'});
+        const runData = await runResp.json();
+        if (runData.error) { el.innerHTML='<div class="status error">'+runData.error+'</div>'; return; }
+
+        const r = runData.result || {};
+        const s = runData.significance || {};
+        let html = '<div class="stats-grid">';
+        html += '<div class="stat-box"><div class="number">'+(r.events_simulated||0)+'</div><div class="label">Events</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(r.total_bets||0)+'</div><div class="label">Bets</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(r.wins||0)+'</div><div class="label">Wins</div></div>';
+        html += '<div class="stat-box"><div class="number" style="color:'+((r.roi_pct||0)>=0?'#4ade80':'#ef4444')+'">'+(r.roi_pct||0).toFixed(1)+'%</div><div class="label">ROI</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(r.sharpe||0).toFixed(3)+'</div><div class="label">Sharpe</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(r.clv_avg||0).toFixed(4)+'</div><div class="label">Avg CLV</div></div>';
+        html += '</div>';
+        if (s.significant) html += '<div class="status success">Statistically significant improvement (p='+s.p_value+')</div>';
+        else if (s.p_value) html += '<div class="status info">Not significant (p='+s.p_value+')</div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+// ══ EXPERIMENTS ══
+async function loadExperiments() {
+    const el = document.getElementById('experimentsList');
+    try {
+        const resp = await fetch('/api/experiments');
+        const data = await resp.json();
+        const exps = data.experiments || [];
+        if (!exps.length) { el.innerHTML='<div class="status info">No experiments yet. Run a backtest or start the research agent.</div>'; return; }
+        let html = '<table><tr><th>#</th><th>Hypothesis</th><th>Source</th><th>ROI</th><th>Bets</th><th>Sharpe</th><th>Sig?</th><th>Status</th></tr>';
+        for (const e of exps) {
+            const roiColor = (e.roi_pct||0)>=0?'#4ade80':'#ef4444';
+            html += '<tr><td>'+e.id+'</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">'+e.hypothesis+'</td><td style="font-size:0.8em;">'+e.source+'</td><td class="num" style="color:'+roiColor+'">'+(e.roi_pct||0).toFixed(1)+'%</td><td class="num">'+(e.total_bets||0)+'</td><td class="num">'+(e.sharpe||0).toFixed(2)+'</td><td>'+(e.significant?'Yes':'—')+'</td><td>'+(e.promoted?'<span style="color:#4ade80;">ACTIVE</span>':e.status)+'</td></tr>';
+        }
+        html += '</table>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error loading experiments</div>'; }
+}
+
+async function loadActiveStrategy() {
+    const el = document.getElementById('activeStrategy');
+    try {
+        const resp = await fetch('/api/active-strategy');
+        const data = await resp.json();
+        const s = data.strategy;
+        if (!s) { el.innerHTML='<div class="status info">Using default strategy (no experiments promoted yet)</div>'; return; }
+        let html = '<div class="card-section"><div class="stats-grid">';
+        const fields = ['w_sg_total','w_sg_app','w_sg_ott','w_sg_arg','w_sg_putt','w_form','w_course_fit'];
+        for (const f of fields) html += '<div class="stat-box"><div class="number">'+(s[f]||0).toFixed(2)+'</div><div class="label">'+f.replace('w_','')+'</div></div>';
+        html += '</div><p style="margin-top:10px;color:#94a3b8;font-size:0.85em;">Min EV: '+s.min_ev+' · Window: '+s.stat_window+' · Temp: '+s.softmax_temp+' · Kelly: '+s.kelly_fraction+'</p></div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error</div>'; }
+}
+
+async function createExperiment() {
+    const el = document.getElementById('createExpResult');
+    const hyp = document.getElementById('expHypothesis').value;
+    if (!hyp) { alert('Enter a hypothesis'); return; }
+    try {
+        const resp = await fetch('/api/experiments/create', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({hypothesis:hyp, name:'manual', scope:'global', config:{}})
+        });
+        const data = await resp.json();
+        el.innerHTML='<div class="status success">Created experiment #'+data.id+'. Run it from the Backtester tab.</div>';
+        loadExperiments();
+    } catch(e) { el.innerHTML='<div class="status error">Error: '+e.message+'</div>'; }
+}
+
+// ══ AGENT ══
+async function loadAgentStatus() {
+    const el = document.getElementById('agentStatus');
+    try {
+        const resp = await fetch('/api/agent-status');
+        const data = await resp.json();
+        if (data.error) { el.innerHTML='<div class="status error">'+data.error+'</div>'; return; }
+        const e = data.experiments || {};
+        let html = '<div class="stats-grid">';
+        html += '<div class="stat-box"><div class="number">'+(e.pending||0)+'</div><div class="label">Pending</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(e.running||0)+'</div><div class="label">Running</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(e.completed||0)+'</div><div class="label">Completed</div></div>';
+        html += '<div class="stat-box"><div class="number" style="color:#4ade80;">'+(e.promoted||0)+'</div><div class="label">Promoted</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(data.outlier_investigations||0)+'</div><div class="label">Outliers</div></div>';
+        html += '<div class="stat-box"><div class="number">'+(data.weather_data_hours||0).toLocaleString()+'</div><div class="label">Weather Hrs</div></div>';
+        html += '</div>';
+        html += '<div style="margin-top:15px;"><p style="color:#94a3b8;font-size:0.85em;">Start the agent: <code style="background:#1e2030;padding:2px 6px;border-radius:3px;">python start.py agent</code></p></div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error loading agent status</div>'; }
+}
+
+async function loadOutliers() {
+    const el = document.getElementById('outlierList');
+    try {
+        const resp = await fetch('/api/outlier-investigations');
+        const data = await resp.json();
+        const items = data.investigations || [];
+        if (!items.length) { el.innerHTML='<div class="status info">No outlier investigations yet. Start the agent or run a backtest first.</div>'; return; }
+        let html = '<table><tr><th>Event</th><th>Year</th><th>Player</th><th>Predicted</th><th>Actual</th><th>Delta</th><th>Cause</th><th>Actionable</th></tr>';
+        for (const o of items) {
+            const color = o.delta > 50 ? '#ef4444' : o.delta > 30 ? '#fbbf24' : '#94a3b8';
+            html += '<tr><td>'+o.event_id+'</td><td>'+o.year+'</td><td>'+o.player_key+'</td><td class="num">'+o.predicted_rank+'</td><td class="num">'+o.actual_finish+'</td><td class="num" style="color:'+color+'">'+o.delta+'</td><td>'+o.root_cause+'</td><td>'+(o.actionable?'Yes':'—')+'</td></tr>';
+        }
+        html += '</table>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML='<div class="status error">Error loading outliers</div>'; }
 }
 
 </script>

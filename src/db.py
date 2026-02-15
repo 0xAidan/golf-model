@@ -24,11 +24,15 @@ from datetime import datetime
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golf.db")
 
 
+_DB_INITIALIZED = False
+
+
 def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -41,6 +45,7 @@ def init_db():
             name TEXT NOT NULL,
             course TEXT,
             date TEXT,
+            year INTEGER,
             created_at TEXT DEFAULT (datetime('now'))
         );
 
@@ -232,6 +237,193 @@ def init_db():
             output_json TEXT,            -- full AI response
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        -- ═══ Pipeline run logging ═══
+        CREATE TABLE IF NOT EXISTS runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            status TEXT,
+            result_json TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ═══ Historical data (backtester) ═══
+        CREATE TABLE IF NOT EXISTS historical_odds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_dg_id INTEGER,
+            player_name TEXT, market TEXT, book TEXT,
+            open_line REAL, close_line REAL, outcome TEXT,
+            UNIQUE(event_id, year, player_dg_id, market, book)
+        );
+
+        CREATE TABLE IF NOT EXISTS historical_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_dg_id INTEGER,
+            player_name TEXT,
+            win_prob REAL, top5_prob REAL, top10_prob REAL,
+            top20_prob REAL, make_cut_prob REAL, model_type TEXT,
+            UNIQUE(event_id, year, player_dg_id, model_type)
+        );
+
+        CREATE TABLE IF NOT EXISTS historical_event_info (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, event_name TEXT,
+            course_id TEXT, course_name TEXT, tour TEXT,
+            start_date TEXT, end_date TEXT,
+            latitude REAL, longitude REAL,
+            UNIQUE(event_id, year)
+        );
+
+        CREATE TABLE IF NOT EXISTS backfill_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_name TEXT, event_id TEXT, year INTEGER,
+            status TEXT, fetched_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(table_name, event_id, year)
+        );
+
+        CREATE TABLE IF NOT EXISTS tournament_weather (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, date TEXT, hour INTEGER,
+            temperature_c REAL, wind_speed_kmh REAL, wind_gusts_kmh REAL,
+            wind_direction INTEGER, precipitation_mm REAL,
+            humidity_pct REAL, cloud_cover_pct REAL, pressure_hpa REAL,
+            UNIQUE(event_id, year, date, hour)
+        );
+
+        CREATE TABLE IF NOT EXISTS tournament_weather_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, round_num INTEGER,
+            avg_wind_kmh REAL, max_gust_kmh REAL,
+            total_precip_mm REAL, avg_temp_c REAL,
+            am_wave_wind REAL, pm_wave_wind REAL,
+            conditions_rating REAL,
+            UNIQUE(event_id, year, round_num)
+        );
+
+        CREATE TABLE IF NOT EXISTS equipment_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_key TEXT, change_date TEXT, category TEXT,
+            old_equipment TEXT, new_equipment TEXT,
+            source TEXT, ai_impact_assessment TEXT,
+            performance_delta_sg REAL, measured_after_rounds INTEGER,
+            UNIQUE(player_key, change_date, category)
+        );
+
+        CREATE TABLE IF NOT EXISTS course_encyclopedia (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id TEXT, course_name TEXT,
+            latitude REAL, longitude REAL, elevation_m REAL,
+            grass_type_fairway TEXT, grass_type_greens TEXT,
+            green_speed TEXT, fairway_width TEXT,
+            yardage INTEGER, par INTEGER,
+            prevailing_wind TEXT, course_type TEXT,
+            sg_ott_importance REAL, sg_app_importance REAL,
+            sg_arg_importance REAL, sg_putt_importance REAL,
+            historical_scoring_avg REAL, ai_course_profile TEXT,
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(course_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS hole_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            round_num INTEGER, hole_num INTEGER,
+            par INTEGER, score INTEGER, score_to_par INTEGER,
+            UNIQUE(event_id, year, player_key, round_num, hole_num)
+        );
+
+        CREATE TABLE IF NOT EXISTS hole_difficulty (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, round_num INTEGER,
+            hole_num INTEGER, par INTEGER,
+            field_avg_score REAL, birdie_pct REAL,
+            bogey_pct REAL, double_pct REAL, difficulty_rank INTEGER,
+            UNIQUE(event_id, year, round_num, hole_num)
+        );
+
+        CREATE TABLE IF NOT EXISTS player_hole_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_key TEXT, course_id TEXT, hole_num INTEGER,
+            rounds_played INTEGER, avg_score_to_par REAL,
+            birdie_pct REAL, bogey_pct REAL,
+            UNIQUE(player_key, course_id, hole_num)
+        );
+
+        CREATE TABLE IF NOT EXISTS intel_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_key TEXT, source TEXT, source_url TEXT,
+            title TEXT, snippet TEXT, published_at TEXT,
+            fetched_at TEXT DEFAULT (datetime('now')),
+            tournament_id INTEGER, relevance_score REAL,
+            category TEXT, ai_summary TEXT, analyzed_at TEXT,
+            UNIQUE(player_key, source_url)
+        );
+
+        CREATE TABLE IF NOT EXISTS experiments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hypothesis TEXT, source TEXT,
+            strategy_config_json TEXT, scope TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now')),
+            started_at TEXT, completed_at TEXT,
+            tournaments_tested INTEGER, total_bets INTEGER,
+            roi_pct REAL, clv_avg REAL, sharpe REAL, p_value REAL,
+            is_significant INTEGER DEFAULT 0,
+            vs_current_delta REAL, vs_dg_delta REAL,
+            promoted INTEGER DEFAULT 0,
+            full_result_json TEXT,
+            UNIQUE(strategy_config_json, scope)
+        );
+
+        CREATE TABLE IF NOT EXISTS course_strategies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id TEXT, course_name TEXT, cluster TEXT,
+            strategy_config_json TEXT, experiment_id INTEGER,
+            roi_pct REAL, tournaments_tested INTEGER,
+            is_active INTEGER DEFAULT 0,
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(course_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS active_strategy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT, strategy_config_json TEXT,
+            experiment_id INTEGER, roi_pct REAL,
+            adopted_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(scope)
+        );
+
+        CREATE TABLE IF NOT EXISTS outlier_investigations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            predicted_rank INTEGER, actual_finish INTEGER,
+            delta INTEGER, weather_conditions TEXT,
+            equipment_change_nearby INTEGER,
+            intel_context TEXT, ai_explanation TEXT,
+            root_cause TEXT, actionable INTEGER DEFAULT 0,
+            suggested_model_change TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(event_id, year, player_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS pit_rolling_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            window INTEGER,
+            sg_total REAL, sg_ott REAL, sg_app REAL,
+            sg_arg REAL, sg_putt REAL, sg_t2g REAL,
+            rounds_used INTEGER,
+            UNIQUE(event_id, year, player_key, window)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_historical_odds_event
+            ON historical_odds(event_id, year);
+        CREATE INDEX IF NOT EXISTS idx_pit_stats_event
+            ON pit_rolling_stats(event_id, year);
+        CREATE INDEX IF NOT EXISTS idx_experiments_status
+            ON experiments(status, scope);
+        CREATE INDEX IF NOT EXISTS idx_intel_player
+            ON intel_events(player_key, relevance_score DESC);
     """)
     conn.commit()
 
@@ -263,20 +455,81 @@ def _run_migrations(conn: sqlite3.Connection):
             conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
             conn.commit()
 
+    # Add year column to tournaments if missing
+    try:
+        conn.execute("SELECT year FROM tournaments LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE tournaments ADD COLUMN year INTEGER")
+        conn.commit()
+
+    # Add UNIQUE constraints via indexes (safe to run repeatedly)
+    _add_unique_constraints(conn)
+
+
+def _add_unique_constraints(conn: sqlite3.Connection):
+    """Add UNIQUE indexes for dedup. Deduplicates existing data first."""
+    constraint_defs = [
+        (
+            "idx_results_unique",
+            "results",
+            "(tournament_id, player_key)",
+        ),
+        (
+            "idx_picks_unique",
+            "picks",
+            "(tournament_id, player_key, bet_type)",
+        ),
+        (
+            "idx_prediction_log_unique",
+            "prediction_log",
+            "(tournament_id, player_key, bet_type)",
+        ),
+    ]
+
+    for idx_name, table, cols in constraint_defs:
+        # Check if index already exists
+        existing = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+            (idx_name,),
+        ).fetchone()
+        if existing:
+            continue
+
+        # Deduplicate: keep the row with the highest id (most recent)
+        try:
+            conn.execute(f"""
+                DELETE FROM {table}
+                WHERE id NOT IN (
+                    SELECT MAX(id) FROM {table}
+                    GROUP BY {cols.strip('()')}
+                )
+            """)
+            conn.execute(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table} {cols}"
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            # Table might not exist yet or columns might differ
+            pass
+
 
 # ── Tournament helpers ──────────────────────────────────────────────
 
-def get_or_create_tournament(name: str, course: str = None, date: str = None) -> int:
+def get_or_create_tournament(name: str, course: str = None,
+                             date: str = None, year: int = None) -> int:
+    if year is None:
+        year = datetime.now().year
     conn = get_conn()
     row = conn.execute(
-        "SELECT id FROM tournaments WHERE name = ?", (name,)
+        "SELECT id FROM tournaments WHERE name = ? AND (year = ? OR year IS NULL)",
+        (name, year),
     ).fetchone()
     if row:
         tid = row["id"]
     else:
         cur = conn.execute(
-            "INSERT INTO tournaments (name, course, date) VALUES (?, ?, ?)",
-            (name, course, date),
+            "INSERT INTO tournaments (name, course, date, year) VALUES (?, ?, ?, ?)",
+            (name, course, date, year),
         )
         tid = cur.lastrowid
         conn.commit()
@@ -302,12 +555,12 @@ def log_csv_import(tournament_id, filename, file_type, data_mode, round_window,
 
 
 def store_metrics(rows: list[dict]):
-    """Bulk insert metric rows. Each dict must have the metric table columns."""
+    """Bulk insert/update metric rows. Uses INSERT OR REPLACE for dedup."""
     if not rows:
         return
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO metrics
+        """INSERT OR REPLACE INTO metrics
            (tournament_id, csv_import_id, player_key, player_display,
             metric_category, data_mode, round_window,
             metric_name, metric_value, metric_text)
@@ -761,5 +1014,14 @@ def get_weights_for_course(course_num: int = None) -> dict:
     return blended
 
 
-# Initialize on import
-init_db()
+def ensure_initialized():
+    """Initialize the database if not already done. Call before first use."""
+    global _DB_INITIALIZED
+    if not _DB_INITIALIZED:
+        init_db()
+        _DB_INITIALIZED = True
+
+
+# Lazy initialization: ensure tables exist on first connection use.
+# This replaces the old module-level init_db() call so .env can load first.
+ensure_initialized()

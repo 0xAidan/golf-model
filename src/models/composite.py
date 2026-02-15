@@ -14,9 +14,14 @@ from src.models.momentum import compute_momentum
 
 
 def compute_composite(tournament_id: int, weights: dict = None,
-                      course_name: str = None) -> list[dict]:
+                      course_name: str = None,
+                      strategy_config: dict = None) -> list[dict]:
     """
     Compute composite edge score for all players in the tournament.
+
+    If strategy_config is provided (from StrategyConfig), it overrides
+    the default weights dict. This allows the backtester/research agent
+    to test different weight configurations.
 
     Returns a sorted list (best first):
     [
@@ -36,6 +41,20 @@ def compute_composite(tournament_id: int, weights: dict = None,
     """
     if weights is None:
         weights = db.get_active_weights()
+
+    # If a strategy_config is provided, merge its weights into the weights dict
+    if strategy_config:
+        w_total = strategy_config.get("w_sg_total", 0) + strategy_config.get("w_sg_app", 0) + \
+                  strategy_config.get("w_sg_ott", 0) + strategy_config.get("w_sg_arg", 0) + \
+                  strategy_config.get("w_sg_putt", 0)
+        w_form = strategy_config.get("w_form", 0.15)
+        w_course = strategy_config.get("w_course_fit", 0.15)
+        total = w_total + w_form + w_course
+        if total > 0:
+            weights = dict(weights)
+            weights["course_fit"] = w_course / total
+            weights["form"] = (w_total + w_form) / total
+            weights["momentum"] = 0.0
 
     # Compute each sub-model
     course_scores = compute_course_fit(tournament_id, weights, course_name=course_name)
