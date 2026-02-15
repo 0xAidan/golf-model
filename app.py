@@ -654,6 +654,42 @@ async def get_calibration():
     return compute_calibration()
 
 
+@app.post("/api/run-service")
+async def run_service_analysis(request: Request):
+    """Run the full unified pipeline via GolfModelService."""
+    from src.services.golf_model_service import GolfModelService
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    service = GolfModelService(tour=data.get("tour", "pga"))
+    result = service.run_analysis(
+        tournament_name=data.get("tournament"),
+        course_name=data.get("course"),
+        event_id=data.get("event_id"),
+        course_num=data.get("course_num"),
+        enable_ai=data.get("enable_ai", True),
+        enable_backfill=data.get("enable_backfill", True),
+    )
+
+    # Store results for the card/predictions pages
+    global _last_analysis
+    if result.get("status") == "complete":
+        _last_analysis = {
+            "tournament": result.get("event_name", ""),
+            "tournament_id": result.get("tournament_id"),
+            "course": result.get("course_name", ""),
+            "composite": result.get("composite_results", []),
+            "value_bets": result.get("value_bets", {}),
+            "weights": get_active_weights(),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    return result
+
+
 @app.get("/api/ai-memories")
 async def get_memories(topic: str = None):
     """Get AI brain memories, optionally filtered by topic."""

@@ -50,7 +50,6 @@ def main():
     parser.add_argument("--odds", "-o", default=None, help="Path to manual odds JSON file")
     parser.add_argument("--no-odds", action="store_true", help="Skip odds fetching")
     parser.add_argument("--output", default="output", help="Output directory for betting card")
-    # New DG flags
     parser.add_argument("--sync", action="store_true",
                         help="Sync Data Golf predictions + compute rolling stats (default if DATAGOLF_API_KEY set)")
     parser.add_argument("--no-sync", action="store_true", help="Skip Data Golf sync")
@@ -59,10 +58,34 @@ def main():
     parser.add_argument("--tour", default="pga", help="Tour for DG data (default: pga)")
     parser.add_argument("--course-num", type=int, default=None,
                         help="DG course_num for course-specific stats")
-    # AI flag
     parser.add_argument("--ai", action="store_true",
                         help="Run AI brain pre-tournament analysis and betting decisions")
+    parser.add_argument("--service", action="store_true",
+                        help="Use the unified GolfModelService pipeline (recommended)")
     args = parser.parse_args()
+
+    # If --service flag, delegate to GolfModelService
+    if args.service or (args.sync and not args.folder):
+        from src.services.golf_model_service import GolfModelService
+        service = GolfModelService(tour=args.tour)
+        print(f"Running unified pipeline for {args.tournament}...")
+        result = service.run_analysis(
+            tournament_name=args.tournament,
+            course_name=args.course,
+            course_num=args.course_num,
+            enable_ai=args.ai,
+            enable_backfill=args.backfill is not None,
+            backfill_years=args.backfill,
+            output_dir=args.output,
+        )
+        print(f"\nStatus: {result.get('status')}")
+        print(f"Field size: {result.get('field_size', 0)}")
+        if result.get('card_filepath'):
+            print(f"Card: {result['card_filepath']}")
+        if result.get('errors'):
+            for e in result['errors']:
+                print(f"Error: {e}")
+        return
 
     print(f"{'='*60}")
     print(f"  GOLF BETTING MODEL")
