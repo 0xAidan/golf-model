@@ -16,13 +16,21 @@ Probability priority:
 
 import os
 
-from src.odds import american_to_implied_prob, american_to_decimal
+from src.odds import american_to_implied_prob, american_to_decimal, is_valid_odds
 from src.player_normalizer import normalize_name
 from src import db
 
 # Default EV threshold: 2% for sharp books (bet365, Pinnacle).
 # Override via env var EV_THRESHOLD (e.g. "0.05" for 5%).
 DEFAULT_EV_THRESHOLD = float(os.environ.get("EV_THRESHOLD", "0.02"))
+
+# Maximum credible EV. Real sports betting edges are 2-20%.
+# Anything above this almost certainly indicates bad data, not a real edge.
+MAX_CREDIBLE_EV = 2.0  # 200%
+
+# Minimum market implied probability to trust odds data.
+# If market prob is below this, odds are likely corrupted/stale.
+MIN_MARKET_PROB = 0.005  # 0.5%
 
 
 def compute_ev(model_prob: float, american_odds: int) -> float:
@@ -226,6 +234,15 @@ def find_value_bets(composite_results: list[dict],
         if not odds_entry:
             continue
 
+        # Skip entries with invalid/extreme odds
+        if not is_valid_odds(odds_entry.get("best_price")):
+            continue
+
+        # Skip entries where market probability is suspiciously low
+        # (indicates bad/stale odds data, not a real opportunity)
+        if odds_entry.get("implied_prob", 0) < MIN_MARKET_PROB:
+            continue
+
         # Get model probability — priority chain
         model_prob = None
         prob_source = "softmax"
@@ -281,6 +298,18 @@ def find_value_bets(composite_results: list[dict],
             better_price_str = f"+{best_available_price}" if best_available_price > 0 else str(best_available_price)
             better_odds_note = f"{better_price_str} @ {best_available_book}"
 
+        # Cap EV at a credible maximum — anything higher is data error
+        if ev > MAX_CREDIBLE_EV:
+            ev = MAX_CREDIBLE_EV
+            ev_capped = True
+        else:
+            ev_capped = False
+
+        # Flag if model prob is wildly different from market prob
+        # (>10x difference suggests one side has bad data)
+        prob_ratio = model_prob / max(market_prob, 0.0001)
+        suspicious = prob_ratio > 10.0 or prob_ratio < 0.1
+
         value_bets.append({
             "player_key": pkey,
             "player_display": pdisp,
@@ -299,7 +328,9 @@ def find_value_bets(composite_results: list[dict],
             "better_odds_note": better_odds_note,
             "ev": round(ev, 4),
             "ev_pct": f"{ev * 100:.1f}%",
-            "is_value": ev >= ev_threshold,
+            "ev_capped": ev_capped,
+            "is_value": ev >= ev_threshold and not ev_capped,
+            "suspicious": suspicious,
             "prob_source": prob_source,
         })
 
