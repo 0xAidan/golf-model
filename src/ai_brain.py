@@ -734,6 +734,27 @@ def is_ai_available() -> bool:
     return False
 
 
+def call_ai(prompt: str, system_prompt: str = None,
+            max_tokens: int = None, response_schema: dict = None) -> dict:
+    """
+    Public interface for making AI calls.
+
+    Args:
+        prompt: The user prompt / question.
+        system_prompt: Optional system prompt (defaults to a generic golf analyst).
+        max_tokens: Ignored (kept for API compatibility; provider handles limits).
+        response_schema: Optional JSON schema for structured output.
+
+    Returns: Parsed JSON dict from the AI provider.
+    """
+    if system_prompt is None:
+        system_prompt = (
+            "You are an expert golf analytics researcher. "
+            "Respond with valid JSON only."
+        )
+    return _call_ai(system_prompt, prompt, response_schema)
+
+
 def get_ai_status() -> dict:
     """Return status of AI brain configuration."""
     provider = _get_provider()
