@@ -16,6 +16,16 @@ def _fmt_odds(price: int) -> str:
     return str(price)
 
 
+def _fmt_prob(prob: float) -> str:
+    """Format probability for display, using more decimals for small values."""
+    if prob >= 0.01:
+        return f"{prob:.1%}"
+    elif prob >= 0.001:
+        return f"{prob:.2%}"
+    else:
+        return f"{prob:.3%}"
+
+
 def _reason(r: dict) -> str:
     """Build a brief reason string from a player's scores."""
     parts = []
@@ -151,6 +161,9 @@ def generate_card(tournament_name: str,
             lines.append(f"**Total Units:** {total_units} | **Expected ROI:** {expected_roi}")
             lines.append("")
 
+    # ── Data Quality Check ──────────────────────────────────────
+    _write_data_quality(lines, value_bets, composite_results)
+
     # ── Outright ────────────────────────────────────────────────
     lines.append("## Outright Winner")
     lines.append("")
@@ -245,6 +258,38 @@ def generate_card(tournament_name: str,
     return filepath
 
 
+def _write_data_quality(lines: list, value_bets: dict, composite_results: list):
+    """Add a data quality section if there are any concerns."""
+    warnings = []
+
+    # Check if we have odds data at all
+    total_odds_entries = sum(len(vb) for vb in value_bets.values())
+    if total_odds_entries == 0:
+        warnings.append("No odds data available — value bets based on model only")
+
+    # Check for suspicious/capped entries
+    for bet_type, vbs in value_bets.items():
+        capped = sum(1 for vb in vbs if vb.get("ev_capped"))
+        suspicious = sum(1 for vb in vbs if vb.get("suspicious"))
+        if capped > 0:
+            warnings.append(f"{capped} {bet_type} entries had unrealistic EV (capped/filtered)")
+        if suspicious > 0:
+            warnings.append(f"{suspicious} {bet_type} entries had large model-vs-market discrepancy (flagged)")
+
+    # Check if top players have reasonable scores
+    if composite_results:
+        top_player = composite_results[0]
+        if top_player["composite"] < 60:
+            warnings.append("Top composite score is unusually low — check data freshness")
+
+    if warnings:
+        lines.append("## Data Quality Flags")
+        lines.append("")
+        for w in warnings:
+            lines.append(f"- {w}")
+        lines.append("")
+
+
 def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
     """Write a value bet section with odds and EV.
 
@@ -257,14 +302,20 @@ def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
 
     if positive_ev:
         for vb in positive_ev[:top_n]:
+            # Skip suspicious entries (model/market prob wildly different)
+            if vb.get("suspicious") or vb.get("ev_capped"):
+                continue
             better = ""
             if vb.get("better_odds_note"):
                 better = f" *(better: {vb['better_odds_note']})*"
+            # Use more decimal places for small probabilities
+            model_fmt = _fmt_prob(vb['model_prob'])
+            market_fmt = _fmt_prob(vb['market_prob'])
             lines.append(
                 f"- **VALUE** **{vb['player_display']}** "
                 f"(#{vb['rank']}) — "
                 f"{_fmt_odds(vb['best_odds'])} @ {vb['best_book']}, "
-                f"model {vb['model_prob']:.1%} vs market {vb['market_prob']:.1%}, "
+                f"model {model_fmt} vs market {market_fmt}, "
                 f"EV {vb['ev_pct']}{better}"
             )
         lines.append("")
@@ -277,14 +328,18 @@ def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
     remaining = top_n - len(positive_ev)
     if remaining > 0 and negative_ev:
         for vb in negative_ev[:remaining]:
+            if vb.get("suspicious") or vb.get("ev_capped"):
+                continue
             better = ""
             if vb.get("better_odds_note"):
                 better = f" *(better: {vb['better_odds_note']})*"
+            model_fmt = _fmt_prob(vb['model_prob'])
+            market_fmt = _fmt_prob(vb['market_prob'])
             lines.append(
                 f"- **{vb['player_display']}** "
                 f"(#{vb['rank']}) — "
                 f"{_fmt_odds(vb['best_odds'])} @ {vb['best_book']}, "
-                f"model {vb['model_prob']:.1%} vs market {vb['market_prob']:.1%}, "
+                f"model {model_fmt} vs market {market_fmt}, "
                 f"EV {vb['ev_pct']}{better}"
             )
         lines.append("")

@@ -66,7 +66,7 @@ def _get_ranks_across_windows(tournament_id: int) -> dict:
     return player_windows
 
 
-def _compute_trend(ranks: dict) -> float:
+def _compute_trend(ranks: dict, field_size: int = 150) -> float:
     """
     Compute a trend value from ranks at different windows.
 
@@ -74,6 +74,11 @@ def _compute_trend(ranks: dict) -> float:
     Negative = declining.
 
     Uses all available windows, sorted from oldest to newest.
+
+    Key fix: uses PERCENTAGE improvement relative to position rather than
+    raw rank change. This prevents penalizing elite players who have
+    less room to improve in rank. A player going from #5 → #1 is a 
+    significant improvement just like #80 → #40.
     """
     # Sort windows from oldest (largest) to newest (smallest)
     sorted_windows = sorted(ranks.keys(), key=_window_sort_key, reverse=True)
@@ -85,11 +90,33 @@ def _compute_trend(ranks: dict) -> float:
     # Primary trend: oldest available vs most recent
     oldest_rank = available[0][1]
     newest_rank = available[-1][1]
-    primary_trend = oldest_rank - newest_rank  # positive = improving
+
+    # Use percentage-based improvement to avoid penalizing elite players.
+    # Going from rank 5→1 is an 80% improvement, same as 50→10.
+    # This fixes the problem where a top player who wins still shows "cold"
+    # because their raw rank change is small.
+    # Clamped to [-1, 1] to prevent asymmetric extremes (e.g., rank 3→15
+    # would be -400% unclamped, but we cap decline at -100%).
+    if oldest_rank > 0:
+        pct_improvement = max(-1.0, min(1.0, (oldest_rank - newest_rank) / oldest_rank))
+    else:
+        pct_improvement = 0.0
+
+    # Also factor in absolute position: being ranked highly in the
+    # most recent window is itself a positive signal.
+    # A player ranked #3 in the newest window gets a small positive boost.
+    if field_size > 1:
+        position_signal = (field_size - newest_rank) / (field_size - 1)
+    else:
+        position_signal = 0.5
+
+    # Combine: 60% directional trend, 40% current position strength
+    # The position_signal is centered at 0.5 for a mid-field player,
+    # so we shift it to be centered at 0 for blending.
+    blended = 0.6 * pct_improvement * 100.0 + 0.4 * (position_signal - 0.5) * 100.0
 
     # Check consistency across all intermediate points
     if len(available) >= 3:
-        # Count how many consecutive pairs show improvement
         improving_pairs = 0
         declining_pairs = 0
         for i in range(len(available) - 1):
@@ -104,7 +131,6 @@ def _compute_trend(ranks: dict) -> float:
         else:
             consistency = 0.0
 
-        # Consistent direction gets bonus, mixed gets penalty
         if consistency > 0.6:
             consistency_bonus = 0.3 * consistency
         else:
@@ -112,7 +138,7 @@ def _compute_trend(ranks: dict) -> float:
     else:
         consistency_bonus = 0.0
 
-    return primary_trend * (1.0 + consistency_bonus)
+    return blended * (1.0 + consistency_bonus)
 
 
 def compute_momentum(tournament_id: int, weights: dict) -> dict:
@@ -127,11 +153,14 @@ def compute_momentum(tournament_id: int, weights: dict) -> dict:
     if not player_windows:
         return {}
 
+    # Determine field size for percentage-based calculations
+    field_size = len(player_windows)
+
     # Compute raw trends
     trends = {}
     for pk, ranks in player_windows.items():
         trends[pk] = {
-            "raw_trend": _compute_trend(ranks),
+            "raw_trend": _compute_trend(ranks, field_size=field_size),
             "windows": ranks,
             "windows_count": len(ranks),
         }
@@ -155,11 +184,11 @@ def compute_momentum(tournament_id: int, weights: dict) -> dict:
         # Pull toward 50 if low confidence
         score = 50.0 + confidence * (score - 50.0)
 
-        if raw > 5:
+        if raw > 10:
             direction = "hot"
-        elif raw > 0:
+        elif raw > 2:
             direction = "warming"
-        elif raw > -5:
+        elif raw > -10:
             direction = "cooling"
         else:
             direction = "cold"

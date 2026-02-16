@@ -914,11 +914,19 @@ NON_BOOK_KEYS = {"player_name", "dg_id", "datagolf", "am"}
 
 
 def _parse_american_odds(val) -> int | None:
-    """Parse American odds from a string like '+4000' or '-150' or 'n/a'."""
+    """Parse American odds from a string like '+4000' or '-150' or 'n/a'.
+
+    Returns None for invalid or unreasonable values (e.g., +500000).
+    """
     if val is None or val == "n/a" or val == "":
         return None
     try:
-        return int(str(val).replace("+", ""))
+        price = int(str(val).replace("+", ""))
+        # Reject clearly unreasonable odds (bad API data)
+        # Real golf odds max out around +50000 for outrights
+        if price > 50000 or price < -10000 or price == 0:
+            return None
+        return price
     except (ValueError, TypeError):
         return None
 
