@@ -147,15 +147,22 @@ def run_experiment(experiment_id: int,
 
 def evaluate_significance(experiment_id: int,
                           baseline_roi: float = 0.0,
-                          min_bets: int = 50) -> dict:
+                          min_bets: int = 100,
+                          n_experiments: int = None) -> dict:
     """
     Test whether an experiment's results are statistically significant.
 
-    Uses a simple z-test comparing the experiment's ROI to a baseline.
-    Requires minimum number of bets for reliability.
+    Uses bootstrap confidence intervals (more robust than z-test for
+    correlated bets) with Bonferroni correction for multiple experiments.
 
-    Returns: {significant: bool, p_value: float, vs_baseline_delta: float}
+    min_bets: minimum bets for reliable inference (default 100)
+    n_experiments: total experiments being tested (for Bonferroni correction)
+
+    Returns: {significant: bool, p_value: float, vs_baseline_delta: float,
+              ci_lower: float, ci_upper: float}
     """
+    import random as _random
+
     conn = db.get_conn()
     row = conn.execute("""
         SELECT roi_pct, total_bets, sharpe, full_result_json
@@ -179,15 +186,55 @@ def evaluate_significance(experiment_id: int,
             "total_bets": total_bets or 0,
         }
 
-    # Simple z-test for ROI
-    delta = (roi or 0) - baseline_roi
-    # Approximate standard error using bet count
-    se = 100 / math.sqrt(total_bets) if total_bets > 0 else 100
-    z_score = delta / se if se > 0 else 0
+    # Extract per-bet returns for bootstrap
+    bet_returns = []
+    if result_json:
+        try:
+            result_data = json.loads(result_json)
+            for bet in result_data.get("bet_details", []):
+                wager = bet.get("wager", 1.0)
+                payout = bet.get("payout", 0.0)
+                if wager > 0:
+                    bet_returns.append((payout - wager) / wager)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-    # Two-sided p-value approximation
-    p_value = 2 * (1 - _norm_cdf(abs(z_score)))
-    is_significant = p_value < 0.05 and delta > 0
+    # Bonferroni correction for multiple testing
+    if n_experiments is None:
+        n_experiments = conn.execute(
+            "SELECT COUNT(*) FROM experiments WHERE status = 'completed'"
+        ).fetchone()[0] or 1
+    alpha = 0.05 / max(n_experiments, 1)
+
+    if bet_returns and len(bet_returns) >= min_bets:
+        # Bootstrap confidence interval
+        n_bootstrap = 2000
+        boot_rois = []
+        n = len(bet_returns)
+        for _ in range(n_bootstrap):
+            sample = [bet_returns[_random.randint(0, n - 1)] for _ in range(n)]
+            boot_roi = (sum(sample) / len(sample)) * 100
+            boot_rois.append(boot_roi)
+        boot_rois.sort()
+
+        ci_lower = boot_rois[int(n_bootstrap * alpha / 2)]
+        ci_upper = boot_rois[int(n_bootstrap * (1 - alpha / 2))]
+
+        # p-value: proportion of bootstrap samples below baseline
+        p_value = sum(1 for r in boot_rois if r <= baseline_roi) / n_bootstrap
+
+        is_significant = ci_lower > baseline_roi
+    else:
+        # Fall back to z-test if no per-bet data available
+        delta = (roi or 0) - baseline_roi
+        se = 100 / math.sqrt(total_bets) if total_bets > 0 else 100
+        z_score = delta / se if se > 0 else 0
+        p_value = 2 * (1 - _norm_cdf(abs(z_score)))
+        is_significant = p_value < alpha and delta > 0
+        ci_lower = delta - 1.96 * se
+        ci_upper = delta + 1.96 * se
+
+    delta = (roi or 0) - baseline_roi
 
     conn.execute("""
         UPDATE experiments SET
@@ -206,11 +253,14 @@ def evaluate_significance(experiment_id: int,
     return {
         "significant": is_significant,
         "p_value": round(p_value, 4),
-        "z_score": round(z_score, 3),
         "vs_baseline_delta": round(delta, 2),
         "roi_pct": roi,
         "total_bets": total_bets,
         "sharpe": sharpe,
+        "ci_lower": round(ci_lower, 2),
+        "ci_upper": round(ci_upper, 2),
+        "alpha_corrected": round(alpha, 4),
+        "n_experiments": n_experiments,
     }
 
 

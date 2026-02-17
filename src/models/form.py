@@ -26,13 +26,17 @@ def _rank_to_score(rank: float, field_size: int) -> float:
 
 
 def _pct_to_score(pct: float, scale: float = 300.0) -> float:
-    """Convert a probability percentage to a 0-100 score.
+    """Convert a probability to a 0-100 score.
 
+    Handles both decimal (0.05 = 5%) and percentage (5.0 = 5%) formats.
     Uses a consistent mapping: 50 = baseline (zero signal),
     higher pct = higher score, clamped to 0-100.
     """
     if pct is None:
         return 50.0
+    # Normalize: if > 1.0, treat as percentage and convert to decimal
+    if pct > 1.0:
+        pct = pct / 100.0
     return max(0.0, min(100.0, 50.0 + pct * scale))
 
 

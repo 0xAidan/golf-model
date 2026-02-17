@@ -170,12 +170,14 @@ def compute_momentum(tournament_id: int, weights: dict) -> dict:
     if not all_trends:
         return {}
 
-    max_trend = max(abs(t) for t in all_trends) or 1.0
+    max_trend = max(abs(t) for t in all_trends) if all_trends else 1.0
+    if max_trend == 0:
+        max_trend = 1.0
 
     results = {}
     for pk, t in trends.items():
         raw = t["raw_trend"]
-        # Scale: 0 trend → 50, max positive → ~90, max negative → ~10
+        # Scale: 0 trend -> 50, max positive -> ~90, max negative -> ~10
         score = 50.0 + (raw / max_trend) * 40.0
         score = max(5.0, min(95.0, score))
 
@@ -184,11 +186,15 @@ def compute_momentum(tournament_id: int, weights: dict) -> dict:
         # Pull toward 50 if low confidence
         score = 50.0 + confidence * (score - 50.0)
 
-        if raw > 10:
+        # Direction uses relative thresholds based on field trends
+        # This prevents labeling moderate trends as "cold" in a field
+        # with extreme outliers
+        relative = raw / max_trend if max_trend > 0 else 0
+        if relative > 0.25:
             direction = "hot"
-        elif raw > 2:
+        elif relative > 0.05:
             direction = "warming"
-        elif raw > -10:
+        elif relative > -0.25:
             direction = "cooling"
         else:
             direction = "cold"

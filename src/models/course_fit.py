@@ -201,10 +201,14 @@ def compute_course_fit(tournament_id: int, weights: dict,
             + w_par_eff * components["par_eff"]
         )
 
-        # Apply confidence modifier (scales toward 50 if few rounds)
-        score = 50.0 + confidence * (score - 50.0)
+        # ── Blend with DG data sources ──
+        # Track total external blend weight to prevent over-dilution.
+        # Cap total external blending at 60% — course-specific signal
+        # should always retain at least 40% of the final score.
+        MAX_EXTERNAL_BLEND = 0.60
+        total_blend_used = 0.0
 
-        # ── Blend with DG decomposition if available ──
+        # DG decomposition blend
         dg_data = player_dg_decomp.get(pk)
         if dg_data:
             dg_sg_total = dg_data.get("dg_sg_total")
@@ -222,20 +226,18 @@ def compute_course_fit(tournament_id: int, weights: dict,
                         dg_weight = 0.30
                     else:
                         dg_weight = 0.70
+                    dg_weight = min(dg_weight, MAX_EXTERNAL_BLEND - total_blend_used)
                     score = (1 - dg_weight) * score + dg_weight * dg_score
+                    total_blend_used += dg_weight
 
-        # ── Blend with DG skill ratings (true ability per SG category) ──
+        # DG skill ratings blend
         dg_sk = player_dg_skill.get(pk)
-        if dg_sk:
-            # Build a course-weighted skill score using DG's true SG values
-            # Use the course profile weights to emphasize the right categories
+        if dg_sk and total_blend_used < MAX_EXTERNAL_BLEND:
             sk_app = dg_sk.get("dg_sg_app")
             sk_ott = dg_sk.get("dg_sg_ott")
             sk_arg = dg_sk.get("dg_sg_arg")
             sk_putt = dg_sk.get("dg_sg_putt")
-            sk_total = dg_sk.get("dg_sg_total")
 
-            # Rank each skill among all players in the field who have data
             def _percentile_score(val, all_vals):
                 if val is None or not all_vals:
                     return None
@@ -244,10 +246,8 @@ def compute_course_fit(tournament_id: int, weights: dict,
 
             all_apps = [d.get("dg_sg_app") for d in player_dg_skill.values() if d.get("dg_sg_app") is not None]
             all_otts = [d.get("dg_sg_ott") for d in player_dg_skill.values() if d.get("dg_sg_ott") is not None]
-            all_args = [d.get("dg_sg_arg") for d in player_dg_skill.values() if d.get("dg_sg_arg") is not None]
             all_putts = [d.get("dg_sg_putt") for d in player_dg_skill.values() if d.get("dg_sg_putt") is not None]
 
-            # Course-weighted skill: emphasize the categories that matter at this course
             skill_components = {}
             weighted_sum = 0.0
             weight_total = 0.0
@@ -267,18 +267,16 @@ def compute_course_fit(tournament_id: int, weights: dict,
                 dg_skill_fit = weighted_sum / weight_total
                 components["dg_skill_fit"] = round(dg_skill_fit, 2)
 
-                # Blend in: DG skill ratings get 15% of total score
-                # (on top of decomp blend above)
-                skill_blend = 0.15
-                score = (1 - skill_blend) * score + skill_blend * dg_skill_fit
+                skill_blend = min(0.15, MAX_EXTERNAL_BLEND - total_blend_used)
+                if skill_blend > 0:
+                    score = (1 - skill_blend) * score + skill_blend * dg_skill_fit
+                    total_blend_used += skill_blend
 
-        # ── Blend with DG approach skill (yardage-specific) ──
+        # DG approach skill blend
         dg_app = player_dg_approach.get(pk)
-        if dg_app:
-            # Composite approach SG is stored as a pre-computed average
+        if dg_app and total_blend_used < MAX_EXTERNAL_BLEND:
             approach_composite = dg_app.get("approach_sg_composite")
             if approach_composite is not None:
-                # Rank among all players with approach data
                 all_composites = [
                     d.get("approach_sg_composite") for d in player_dg_approach.values()
                     if d.get("approach_sg_composite") is not None
@@ -288,14 +286,17 @@ def compute_course_fit(tournament_id: int, weights: dict,
                     app_score = 100.0 * below / max(len(all_composites) - 1, 1)
                     components["dg_approach"] = round(app_score, 2)
 
-                    # Weight approach data higher at approach-heavy courses
-                    # w_sg_app already accounts for course profile
-                    app_blend = min(0.12, w_sg_app * 0.4)
-                    score = (1 - app_blend) * score + app_blend * app_score
+                    app_blend = min(0.12, w_sg_app * 0.4, MAX_EXTERNAL_BLEND - total_blend_used)
+                    if app_blend > 0:
+                        score = (1 - app_blend) * score + app_blend * app_score
+                        total_blend_used += app_blend
 
         elif not course_metrics and not dg_data and not dg_sk:
-            # No data at all for this player — keep neutral 50
             pass
+
+        # Apply confidence modifier AFTER all blends (prevents double-penalizing
+        # low-confidence players who also get heavy DG blending)
+        score = 50.0 + confidence * (score - 50.0)
 
         results[pk] = {
             "score": round(score, 2),

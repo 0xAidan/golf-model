@@ -401,6 +401,68 @@ def update_course_weights(tournament_id: int, course_num: int,
 #  Post-Tournament Learning Orchestrator
 # ═══════════════════════════════════════════════════════════════════
 
+def update_prediction_outcomes(tournament_id: int) -> int:
+    """
+    Update actual_outcome and profit for existing prediction_log entries
+    using results that have been ingested since the predictions were logged.
+
+    Returns count of updated entries.
+    """
+    conn = db.get_conn()
+
+    results = conn.execute(
+        "SELECT * FROM results WHERE tournament_id = ?", (tournament_id,)
+    ).fetchall()
+    if not results:
+        conn.close()
+        return 0
+
+    result_map = {r["player_key"]: dict(r) for r in results}
+
+    predictions = conn.execute(
+        "SELECT id, player_key, bet_type, odds_decimal FROM prediction_log WHERE tournament_id = ?",
+        (tournament_id,),
+    ).fetchall()
+
+    updated = 0
+    for pred in predictions:
+        pk = pred["player_key"]
+        bt = pred["bet_type"]
+        r = result_map.get(pk)
+
+        actual = 0
+        if r:
+            finish = r.get("finish_position")
+            made_cut = r.get("made_cut", 0)
+            if bt == "outright" and finish == 1:
+                actual = 1
+            elif bt == "top5" and finish is not None and finish <= 5:
+                actual = 1
+            elif bt == "top10" and finish is not None and finish <= 10:
+                actual = 1
+            elif bt == "top20" and finish is not None and finish <= 20:
+                actual = 1
+            elif bt == "make_cut" and made_cut:
+                actual = 1
+            elif bt == "frl" and finish == 1:
+                actual = 1
+
+        odds_dec = pred["odds_decimal"]
+        profit = None
+        if odds_dec:
+            profit = (odds_dec - 1.0) if actual else -1.0
+
+        conn.execute(
+            "UPDATE prediction_log SET actual_outcome = ?, profit = ? WHERE id = ?",
+            (actual, profit, pred["id"]),
+        )
+        updated += 1
+
+    conn.commit()
+    conn.close()
+    return updated
+
+
 def post_tournament_learn(tournament_id: int,
                           event_id: str = None,
                           year: int = None,
@@ -435,7 +497,11 @@ def post_tournament_learn(tournament_id: int,
     score_result = score_picks_for_tournament(tournament_id)
     summary["steps"]["scoring"] = score_result
 
-    # 3. Log predictions for calibration
+    # 3. Update existing prediction_log outcomes with actual results
+    n_updated = update_prediction_outcomes(tournament_id)
+    summary["steps"]["predictions_updated"] = n_updated
+
+    # 3b. Log new predictions for calibration (if value_bets provided)
     if value_bets_by_type:
         n = log_predictions_for_tournament(tournament_id, value_bets_by_type)
         summary["steps"]["predictions_logged"] = n

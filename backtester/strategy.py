@@ -319,17 +319,32 @@ def replay_event(event_id: str, year: int,
     """, (str(event_id), year)).fetchall()
 
     # Build odds lookup: {player_key: {market: best_odds_price}}
+    # NOTE: Historical odds are DG model prices (synthetic), not real
+    # sportsbook odds. We apply a vig spread to simulate real market
+    # conditions (+12% overround), making the backtested odds shorter
+    # and the resulting ROI more realistic.
+    VIG_FACTOR = 0.88  # Simulate ~12% overround (real books have 10-20%)
+
     odds_by_player = {}
     for row in odds_rows:
         dg_id, name, market, book, close_line = row
         pkey = normalize_name(name)
         if pkey not in odds_by_player:
             odds_by_player[pkey] = {}
-        # Keep the best (highest) odds for each market
-        existing = odds_by_player[pkey].get(market)
+
         if close_line is not None:
-            if existing is None or close_line > existing:
-                odds_by_player[pkey][market] = close_line
+            # Apply vig: convert to implied prob, increase by vig, convert back
+            implied = _american_to_implied(close_line)
+            vigged_implied = min(0.95, implied / VIG_FACTOR)
+            # Convert back to American odds (shorter/worse for the bettor)
+            if vigged_implied >= 0.5:
+                vigged_price = int(-100 * vigged_implied / (1 - vigged_implied))
+            else:
+                vigged_price = int(100 * (1 - vigged_implied) / vigged_implied)
+
+            existing = odds_by_player[pkey].get(market)
+            if existing is None or vigged_price > existing:
+                odds_by_player[pkey][market] = vigged_price
 
     # 4. Get actual results
     results = conn.execute("""
@@ -361,19 +376,24 @@ def replay_event(event_id: str, year: int,
             if implied_prob > strategy.max_implied_prob:
                 continue
 
-            ev = model_prob - implied_prob
+            # True EV: how much we expect to win per dollar wagered
+            # EV = (model_prob / implied_prob) - 1.0
+            # e.g., model=10%, market=5% → EV = 2.0 - 1.0 = +100%
+            if implied_prob > 0:
+                ev = (model_prob / implied_prob) - 1.0
+            else:
+                continue
+
             if ev < strategy.min_ev:
                 continue
 
-            # Kelly sizing
-            if implied_prob > 0:
-                edge = ev
-                odds_decimal = 1 / implied_prob - 1 if implied_prob < 1 else 0
-                if odds_decimal > 0:
-                    kelly = edge / odds_decimal
-                    wager = max(0.01, min(0.05, kelly * strategy.kelly_fraction))
-                else:
-                    wager = 0.01
+            # Kelly criterion: f* = (b*p - q) / b
+            # where b = net decimal odds, p = model_prob, q = 1 - model_prob
+            odds_decimal_net = (1.0 / implied_prob) - 1.0 if implied_prob < 1 else 0
+            if odds_decimal_net > 0:
+                kelly_full = (odds_decimal_net * model_prob - (1 - model_prob)) / odds_decimal_net
+                kelly = max(0, kelly_full)
+                wager = max(0.01, min(0.05, kelly * strategy.kelly_fraction))
             else:
                 wager = 0.01
 
@@ -390,6 +410,7 @@ def replay_event(event_id: str, year: int,
                 "model_prob": round(model_prob, 4),
                 "implied_prob": round(implied_prob, 4),
                 "ev": round(ev, 4),
+                "prob_edge": round(model_prob - implied_prob, 4),
                 "odds": price,
                 "wager": round(wager, 4),
                 "won": won,
@@ -445,3 +466,56 @@ def simulate_strategy(strategy: StrategyConfig,
 
     result.compute_metrics()
     return result
+
+
+def walk_forward_validate(strategy: StrategyConfig,
+                          train_years: list[int] = None,
+                          test_years: list[int] = None,
+                          tour: str = "pga") -> dict:
+    """
+    Walk-forward validation: train on earlier years, test on later years.
+
+    Default split:
+      - Train: 2019-2023 (for understanding what the strategy would have done)
+      - Test: 2024-2025 (out-of-sample evaluation)
+
+    Returns dict with separate metrics for train and test periods,
+    plus a combined summary.
+    """
+    if train_years is None:
+        train_years = [2022, 2023]
+    if test_years is None:
+        test_years = [2024, 2025]
+
+    train_result = simulate_strategy(strategy, years=train_years, tour=tour)
+    test_result = simulate_strategy(strategy, years=test_years, tour=tour)
+
+    # Degradation check: how much worse is out-of-sample?
+    train_roi = train_result.roi_pct
+    test_roi = test_result.roi_pct
+    degradation = train_roi - test_roi if train_roi and test_roi else None
+
+    return {
+        "train": {
+            "years": train_years,
+            "roi_pct": train_result.roi_pct,
+            "total_bets": train_result.total_bets,
+            "sharpe": train_result.sharpe,
+            "events": train_result.events_simulated,
+            "wins": train_result.wins,
+            "calibration_error": train_result.calibration_error,
+        },
+        "test": {
+            "years": test_years,
+            "roi_pct": test_result.roi_pct,
+            "total_bets": test_result.total_bets,
+            "sharpe": test_result.sharpe,
+            "events": test_result.events_simulated,
+            "wins": test_result.wins,
+            "calibration_error": test_result.calibration_error,
+        },
+        "degradation_pct": round(degradation, 2) if degradation is not None else None,
+        "is_robust": degradation is not None and degradation < 20.0 and test_roi > 0,
+        "test_result": test_result,
+        "train_result": train_result,
+    }

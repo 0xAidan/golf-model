@@ -524,20 +524,45 @@ def _add_unique_constraints(conn: sqlite3.Connection):
 # ── Tournament helpers ──────────────────────────────────────────────
 
 def get_or_create_tournament(name: str, course: str = None,
-                             date: str = None, year: int = None) -> int:
+                             date: str = None, year: int = None,
+                             event_id: str = None) -> int:
     if year is None:
         year = datetime.now().year
     conn = get_conn()
+
+    # Ensure event_id column exists (migration-safe)
+    try:
+        conn.execute("SELECT event_id FROM tournaments LIMIT 0")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE tournaments ADD COLUMN event_id TEXT")
+        conn.commit()
+
     row = conn.execute(
-        "SELECT id FROM tournaments WHERE name = ? AND (year = ? OR year IS NULL)",
+        "SELECT id, year, event_id FROM tournaments WHERE name = ? AND (year = ? OR year IS NULL)",
         (name, year),
     ).fetchone()
     if row:
         tid = row["id"]
+        # Fix NULL year or missing event_id on existing rows
+        updates = []
+        params = []
+        if row["year"] is None and year is not None:
+            updates.append("year = ?")
+            params.append(year)
+        if row["event_id"] is None and event_id is not None:
+            updates.append("event_id = ?")
+            params.append(event_id)
+        if updates:
+            params.append(tid)
+            conn.execute(
+                f"UPDATE tournaments SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
     else:
         cur = conn.execute(
-            "INSERT INTO tournaments (name, course, date, year) VALUES (?, ?, ?, ?)",
-            (name, course, date, year),
+            "INSERT INTO tournaments (name, course, date, year, event_id) VALUES (?, ?, ?, ?, ?)",
+            (name, course, date, year, event_id),
         )
         tid = cur.lastrowid
         conn.commit()

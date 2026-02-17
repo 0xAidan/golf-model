@@ -2,6 +2,7 @@
 Composite Edge Score
 
 Combines course fit + form + momentum into one score per player.
+Optionally applies weather adjustments when conditions are significant.
 Weights are tunable and stored in the database.
 
 Output: ranked player list with composite score and all sub-scores.
@@ -15,7 +16,8 @@ from src.models.momentum import compute_momentum
 
 def compute_composite(tournament_id: int, weights: dict = None,
                       course_name: str = None,
-                      strategy_config: dict = None) -> list[dict]:
+                      strategy_config: dict = None,
+                      weather_adjustments: dict = None) -> list[dict]:
     """
     Compute composite edge score for all players in the tournament.
 
@@ -105,6 +107,15 @@ def compute_composite(tournament_id: int, weights: dict = None,
             + w_momentum_adj * momentum_score
         )
 
+        # Apply weather adjustment (post-score modifier, capped)
+        weather_adj = 0.0
+        weather_info = {}
+        if weather_adjustments and pk in weather_adjustments:
+            wa = weather_adjustments[pk]
+            weather_adj = wa.get("adjustment", 0)
+            composite = max(0, min(100, composite + weather_adj))
+            weather_info = wa
+
         results.append({
             "player_key": pk,
             "player_display": display_names.get(pk, pk),
@@ -116,6 +127,8 @@ def compute_composite(tournament_id: int, weights: dict = None,
             "momentum_trend": ms.get("trend", 0),
             "course_confidence": cs.get("confidence", 0),
             "course_rounds": cs.get("rounds", 0),
+            "weather_adjustment": round(weather_adj, 2),
+            "weather_info": weather_info,
             "details": {
                 "course_components": cs.get("components", {}),
                 "form_components": fs.get("components", {}),
