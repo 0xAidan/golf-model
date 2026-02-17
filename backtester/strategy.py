@@ -23,6 +23,7 @@ from typing import Optional
 from src import db
 from src.datagolf import _safe_float
 from src.player_normalizer import normalize_name
+from src.scoring import determine_outcome_from_text, compute_profit, american_to_decimal
 
 logger = logging.getLogger("strategy")
 
@@ -201,6 +202,13 @@ def _compute_composite(pit: dict, weights: dict) -> float:
     """
     Compute composite score from PIT stats using strategy weights.
 
+    IMPORTANT: This is a simplified SG-weighted model used for backtesting.
+    The live model (src/models/composite.py) uses course_fit + form + momentum
+    sub-models with richer signal processing. Backtest results validate this
+    simplified SG model, NOT the full live model. This divergence is documented
+    and intentional -- aligning would require building full sub-model scores
+    from PIT stats, which is a future enhancement.
+
     Higher is better.
     """
     score = 0.0
@@ -217,41 +225,53 @@ def _compute_composite(pit: dict, weights: dict) -> float:
     return score
 
 
-def _softmax_probs(scores: list[float], temperature: float = 1.0,
+# Market-specific softmax temperatures matching the live model (src/value.py)
+MARKET_SOFTMAX_TEMPS = {
+    "win": 8.0,
+    "top_5": 10.0,
+    "top_10": 12.0,
+    "top_20": 15.0,
+    "make_cut": 20.0,
+}
+
+
+def _softmax_probs(scores: list[float], temperature: float = 12.0,
                    target_sum: float = 1.0) -> list[float]:
-    """Convert composite scores to probabilities via softmax."""
+    """
+    Convert composite scores to probabilities via softmax.
+
+    Applies clamping [0.001, 0.95] per player then renormalizes to preserve
+    target_sum, matching the live model behavior.
+    """
     if not scores:
         return []
+    n = len(scores)
     max_s = max(scores)
     exps = [math.exp((s - max_s) / max(temperature, 0.01)) for s in scores]
     total = sum(exps)
     if total == 0:
-        return [target_sum / len(scores)] * len(scores)
-    return [target_sum * e / total for e in exps]
+        return [target_sum / n] * n
+
+    raw_probs = [target_sum * e / total for e in exps]
+
+    # Clamp then renormalize (matching live model behavior)
+    clamped = [max(0.001, min(0.95, p)) for p in raw_probs]
+    clamped_sum = sum(clamped)
+    if clamped_sum > 0 and abs(clamped_sum - target_sum) > 0.001:
+        scale = target_sum / clamped_sum
+        clamped = [p * scale for p in clamped]
+
+    return clamped
 
 
-def _did_bet_win(finish_text: str, market: str) -> bool:
-    """Check if a bet won given the player's finish and market."""
-    if not finish_text:
-        return False
+def _did_bet_win(finish_text: str, market: str,
+                 all_finish_texts: list[str] = None) -> dict:
+    """
+    Check if a bet won given the player's finish and market.
 
-    fin = finish_text.strip().upper()
-    if fin in ("CUT", "MC", "WD", "W/D", "DQ"):
-        return False
-
-    try:
-        pos = int(fin.replace("T", ""))
-    except ValueError:
-        return False
-
-    thresholds = {
-        "win": 1,
-        "top_5": 5,
-        "top_10": 10,
-        "top_20": 20,
-        "make_cut": 999,  # any position = made cut
-    }
-    return pos <= thresholds.get(market, 1)
+    Returns dict with hit, fraction, is_push from unified scoring module.
+    """
+    return determine_outcome_from_text(finish_text, market, all_finish_texts)
 
 
 def _american_to_payout(price: int, wager: float = 1.0) -> float:
@@ -353,12 +373,16 @@ def replay_event(event_id: str, year: int,
         WHERE event_id = ? AND year = ?
     """, (str(event_id), year)).fetchall()
     finish_by_key = {r[0]: r[1] for r in results if r[0] and r[1]}
+    # Collect all finish texts for dead-heat detection
+    all_finish_texts = [r[1] for r in results if r[0] and r[1]]
 
     # 5. Find value bets and evaluate
     bets = []
     for market in strategy.markets:
         target = market_targets.get(market, 1.0)
-        probs = _softmax_probs(scores, strategy.softmax_temp, target)
+        # Use market-specific temperature for consistency with live model
+        temp = MARKET_SOFTMAX_TEMPS.get(market, strategy.softmax_temp)
+        probs = _softmax_probs(scores, temp, target)
 
         for i, p in enumerate(players):
             pkey = p["player_key"]
@@ -397,10 +421,23 @@ def replay_event(event_id: str, year: int,
             else:
                 wager = 0.01
 
-            # Check outcome
+            # Check outcome using unified scoring (dead-heat aware)
             fin_text = finish_by_key.get(pkey, "")
-            won = _did_bet_win(fin_text, market)
-            payout = _american_to_payout(price, wager) if won else 0.0
+            outcome = _did_bet_win(fin_text, market, all_finish_texts)
+            won = outcome["hit"] == 1
+            fraction = outcome["fraction"]
+            is_push = outcome["is_push"]
+
+            # Compute payout with dead-heat and push handling
+            odds_dec = american_to_decimal(price)
+            if odds_dec is not None:
+                profit = compute_profit(
+                    outcome["hit"], fraction, is_push, odds_dec, wager
+                )
+                payout = wager + profit  # total return
+            else:
+                profit = -wager
+                payout = 0.0
 
             bets.append({
                 "event_id": event_id,
@@ -414,7 +451,9 @@ def replay_event(event_id: str, year: int,
                 "odds": price,
                 "wager": round(wager, 4),
                 "won": won,
-                "payout": round(payout, 4),
+                "fraction": round(fraction, 4),
+                "is_push": is_push,
+                "payout": round(max(0, payout), 4),
                 "clv": round(model_prob - implied_prob, 4),
                 "finish": fin_text,
             })

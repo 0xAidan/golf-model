@@ -152,11 +152,12 @@ def compute_course_fit(tournament_id: int, weights: dict,
             w_sg_putt *= adj.get("course_sg_putt_mult", 1.0)
             # Re-normalize so weights still sum to ~1.0
             total = w_sg_tot + w_sg_app + w_sg_ott + w_sg_putt + w_par_eff
-            w_sg_tot /= total
-            w_sg_app /= total
-            w_sg_ott /= total
-            w_sg_putt /= total
-            w_par_eff /= total
+            if total > 0:
+                w_sg_tot /= total
+                w_sg_app /= total
+                w_sg_ott /= total
+                w_sg_putt /= total
+                w_par_eff /= total
 
     results = {}
     for pk, data in player_data.items():

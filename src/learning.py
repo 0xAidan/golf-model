@@ -14,12 +14,16 @@ calibration/course-learning tables.
 """
 
 import json
+import logging
 import math
 from datetime import datetime
 from typing import Optional
 
 from src import db
 from src.player_normalizer import display_name
+from src.scoring import determine_outcome, compute_profit, parse_odds_to_decimal
+
+logger = logging.getLogger("learning")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -50,6 +54,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         return {"status": "no_results", "message": "No results entered yet."}
 
     result_map = {r["player_key"]: dict(r) for r in results}
+    all_results_list = [dict(r) for r in results]
 
     scored = 0
     hits = 0
@@ -60,52 +65,32 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         bt = pick["bet_type"]
         r = result_map.get(pk)
         if not r:
+            logger.warning("Scoring skip: no results for player_key=%s bet_type=%s", pk, bt)
             continue
 
         finish = r.get("finish_position")
+        finish_text = r.get("finish_text")
         made_cut = r.get("made_cut", 0)
-        hit = 0
 
-        if bt == "outright":
-            hit = 1 if finish == 1 else 0
-        elif bt == "top5":
-            hit = 1 if finish is not None and finish <= 5 else 0
-        elif bt == "top10":
-            hit = 1 if finish is not None and finish <= 10 else 0
-        elif bt == "top20":
-            hit = 1 if finish is not None and finish <= 20 else 0
-        elif bt == "make_cut":
-            hit = 1 if made_cut else 0
-        elif bt == "matchup":
-            opp_key = pick["opponent_key"]
+        # Determine opponent finish for matchups
+        opp_finish = None
+        if bt == "matchup":
+            opp_key = pick.get("opponent_key")
             opp_result = result_map.get(opp_key)
-            if opp_result and finish is not None:
-                opp_finish = opp_result.get("finish_position")
-                if opp_finish is None:
-                    hit = 1
-                elif finish < opp_finish:
-                    hit = 1
+            opp_finish = opp_result.get("finish_position") if opp_result else None
 
-        # Calculate profit if we have odds
-        odds_text = pick["market_odds"]
-        odds_decimal = None
-        profit = 0.0
-        stake = 1.0  # Default 1 unit
+        outcome = determine_outcome(
+            bt, finish, finish_text, made_cut, all_results_list,
+            opponent_finish=opp_finish,
+        )
+        hit = outcome["hit"]
+        fraction = outcome["fraction"]
+        is_push = outcome["is_push"]
 
-        if odds_text:
-            try:
-                odds_int = int(str(odds_text).replace("+", ""))
-                if odds_int > 0:
-                    odds_decimal = (odds_int / 100.0) + 1.0
-                else:
-                    odds_decimal = (100.0 / abs(odds_int)) + 1.0
-            except (ValueError, ZeroDivisionError):
-                odds_decimal = None
-
-        if odds_decimal and hit:
-            profit = stake * (odds_decimal - 1.0)
-        elif odds_decimal:
-            profit = -stake
+        # Calculate profit
+        odds_decimal = parse_odds_to_decimal(pick["market_odds"])
+        stake = 1.0
+        profit = compute_profit(hit, fraction, is_push, odds_decimal, stake)
 
         total_profit += profit
 
@@ -159,6 +144,7 @@ def log_predictions_for_tournament(tournament_id: int,
     conn.close()
 
     result_map = {r["player_key"]: dict(r) for r in results}
+    all_results_list = [dict(r) for r in results]
 
     predictions = []
     for bet_type, bets in value_bets_by_type.items():
@@ -166,37 +152,28 @@ def log_predictions_for_tournament(tournament_id: int,
             pk = bet.get("player_key")
             r = result_map.get(pk)
 
-            # Determine actual outcome
+            # Determine actual outcome using unified scoring
             actual = 0
+            fraction = 0.0
+            is_push = False
             if r:
-                finish = r.get("finish_position")
-                made_cut = r.get("made_cut", 0)
-                if bet_type == "outright" and finish == 1:
-                    actual = 1
-                elif bet_type == "top5" and finish is not None and finish <= 5:
-                    actual = 1
-                elif bet_type == "top10" and finish is not None and finish <= 10:
-                    actual = 1
-                elif bet_type == "top20" and finish is not None and finish <= 20:
-                    actual = 1
-                elif bet_type == "make_cut" and made_cut:
-                    actual = 1
+                outcome = determine_outcome(
+                    bet_type,
+                    r.get("finish_position"),
+                    r.get("finish_text"),
+                    r.get("made_cut", 0),
+                    all_results_list,
+                )
+                actual = outcome["hit"]
+                fraction = outcome["fraction"]
+                is_push = outcome["is_push"]
 
             # Compute odds_decimal from best_odds
-            odds_decimal = None
-            best_odds = bet.get("best_odds")
-            if best_odds:
-                try:
-                    if best_odds > 0:
-                        odds_decimal = (best_odds / 100.0) + 1.0
-                    else:
-                        odds_decimal = (100.0 / abs(best_odds)) + 1.0
-                except (ValueError, ZeroDivisionError):
-                    pass
+            odds_decimal = parse_odds_to_decimal(bet.get("best_odds"))
 
             profit = None
             if odds_decimal and bet.get("is_value"):
-                profit = (odds_decimal - 1.0) if actual else -1.0
+                profit = compute_profit(actual, fraction, is_push, odds_decimal, 1.0)
 
             predictions.append({
                 "tournament_id": tournament_id,
@@ -418,6 +395,7 @@ def update_prediction_outcomes(tournament_id: int) -> int:
         return 0
 
     result_map = {r["player_key"]: dict(r) for r in results}
+    all_results_list = [dict(r) for r in results]
 
     predictions = conn.execute(
         "SELECT id, player_key, bet_type, odds_decimal FROM prediction_log WHERE tournament_id = ?",
@@ -431,26 +409,24 @@ def update_prediction_outcomes(tournament_id: int) -> int:
         r = result_map.get(pk)
 
         actual = 0
+        fraction = 0.0
+        is_push = False
         if r:
-            finish = r.get("finish_position")
-            made_cut = r.get("made_cut", 0)
-            if bt == "outright" and finish == 1:
-                actual = 1
-            elif bt == "top5" and finish is not None and finish <= 5:
-                actual = 1
-            elif bt == "top10" and finish is not None and finish <= 10:
-                actual = 1
-            elif bt == "top20" and finish is not None and finish <= 20:
-                actual = 1
-            elif bt == "make_cut" and made_cut:
-                actual = 1
-            elif bt == "frl" and finish == 1:
-                actual = 1
+            outcome = determine_outcome(
+                bt,
+                r.get("finish_position"),
+                r.get("finish_text"),
+                r.get("made_cut", 0),
+                all_results_list,
+            )
+            actual = outcome["hit"]
+            fraction = outcome["fraction"]
+            is_push = outcome["is_push"]
 
         odds_dec = pred["odds_decimal"]
         profit = None
         if odds_dec:
-            profit = (odds_dec - 1.0) if actual else -1.0
+            profit = compute_profit(actual, fraction, is_push, odds_dec, 1.0)
 
         conn.execute(
             "UPDATE prediction_log SET actual_outcome = ?, profit = ? WHERE id = ?",

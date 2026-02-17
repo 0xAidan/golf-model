@@ -309,25 +309,29 @@ def compute_weather_adjustments(
         reasons = []
 
         # Wave advantage from tee times
+        # PGA Tour tee times alternate: R1 morning = R2 afternoon, R3 morning = R4 afternoon
         if has_wave_split and tee_times and pk in tee_times:
             tee = tee_times[pk]
+            tee_str = str(tee).strip()
+            is_am_tee_r1 = False
+            try:
+                if ":" in tee_str:
+                    hour = int(tee_str.split(":")[0])
+                    is_am_tee_r1 = hour < 12
+            except (ValueError, IndexError):
+                pass
+
             for round_num, wd in wave_data.items():
                 if wd["advantage"] == "neutral":
                     continue
-                # Determine if player is in favorable wave
-                # tee_time format varies; check if AM (<12:00) or PM
-                tee_str = str(tee).strip()
-                is_am_tee = False
-                try:
-                    if ":" in tee_str:
-                        hour = int(tee_str.split(":")[0])
-                        is_am_tee = hour < 12
-                except (ValueError, IndexError):
-                    pass
+
+                # Flip AM/PM between rounds: odd rounds match R1, even rounds flip
+                rn = int(round_num) if isinstance(round_num, (int, str)) else 1
+                is_am_this_round = is_am_tee_r1 if (rn % 2 == 1) else (not is_am_tee_r1)
 
                 favorable = (
-                    (wd["advantage"] == "AM" and is_am_tee) or
-                    (wd["advantage"] == "PM" and not is_am_tee)
+                    (wd["advantage"] == "AM" and is_am_this_round) or
+                    (wd["advantage"] == "PM" and not is_am_this_round)
                 )
                 if favorable:
                     wave_adj += min(MAX_WAVE_ADJUSTMENT, wd["diff_kmh"] * 0.3)

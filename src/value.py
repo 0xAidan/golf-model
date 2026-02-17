@@ -67,6 +67,8 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
         return 0.0
 
     field_size = len(all_scores)
+    if field_size == 0:
+        return 0.0
 
     # Temperature controls how peaked the distribution is.
     # Higher temperature = more uniform (wider markets).
@@ -98,14 +100,27 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
     exp_total = sum(exp_scores)
 
     if exp_total == 0:
-        return target_sum / field_size
+        return target_sum / max(field_size, 1)
 
-    # Player's softmax share, then scale to target sum
-    player_exp = math.exp((composite_score - max_score) / temp)
-    prob = (player_exp / exp_total) * target_sum
+    # Compute ALL probabilities, clamp, then renormalize to preserve target_sum.
+    # This prevents individual clamping from breaking the probability sum.
+    raw_probs = [(math.exp((s - max_score) / temp) / exp_total) * target_sum
+                 for s in all_scores]
+    clamped = [max(0.001, min(0.95, p)) for p in raw_probs]
+    clamped_sum = sum(clamped)
 
-    # Clamp individual probability to valid range
-    return max(0.001, min(0.95, prob))
+    # Find this player's index and return their renormalized probability
+    try:
+        player_idx = all_scores.index(composite_score)
+    except ValueError:
+        # Composite score not found in all_scores -- compute directly
+        player_exp = math.exp((composite_score - max_score) / temp)
+        prob = (player_exp / exp_total) * target_sum
+        return max(0.001, min(0.95, prob))
+
+    if clamped_sum > 0:
+        return clamped[player_idx] * (target_sum / clamped_sum)
+    return target_sum / max(field_size, 1)
 
 
 def _get_dg_probabilities(tournament_id: int) -> dict:
@@ -243,35 +258,50 @@ def find_value_bets(composite_results: list[dict],
         if odds_entry.get("implied_prob", 0) < MIN_MARKET_PROB:
             continue
 
-        # Get model probability — priority chain
-        model_prob = None
+        # Get model probability — priority chain with blending
+        #
+        # Instead of using DG probs exclusively when available, we now
+        # blend DG probability (well-calibrated) with our own composite-based
+        # probability (captures course_fit, weather, momentum signals that
+        # DG may not weight the same way).
+        #
+        # Blend ratio: 70% DG + 30% composite softmax when DG is available.
+        # This ensures our model's signals actually influence betting decisions.
+        DG_BLEND_WEIGHT = 0.70
+        MODEL_BLEND_WEIGHT = 1.0 - DG_BLEND_WEIGHT
+
+        dg_prob_raw = None
         prob_source = "softmax"
 
         # 1. DG calibrated probabilities from pre-tournament predictions (best)
         if pkey in dg_probs:
-            dg_prob = _get_best_prob(dg_probs[pkey], bet_type)
-            if dg_prob and dg_prob > 0:
-                model_prob = dg_prob
+            dg_candidate = _get_best_prob(dg_probs[pkey], bet_type)
+            if dg_candidate and dg_candidate > 0:
+                dg_prob_raw = dg_candidate
                 prob_source = "datagolf_ch" if f"{bet_type}_ch" in dg_probs[pkey] else "datagolf"
 
-        # 2. DG model prices from odds endpoint (for FRL and other markets
-        #    where pre-tournament probs aren't available)
-        if model_prob is None:
+        # 2. DG model prices from odds endpoint (for FRL and other markets)
+        if dg_prob_raw is None:
             dg_model_prices = odds_entry.get("dg_model_prices", [])
             if dg_model_prices:
-                # Prefer course-history model (DG-CH), fall back to baseline
                 for label in ["DG-CH", "DG-Base"]:
                     for dp in dg_model_prices:
                         if dp["bookmaker"] == label and dp.get("implied_prob"):
-                            model_prob = dp["implied_prob"]
+                            dg_prob_raw = dp["implied_prob"]
                             prob_source = "datagolf_ch" if label == "DG-CH" else "datagolf"
                             break
-                    if model_prob is not None:
+                    if dg_prob_raw is not None:
                         break
 
-        # 3. Softmax fallback from composite scores
-        if model_prob is None:
-            model_prob = model_score_to_prob(r["composite"], all_scores, bet_type)
+        # 3. Compute our own softmax probability from composite scores
+        softmax_prob = model_score_to_prob(r["composite"], all_scores, bet_type)
+
+        # 4. Blend or fall back
+        if dg_prob_raw is not None:
+            model_prob = DG_BLEND_WEIGHT * dg_prob_raw + MODEL_BLEND_WEIGHT * softmax_prob
+            prob_source = f"blend({prob_source}+softmax)"
+        else:
+            model_prob = softmax_prob
             prob_source = "softmax"
 
         market_prob = odds_entry["implied_prob"]

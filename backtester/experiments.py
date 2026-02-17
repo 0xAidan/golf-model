@@ -206,7 +206,7 @@ def evaluate_significance(experiment_id: int,
         ).fetchone()[0] or 1
     alpha = 0.05 / max(n_experiments, 1)
 
-    if bet_returns and len(bet_returns) >= min_bets:
+    if bet_returns and len(bet_returns) >= min_bets and len(bet_returns) > 0:
         # Bootstrap confidence interval
         n_bootstrap = 2000
         boot_rois = []

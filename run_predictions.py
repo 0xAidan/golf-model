@@ -192,6 +192,36 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
 
         has_results = existing_results and existing_results["cnt"] > 0
 
+        # Verify tournament is actually complete before attempting post-review.
+        # Check the DG schedule for an end_date in the past.
+        tournament_complete = False
+        try:
+            schedule = safe_api_call("schedule", _call_api,
+                                    "get-schedule", {"tour": "pga"})
+            if isinstance(schedule, dict):
+                schedule = schedule.get("schedule", [])
+            today = datetime.now().date()
+            for evt in (schedule or []):
+                evt_name = evt.get("event_name", "")
+                if (t_name.lower() in evt_name.lower()
+                        or evt_name.lower() in t_name.lower()):
+                    end_date_str = evt.get("end_date", "")
+                    if end_date_str:
+                        try:
+                            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                            tournament_complete = end_date < today
+                        except (ValueError, TypeError):
+                            pass
+                    break
+        except Exception as e:
+            print(f"  Warning: Could not verify tournament completion: {e}")
+            # If we can't check the schedule, assume complete if results exist
+            tournament_complete = has_results
+
+        if not tournament_complete and not has_results:
+            print(f"  Tournament '{t_name}' may still be in progress. Skipping.")
+            continue
+
         if not has_results:
             print(f"  Checking for results data...")
             ingested = False

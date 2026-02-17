@@ -77,11 +77,12 @@ def fetch_odds_api(market: str = "outrights") -> list[dict]:
 
 
 def american_to_implied_prob(price: int) -> float:
-    """Convert American odds to implied probability."""
+    """Convert American odds to implied probability. Returns 0 for invalid price."""
     if price > 0:
         return 100.0 / (price + 100.0)
     elif price < 0:
         return abs(price) / (abs(price) + 100.0)
+    # price == 0 is invalid in American odds
     return 0.0
 
 
@@ -111,11 +112,12 @@ def is_valid_odds(price: int) -> bool:
 
 
 def american_to_decimal(price: int) -> float:
-    """Convert American odds to decimal odds."""
+    """Convert American odds to decimal odds. Returns 1.0 for invalid price == 0."""
     if price > 0:
         return 1.0 + price / 100.0
     elif price < 0:
         return 1.0 + 100.0 / abs(price)
+    # price == 0 is invalid -- return 1.0 (even money) as safe fallback
     return 1.0
 
 

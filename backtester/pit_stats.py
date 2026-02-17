@@ -42,14 +42,21 @@ def build_pit_stats_for_event(event_id: str, year: int) -> int:
     """, (str(event_id), year)).fetchone()
 
     if not event_info or not event_info[0]:
-        # Fall back: get earliest round date for this event
-        first_round = conn.execute("""
-            SELECT MIN(event_completed) FROM rounds
-            WHERE event_id = ? AND year = ?
-        """, (str(event_id), year)).fetchone()
+        # Fall back: find the most recent event_completed date from a
+        # DIFFERENT event (not the current one) to avoid circular reference.
+        # This ensures we never use the current event's own dates as the
+        # boundary, which would allow data leakage.
+        prev_event = conn.execute("""
+            SELECT MAX(event_completed) FROM rounds
+            WHERE event_id != ? AND (year < ? OR (year = ? AND event_completed < (
+                SELECT MIN(event_completed) FROM rounds
+                WHERE event_id = ? AND year = ?
+            )))
+        """, (str(event_id), year, year, str(event_id), year)).fetchone()
 
-        if first_round and first_round[0]:
-            cutoff_date = first_round[0]
+        if prev_event and prev_event[0]:
+            # Use the day after the previous event's last round
+            cutoff_date = prev_event[0]
         else:
             logger.warning("No date info for event %s/%s, skipping PIT build", event_id, year)
             return 0
@@ -67,17 +74,21 @@ def build_pit_stats_for_event(event_id: str, year: int) -> int:
         return 0
 
     # 3. For each player, get all rounds BEFORE this event (strict <)
-    #    ordered by event_completed DESC so most recent come first
+    #    ordered by event_completed DESC so most recent come first.
+    #    ALSO exclude rounds from the current event_id as a safety guard
+    #    against data leakage even if dates overlap.
     count = 0
+    str_event_id = str(event_id)
     for pkey in player_keys:
         past_rounds = conn.execute("""
             SELECT sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g
             FROM rounds
             WHERE player_key = ?
               AND event_completed < ?
+              AND event_id != ?
               AND sg_total IS NOT NULL
             ORDER BY event_completed DESC, round_num DESC
-        """, (pkey, cutoff_date)).fetchall()
+        """, (pkey, cutoff_date, str_event_id)).fetchall()
 
         if not past_rounds:
             continue

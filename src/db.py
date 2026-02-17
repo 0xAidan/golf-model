@@ -687,7 +687,7 @@ def store_results(tournament_id: int, results_list: list[dict]):
         return
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO results
+        """INSERT OR IGNORE INTO results
            (tournament_id, player_key, player_display, finish_position,
             finish_text, made_cut)
            VALUES (?, ?, ?, ?, ?, ?)""",
