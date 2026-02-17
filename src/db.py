@@ -512,6 +512,34 @@ def _run_migrations(conn: sqlite3.Connection):
     """)
     conn.commit()
 
+    # Add UNIQUE index on metrics for dedup (prevents duplicate SG:TOT rows per player/window)
+    try:
+        # First deduplicate: keep the row with the highest id (most recent)
+        conn.execute("""
+            DELETE FROM metrics
+            WHERE id NOT IN (
+                SELECT MAX(id) FROM metrics
+                GROUP BY tournament_id, player_key, metric_category, data_mode, round_window, metric_name
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass  # Table might be empty or not exist yet
+
+    try:
+        conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_metrics_unique'")
+        existing = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_metrics_unique'"
+        ).fetchone()
+        if not existing:
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_metrics_unique
+                ON metrics(tournament_id, player_key, metric_category, data_mode, round_window, metric_name)
+            """)
+            conn.commit()
+    except Exception:
+        pass  # Index might already exist or dedup failed
+
     # Add UNIQUE constraints via indexes (safe to run repeatedly)
     _add_unique_constraints(conn)
 

@@ -31,6 +31,14 @@ def _get_ranks_across_windows(tournament_id: int) -> dict:
     """
     For each player, get their SG:TOT rank at each available round window.
     AUTO-DISCOVERS windows from the database.
+
+    IMPORTANT: Excludes the "all" window from momentum calculations.
+    The "all" window represents a career-level average (hundreds of rounds)
+    and is NOT comparable to rolling windows (8, 12, 24 rounds). Comparing
+    "all" rank vs "8-round" rank produces misleading momentum signals --
+    e.g., Morikawa winning Pebble Beach but showing "cold" because his
+    8-round rank (#14) is worse than his career rank (#5).
+
     Returns: {player_key: {window: rank}}
     """
     # Discover all windows with SG data
@@ -47,6 +55,8 @@ def _get_ranks_across_windows(tournament_id: int) -> dict:
     conn.close()
 
     windows = [r["round_window"] for r in window_rows]
+    # Exclude "all" window -- it's a career baseline, not a trend indicator
+    windows = [w for w in windows if w != "all"]
     if not windows:
         return {}
 
