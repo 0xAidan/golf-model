@@ -1,0 +1,21 @@
+{
+  "course_facts": {
+    "tournament": "The Genesis Invitational",
+    "course_name": "The Riviera Country Club",
+    "source": "auto_generated_from_dg_decompositions"
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Easy",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.2675,
+    "app_impact": 0.2756,
+    "arg_impact": 0.0033,
+    "putt_impact": 0.1606,
+    "total_fit_spread": 0.2904,
+    "sg_category_spread": 0.5354
+  }
+}
