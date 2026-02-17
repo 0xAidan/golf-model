@@ -1,141 +1,140 @@
 # The Genesis Invitational — Betting Card
 **Course:** The Riviera Country Club
-**Generated:** 2026-02-17 13:40
-**AI Analysis:** Enabled (85% confidence)
+**Generated:** 2026-02-17 14:35
+**AI Analysis:** Enabled (80% confidence)
 
 ## Model Rankings (Top 20)
 
 | Rank | Player | Composite | Course Fit | Form | Momentum | Trend |
 |------|--------|-----------|------------|------|----------|-------|
-| 1 | Scottie Scheffler | 85.9 | 79.2 | 98.4 | 59.4 | ↑ |
-| 2 | Hideki Matsuyama | 82.2 | 77.0 | 88.0 | 70.8 | ↑↑ |
-| 3 | Tommy Fleetwood | 77.6 | 68.1 | 91.3 | 69.1 | ↑↑ |
-| 4 | Si Woo Kim | 74.5 | 65.1 | 84.4 | 73.6 | ↑↑ |
-| 5 | Russell Henley | 72.5 | 71.4 | 84.2 | 51.5 | ↓ |
-| 6 | Justin Rose | 72.3 | 58.9 | 79.2 | 85.0 | ↑↑ |
-| 7 | Collin Morikawa | 70.2 | 76.0 | 80.5 | 28.2 | ↓↓ |
-| 8 | Matt Fitzpatrick | 70.0 | 54.2 | 85.3 | 71.0 | ↑↑ |
-| 9 | Jake Knapp | 69.8 | 52.8 | 79.7 | 84.1 | ↑↑ |
-| 10 | Patrick Cantlay | 69.3 | 82.4 | 78.3 | 25.4 | ↓↓ |
-| 11 | Rickie Fowler | 68.9 | 60.4 | 75.2 | 73.4 | ↑↑ |
-| 12 | Sepp Straka | 68.7 | 61.3 | 69.8 | 81.3 | ↑↑ |
-| 13 | Chris Gotterup | 68.3 | 53.6 | 78.2 | 77.9 | ↑↑ |
-| 14 | Xander Schauffele | 67.9 | 83.3 | 80.5 | 12.1 | ↓↓ |
-| 15 | Min Woo Lee | 67.9 | 55.5 | 73.8 | 80.9 | ↑↑ |
-| 16 | Maverick McNealy | 67.6 | 61.2 | 78.3 | 58.7 | ↑ |
-| 17 | Harris English | 66.7 | 62.6 | 75.1 | 58.0 | ↑ |
-| 18 | Ryan Gerard | 66.0 | 51.7 | 77.2 | 72.5 | ↑↑ |
-| 19 | Nick Taylor | 65.4 | 57.9 | 63.3 | 84.5 | ↑↑ |
-| 20 | Akshay Bhatia | 64.5 | 48.4 | 70.6 | 84.8 | ↑↑ |
+| 1 | Scottie Scheffler | 85.6 | 73.7 | 98.4 | 68.8 | ↑↑ |
+| 2 | Hideki Matsuyama | 79.5 | 70.2 | 88.0 | 71.0 | ↑↑ |
+| 3 | Tommy Fleetwood | 76.3 | 64.7 | 91.3 | 69.4 | ↑↑ |
+| 4 | Si Woo Kim | 74.1 | 64.1 | 84.4 | 73.6 | ↑↑ |
+| 5 | Justin Rose | 71.5 | 58.1 | 79.2 | 83.0 | ↑↑ |
+| 6 | Russell Henley | 71.2 | 68.1 | 84.2 | 51.5 | ↓ |
+| 7 | Matt Fitzpatrick | 70.1 | 54.5 | 85.3 | 70.9 | ↑↑ |
+| 8 | Jake Knapp | 69.4 | 52.8 | 79.7 | 81.9 | ↑↑ |
+| 9 | Chris Gotterup | 68.3 | 53.6 | 78.2 | 77.9 | ↑↑ |
+| 10 | Min Woo Lee | 67.8 | 56.3 | 73.8 | 78.8 | ↑↑ |
+| 11 | Sepp Straka | 67.7 | 59.9 | 69.8 | 79.3 | ↑↑ |
+| 12 | Rickie Fowler | 67.7 | 57.3 | 75.2 | 73.4 | ↑↑ |
+| 13 | Collin Morikawa | 67.7 | 69.6 | 80.5 | 28.2 | ↓↓ |
+| 14 | Maverick McNealy | 66.3 | 58.1 | 78.3 | 58.7 | ↑ |
+| 15 | Ryan Gerard | 66.0 | 51.7 | 77.2 | 72.5 | ↑↑ |
+| 16 | Patrick Cantlay | 65.7 | 73.2 | 78.3 | 25.4 | ↓↓ |
+| 17 | Harris English | 65.3 | 59.1 | 75.1 | 58.0 | ↑ |
+| 18 | Nick Taylor | 64.8 | 56.5 | 63.3 | 84.5 | ↑↑ |
+| 19 | Akshay Bhatia | 64.1 | 48.4 | 70.6 | 82.7 | ↑↑ |
+| 20 | Jacob Bridgeman | 63.3 | 47.9 | 71.2 | 78.4 | ↑↑ |
 
 ## AI Analysis
 
-**Course Narrative:** The Riviera Country Club is known for its demanding layout, with a particular emphasis on strong ball-striking skills. The course demands precision off the tee and into the greens, given the very difficult SG:OTT and SG:APP conditions. The relatively easier around-the-green conditions suggest that players who can navigate the difficult approach and off-the-tee challenges will have the best chance to excel. Putting remains a challenge, adding to the premium on ball-striking over short game recovery.
+**Course Narrative:** The Riviera Country Club is renowned for its challenging layout, demanding strong tee-to-green skills, particularly in driving and approach play. The difficulty in Strokes Gained: Off-the-Tee and Approach suggests players who excel in these areas will have an advantage. The easy Around-the-Green conditions might neutralize short game specialists, while the difficult putting conditions will test even the best putters. Historically, players who can manage their game strategically and handle pressure on the greens tend to perform well.
 
 **Key Factors:**
-- Strong ball-striking: Emphasis on SG:OTT and SG:APP due to course difficulty.
-- Form and momentum: Current form, particularly in recent rounds, will be crucial given the tough conditions.
-- Course fit for difficult conditions: Players who excel in difficult scoring conditions should have an advantage.
-- Avoidance of big mistakes: With difficult approach and tee conditions, minimizing errors will be key.
+- Strokes Gained: Off-the-Tee
+- Strokes Gained: Approach
+- Putting under pressure
+- Strategic course management
 
 **Players to Watch (AI sees edge):**
 
 | Player | Adjustment | Edge |
 |--------|------------|------|
-| Scottie Scheffler | +3.0 | Exceptional form and warming momentum align well with the course's demands. |
-| Hideki Matsuyama | +2.0 | Hot form and strong course fit, particularly in ball-striking, position him well. |
-| Collin Morikawa | +2.0 | Despite cold momentum, his strong course fit suggests potential upside. |
+| Scottie Scheffler | +3.0 | Outstanding recent form and strong course fit enhance his top-ranked composite score. |
+| Hideki Matsuyama | +2.0 | Excels in difficult SG:APP environments, matches well with Riviera's challenges. |
+| Collin Morikawa | +2.0 | Despite cold momentum, his SG:APP is elite, which suits this course's demands. |
 
 **Players to Fade (AI sees risk):**
 
 | Player | Adjustment | Reason |
 |--------|------------|--------|
-| Viktor Hovland | -3.0 | Cold momentum and less favorable course fit on a demanding setup. |
-| Rory McIlroy | -2.0 | Currently cold momentum and potential for big mistakes could be costly here. |
+| Rory McIlroy | -3.0 | Cold momentum and less optimal course fit despite high baseline skill. |
+| Xander Schauffele | -2.0 | Cold momentum and lower composite score compared to typical performance. |
 
 ## AI Recommended Bets
 
 | Player | Bet Type | Odds | Stake | Confidence | Reasoning |
 |--------|----------|------|-------|------------|-----------|
-| Hideki Matsuyama | Outright | 2200 | 1.5 units | high | Hideki Matsuyama has an excellent composite ranking (#2) with strong recent form and momentum. His SG:OTT and SG:APP skills are well-suited to Riviera's demands, and the model shows a significant positive EV on his outright win odds, marking this as a high-confidence bet. |
-| Hideki Matsuyama | Top 5 | 450 | 1.5 units | high | Matsuyama's high model probability for a top 5 finish aligns with his strong form and course fit. The positive EV and his hot momentum support a high-confidence bet in this market as well. |
-| Hideki Matsuyama | Top 10 | 210 | 1.5 units | high | Given Matsuyama's solid track record and the model's high probability for a top 10 finish, this bet also carries significant positive EV. His high form and course fit scores bolster confidence in his ability to perform well here. |
-| Hideki Matsuyama | Top 20 | -120 | 2 units | medium | While offering a smaller return, the top 20 bet on Matsuyama is still positive EV, reflecting his strong likelihood of performing steadily at Riviera. This bet is a safer position with high probability according to the model. |
-| Scottie Scheffler | FRL | 900 | 1 unit | medium | Scheffler's excellent form and ball-striking capabilities make him a strong contender for first round leader. The positive EV suggests value, though first-round leader bets carry inherent volatility, warranting a medium confidence rating. |
+| Hideki Matsuyama | FRL | 2500 | 0.8u | high | Matsuyama has strong recent form and momentum, with a hot streak in his performance metrics, making him a formidable contender for First Round Leader. His tee-to-green skills are well-suited for Riviera, and the high EV suggests significant value in this bet. |
+| Scottie Scheffler | FRL | 900 | 1.0u | high | Scheffler is the top-ranked player in the composite model, excelling in form and course fit. His strong Off-the-Tee and Approach game aligns with Riviera's demands, and the high EV indicates a strong betting opportunity for First Round Leader. |
+| Hideki Matsuyama | Top10 | 210 | 0.8u | medium | Matsuyama's combination of recent form and a favorable course fit make him a good candidate for a Top 10 finish. The positive EV supports a modest stake, with his skills aligning well with the course's challenges. |
+| Si Woo Kim | Top5 | 550 | 1.0u | low | Si Woo Kim's hot momentum and decent course fit provide an outside chance for a Top 5. Although the EV is just above the threshold, his recent performances suggest he could overperform. |
 
-**Portfolio Notes:** The portfolio is heavily weighted towards Hideki Matsuyama due to his strong model scores and consistent edge across different markets. This concentration carries risk if he underperforms, but the high confidence in his form and course fit justifies this approach. Scottie Scheffler's FRL bet adds some diversification.
+**Portfolio Notes:** The portfolio is concentrated on Hideki Matsuyama and Scottie Scheffler due to their high EV opportunities, particularly for First Round Leader. Matsuyama receives the highest allocation, but within the 40% rule, due to strong expected value across multiple bet types. Si Woo Kim adds slight diversification with a low-confidence, low-stake bet. [Portfolio limits applied: max 40% per player, max 3u per bet. Adjusted total: 3.6u]
 
-**Passing On:** Passing on other players and bets due to lower model probabilities and less favorable EVs. The focus is on high-confidence, positive EV opportunities.
+**Passing On:** Passed on some Top20 and Top5 bets with lower EVs and less compelling qualitative support, to avoid overexposure and maintain a tight, value-focused portfolio.
 
-**Total Units:** 7.5 | **Expected ROI:** High, due to multiple high EV bets on Matsuyama across different markets.
+**Total Units:** 3.6 | **Expected ROI:** ~15%
 
 ## Outright Winner
 
-- **VALUE** **Hideki Matsuyama** (#2) — +2200 @ bet365, model 5.7% vs market 4.3%, EV 31.4% *(better: +2522 @ Pinnacle)*
+- **VALUE** **Hideki Matsuyama** (#2) — +2200 @ bet365, model 5.0% vs market 4.3%, EV 15.7% *(better: +2522 @ Pinnacle)*
 
-- **Si Woo Kim** (#4) — +3000 @ bet365, model 3.2% vs market 3.2%, EV -2.0% *(better: +3660 @ Betcris)*
-- **Justin Rose** (#6) — +4000 @ bet365, model 2.3% vs market 2.4%, EV -5.2% *(better: +5500 @ BetOnline)*
-- **Russell Henley** (#5) — +3000 @ bet365, model 2.9% vs market 3.2%, EV -11.1% *(better: +3761 @ Betcris)*
-- **Ryan Gerard** (#18) — +6000 @ bet365, model 1.5% vs market 1.6%, EV -11.5% *(better: +7657 @ Betcris)*
+- **Si Woo Kim** (#4) — +3000 @ bet365, model 3.3% vs market 3.2%, EV 1.7% *(better: +3660 @ Betcris)*
+- **Justin Rose** (#5) — +4000 @ bet365, model 2.4% vs market 2.4%, EV -3.2% *(better: +5500 @ BetOnline)*
+- **Ryan Gerard** (#15) — +6000 @ bet365, model 1.5% vs market 1.6%, EV -7.3% *(better: +7657 @ Betcris)*
+- **Russell Henley** (#6) — +3000 @ bet365, model 2.8% vs market 3.2%, EV -12.2% *(better: +3761 @ Betcris)*
 
 ## Top 5 Finish
 
-- **VALUE** **Hideki Matsuyama** (#2) — +450 @ bet365, model 23.9% vs market 18.2%, EV 31.5% *(better: +500 @ BetOnline)*
-- **VALUE** **Justin Rose** (#6) — +750 @ bet365, model 12.1% vs market 11.8%, EV 2.8% *(better: +850 @ FanDuel)*
-- **VALUE** **Ryan Gerard** (#18) — +1100 @ bet365, model 8.5% vs market 8.3%, EV 2.5%
+- **VALUE** **Hideki Matsuyama** (#2) — +450 @ bet365, model 21.7% vs market 18.2%, EV 19.6% *(better: +500 @ BetOnline)*
+- **VALUE** **Ryan Gerard** (#15) — +1100 @ bet365, model 8.8% vs market 8.3%, EV 6.1%
+- **VALUE** **Justin Rose** (#5) — +750 @ bet365, model 12.3% vs market 11.8%, EV 4.2% *(better: +850 @ FanDuel)*
+- **VALUE** **Si Woo Kim** (#4) — +550 @ bet365, model 15.8% vs market 15.4%, EV 2.7% *(better: +630 @ DraftKings)*
 
-- **Si Woo Kim** (#4) — +550 @ bet365, model 15.4% vs market 15.4%, EV 0.1% *(better: +630 @ DraftKings)*
-- **Scottie Scheffler** (#1) — -120 @ bet365, model 52.7% vs market 54.5%, EV -3.3% *(better: -119 @ Pinnacle)*
+- **Scottie Scheffler** (#1) — -120 @ bet365, model 54.2% vs market 54.5%, EV -0.6% *(better: -119 @ Pinnacle)*
 
 ## Top 10 Finish
 
-- **VALUE** **Hideki Matsuyama** (#2) — +210 @ bet365, model 40.7% vs market 32.3%, EV 26.3% *(better: +215 @ BetOnline)*
-- **VALUE** **Si Woo Kim** (#4) — +260 @ bet365, model 28.7% vs market 27.8%, EV 3.4% *(better: +290 @ FanDuel)*
+- **VALUE** **Hideki Matsuyama** (#2) — +210 @ bet365, model 37.9% vs market 32.3%, EV 17.4% *(better: +215 @ BetOnline)*
+- **VALUE** **Si Woo Kim** (#4) — +260 @ bet365, model 29.4% vs market 27.8%, EV 5.8% *(better: +290 @ FanDuel)*
 
-- **Scottie Scheffler** (#1) — -250 @ bet365, model 72.3% vs market 71.4%, EV 1.2%
-- **Justin Rose** (#6) — +333 @ bet365, model 23.1% vs market 23.1%, EV 0.1% *(better: +360 @ FanDuel)*
-- **Tommy Fleetwood** (#3) — +175 @ bet365, model 35.8% vs market 36.4%, EV -1.5% *(better: +200 @ FanDuel)*
-- **Russell Henley** (#5) — +260 @ bet365, model 27.2% vs market 27.8%, EV -1.9% *(better: +280 @ FanDuel)*
+- **Justin Rose** (#5) — +333 @ bet365, model 23.4% vs market 23.1%, EV 1.5% *(better: +360 @ FanDuel)*
+- **Scottie Scheffler** (#1) — -250 @ bet365, model 72.4% vs market 71.4%, EV 1.4%
+- **Ryan Gerard** (#15) — +450 @ bet365, model 18.3% vs market 18.2%, EV 0.4%
+- **Tommy Fleetwood** (#3) — +175 @ bet365, model 35.5% vs market 36.4%, EV -2.3% *(better: +200 @ FanDuel)*
 
 ## Top 20 Finish
 
-- **VALUE** **Hideki Matsuyama** (#2) — -120 @ bet365, model 61.6% vs market 54.5%, EV 12.9% *(better: -113 @ Pinnacle)*
-- **VALUE** **Si Woo Kim** (#4) — +100 @ bet365, model 51.7% vs market 50.0%, EV 3.4% *(better: +110 @ FanDuel)*
+- **VALUE** **Hideki Matsuyama** (#2) — -120 @ bet365, model 61.5% vs market 54.5%, EV 12.7% *(better: -113 @ Pinnacle)*
+- **VALUE** **Si Woo Kim** (#4) — +100 @ bet365, model 52.4% vs market 50.0%, EV 4.8% *(better: +110 @ FanDuel)*
 
-- **Tommy Fleetwood** (#3) — -149 @ bet365, model 60.9% vs market 59.8%, EV 1.8% *(better: -125 @ FanDuel)*
-- **Russell Henley** (#5) — +100 @ bet365, model 49.5% vs market 50.0%, EV -0.9% *(better: +115 @ FanDuel)*
-- **Scottie Scheffler** (#1) — -667 @ bet365, model 84.9% vs market 87.0%, EV -2.3% *(better: -650 @ DraftKings)*
-- **Justin Rose** (#6) — +125 @ bet365, model 43.3% vs market 44.4%, EV -2.6% *(better: +145 @ FanDuel)*
-- **Ryan Gerard** (#18) — +163 @ bet365, model 35.6% vs market 38.0%, EV -6.3% *(better: +175 @ BetMGM)*
-- **Matt Fitzpatrick** (#8) — +105 @ bet365, model 44.7% vs market 48.8%, EV -8.3% *(better: +130 @ PointsBet)*
+- **Tommy Fleetwood** (#3) — -149 @ bet365, model 60.2% vs market 59.8%, EV 0.7% *(better: -125 @ FanDuel)*
+- **Russell Henley** (#6) — +100 @ bet365, model 49.0% vs market 50.0%, EV -1.9% *(better: +115 @ FanDuel)*
+- **Justin Rose** (#5) — +125 @ bet365, model 43.6% vs market 44.4%, EV -2.0% *(better: +145 @ FanDuel)*
+- **Scottie Scheffler** (#1) — -667 @ bet365, model 84.8% vs market 87.0%, EV -2.4% *(better: -650 @ DraftKings)*
+- **Ryan Gerard** (#15) — +163 @ bet365, model 36.4% vs market 38.0%, EV -4.3% *(better: +175 @ BetMGM)*
+- **Matt Fitzpatrick** (#7) — +105 @ bet365, model 45.8% vs market 48.8%, EV -6.0% *(better: +130 @ PointsBet)*
 
 ## Matchup Edges
 
 Best head-to-head edges based on composite score gap:
 
-- **Scottie Scheffler** over Keegan Bradley — edge: 28.2 pts (course fit +23; form +37)
-- **Hideki Matsuyama** over Ben Griffin — edge: 24.6 pts (course fit +18; form +14; momentum advantage)
-- **Tommy Fleetwood** over J.T. Poston — edge: 20.3 pts (course fit +11; form +32)
-- **Nick Taylor** over Alex Noren — edge: 17.4 pts (course fit +6; momentum advantage)
-- **Si Woo Kim** over Cameron Young — edge: 17.3 pts (form +22; momentum advantage)
-- **Robert MacIntyre** over Stephan Jaeger — edge: 17.2 pts (course fit +14; form +29)
-- **Ryan Gerard** over Tony Finau — edge: 17.2 pts (form +24; momentum advantage)
-- **Maverick McNealy** over Sami Valimaki — edge: 16.9 pts (course fit +19; form +27)
+- **Scottie Scheffler** over Keegan Bradley — edge: 28.1 pts (course fit +18; form +37)
+- **Hideki Matsuyama** over Viktor Hovland — edge: 22.1 pts (course fit +6; form +21; momentum advantage)
+- **Tommy Fleetwood** over J.J. Spaun — edge: 19.4 pts (course fit +8; form +31; momentum advantage)
+- **Stephan Jaeger** over Jhonattan Vegas — edge: 17.6 pts (course fit +6; form +21)
+- **Nico Echavarria** over Jhonattan Vegas — edge: 17.4 pts (form +20)
+- **Si Woo Kim** over Sam Burns — edge: 17.3 pts (form +14; momentum advantage)
+- **Nick Taylor** over Alex Noren — edge: 17.2 pts (course fit +6; momentum advantage)
+- **Akshay Bhatia** over Wyndham Clark — edge: 17.1 pts (form +26; momentum advantage)
 
 ## Fades (Avoid)
 
 Players likely overpriced or in poor form:
 
-- **Aaron Rai** — composite 37.4, trending cold (-63)
-- **Kevin Yu** — composite 36.3, trending cold (-24)
-- **Lucas Glover** — composite 34.9, trending cold (-26)
+- **Kevin Yu** — composite 36.8, trending cold (-24)
+- **Aaron Rai** — composite 36.3, trending cold (-63)
+- **Lucas Glover** — composite 34.6, trending cold (-26)
 - **Aldrich Potgieter** — composite 33.4, composite edge
 - **Joe Highsmith** — composite 31.9, composite edge
 - **Matti Schmid** — composite 31.4, trending cold (-31)
-- **Billy Horschel** — composite 31.3, trending cold (-65)
+- **Billy Horschel** — composite 31.4, trending cold (-65)
 - **Brian Campbell** — composite 30.5, composite edge
-- **Adam Schenk** — composite 29.2, trending cold (-21)
-- **Jhonattan Vegas** — composite 28.5, trending cold (-66)
+- **Adam Schenk** — composite 29.8, trending cold (-21)
+- **Jhonattan Vegas** — composite 26.9, trending cold (-66)
 
 ---
 *Model: 83 players scored. Course data: Yes. AI-adjusted.*

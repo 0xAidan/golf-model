@@ -102,6 +102,15 @@ def _compute_trend(ranks: dict, field_size: int = 150) -> float:
     else:
         pct_improvement = 0.0
 
+    # Elite stability bonus: players consistently in the top 10 get credit
+    # for maintaining that level, since they can't improve much further.
+    # A player ranked #3 -> #3 shows pct_improvement=0, but staying
+    # elite across windows is itself a positive signal.
+    ELITE_THRESHOLD = 10
+    if newest_rank <= ELITE_THRESHOLD and oldest_rank <= ELITE_THRESHOLD:
+        stability_bonus = 0.3 * (1.0 - (newest_rank - 1) / ELITE_THRESHOLD)
+        pct_improvement = max(pct_improvement, stability_bonus)
+
     # Also factor in absolute position: being ranked highly in the
     # most recent window is itself a positive signal.
     # A player ranked #3 in the newest window gets a small positive boost.
@@ -110,10 +119,17 @@ def _compute_trend(ranks: dict, field_size: int = 150) -> float:
     else:
         position_signal = 0.5
 
-    # Combine: 60% directional trend, 40% current position strength
+    # Combine: directional trend + current position strength
+    # For elite players (top 10), increase position weight since
+    # sustained excellence is a stronger signal than small rank changes.
+    is_elite = newest_rank <= ELITE_THRESHOLD
+    pos_weight = 0.50 if is_elite else 0.40
+    trend_weight = 1.0 - pos_weight
+
     # The position_signal is centered at 0.5 for a mid-field player,
     # so we shift it to be centered at 0 for blending.
-    blended = 0.6 * pct_improvement * 100.0 + 0.4 * (position_signal - 0.5) * 100.0
+    blended = (trend_weight * pct_improvement * 100.0
+               + pos_weight * (position_signal - 0.5) * 100.0)
 
     # Check consistency across all intermediate points
     if len(available) >= 3:

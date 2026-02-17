@@ -49,18 +49,48 @@ def fetch_forecast(latitude: float, longitude: float,
         "tournament_severity": 25.0,  # average conditions_rating across round days
     }
     """
+    from datetime import datetime as _dt, timedelta as _td
+
     url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "hourly": ",".join([
-            "temperature_2m", "wind_speed_10m", "wind_gusts_10m",
-            "precipitation", "relative_humidity_2m",
-        ]),
-        "start_date": start_date,
-        "forecast_days": min(days, 16),
-        "timezone": "auto",
-    }
+
+    # Open-Meteo's forecast API uses start_date/end_date OR forecast_days,
+    # but not both together. When start_date is provided, compute end_date
+    # and omit forecast_days to avoid a 400 error.
+    hourly_params = ",".join([
+        "temperature_2m", "wind_speed_10m", "wind_gusts_10m",
+        "precipitation", "relative_humidity_2m",
+    ])
+
+    try:
+        start_dt = _dt.strptime(start_date, "%Y-%m-%d")
+        end_dt = start_dt + _td(days=days - 1)
+        today = _dt.now().date()
+        days_ahead = (start_dt.date() - today).days
+
+        if days_ahead > 16:
+            logger.warning(
+                "Start date %s is %d days ahead (max 16). Cannot fetch forecast.",
+                start_date, days_ahead,
+            )
+            return None
+
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": hourly_params,
+            "start_date": start_date,
+            "end_date": end_dt.strftime("%Y-%m-%d"),
+            "timezone": "auto",
+        }
+    except ValueError:
+        # Invalid date format, fall back to forecast_days from today
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": hourly_params,
+            "forecast_days": min(days, 16),
+            "timezone": "auto",
+        }
 
     try:
         resp = requests.get(url, params=params, timeout=15)

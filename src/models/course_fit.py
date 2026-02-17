@@ -44,6 +44,81 @@ def _rounds_confidence(rounds_played: float, max_rounds: float = 30.0) -> float:
     return min(1.0, 0.3 + 0.7 * (rounds_played / max_rounds))
 
 
+def _time_decay(years_ago: float, half_life: float = 2.0) -> float:
+    """
+    Exponential time decay factor.
+
+    At half_life years, the weight is 0.5. At 2*half_life, 0.25, etc.
+    Returns 1.0 for 0 years ago, decaying toward 0 for very old data.
+    """
+    if years_ago is None or years_ago <= 0:
+        return 1.0
+    return 0.5 ** (years_ago / half_life)
+
+
+def _get_course_recency(tournament_id: int) -> dict:
+    """
+    For each player in this tournament's field, determine how recently
+    they played at this course using the rounds table.
+
+    Returns {player_key: years_since_last_played} where
+    years_since_last_played is 0 if they played this year,
+    1 if last year, etc. None if no course history found.
+    """
+    conn = db.get_conn()
+
+    # Get tournament info
+    t_info = conn.execute(
+        "SELECT date, year, course FROM tournaments WHERE id = ?",
+        (tournament_id,),
+    ).fetchone()
+
+    if not t_info:
+        conn.close()
+        return {}
+
+    tournament_year = t_info[1] or 2026
+    course_name = t_info[2]
+
+    if not course_name:
+        conn.close()
+        return {}
+
+    # Find the course_num(s) that match this course name
+    # Use a LIKE query to handle slight name variations
+    course_nums = conn.execute("""
+        SELECT DISTINCT course_num FROM rounds
+        WHERE course_name LIKE ?
+          AND course_num IS NOT NULL
+    """, (f"%{course_name}%",)).fetchall()
+
+    if not course_nums:
+        conn.close()
+        return {}
+
+    course_num_list = [r[0] for r in course_nums]
+    placeholders = ",".join("?" for _ in course_num_list)
+
+    # For each player, find their most recent round at this course
+    rows = conn.execute(f"""
+        SELECT player_key, MAX(year) as last_year
+        FROM rounds
+        WHERE course_num IN ({placeholders})
+          AND player_key IS NOT NULL
+        GROUP BY player_key
+    """, course_num_list).fetchall()
+
+    conn.close()
+
+    recency = {}
+    for r in rows:
+        pk, last_year = r
+        if pk and last_year:
+            recency[pk] = max(0, tournament_year - last_year)
+
+    return recency
+
+
 def compute_course_fit(tournament_id: int, weights: dict,
                        course_name: str = None) -> dict:
     """
@@ -92,6 +167,9 @@ def compute_course_fit(tournament_id: int, weights: dict,
     if not course_metrics and not dg_decomp and not player_dg_skill:
         # No course-specific data at all; return empty
         return {}
+
+    # Get course recency data for time decay
+    course_recency = _get_course_recency(tournament_id)
 
     # Organize by player
     player_data = {}
@@ -201,6 +279,15 @@ def compute_course_fit(tournament_id: int, weights: dict,
             + w_sg_putt * components["sg_putt"]
             + w_par_eff * components["par_eff"]
         )
+
+        # Apply time decay: shrink the course-specific rank score toward 50
+        # for players whose course history is old. A player who last played
+        # here 4+ years ago has stale data; 2 years ago gets half credit.
+        years_ago = course_recency.get(pk)
+        if years_ago is not None:
+            decay = _time_decay(years_ago)
+            score = 50.0 + decay * (score - 50.0)
+            components["time_decay"] = round(decay, 3)
 
         # ── Blend with DG data sources ──
         # Track total external blend weight to prevent over-dilution.

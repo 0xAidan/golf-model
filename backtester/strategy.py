@@ -24,6 +24,7 @@ from src import db
 from src.datagolf import _safe_float
 from src.player_normalizer import normalize_name
 from src.scoring import determine_outcome_from_text, compute_profit, american_to_decimal
+from backtester.pit_models import compute_pit_composite
 
 logger = logging.getLogger("strategy")
 
@@ -40,7 +41,7 @@ class StrategyConfig:
     All parameters that affect model output or bet selection are captured
     here so strategies can be compared, tracked, and optimized.
     """
-    # Model weights (must sum to 1.0)
+    # Legacy SG weights (used only as fallback when PIT sub-models unavailable)
     w_sg_total: float = 0.30
     w_sg_app: float = 0.15
     w_sg_ott: float = 0.10
@@ -49,7 +50,12 @@ class StrategyConfig:
     w_form: float = 0.15
     w_course_fit: float = 0.15
 
-    # Rolling stat window (12, 24, or 50)
+    # Sub-model weights for aligned composite (mirrors live model)
+    w_sub_course_fit: float = 0.40
+    w_sub_form: float = 0.40
+    w_sub_momentum: float = 0.20
+
+    # Rolling stat window (used for fallback only)
     stat_window: int = 24
 
     # Minimum EV threshold to place a bet (e.g., 0.05 = 5%)
@@ -198,18 +204,14 @@ class SimulationResult:
 #  Replay Engine
 # ═══════════════════════════════════════════════════════════════════
 
-def _compute_composite(pit: dict, weights: dict) -> float:
+def _compute_composite_legacy(pit: dict, weights: dict) -> float:
     """
-    Compute composite score from PIT stats using strategy weights.
+    LEGACY: Compute composite score from PIT stats using flat SG weights.
 
-    IMPORTANT: This is a simplified SG-weighted model used for backtesting.
-    The live model (src/models/composite.py) uses course_fit + form + momentum
-    sub-models with richer signal processing. Backtest results validate this
-    simplified SG model, NOT the full live model. This divergence is documented
-    and intentional -- aligning would require building full sub-model scores
-    from PIT stats, which is a future enhancement.
-
-    Higher is better.
+    This is the old simplified model, kept only as a fallback when PIT
+    sub-models haven't been built yet. The aligned model uses
+    compute_pit_composite() from pit_models.py which mirrors the live
+    model's course_fit + form + momentum structure.
     """
     score = 0.0
     if pit.get("sg_total") is not None:
@@ -302,28 +304,49 @@ def replay_event(event_id: str, year: int,
     conn = db.get_conn()
     weights = strategy.normalized_weights()
 
-    # 1. Get PIT stats for all players in this event
-    pit_rows = conn.execute("""
-        SELECT player_key, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, rounds_used
-        FROM pit_rolling_stats
-        WHERE event_id = ? AND year = ? AND window = ?
-    """, (str(event_id), year, strategy.stat_window)).fetchall()
+    # 1. Compute composite using aligned PIT sub-models (course_fit + form + momentum)
+    pit_composites = compute_pit_composite(
+        str(event_id), year,
+        w_course_fit=strategy.w_sub_course_fit,
+        w_form=strategy.w_sub_form,
+        w_momentum=strategy.w_sub_momentum,
+    )
 
-    if not pit_rows:
-        return []
+    if not pit_composites:
+        # Fall back to legacy SG-weighted model if sub-models unavailable
+        pit_rows = conn.execute("""
+            SELECT player_key, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, rounds_used
+            FROM pit_rolling_stats
+            WHERE event_id = ? AND year = ? AND window = ?
+        """, (str(event_id), year, strategy.stat_window)).fetchall()
 
-    players = []
-    scores = []
-    for row in pit_rows:
-        pkey = row[0]
-        pit = {
-            "sg_total": row[1], "sg_ott": row[2], "sg_app": row[3],
-            "sg_arg": row[4], "sg_putt": row[5], "sg_t2g": row[6],
-            "rounds_used": row[7],
-        }
-        cs = _compute_composite(pit, weights)
-        players.append({"player_key": pkey, "pit": pit, "composite": cs})
-        scores.append(cs)
+        if not pit_rows:
+            return []
+
+        players = []
+        scores = []
+        for row in pit_rows:
+            pkey = row[0]
+            pit = {
+                "sg_total": row[1], "sg_ott": row[2], "sg_app": row[3],
+                "sg_arg": row[4], "sg_putt": row[5], "sg_t2g": row[6],
+                "rounds_used": row[7],
+            }
+            cs = _compute_composite_legacy(pit, weights)
+            players.append({"player_key": pkey, "pit": pit, "composite": cs})
+            scores.append(cs)
+    else:
+        players = []
+        scores = []
+        for pkey, data in pit_composites.items():
+            players.append({
+                "player_key": pkey,
+                "composite": data["composite"],
+                "course_fit": data["course_fit"],
+                "form": data["form"],
+                "momentum": data["momentum"],
+            })
+            scores.append(data["composite"])
 
     # 2. Convert to probabilities per market
     market_targets = {

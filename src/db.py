@@ -414,13 +414,28 @@ def init_db():
             sg_total REAL, sg_ott REAL, sg_app REAL,
             sg_arg REAL, sg_putt REAL, sg_t2g REAL,
             rounds_used INTEGER,
+            sg_total_rank INTEGER,
             UNIQUE(event_id, year, player_key, window)
+        );
+
+        CREATE TABLE IF NOT EXISTS pit_course_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            course_num INTEGER,
+            sg_total REAL, sg_ott REAL, sg_app REAL,
+            sg_arg REAL, sg_putt REAL, sg_t2g REAL,
+            rounds_played INTEGER,
+            avg_finish REAL,
+            best_finish INTEGER,
+            UNIQUE(event_id, year, player_key)
         );
 
         CREATE INDEX IF NOT EXISTS idx_historical_odds_event
             ON historical_odds(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_pit_stats_event
             ON pit_rolling_stats(event_id, year);
+        CREATE INDEX IF NOT EXISTS idx_pit_course_stats_event
+            ON pit_course_stats(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_experiments_status
             ON experiments(status, scope);
         CREATE INDEX IF NOT EXISTS idx_intel_player
@@ -469,6 +484,33 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE historical_predictions ADD COLUMN actual_finish TEXT")
         conn.commit()
+
+    # Add sg_total_rank column to pit_rolling_stats if missing
+    try:
+        conn.execute("SELECT sg_total_rank FROM pit_rolling_stats LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE pit_rolling_stats ADD COLUMN sg_total_rank INTEGER")
+        conn.commit()
+
+    # Create pit_course_stats table if missing
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pit_course_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            course_num INTEGER,
+            sg_total REAL, sg_ott REAL, sg_app REAL,
+            sg_arg REAL, sg_putt REAL, sg_t2g REAL,
+            rounds_played INTEGER,
+            avg_finish REAL,
+            best_finish INTEGER,
+            UNIQUE(event_id, year, player_key)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pit_course_stats_event
+        ON pit_course_stats(event_id, year)
+    """)
+    conn.commit()
 
     # Add UNIQUE constraints via indexes (safe to run repeatedly)
     _add_unique_constraints(conn)
