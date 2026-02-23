@@ -248,13 +248,28 @@ def find_value_bets(composite_results: list[dict],
     if ev_threshold is None:
         ev_threshold = MARKET_EV_THRESHOLDS.get(bet_type, DEFAULT_EV_THRESHOLD)
 
+    # Adaptation: check rolling market performance for graduated response
+    adaptation = None
+    if tournament_id:
+        try:
+            from src.adaptation import get_adaptation_state
+            adaptation = get_adaptation_state(bet_type)
+        except Exception:
+            adaptation = None
+
+    if adaptation and adaptation.get("suppress"):
+        return []
+
+    if adaptation and adaptation.get("ev_threshold") is not None:
+        ev_threshold = max(ev_threshold, adaptation["ev_threshold"])
+
     BLEND_WEIGHTS = {
-        "outright": {"dg": 0.90, "model": 0.10},
-        "top5":     {"dg": 0.85, "model": 0.15},
-        "top10":    {"dg": 0.85, "model": 0.15},
-        "top20":    {"dg": 0.80, "model": 0.20},
-        "frl":      {"dg": 0.90, "model": 0.10},
-        "make_cut": {"dg": 0.80, "model": 0.20},
+        "outright": {"dg": 0.95, "model": 0.05},
+        "top5":     {"dg": 0.95, "model": 0.05},
+        "top10":    {"dg": 0.95, "model": 0.05},
+        "top20":    {"dg": 0.95, "model": 0.05},
+        "frl":      {"dg": 0.95, "model": 0.05},
+        "make_cut": {"dg": 0.95, "model": 0.05},
     }
     blend_cfg = BLEND_WEIGHTS.get(bet_type, {"dg": 0.85, "model": 0.15})
     DG_BLEND_WEIGHT = blend_cfg["dg"]
@@ -393,6 +408,8 @@ def find_value_bets(composite_results: list[dict],
             "needs_review": ev > 1.0,
             "suspicious": suspicious,
             "prob_source": prob_source,
+            "adaptation_state": adaptation["state"] if adaptation else "normal",
+            "stake_multiplier": adaptation["stake_multiplier"] if adaptation else 1.0,
         })
 
     # Sort by EV descending
