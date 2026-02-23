@@ -93,29 +93,65 @@ def american_to_implied_prob(price: int) -> float:
 # Anything beyond this is almost certainly bad/corrupted data.
 MAX_REASONABLE_ODDS = 50000
 
+# Market-specific maximum reasonable American odds.
+# Anything above these thresholds for a given bet type is almost certainly
+# corrupt data (e.g. +500000 outright that generates 17,000% EV).
+MAX_REASONABLE_ODDS_BY_TYPE = {
+    "outright": 30000,
+    "outrights": 30000,
+    "top5": 5000,
+    "top_5": 5000,
+    "top10": 3000,
+    "top_10": 3000,
+    "top20": 1500,
+    "top_20": 1500,
+    "frl": 10000,
+    "make_cut": 500,
+}
+
 # Minimum reasonable implied probability. Any odds implying less than
 # this are filtered as garbage (0.2% ≈ +50000).
 MIN_REASONABLE_IMPLIED_PROB = 0.002
 
 
-def is_valid_odds(price: int) -> bool:
-    """Check if American odds value is within reasonable bounds for golf."""
+def is_valid_odds(price: int, bet_type: str = None) -> bool:
+    """
+    Check if American odds value is within reasonable bounds.
+
+    Args:
+        price: The American odds value to check
+        bet_type: Optional bet type for market-specific limits
+
+    Returns:
+        True if odds are valid, False if likely corrupted
+    """
     if price is None:
         return False
-    if price > MAX_REASONABLE_ODDS:
-        return False
-    if price < -10000:
+    try:
+        price = int(price)
+    except (ValueError, TypeError):
         return False
     if price == 0:
         return False
+    if price < -10000:
+        return False
+
+    # Global maximum
+    if price > MAX_REASONABLE_ODDS:
+        return False
+
+    # Market-specific maximum
+    if bet_type:
+        max_odds = MAX_REASONABLE_ODDS_BY_TYPE.get(bet_type, MAX_REASONABLE_ODDS)
+        if price > max_odds:
+            return False
+
     return True
 
 
 def is_reasonable_odds(price: int, bet_type: str = "outright") -> bool:
     """Check if odds are within reasonable range for the bet type."""
-    from src.value import MAX_REASONABLE_ODDS
-    max_price = MAX_REASONABLE_ODDS.get(bet_type, 30000)
-    return abs(price) <= max_price
+    return is_valid_odds(price, bet_type=bet_type)
 
 
 def american_to_decimal(price: int) -> float:

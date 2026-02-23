@@ -6,10 +6,13 @@ Bet types: Outright, Top 5, Top 10, Top 20, Matchups, 72-hole groups.
 No DFS.
 """
 
+import logging
 import os
 from datetime import datetime
 
 from src.matchups import find_best_matchups, group_by_confidence
+
+logger = logging.getLogger("card")
 
 
 def _fmt_odds(price: int) -> str:
@@ -53,7 +56,8 @@ def generate_card(tournament_name: str,
                   value_bets: dict = None,
                   output_dir: str = "output",
                   ai_pre_analysis: dict = None,
-                  ai_decisions: dict = None) -> str:
+                  ai_decisions: dict = None,
+                  matchup_bets: list[dict] = None) -> str:
     """
     Generate a markdown betting card.
 
@@ -62,6 +66,7 @@ def generate_card(tournament_name: str,
                 each value is a list from value.find_value_bets()
     ai_pre_analysis: AI pre-tournament analysis (optional)
     ai_decisions: AI betting decisions (optional)
+    matchup_bets: list of matchup value bets from matchup_value module (optional)
 
     Returns the file path of the generated card.
     """
@@ -73,11 +78,22 @@ def generate_card(tournament_name: str,
     lines.append(f"**Course:** {course_name}")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     if ai_pre_analysis:
-        lines.append(f"**AI Analysis:** Enabled ({ai_pre_analysis.get('confidence', 0):.0%} confidence)")
+        conf = ai_pre_analysis.get('confidence', 0)
+        lines.append(f"**AI Analysis:** Enabled ({conf:.0%} confidence)")
+        factors = ai_pre_analysis.get('confidence_factors', {})
+        explanation = ai_pre_analysis.get('confidence_explanation', '')
+        if factors:
+            factor_strs = [f"{k.replace('_', ' ').title()}: {v:.0%}" for k, v in factors.items()]
+            lines.append(f"*Confidence breakdown: {', '.join(factor_strs)}*")
+        if explanation:
+            lines.append(f"*{explanation}*")
     lines.append("")
 
     # ── Weekly Strategy Summary ────────────────────────────────
     _write_weekly_strategy(lines, value_bets)
+
+    # ── Market Adaptation Status ──────────────────────────────
+    _write_adaptation_status(lines)
 
     # ── 1. Model Rankings (Top 20) ─────────────────────────────
     lines.append("## Model Rankings (Top 20)")
@@ -94,10 +110,13 @@ def generate_card(tournament_name: str,
         )
     lines.append("")
 
-    # ── 2. CORE: Matchup Edges (strongest signal) ──────────────
-    lines.append("## Core Picks: Matchup Edges")
+    # ── 2a. Matchup Value Bets (Real Odds) ─────────────────────
+    _write_matchup_value_bets(lines, matchup_bets)
+
+    # ── 2b. CORE: Model Edges (Directional) ──────────────────
+    lines.append("## Core Picks: Model Edges (Directional)")
     lines.append("")
-    lines.append("*Matchups are the model's strongest signal (12-3-1, +8.01u over last 2 events).*")
+    lines.append("*Model-only matchup edges for directional guidance (no sportsbook odds required).*")
     lines.append("")
 
     matchup_course_profile = None
@@ -359,6 +378,60 @@ def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
                 f"EV {vb['ev_pct']}{better}"
             )
         lines.append("")
+
+
+def _write_adaptation_status(lines: list):
+    """Add market adaptation state table to the card."""
+    try:
+        from src.adaptation import get_adaptation_state
+
+        markets = ["outright", "top5", "top10", "top20", "matchup"]
+        rows = []
+        for market in markets:
+            state = get_adaptation_state(market)
+            ev_thr = state.get("ev_threshold")
+            ev_str = f"{ev_thr:.0%}" if ev_thr is not None else "suppressed"
+            stake = state.get("stake_multiplier", 1.0)
+            bets = state.get("total_bets", 0)
+            rows.append(
+                f"| {market} | {state['state']} | {ev_str} | {stake}u | {bets} |"
+            )
+
+        lines.append("## Market Adaptation Status")
+        lines.append("")
+        lines.append("| Market | State | EV Threshold | Stake | Bets Tracked |")
+        lines.append("|--------|-------|-------------|-------|--------------|")
+        for row in rows:
+            lines.append(row)
+        lines.append("")
+    except Exception as e:
+        logger.warning("Adaptation status unavailable: %s", e)
+
+
+def _write_matchup_value_bets(lines: list, matchup_bets: list[dict] | None):
+    """Add matchup value bets section (real sportsbook odds)."""
+    if not matchup_bets:
+        return
+
+    lines.append("## Matchup Value Bets (Real Odds)")
+    lines.append("")
+    lines.append("*Only matchups with actual sportsbook odds shown.*")
+    lines.append("")
+    lines.append("| Pick | vs | Odds | Model Win% | EV | Book | State |")
+    lines.append("|------|-----|------|------------|-----|------|-------|")
+
+    for bet in matchup_bets:
+        odds = bet.get("odds", 0)
+        odds_str = f"+{odds}" if odds > 0 else str(odds)
+        model_pct = f"{bet.get('model_win_prob', 0):.1%}"
+        ev_pct = bet.get("ev_pct", "")
+        book = bet.get("book", "—")
+        state = bet.get("adaptation_state", "normal")
+        lines.append(
+            f"| **{bet['pick']}** | {bet['opponent']} | {odds_str} "
+            f"| {model_pct} | {ev_pct} | {book} | {state} |"
+        )
+    lines.append("")
 
 
 def _suggest_matchups(composite_results: list[dict], min_gap: float = 3.0) -> list[dict]:
