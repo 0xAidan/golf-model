@@ -282,13 +282,8 @@ def find_value_bets(composite_results: list[dict],
         if not odds_entry:
             continue
 
-        # Skip entries with invalid/extreme odds
-        if not is_valid_odds(odds_entry.get("best_price")):
-            continue
-
-        # Reject odds that exceed market-specific maximum
-        max_odds = MAX_REASONABLE_ODDS.get(bet_type, 30000)
-        if odds_entry.get("best_price", 0) > max_odds:
+        # Skip entries with invalid/extreme odds for this market type
+        if not is_valid_odds(odds_entry.get("best_price"), bet_type=bet_type):
             continue
 
         # Skip entries where market probability is suspiciously low

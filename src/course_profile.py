@@ -38,6 +38,54 @@ except ImportError:
     HAS_OPENAI = False
 
 COURSES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "courses")
+CORRELATED_COURSES_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "correlated_courses.json"
+)
+
+
+def load_correlated_courses() -> dict:
+    """Load the correlated courses database."""
+    if os.path.exists(CORRELATED_COURSES_PATH):
+        with open(CORRELATED_COURSES_PATH) as f:
+            return json.load(f)
+    return {}
+
+
+def _normalize_course_key(course_name: str) -> str:
+    """Convert course name to lookup key."""
+    return (
+        course_name.lower()
+        .replace(" ", "_")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("'", "")
+        .replace("-", "_")
+        .replace("__", "_")
+        .strip("_")
+    )
+
+
+def get_course_characteristics(course_name: str) -> dict | None:
+    """Get characteristics and correlated courses for a course."""
+    courses = load_correlated_courses()
+    if not courses:
+        return None
+
+    key = _normalize_course_key(course_name)
+
+    # Try exact match first
+    if key in courses:
+        return courses[key]
+
+    # Try partial match
+    for k, v in courses.items():
+        if k == "_meta":
+            continue
+        display = v.get("display_name", "").lower()
+        if key in _normalize_course_key(display) or _normalize_course_key(display) in key:
+            return v
+
+    return None
 
 
 EXTRACTION_PROMPT = """You are extracting golf course data from a Betsperts Golf screenshot. 
@@ -370,11 +418,20 @@ def generate_profile_from_decompositions(decomp_data: dict) -> dict | None:
         "sg_putting": _impact_to_rating(putt_impact, [0.20, 0.12, 0.06, 0.03]),
     }
 
+    # Get correlated courses from database
+    course_chars = get_course_characteristics(course_name)
+    correlated_courses = []
+    characteristics = {}
+    if course_chars:
+        correlated_courses = course_chars.get("correlated", [])
+        characteristics = course_chars.get("characteristics", {})
+
     profile = {
         "course_facts": {
             "tournament": event_name,
             "course_name": course_name,
             "source": "auto_generated_from_dg_decompositions",
+            "correlated_courses": correlated_courses,
         },
         "skill_ratings": skill_ratings,
         "fit_spreads": {
@@ -385,6 +442,7 @@ def generate_profile_from_decompositions(decomp_data: dict) -> dict | None:
             "total_fit_spread": round(total_fit_spread, 4),
             "sg_category_spread": round(sg_cat_spread, 4),
         },
+        "characteristics": characteristics,
     }
 
     # Auto-save the profile

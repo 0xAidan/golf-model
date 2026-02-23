@@ -73,7 +73,15 @@ def generate_card(tournament_name: str,
     lines.append(f"**Course:** {course_name}")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     if ai_pre_analysis:
-        lines.append(f"**AI Analysis:** Enabled ({ai_pre_analysis.get('confidence', 0):.0%} confidence)")
+        conf = ai_pre_analysis.get('confidence', 0)
+        lines.append(f"**AI Analysis:** Enabled ({conf:.0%} confidence)")
+        factors = ai_pre_analysis.get('confidence_factors', {})
+        explanation = ai_pre_analysis.get('confidence_explanation', '')
+        if factors:
+            factor_strs = [f"{k.replace('_', ' ').title()}: {v:.0%}" for k, v in factors.items()]
+            lines.append(f"*Confidence breakdown: {', '.join(factor_strs)}*")
+        if explanation:
+            lines.append(f"*{explanation}*")
     lines.append("")
 
     # ── Weekly Strategy Summary ────────────────────────────────
