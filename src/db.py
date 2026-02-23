@@ -414,13 +414,28 @@ def init_db():
             sg_total REAL, sg_ott REAL, sg_app REAL,
             sg_arg REAL, sg_putt REAL, sg_t2g REAL,
             rounds_used INTEGER,
+            sg_total_rank INTEGER,
             UNIQUE(event_id, year, player_key, window)
+        );
+
+        CREATE TABLE IF NOT EXISTS pit_course_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            course_num INTEGER,
+            sg_total REAL, sg_ott REAL, sg_app REAL,
+            sg_arg REAL, sg_putt REAL, sg_t2g REAL,
+            rounds_played INTEGER,
+            avg_finish REAL,
+            best_finish INTEGER,
+            UNIQUE(event_id, year, player_key)
         );
 
         CREATE INDEX IF NOT EXISTS idx_historical_odds_event
             ON historical_odds(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_pit_stats_event
             ON pit_rolling_stats(event_id, year);
+        CREATE INDEX IF NOT EXISTS idx_pit_course_stats_event
+            ON pit_course_stats(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_experiments_status
             ON experiments(status, scope);
         CREATE INDEX IF NOT EXISTS idx_intel_player
@@ -469,6 +484,61 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE historical_predictions ADD COLUMN actual_finish TEXT")
         conn.commit()
+
+    # Add sg_total_rank column to pit_rolling_stats if missing
+    try:
+        conn.execute("SELECT sg_total_rank FROM pit_rolling_stats LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE pit_rolling_stats ADD COLUMN sg_total_rank INTEGER")
+        conn.commit()
+
+    # Create pit_course_stats table if missing
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pit_course_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT, year INTEGER, player_key TEXT,
+            course_num INTEGER,
+            sg_total REAL, sg_ott REAL, sg_app REAL,
+            sg_arg REAL, sg_putt REAL, sg_t2g REAL,
+            rounds_played INTEGER,
+            avg_finish REAL,
+            best_finish INTEGER,
+            UNIQUE(event_id, year, player_key)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pit_course_stats_event
+        ON pit_course_stats(event_id, year)
+    """)
+    conn.commit()
+
+    # Add UNIQUE index on metrics for dedup (prevents duplicate SG:TOT rows per player/window)
+    try:
+        # First deduplicate: keep the row with the highest id (most recent)
+        conn.execute("""
+            DELETE FROM metrics
+            WHERE id NOT IN (
+                SELECT MAX(id) FROM metrics
+                GROUP BY tournament_id, player_key, metric_category, data_mode, round_window, metric_name
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass  # Table might be empty or not exist yet
+
+    try:
+        conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_metrics_unique'")
+        existing = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_metrics_unique'"
+        ).fetchone()
+        if not existing:
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_metrics_unique
+                ON metrics(tournament_id, player_key, metric_category, data_mode, round_window, metric_name)
+            """)
+            conn.commit()
+    except Exception:
+        pass  # Index might already exist or dedup failed
 
     # Add UNIQUE constraints via indexes (safe to run repeatedly)
     _add_unique_constraints(conn)
@@ -524,20 +594,45 @@ def _add_unique_constraints(conn: sqlite3.Connection):
 # ── Tournament helpers ──────────────────────────────────────────────
 
 def get_or_create_tournament(name: str, course: str = None,
-                             date: str = None, year: int = None) -> int:
+                             date: str = None, year: int = None,
+                             event_id: str = None) -> int:
     if year is None:
         year = datetime.now().year
     conn = get_conn()
+
+    # Ensure event_id column exists (migration-safe)
+    try:
+        conn.execute("SELECT event_id FROM tournaments LIMIT 0")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE tournaments ADD COLUMN event_id TEXT")
+        conn.commit()
+
     row = conn.execute(
-        "SELECT id FROM tournaments WHERE name = ? AND (year = ? OR year IS NULL)",
+        "SELECT id, year, event_id FROM tournaments WHERE name = ? AND (year = ? OR year IS NULL)",
         (name, year),
     ).fetchone()
     if row:
         tid = row["id"]
+        # Fix NULL year or missing event_id on existing rows
+        updates = []
+        params = []
+        if row["year"] is None and year is not None:
+            updates.append("year = ?")
+            params.append(year)
+        if row["event_id"] is None and event_id is not None:
+            updates.append("event_id = ?")
+            params.append(event_id)
+        if updates:
+            params.append(tid)
+            conn.execute(
+                f"UPDATE tournaments SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
     else:
         cur = conn.execute(
-            "INSERT INTO tournaments (name, course, date, year) VALUES (?, ?, ?, ?)",
-            (name, course, date, year),
+            "INSERT INTO tournaments (name, course, date, year, event_id) VALUES (?, ?, ?, ?, ?)",
+            (name, course, date, year, event_id),
         )
         tid = cur.lastrowid
         conn.commit()
@@ -662,7 +757,7 @@ def store_results(tournament_id: int, results_list: list[dict]):
         return
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO results
+        """INSERT OR IGNORE INTO results
            (tournament_id, player_key, player_display, finish_position,
             finish_text, made_cut)
            VALUES (?, ?, ?, ?, ?, ?)""",
@@ -680,9 +775,9 @@ def store_results(tournament_id: int, results_list: list[dict]):
 
 DEFAULT_WEIGHTS = {
     # Top-level model weights
-    "course_fit": 0.40,
-    "form": 0.40,
-    "momentum": 0.20,
+    "course_fit": 0.45,
+    "form": 0.45,
+    "momentum": 0.10,
     # Within course fit
     "course_sg_tot": 0.30,
     "course_sg_app": 0.25,

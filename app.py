@@ -36,6 +36,7 @@ from src.models.weights import retune, analyze_pick_performance, get_current_wei
 from src.player_normalizer import normalize_name, display_name
 from src.odds import fetch_odds_api, load_manual_odds, get_best_odds
 from src.value import find_value_bets
+from src.scoring import determine_outcome
 
 import pandas as pd
 
@@ -271,6 +272,7 @@ async def enter_results(request: Request):
     results_rows = conn.execute("SELECT * FROM results WHERE tournament_id = ?", (tid,)).fetchall()
 
     result_map = {r["player_key"]: dict(r) for r in results_rows}
+    all_results_list = [dict(r) for r in results_rows]
     scored = 0
     hits = 0
     for pick in picks:
@@ -279,16 +281,24 @@ async def enter_results(request: Request):
         r = result_map.get(pk)
         if not r:
             continue
-        fp = r.get("finish_position")
-        hit = 0
-        if bt == "outright":
-            hit = 1 if fp == 1 else 0
-        elif bt == "top5":
-            hit = 1 if fp and fp <= 5 else 0
-        elif bt == "top10":
-            hit = 1 if fp and fp <= 10 else 0
-        elif bt == "top20":
-            hit = 1 if fp and fp <= 20 else 0
+
+        # Determine opponent finish for matchups
+        opp_finish = None
+        if bt == "matchup":
+            opp_key = pick.get("opponent_key")
+            opp_result = result_map.get(opp_key) if opp_key else None
+            opp_finish = opp_result.get("finish_position") if opp_result else None
+
+        outcome = determine_outcome(
+            bt,
+            r.get("finish_position"),
+            r.get("finish_text"),
+            r.get("made_cut", 0),
+            all_results_list,
+            opponent_finish=opp_finish,
+        )
+        hit = outcome["hit"]
+
         conn.execute(
             "INSERT INTO pick_outcomes (pick_id, hit, actual_finish) VALUES (?, ?, ?)",
             (pick["id"], hit, r.get("finish_text")),
@@ -571,6 +581,11 @@ async def ai_betting_decisions(request: Request):
         tournament_name=_last_analysis.get("tournament", ""),
         course_name=course,
     )
+    if result is None:
+        return JSONResponse(
+            {"message": "AI betting decisions disabled. Bet selection is purely quantitative."},
+            status_code=200,
+        )
     return result
 
 

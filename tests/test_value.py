@@ -1,4 +1,4 @@
-"""Tests for src/value.py probability normalization."""
+"""Tests for src/value.py probability normalization and odds validation."""
 
 import math
 import sys
@@ -6,7 +6,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.value import model_score_to_prob
+from src.value import model_score_to_prob, MAX_REASONABLE_ODDS
+from src.odds import is_reasonable_odds
 
 
 def _generate_field_scores(n=150, min_score=30.0, max_score=85.0):
@@ -105,3 +106,38 @@ def test_small_field():
     total = sum(probs)
     assert abs(total - 1.0) < 0.05, f"Small field outright probs sum to {total}"
     assert probs[0] > probs[1] > probs[2] > probs[3], "Ordering should match scores"
+
+
+# ── Market-specific odds validation ──────────────────────────────────
+
+
+def test_outright_rejects_corrupt_odds():
+    """+500000 outright odds should be rejected as corrupt data."""
+    assert not is_reasonable_odds(500000, "outright")
+
+
+def test_outright_accepts_max_longshot():
+    """+30000 outright odds are at the limit and should be accepted."""
+    assert is_reasonable_odds(30000, "outright")
+
+
+def test_top5_accepts_valid_longshot():
+    """+5000 top5 odds are at the limit and should be accepted."""
+    assert is_reasonable_odds(5000, "top5")
+
+
+def test_top5_rejects_excessive_odds():
+    """+6000 top5 odds exceed the market cap and should be rejected."""
+    assert not is_reasonable_odds(6000, "top5")
+
+
+def test_max_reasonable_odds_keys_cover_all_markets():
+    """Every standard bet type should have a defined max."""
+    expected_markets = {"outright", "top5", "top10", "top20", "frl", "make_cut"}
+    assert expected_markets == set(MAX_REASONABLE_ODDS.keys())
+
+
+def test_is_reasonable_odds_defaults_for_unknown_market():
+    """Unknown bet types should fall back to the outright max (30000)."""
+    assert is_reasonable_odds(30000, "some_new_market")
+    assert not is_reasonable_odds(30001, "some_new_market")

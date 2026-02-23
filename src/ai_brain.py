@@ -15,12 +15,16 @@ Provider selection via env: AI_BRAIN_PROVIDER=openai|anthropic|gemini
 """
 
 import json
+import logging
 import os
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
 from src import db
 from src.player_normalizer import display_name
+
+logger = logging.getLogger("ai_brain")
 
 # ═══════════════════════════════════════════════════════════════════
 #  Provider Abstraction
@@ -413,6 +417,7 @@ Key principles:
   with gut feel. If a player is not in the top 35, do not recommend them.
 - Only bet when there's genuine edge (positive EV preferred, minimum -3% tolerable with strong qualitative reasons)
 - Consider correlation between bets (don't over-expose to similar outcomes)
+- HARD RULE: No single player may receive more than 40% of total units wagered. No single bet may exceed 3 units. Spread risk across at least 3 players when possible.
 - Course fit matters more at some venues than others
 - Recent form (last 8-12 rounds) is usually more predictive than long-term averages
 - DG course-history model probabilities are well-calibrated; trust them
@@ -491,6 +496,83 @@ Keep adjustments small: -5 to +5 points on the 0-100 composite scale."""
     return result
 
 
+def _enforce_portfolio_limits(result: dict,
+                              max_player_pct: float = 0.40,
+                              max_single_bet_units: float = 3.0) -> dict:
+    """
+    Enforce portfolio diversification limits on AI betting decisions.
+
+    Rules:
+    - No single player may receive more than max_player_pct (40%) of total units
+    - No individual bet may exceed max_single_bet_units (3 units)
+    - If limits are violated, stakes are proportionally scaled down
+
+    Returns the result dict with adjusted stakes if necessary.
+    """
+    decisions = result.get("decisions", [])
+    if not decisions:
+        return result
+
+    # Parse stakes from each decision
+    parsed = []
+    for d in decisions:
+        stake_str = d.get("recommended_stake", "0")
+        try:
+            stake = float(str(stake_str).replace("u", "").replace("U", "").strip())
+        except (ValueError, TypeError):
+            stake = 1.0
+        parsed.append({"decision": d, "stake": stake, "player": d.get("player", "")})
+
+    # Cap individual bets
+    any_capped = False
+    for p in parsed:
+        if p["stake"] > max_single_bet_units:
+            logger.warning(
+                "Portfolio limit: capping %s %s from %.1f to %.1f units",
+                p["player"], p["decision"].get("bet_type", ""),
+                p["stake"], max_single_bet_units,
+            )
+            p["stake"] = max_single_bet_units
+            any_capped = True
+
+    # Check per-player concentration
+    total_units = sum(p["stake"] for p in parsed)
+    if total_units > 0:
+        player_totals = defaultdict(float)
+        for p in parsed:
+            player_totals[p["player"]] += p["stake"]
+
+        for player, player_total in player_totals.items():
+            pct = player_total / total_units
+            if pct > max_player_pct:
+                # Scale down this player's bets proportionally
+                max_allowed = max_player_pct * total_units
+                scale_factor = max_allowed / player_total
+                logger.warning(
+                    "Portfolio limit: scaling %s from %.1f units (%.0f%%) to %.1f units (%.0f%%)",
+                    player, player_total, pct * 100,
+                    max_allowed, max_player_pct * 100,
+                )
+                for p in parsed:
+                    if p["player"] == player:
+                        p["stake"] = round(p["stake"] * scale_factor, 2)
+                any_capped = True
+
+    # Write back adjusted stakes
+    if any_capped:
+        new_total = sum(p["stake"] for p in parsed)
+        for p in parsed:
+            p["decision"]["recommended_stake"] = f"{p['stake']:.1f}u"
+        result["total_units"] = round(new_total, 2)
+        result["portfolio_notes"] = (
+            result.get("portfolio_notes", "")
+            + f" [Portfolio limits applied: max {max_player_pct*100:.0f}% per player, "
+            + f"max {max_single_bet_units:.0f}u per bet. Adjusted total: {new_total:.1f}u]"
+        )
+
+    return result
+
+
 def make_betting_decisions(tournament_id: int,
                            value_bets_by_type: dict,
                            pre_analysis: dict = None,
@@ -498,10 +580,15 @@ def make_betting_decisions(tournament_id: int,
                            tournament_name: str = "",
                            course_name: str = "") -> dict:
     """
-    AI betting decisions: which bets to actually take.
-
-    Returns structured portfolio decisions with reasoning.
+    DISABLED: AI betting decisions removed due to poor performance.
+    The AI concentrated 87% of units on one player and recommended bets on
+    corrupted +500000 odds data. Betting decisions are now purely quantitative.
+    Returns None so all callers (service, run_predictions, app, analyze) skip AI bets.
     """
+    logger.info("AI betting decisions disabled — returning None")
+    return None
+
+    # --- Original implementation below (preserved for potential re-enablement) ---
     # Build value bets context — show top bets per market (not just positive EV)
     value_lines = []
     for bet_type, bets in value_bets_by_type.items():
@@ -579,9 +666,17 @@ Also provide:
 - Portfolio notes (correlation, total exposure)
 - What you're passing on and why
 - Total units to be wagered
-- Expected ROI for this week's bets"""
+- Expected ROI for this week's bets
+
+PORTFOLIO RULES (enforced post-hoc, but follow them to avoid scaling):
+- Max 40% of total units on any single player across all bet types
+- Max 3 units on any individual bet
+- Diversify across at least 3 players when placing 3+ bets"""
 
     result = _call_ai(SYSTEM_PROMPT, user_prompt, BETTING_DECISIONS_SCHEMA)
+
+    # Enforce portfolio diversification limits post-hoc
+    result = _enforce_portfolio_limits(result)
 
     db.store_ai_decision(
         tournament_id, "betting_decisions",

@@ -77,20 +77,54 @@ def fetch_odds_api(market: str = "outrights") -> list[dict]:
 
 
 def american_to_implied_prob(price: int) -> float:
-    """Convert American odds to implied probability."""
+    """Convert American odds to implied probability. Returns 0 for invalid price."""
     if price > 0:
         return 100.0 / (price + 100.0)
     elif price < 0:
         return abs(price) / (abs(price) + 100.0)
+    # price == 0 is invalid in American odds
     return 0.0
 
 
+# ── Odds validation ──────────────────────────────────────────────
+
+# Maximum reasonable American odds for golf outrights.
+# Even the longest longshots on real sportsbooks are around +50000.
+# Anything beyond this is almost certainly bad/corrupted data.
+MAX_REASONABLE_ODDS = 50000
+
+# Minimum reasonable implied probability. Any odds implying less than
+# this are filtered as garbage (0.2% ≈ +50000).
+MIN_REASONABLE_IMPLIED_PROB = 0.002
+
+
+def is_valid_odds(price: int) -> bool:
+    """Check if American odds value is within reasonable bounds for golf."""
+    if price is None:
+        return False
+    if price > MAX_REASONABLE_ODDS:
+        return False
+    if price < -10000:
+        return False
+    if price == 0:
+        return False
+    return True
+
+
+def is_reasonable_odds(price: int, bet_type: str = "outright") -> bool:
+    """Check if odds are within reasonable range for the bet type."""
+    from src.value import MAX_REASONABLE_ODDS
+    max_price = MAX_REASONABLE_ODDS.get(bet_type, 30000)
+    return abs(price) <= max_price
+
+
 def american_to_decimal(price: int) -> float:
-    """Convert American odds to decimal odds."""
+    """Convert American odds to decimal odds. Returns 1.0 for invalid price == 0."""
     if price > 0:
         return 1.0 + price / 100.0
     elif price < 0:
         return 1.0 + 100.0 / abs(price)
+    # price == 0 is invalid -- return 1.0 (even money) as safe fallback
     return 1.0
 
 
@@ -166,9 +200,15 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
         preferred_book = _get_preferred_book()
 
     by_player = {}
+    filtered_count = 0
     for o in odds_list:
         name = o["player"].lower().strip()
         is_dg_model = o["bookmaker"] in _DG_MODEL_BOOKS
+
+        # Skip garbage odds (e.g., +500000 from bad API data)
+        if not is_dg_model and not is_valid_odds(o.get("price")):
+            filtered_count += 1
+            continue
 
         if name not in by_player:
             by_player[name] = {
@@ -216,6 +256,9 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
             entry["best_price"] = entry["preferred_price"]
             entry["best_book"] = preferred_book
             entry["implied_prob"] = entry["preferred_implied_prob"]
+
+    if filtered_count > 0:
+        print(f"  ⚠ Filtered {filtered_count} odds entries with unreasonable values (>{MAX_REASONABLE_ODDS})")
 
     # Remove players that have no real sportsbook odds
     return {k: v for k, v in by_player.items() if v["best_price"] is not None}

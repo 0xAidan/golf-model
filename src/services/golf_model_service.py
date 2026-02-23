@@ -140,23 +140,47 @@ class GolfModelService:
         value_bets = self._compute_value_bets(composite, all_odds, tid)
         result["value_bets"] = value_bets
         total_vb = sum(len(v) for v in value_bets.values()) if isinstance(value_bets, dict) else 0
-        print(f"    → {total_vb} value bets found")
+        value_count_before = sum(
+            1 for bets in value_bets.values()
+            for b in bets if b.get("is_value")
+        ) if isinstance(value_bets, dict) else 0
+        print(f"    → {total_vb} odds entries, {value_count_before} value bets found")
 
-        # Step 11: AI betting decisions
-        if enable_ai and ai_pre_analysis and self._is_ai_available() and value_bets:
-            print("  Getting AI betting decisions...")
-            ai_decisions = self._run_ai_betting_decisions(
-                tid, value_bets, ai_pre_analysis, composite,
-                tournament_name, course_name
-            )
-            if ai_decisions:
-                self._log_ai_picks(tid, ai_decisions, composite)
+        # Step 10a: Apply portfolio diversification rules
+        from src.portfolio import enforce_diversification
+        value_bets = enforce_diversification(value_bets)
+        result["value_bets"] = value_bets
+        value_count_after = sum(
+            1 for bets in value_bets.values()
+            for b in bets if b.get("is_value")
+        )
+        if value_count_after < value_count_before:
+            print(f"    → {value_count_after} value bets after diversification (was {value_count_before})")
 
+        # Step 10b: Run quality check before logging anything
+        from src.value import compute_run_quality
+
+        run_quality = compute_run_quality(value_bets)
+        result["run_quality"] = run_quality
+        picks_allowed = run_quality["pass"]
+
+        if not picks_allowed:
+            print(f"  ⚠️  Run quality check FAILED: {', '.join(run_quality['issues'])}")
+            print("      Picks will NOT be logged to avoid corrupting track record.")
+            print(f"      Quality score: {run_quality['score']}")
+        else:
+            print(f"  ✓ Run quality check passed (score: {run_quality['score']})")
+
+        # Step 11: AI betting decisions disabled — all bet selection is now quantitative.
+        # See src/prompts.py::betting_decision for rationale.
+        ai_decisions = None
         result["ai_decisions"] = ai_decisions
 
-        # Step 12: Log predictions for calibration
-        if value_bets:
+        # Step 12: Log predictions for calibration (skipped if quality check fails)
+        if value_bets and picks_allowed:
             self._log_predictions(tid, value_bets)
+        elif value_bets and not picks_allowed:
+            logger.warning("Skipping prediction logging — run quality check failed")
 
         # Step 13: Generate card
         print("  Generating betting card...")

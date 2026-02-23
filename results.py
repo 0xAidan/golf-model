@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src import db
 from src.player_normalizer import normalize_name, display_name
+from src.scoring import determine_outcome
 
 
 def parse_finish(text: str) -> tuple:
@@ -134,8 +135,9 @@ def score_picks(tournament_id: int):
     result_map = {}
     for r in results:
         result_map[r["player_key"]] = dict(r)
+    all_results_list = [dict(r) for r in results]
 
-    # Score each pick
+    # Score each pick using unified scoring module
     scored = 0
     hits = 0
     for pick in picks:
@@ -144,32 +146,25 @@ def score_picks(tournament_id: int):
         r = result_map.get(pk)
 
         if not r:
+            print(f"    WARNING: No results found for {pk} ({bt})")
             continue
 
-        finish = r.get("finish_position")
-        made_cut = r.get("made_cut", 0)
-        hit = 0
-
-        if bt == "outright":
-            hit = 1 if finish == 1 else 0
-        elif bt == "top5":
-            hit = 1 if finish is not None and finish <= 5 else 0
-        elif bt == "top10":
-            hit = 1 if finish is not None and finish <= 10 else 0
-        elif bt == "top20":
-            hit = 1 if finish is not None and finish <= 20 else 0
-        elif bt == "make_cut":
-            hit = 1 if made_cut else 0
-        elif bt == "matchup":
-            # For matchups, check if pick beat opponent
-            opp_key = pick["opponent_key"]
+        # Determine opponent finish for matchups
+        opp_finish = None
+        if bt == "matchup":
+            opp_key = pick.get("opponent_key")
             opp_result = result_map.get(opp_key)
-            if opp_result and finish is not None:
-                opp_finish = opp_result.get("finish_position")
-                if opp_finish is None:  # opponent missed cut
-                    hit = 1
-                elif finish < opp_finish:
-                    hit = 1
+            opp_finish = opp_result.get("finish_position") if opp_result else None
+
+        outcome = determine_outcome(
+            bt,
+            r.get("finish_position"),
+            r.get("finish_text"),
+            r.get("made_cut", 0),
+            all_results_list,
+            opponent_finish=opp_finish,
+        )
+        hit = outcome["hit"]
 
         # Store outcome
         conn.execute(

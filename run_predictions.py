@@ -26,6 +26,7 @@ save_course_profile('YOUR COURSE NAME', data)
 import os
 import sys
 import time
+from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -104,9 +105,9 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
     """
     Check if any past completed tournament needs a post-review.
 
-    Looks at ai_decisions for past tournaments. If a tournament has
-    pre_analysis or betting_decisions but no post_review, and the
-    tournament is over (results available), run the full learning cycle.
+    Looks for tournaments that have predictions/picks but no scored results.
+    Uses stored event_id from the tournaments table for reliable result
+    ingestion (no fragile name matching).
 
     skip_tournament_id: the current week's tournament to exclude
     """
@@ -116,41 +117,36 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
 
     conn = db.get_conn()
 
-    # Find tournaments that have AI pre-analysis but no post-review
+    # Find tournaments that have been reviewed already
     reviewed = conn.execute(
         "SELECT DISTINCT tournament_id FROM ai_decisions WHERE phase = 'post_review'"
     ).fetchall()
     reviewed_ids = {r["tournament_id"] for r in reviewed}
 
+    # Find ALL tournaments that might need review:
+    # 1. Have AI pre-analysis but no post-review
+    # 2. Have prediction_log entries but no post-review
+    # 3. Have picks but no scored pick_outcomes
+    pending_review = set()
+
     analyzed = conn.execute(
         "SELECT DISTINCT tournament_id FROM ai_decisions WHERE phase = 'pre_analysis'"
     ).fetchall()
-    analyzed_ids = {r["tournament_id"] for r in analyzed}
+    pending_review.update(r["tournament_id"] for r in analyzed)
 
-    pending_review = analyzed_ids - reviewed_ids
+    has_preds = conn.execute(
+        "SELECT DISTINCT tournament_id FROM prediction_log"
+    ).fetchall()
+    pending_review.update(r["tournament_id"] for r in has_preds)
 
-    if not pending_review:
-        # Also check: any tournament with logged predictions but no post-review?
-        has_preds = conn.execute(
-            """SELECT DISTINCT tournament_id FROM prediction_log
-               WHERE tournament_id NOT IN (
-                   SELECT DISTINCT tournament_id FROM ai_decisions WHERE phase = 'post_review'
-               )"""
-        ).fetchall()
-        pending_review = {r["tournament_id"] for r in has_preds}
+    has_picks = conn.execute(
+        """SELECT DISTINCT p.tournament_id FROM picks p
+           WHERE p.id NOT IN (SELECT pick_id FROM pick_outcomes WHERE pick_id IS NOT NULL)"""
+    ).fetchall()
+    pending_review.update(r["tournament_id"] for r in has_picks)
 
-    # Also check for tournaments with results but no review
-    if not pending_review:
-        all_tournaments = conn.execute(
-            "SELECT DISTINCT id, name, course FROM tournaments"
-        ).fetchall()
-        for t in all_tournaments:
-            results = conn.execute(
-                "SELECT COUNT(*) as cnt FROM results WHERE tournament_id = ?",
-                (t["id"],),
-            ).fetchone()
-            if results and results["cnt"] > 0 and t["id"] not in reviewed_ids:
-                pending_review.add(t["id"])
+    # Remove already-reviewed tournaments
+    pending_review -= reviewed_ids
 
     conn.close()
 
@@ -163,7 +159,7 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
         print("  (Post-review runs automatically after tournaments complete)")
         return
 
-    for tid in pending_review:
+    for tid in sorted(pending_review):
         conn = db.get_conn()
         t_info = conn.execute(
             "SELECT * FROM tournaments WHERE id = ?", (tid,)
@@ -175,19 +171,19 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
 
         t_name = t_info["name"]
         t_course = t_info["course"]
+        t_year = t_info["year"] or datetime.now().year
+
+        # Get stored event_id (reliable) or fall back to schedule lookup
+        stored_event_id = None
+        try:
+            stored_event_id = t_info["event_id"]
+        except (IndexError, KeyError):
+            pass
+
         print(f"\n  Found unreviewed tournament: {t_name}")
 
-        # Try to get results from DG round data
-        # Look up event_id from metrics or schedule
-        conn = db.get_conn()
-        meta = conn.execute(
-            """SELECT metric_value FROM metrics
-               WHERE tournament_id = ? AND metric_name = 'dg_id'
-               LIMIT 1""",
-            (tid,),
-        ).fetchone()
-
         # Check if results already exist
+        conn = db.get_conn()
         existing_results = conn.execute(
             "SELECT COUNT(*) as cnt FROM results WHERE tournament_id = ?",
             (tid,),
@@ -196,43 +192,95 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
 
         has_results = existing_results and existing_results["cnt"] > 0
 
-        if not has_results:
-            # Try to ingest results from the most recent completed tournament
-            # We need the event_id — try to find it from the schedule
-            print(f"  Checking for results data...")
-            try:
-                schedule = safe_api_call("schedule", _call_api,
-                                        "get-schedule", {"tour": "pga"})
-                if isinstance(schedule, dict):
-                    schedule = schedule.get("schedule", [])
+        # Verify tournament is actually complete before attempting post-review.
+        # Check the DG schedule for an end_date in the past.
+        tournament_complete = False
+        try:
+            schedule = safe_api_call("schedule", _call_api,
+                                    "get-schedule", {"tour": "pga"})
+            if isinstance(schedule, dict):
+                schedule = schedule.get("schedule", [])
+            today = datetime.now().date()
+            for evt in (schedule or []):
+                evt_name = evt.get("event_name", "")
+                if (t_name.lower() in evt_name.lower()
+                        or evt_name.lower() in t_name.lower()):
+                    end_date_str = evt.get("end_date", "")
+                    if end_date_str:
+                        try:
+                            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                            tournament_complete = end_date < today
+                        except (ValueError, TypeError):
+                            pass
+                    break
+        except Exception as e:
+            print(f"  Warning: Could not verify tournament completion: {e}")
+            # If we can't check the schedule, assume complete if results exist
+            tournament_complete = has_results
 
-                # Find completed events (ones with a winner or past end_date)
-                from datetime import datetime as dt
-                today = dt.now().date()
-                for evt in (schedule or []):
-                    evt_name = evt.get("event_name", "")
-                    # Check if this matches our tournament
-                    if (t_name.lower() in evt_name.lower()
-                            or evt_name.lower() in t_name.lower()):
-                        end_date_str = evt.get("end_date", "")
-                        if end_date_str:
-                            try:
-                                end_date = dt.strptime(end_date_str, "%Y-%m-%d").date()
-                                if end_date < today:
-                                    event_id = evt.get("event_id", "")
-                                    calendar_year = end_date.year
-                                    print(f"  Ingesting results for {evt_name} (event_id={event_id})...")
-                                    result = auto_ingest_results(tid, str(event_id), calendar_year)
-                                    if result.get("status") == "ok":
-                                        has_results = True
-                                        print(f"    → {result.get('stored', 0)} results ingested")
-                                    else:
-                                        print(f"    → {result.get('message', 'No results available')}")
-                            except (ValueError, TypeError):
-                                pass
-                        break
-            except Exception as e:
-                print(f"  ⚠ Could not fetch results: {e}")
+        if not tournament_complete and not has_results:
+            print(f"  Tournament '{t_name}' may still be in progress. Skipping.")
+            continue
+
+        if not has_results:
+            print(f"  Checking for results data...")
+            ingested = False
+
+            # Strategy 1: Use stored event_id (fast, reliable)
+            if stored_event_id:
+                print(f"  Using stored event_id={stored_event_id} for result ingestion...")
+                result = auto_ingest_results(tid, str(stored_event_id), t_year)
+                if result.get("status") == "ok" and result.get("results_stored", 0) > 0:
+                    ingested = True
+                    print(f"    -> {result.get('results_stored', 0)} results ingested")
+                else:
+                    print(f"    -> {result.get('message', 'No results yet')}")
+
+            # Strategy 2: Fall back to schedule name matching
+            if not ingested:
+                try:
+                    schedule = safe_api_call("schedule", _call_api,
+                                            "get-schedule", {"tour": "pga"})
+                    if isinstance(schedule, dict):
+                        schedule = schedule.get("schedule", [])
+
+                    today = datetime.now().date()
+                    for evt in (schedule or []):
+                        evt_name = evt.get("event_name", "")
+                        if (t_name.lower() in evt_name.lower()
+                                or evt_name.lower() in t_name.lower()):
+                            end_date_str = evt.get("end_date", "")
+                            if end_date_str:
+                                try:
+                                    end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                                    if end_date < today:
+                                        eid = str(evt.get("event_id", ""))
+                                        cal_year = end_date.year
+                                        print(f"  Ingesting via schedule match: {evt_name} (event_id={eid})...")
+                                        result = auto_ingest_results(tid, eid, cal_year)
+                                        if result.get("status") == "ok" and result.get("results_stored", 0) > 0:
+                                            ingested = True
+                                            print(f"    -> {result.get('results_stored', 0)} results ingested")
+                                            # Also store event_id for next time
+                                            conn2 = db.get_conn()
+                                            try:
+                                                conn2.execute(
+                                                    "UPDATE tournaments SET event_id = ? WHERE id = ?",
+                                                    (eid, tid),
+                                                )
+                                                conn2.commit()
+                                            except Exception:
+                                                pass
+                                            conn2.close()
+                                        else:
+                                            print(f"    -> {result.get('message', 'No results available')}")
+                                except (ValueError, TypeError):
+                                    pass
+                            break
+                except Exception as e:
+                    print(f"  Warning: Could not fetch schedule: {e}")
+
+            has_results = ingested
 
         if not has_results:
             print(f"  Tournament may still be in progress or no results available.")
@@ -243,25 +291,26 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
         print(f"\n  Running post-tournament learning cycle...")
 
         try:
-            # Get value bets from prediction_log if available
-            conn = db.get_conn()
-            pred_count = conn.execute(
-                "SELECT COUNT(*) as cnt FROM prediction_log WHERE tournament_id = ?",
-                (tid,),
-            ).fetchone()
-            conn.close()
-
             learn_result = post_tournament_learn(
                 tournament_id=tid,
+                event_id=stored_event_id,
+                year=t_year,
                 course_name=t_course,
             )
 
             scoring = learn_result.get("steps", {}).get("scoring", {})
             if scoring.get("status") == "ok":
-                print(f"    Picks scored: {scoring.get('scored', 0)}, "
-                      f"Hits: {scoring.get('hits', 0)}, "
-                      f"Hit rate: {scoring.get('hit_rate', 0):.0%}")
-                print(f"    Profit: {scoring.get('total_profit', 0):+.1f} units")
+                scored = scoring.get("scored", 0)
+                hits = scoring.get("hits", 0)
+                hit_rate = scoring.get("hit_rate", 0)
+                profit = scoring.get("total_profit", 0)
+                print(f"    Picks scored: {scored}, Hits: {hits}, "
+                      f"Hit rate: {hit_rate:.0%}")
+                print(f"    Profit: {profit:+.1f} units")
+            elif scoring.get("status") == "no_results":
+                print(f"    No results found for scoring")
+            elif scoring.get("status") == "no_picks":
+                print(f"    No picks to score (predictions still logged)")
 
             cal = learn_result.get("calibration", {})
             if cal.get("brier_score"):
@@ -272,7 +321,9 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
                       f"({roi['total_profit']:+.1f}u over {roi['total_bets']} bets)")
 
         except Exception as e:
-            print(f"    ⚠ Learning cycle error: {e}")
+            print(f"    Warning: Learning cycle error: {e}")
+            import traceback
+            traceback.print_exc()
 
         # Run AI post-tournament review (stores learnings in memory)
         if is_ai_available():
@@ -367,7 +418,9 @@ def main():
     primary_course = courses.split(";")[0].strip() if courses else "Unknown"
 
     # ── Create/get tournament ─────────────────────────────────
-    tid = db.get_or_create_tournament(event_name, primary_course)
+    tid = db.get_or_create_tournament(
+        event_name, primary_course, year=datetime.now().year, event_id=str(event_id)
+    )
     print(f"\n  Tournament DB ID: {tid}")
 
     # ── Post-Tournament Review of PREVIOUS tournaments ────────
@@ -585,6 +638,77 @@ def main():
         else:
             print(f"  No decomposition data available for auto-generation")
 
+    # ── Weather forecast ─────────────────────────────────────
+    print_header("Step 5b: Weather Forecast")
+    weather_adjustments = {}
+    try:
+        from src.models.weather import (
+            fetch_forecast, compute_weather_adjustments,
+            build_player_weather_profiles,
+        )
+        # Get course coordinates
+        conn = db.get_conn()
+        coord_row = conn.execute(
+            "SELECT latitude, longitude FROM historical_event_info WHERE event_id = ? AND year = ? LIMIT 1",
+            (str(event_id), datetime.now().year),
+        ).fetchone()
+        conn.close()
+
+        if coord_row and coord_row["latitude"] and coord_row["longitude"]:
+            forecast = fetch_forecast(
+                coord_row["latitude"], coord_row["longitude"],
+                start_date if start_date else datetime.now().strftime("%Y-%m-%d"),
+            )
+            if forecast:
+                severity = forecast.get("tournament_severity", 0)
+                print(f"  Tournament severity: {severity}/100")
+                for day in forecast.get("days", [])[:4]:
+                    wind = day.get("avg_wind_kmh", 0) or 0
+                    rain = day.get("total_precip_mm", 0) or 0
+                    temp = day.get("avg_temp_c", 0) or 0
+                    print(f"    {day['date']}: wind={wind:.0f}km/h, rain={rain:.1f}mm, temp={temp:.0f}C")
+
+                if severity >= 10:
+                    # Build weather profiles and get tee times
+                    weather_profiles = build_player_weather_profiles()
+                    print(f"  Weather profiles built for {len(weather_profiles)} players")
+
+                    # Get tee times if available
+                    conn = db.get_conn()
+                    tee_rows = conn.execute(
+                        "SELECT player_key, metric_text FROM metrics WHERE tournament_id = ? AND metric_name = 'teetime'",
+                        (tid,),
+                    ).fetchall()
+                    conn.close()
+                    tee_times = {r["player_key"]: r["metric_text"] for r in tee_rows}
+
+                    # Get all player keys from the field
+                    conn = db.get_conn()
+                    field_rows = conn.execute(
+                        "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
+                        (tid,),
+                    ).fetchall()
+                    conn.close()
+                    all_player_keys = [r["player_key"] for r in field_rows]
+
+                    weather_adjustments = compute_weather_adjustments(
+                        forecast, all_player_keys, tee_times, weather_profiles,
+                    )
+                    if weather_adjustments:
+                        print(f"  Weather adjustments for {len(weather_adjustments)} players:")
+                        sorted_adj = sorted(weather_adjustments.items(),
+                                            key=lambda x: abs(x[1]["adjustment"]), reverse=True)
+                        for pk, wa in sorted_adj[:5]:
+                            print(f"    {pk}: {wa['adjustment']:+.1f} ({wa.get('reason', '')})")
+                else:
+                    print(f"  Conditions benign (severity {severity}<10), no weather adjustments")
+            else:
+                print(f"  Could not fetch forecast")
+        else:
+            print(f"  No coordinates available for weather lookup")
+    except Exception as e:
+        print(f"  Warning: Weather module error: {e}")
+
     # ── Run composite model ───────────────────────────────────
     print_header("Step 6: Running Composite Model")
     weights = db.get_active_weights()
@@ -592,7 +716,10 @@ def main():
           f"form={weights.get('form', 0.4):.0%}, "
           f"momentum={weights.get('momentum', 0.2):.0%}")
 
-    composite = compute_composite(tid, weights, course_name=primary_course)
+    composite = compute_composite(
+        tid, weights, course_name=primary_course,
+        weather_adjustments=weather_adjustments,
+    )
     print(f"  Scored {len(composite)} players")
 
     if not composite:
@@ -711,11 +838,10 @@ def main():
     if not all_odds_by_market:
         print("    ⚠ Could not fetch odds (may not be posted yet)")
 
-    # ── AI Betting Decisions ─────────────────────────────────────
+    # ── AI Betting Decisions (disabled — purely quantitative now) ──
     if ai_pre_analysis and is_ai_available() and value_bets:
         print_header("Step 7b: AI Betting Decisions")
         try:
-            print("  AI is reviewing value bets and building a portfolio...")
             ai_decisions = make_betting_decisions(
                 tournament_id=tid,
                 value_bets_by_type=value_bets,
@@ -725,7 +851,10 @@ def main():
                 course_name=primary_course,
             )
 
-            decisions_list = ai_decisions.get("decisions", [])
+            if ai_decisions is None:
+                print("  AI betting decisions disabled — bet selection is purely quantitative.")
+
+            decisions_list = (ai_decisions or {}).get("decisions", [])
             if decisions_list:
                 print(f"\n  AI Recommended Bets ({len(decisions_list)} picks):")
                 print(f"  {'Player':<25} {'Bet':<10} {'Odds':>8} {'Stake':>8} "
@@ -740,20 +869,20 @@ def main():
                           f"{d.get('odds', '?'):>8} {d.get('recommended_stake', '?'):>8} "
                           f"{d.get('confidence', '?'):<8} {reasoning}")
 
-            portfolio_notes = ai_decisions.get("portfolio_notes", "")
+            portfolio_notes = (ai_decisions or {}).get("portfolio_notes", "")
             if portfolio_notes:
                 print(f"\n  Portfolio Notes:")
                 for line in _wrap_text(portfolio_notes, 56):
                     print(f"    {line}")
 
-            pass_notes = ai_decisions.get("pass_notes", "")
+            pass_notes = (ai_decisions or {}).get("pass_notes", "")
             if pass_notes:
                 print(f"\n  Passing On:")
                 for line in _wrap_text(pass_notes, 56):
                     print(f"    {line}")
 
-            total_units = ai_decisions.get("total_units", 0)
-            expected_roi = ai_decisions.get("expected_roi", "N/A")
+            total_units = (ai_decisions or {}).get("total_units", 0)
+            expected_roi = (ai_decisions or {}).get("expected_roi", "N/A")
             print(f"\n  Total units wagered: {total_units}")
             print(f"  Expected ROI: {expected_roi}")
 
