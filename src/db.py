@@ -14,6 +14,9 @@ Tables:
   prediction_log          – calibration tracking (model vs market vs actual)
   ai_memory               – persistent AI brain memory
   ai_decisions            – logged AI analysis/decisions
+  market_performance      – rolling ROI tracking by market type
+  calibration_curve       – probability calibration buckets
+  ai_adjustments          – tracked AI-driven player adjustments
 """
 
 import sqlite3
@@ -440,6 +443,44 @@ def init_db():
             ON experiments(status, scope);
         CREATE INDEX IF NOT EXISTS idx_intel_player
             ON intel_events(player_key, relevance_score DESC);
+
+        -- ═══ Adaptive ROI / market performance tracking ═══
+        CREATE TABLE IF NOT EXISTS market_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_type TEXT NOT NULL,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            bets_placed INTEGER NOT NULL DEFAULT 0,
+            wins INTEGER NOT NULL DEFAULT 0,
+            losses INTEGER NOT NULL DEFAULT 0,
+            pushes INTEGER NOT NULL DEFAULT 0,
+            units_wagered REAL NOT NULL DEFAULT 0,
+            units_returned REAL NOT NULL DEFAULT 0,
+            roi_pct REAL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_perf_type ON market_performance(market_type);
+        CREATE INDEX IF NOT EXISTS idx_market_perf_tournament ON market_performance(tournament_id);
+
+        CREATE TABLE IF NOT EXISTS calibration_curve (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            probability_bucket TEXT NOT NULL,
+            predicted_avg REAL NOT NULL,
+            actual_hit_rate REAL NOT NULL,
+            sample_size INTEGER NOT NULL,
+            correction_factor REAL NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            player_key TEXT NOT NULL,
+            adjustment_value REAL NOT NULL,
+            reasoning TEXT,
+            was_helpful INTEGER,
+            actual_delta REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
 
