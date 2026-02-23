@@ -775,9 +775,9 @@ def store_results(tournament_id: int, results_list: list[dict]):
 
 DEFAULT_WEIGHTS = {
     # Top-level model weights
-    "course_fit": 0.40,
-    "form": 0.40,
-    "momentum": 0.20,
+    "course_fit": 0.45,
+    "form": 0.45,
+    "momentum": 0.10,
     # Within course fit
     "course_sg_tot": 0.30,
     "course_sg_app": 0.25,

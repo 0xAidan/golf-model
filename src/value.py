@@ -24,6 +24,15 @@ from src import db
 # Override via env var EV_THRESHOLD (e.g. "0.05" for 5%).
 DEFAULT_EV_THRESHOLD = float(os.environ.get("EV_THRESHOLD", "0.02"))
 
+MARKET_EV_THRESHOLDS = {
+    "outright": 0.05,
+    "top5": 0.05,
+    "top10": 0.02,
+    "top20": 0.02,
+    "frl": 0.05,
+    "make_cut": 0.02,
+}
+
 # Maximum credible EV. Real sports betting edges are 2-20%.
 # Anything above this almost certainly indicates bad data, not a real edge.
 MAX_CREDIBLE_EV = 2.0  # 200%
@@ -31,6 +40,18 @@ MAX_CREDIBLE_EV = 2.0  # 200%
 # Minimum market implied probability to trust odds data.
 # If market prob is below this, odds are likely corrupted/stale.
 MIN_MARKET_PROB = 0.005  # 0.5%
+
+# Market-specific maximum reasonable American odds.
+# Anything above these thresholds for a given bet type is almost certainly
+# corrupt data (e.g. +500000 outright that generates 17,000% EV).
+MAX_REASONABLE_ODDS = {
+    "outright": 30000,
+    "top5": 5000,
+    "top10": 3000,
+    "top20": 1500,
+    "frl": 10000,
+    "make_cut": 500,
+}
 
 
 def compute_ev(model_prob: float, american_odds: int) -> float:
@@ -225,7 +246,19 @@ def find_value_bets(composite_results: list[dict],
     Returns list of value bets sorted by EV (best first).
     """
     if ev_threshold is None:
-        ev_threshold = DEFAULT_EV_THRESHOLD
+        ev_threshold = MARKET_EV_THRESHOLDS.get(bet_type, DEFAULT_EV_THRESHOLD)
+
+    BLEND_WEIGHTS = {
+        "outright": {"dg": 0.90, "model": 0.10},
+        "top5":     {"dg": 0.85, "model": 0.15},
+        "top10":    {"dg": 0.85, "model": 0.15},
+        "top20":    {"dg": 0.80, "model": 0.20},
+        "frl":      {"dg": 0.90, "model": 0.10},
+        "make_cut": {"dg": 0.80, "model": 0.20},
+    }
+    blend_cfg = BLEND_WEIGHTS.get(bet_type, {"dg": 0.85, "model": 0.15})
+    DG_BLEND_WEIGHT = blend_cfg["dg"]
+    MODEL_BLEND_WEIGHT = blend_cfg["model"]
 
     all_scores = [r["composite"] for r in composite_results]
 
@@ -253,6 +286,11 @@ def find_value_bets(composite_results: list[dict],
         if not is_valid_odds(odds_entry.get("best_price")):
             continue
 
+        # Reject odds that exceed market-specific maximum
+        max_odds = MAX_REASONABLE_ODDS.get(bet_type, 30000)
+        if odds_entry.get("best_price", 0) > max_odds:
+            continue
+
         # Skip entries where market probability is suspiciously low
         # (indicates bad/stale odds data, not a real opportunity)
         if odds_entry.get("implied_prob", 0) < MIN_MARKET_PROB:
@@ -265,11 +303,8 @@ def find_value_bets(composite_results: list[dict],
         # probability (captures course_fit, weather, momentum signals that
         # DG may not weight the same way).
         #
-        # Blend ratio: 70% DG + 30% composite softmax when DG is available.
-        # This ensures our model's signals actually influence betting decisions.
-        DG_BLEND_WEIGHT = 0.70
-        MODEL_BLEND_WEIGHT = 1.0 - DG_BLEND_WEIGHT
-
+        # Blend ratio varies by market (see BLEND_WEIGHTS above).
+        # DG is preferred; model adds course_fit, weather, momentum signals.
         dg_prob_raw = None
         prob_source = "softmax"
 
@@ -360,6 +395,7 @@ def find_value_bets(composite_results: list[dict],
             "ev_pct": f"{ev * 100:.1f}%",
             "ev_capped": ev_capped,
             "is_value": ev >= ev_threshold and not ev_capped,
+            "needs_review": ev > 1.0,
             "suspicious": suspicious,
             "prob_source": prob_source,
         })
@@ -367,3 +403,50 @@ def find_value_bets(composite_results: list[dict],
     # Sort by EV descending
     value_bets.sort(key=lambda x: x["ev"], reverse=True)
     return value_bets
+
+
+def compute_run_quality(value_bets_by_market: dict) -> dict:
+    """
+    Compute a quality score for the entire prediction run.
+
+    Flags runs with corrupt/suspicious data to prevent them from being
+    logged to the picks table. Returns a dict with pass/fail status and issues.
+    """
+    all_bets = [b for bets in value_bets_by_market.values() for b in bets]
+    if not all_bets:
+        return {"score": 0.0, "issues": ["no bets computed"], "pass": False}
+
+    total = len(all_bets)
+    suspicious_count = sum(1 for b in all_bets if b.get("suspicious"))
+    capped_count = sum(1 for b in all_bets if b.get("ev_capped"))
+    needs_review_count = sum(1 for b in all_bets if b.get("needs_review"))
+    avg_abs_ev = sum(abs(b.get("ev", 0)) for b in all_bets) / total
+
+    suspicious_pct = suspicious_count / total
+    capped_pct = capped_count / total
+
+    issues = []
+    if suspicious_pct > 0.10:
+        issues.append(f"{suspicious_pct:.0%} of entries have suspicious model/market divergence")
+    if capped_pct > 0.20:
+        issues.append(f"{capped_pct:.0%} of entries had EV capped at maximum")
+    if avg_abs_ev > 0.50:
+        issues.append(f"Average |EV| = {avg_abs_ev:.0%} (likely corrupt odds data)")
+    if needs_review_count > total * 0.15:
+        issues.append(f"{needs_review_count}/{total} entries need review (EV > 100%)")
+
+    quality_score = max(0.0, 1.0 - suspicious_pct - capped_pct * 0.5)
+    passed = len(issues) == 0
+
+    return {
+        "score": round(quality_score, 3),
+        "issues": issues,
+        "pass": passed,
+        "stats": {
+            "total_bets": total,
+            "suspicious": suspicious_count,
+            "capped": capped_count,
+            "needs_review": needs_review_count,
+            "avg_abs_ev": round(avg_abs_ev, 4),
+        }
+    }

@@ -86,50 +86,55 @@ def betting_decision(value_bets: list[dict],
                      weather_context: str = "",
                      intel_context: str = "") -> str:
     """
-    Expert betting decision prompt.
-    Reviews value bets and makes final go/no-go decisions with sizing.
+    DISABLED: AI betting decisions removed due to poor performance.
+    The AI concentrated 87% of units on one player and recommended bets on
+    corrupted +500000 odds data. Betting decisions are now purely quantitative.
+    Returns None to signal the caller to skip AI betting.
     """
-    bets_str = json.dumps(value_bets[:30], indent=2, default=str) if value_bets else "[]"
+    return None
 
-    return f"""You are a professional golf betting analyst with 15 years of experience.
-You specialize in finding edges that the market misses, with a focus on
-positive expected value betting and disciplined bankroll management.
-
-BANKROLL: ${bankroll:.2f}
-MAX SINGLE BET: ${bankroll * 0.05:.2f} (5% of bankroll)
-
-VALUE BETS IDENTIFIED BY MODEL:
-{bets_str}
-
-WEATHER CONTEXT: {weather_context or 'Not available'}
-INTEL CONTEXT: {intel_context or 'No notable intel'}
-
-For each bet, decide: PLACE or SKIP.
-
-Consider:
-1. Is the edge real or a model artifact? (e.g., a cold-weather specialist in heat)
-2. Correlation between bets (don't double down on same player across markets)
-3. Market efficiency — large EV on a top player might mean you're wrong
-4. Longshot bias — outright bets on 100:1+ need enormous edges
-5. Weather uncertainty — factor in how conditions might change your edge
-6. Intel signals — any news that model might not capture
-
-Respond in valid JSON:
-{{
-  "decisions": [
-    {{
-      "player": "Name",
-      "market": "outright/top5/etc",
-      "decision": "PLACE" or "SKIP",
-      "confidence": 0.0-1.0,
-      "suggested_wager": dollar_amount,
-      "reasoning": "brief rationale"
-    }}
-  ],
-  "portfolio_notes": "overall portfolio construction thoughts",
-  "total_risk": dollar_amount,
-  "expected_roi": percentage
-}}"""
+    # --- Original implementation preserved for potential re-enablement ---
+    # bets_str = json.dumps(value_bets[:30], indent=2, default=str) if value_bets else "[]"
+    #
+    # return f"""You are a professional golf betting analyst with 15 years of experience.
+    # You specialize in finding edges that the market misses, with a focus on
+    # positive expected value betting and disciplined bankroll management.
+    #
+    # BANKROLL: ${bankroll:.2f}
+    # MAX SINGLE BET: ${bankroll * 0.05:.2f} (5% of bankroll)
+    #
+    # VALUE BETS IDENTIFIED BY MODEL:
+    # {bets_str}
+    #
+    # WEATHER CONTEXT: {weather_context or 'Not available'}
+    # INTEL CONTEXT: {intel_context or 'No notable intel'}
+    #
+    # For each bet, decide: PLACE or SKIP.
+    #
+    # Consider:
+    # 1. Is the edge real or a model artifact? (e.g., a cold-weather specialist in heat)
+    # 2. Correlation between bets (don't double down on same player across markets)
+    # 3. Market efficiency — large EV on a top player might mean you're wrong
+    # 4. Longshot bias — outright bets on 100:1+ need enormous edges
+    # 5. Weather uncertainty — factor in how conditions might change your edge
+    # 6. Intel signals — any news that model might not capture
+    #
+    # Respond in valid JSON:
+    # {{
+    #   "decisions": [
+    #     {{
+    #       "player": "Name",
+    #       "market": "outright/top5/etc",
+    #       "decision": "PLACE" or "SKIP",
+    #       "confidence": 0.0-1.0,
+    #       "suggested_wager": dollar_amount,
+    #       "reasoning": "brief rationale"
+    #     }}
+    #   ],
+    #   "portfolio_notes": "overall portfolio construction thoughts",
+    #   "total_risk": dollar_amount,
+    #   "expected_roi": percentage
+    # }}"""
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -838,11 +838,10 @@ def main():
     if not all_odds_by_market:
         print("    ⚠ Could not fetch odds (may not be posted yet)")
 
-    # ── AI Betting Decisions ─────────────────────────────────────
+    # ── AI Betting Decisions (disabled — purely quantitative now) ──
     if ai_pre_analysis and is_ai_available() and value_bets:
         print_header("Step 7b: AI Betting Decisions")
         try:
-            print("  AI is reviewing value bets and building a portfolio...")
             ai_decisions = make_betting_decisions(
                 tournament_id=tid,
                 value_bets_by_type=value_bets,
@@ -852,7 +851,10 @@ def main():
                 course_name=primary_course,
             )
 
-            decisions_list = ai_decisions.get("decisions", [])
+            if ai_decisions is None:
+                print("  AI betting decisions disabled — bet selection is purely quantitative.")
+
+            decisions_list = (ai_decisions or {}).get("decisions", [])
             if decisions_list:
                 print(f"\n  AI Recommended Bets ({len(decisions_list)} picks):")
                 print(f"  {'Player':<25} {'Bet':<10} {'Odds':>8} {'Stake':>8} "
@@ -867,20 +869,20 @@ def main():
                           f"{d.get('odds', '?'):>8} {d.get('recommended_stake', '?'):>8} "
                           f"{d.get('confidence', '?'):<8} {reasoning}")
 
-            portfolio_notes = ai_decisions.get("portfolio_notes", "")
+            portfolio_notes = (ai_decisions or {}).get("portfolio_notes", "")
             if portfolio_notes:
                 print(f"\n  Portfolio Notes:")
                 for line in _wrap_text(portfolio_notes, 56):
                     print(f"    {line}")
 
-            pass_notes = ai_decisions.get("pass_notes", "")
+            pass_notes = (ai_decisions or {}).get("pass_notes", "")
             if pass_notes:
                 print(f"\n  Passing On:")
                 for line in _wrap_text(pass_notes, 56):
                     print(f"    {line}")
 
-            total_units = ai_decisions.get("total_units", 0)
-            expected_roi = ai_decisions.get("expected_roi", "N/A")
+            total_units = (ai_decisions or {}).get("total_units", 0)
+            expected_roi = (ai_decisions or {}).get("expected_roi", "N/A")
             print(f"\n  Total units wagered: {total_units}")
             print(f"  Expected ROI: {expected_roi}")
 

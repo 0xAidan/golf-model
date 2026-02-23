@@ -61,7 +61,22 @@ def compute_composite(tournament_id: int, weights: dict = None,
     # Compute each sub-model
     course_scores = compute_course_fit(tournament_id, weights, course_name=course_name)
     form_scores = compute_form(tournament_id, weights)
-    momentum_scores = compute_momentum(tournament_id, weights)
+
+    # Identify elite players (top 15 by DG skill rating) for momentum floor
+    elite_players = set()
+    try:
+        dg_skill_metrics = db.get_metrics_by_category(tournament_id, "dg_skill")
+        player_sg_totals = {}
+        for m in dg_skill_metrics:
+            if m["metric_name"] == "dg_sg_total" and m["metric_value"] is not None:
+                player_sg_totals[m["player_key"]] = m["metric_value"]
+        if player_sg_totals:
+            sorted_players = sorted(player_sg_totals.items(), key=lambda x: x[1], reverse=True)
+            elite_players = {pk for pk, _ in sorted_players[:15]}
+    except Exception:
+        pass
+
+    momentum_scores = compute_momentum(tournament_id, weights, elite_players=elite_players)
 
     # Get display names
     display_names = db.get_player_display_names(tournament_id)
@@ -76,9 +91,9 @@ def compute_composite(tournament_id: int, weights: dict = None,
         return []
 
     # Top-level weights
-    w_course = weights.get("course_fit", 0.40)
-    w_form = weights.get("form", 0.40)
-    w_momentum = weights.get("momentum", 0.20)
+    w_course = weights.get("course_fit", 0.45)
+    w_form = weights.get("form", 0.45)
+    w_momentum = weights.get("momentum", 0.10)
 
     # If no course data was uploaded, redistribute weight to form + momentum
     has_course_data = bool(course_scores)

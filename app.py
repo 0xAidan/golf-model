@@ -581,6 +581,11 @@ async def ai_betting_decisions(request: Request):
         tournament_name=_last_analysis.get("tournament", ""),
         course_name=course,
     )
+    if result is None:
+        return JSONResponse(
+            {"message": "AI betting decisions disabled. Bet selection is purely quantitative."},
+            status_code=200,
+        )
     return result
 
 

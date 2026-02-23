@@ -580,10 +580,15 @@ def make_betting_decisions(tournament_id: int,
                            tournament_name: str = "",
                            course_name: str = "") -> dict:
     """
-    AI betting decisions: which bets to actually take.
-
-    Returns structured portfolio decisions with reasoning.
+    DISABLED: AI betting decisions removed due to poor performance.
+    The AI concentrated 87% of units on one player and recommended bets on
+    corrupted +500000 odds data. Betting decisions are now purely quantitative.
+    Returns None so all callers (service, run_predictions, app, analyze) skip AI bets.
     """
+    logger.info("AI betting decisions disabled — returning None")
+    return None
+
+    # --- Original implementation below (preserved for potential re-enablement) ---
     # Build value bets context — show top bets per market (not just positive EV)
     value_lines = []
     for bet_type, bets in value_bets_by_type.items():

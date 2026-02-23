@@ -111,6 +111,13 @@ def is_valid_odds(price: int) -> bool:
     return True
 
 
+def is_reasonable_odds(price: int, bet_type: str = "outright") -> bool:
+    """Check if odds are within reasonable range for the bet type."""
+    from src.value import MAX_REASONABLE_ODDS
+    max_price = MAX_REASONABLE_ODDS.get(bet_type, 30000)
+    return abs(price) <= max_price
+
+
 def american_to_decimal(price: int) -> float:
     """Convert American odds to decimal odds. Returns 1.0 for invalid price == 0."""
     if price > 0:

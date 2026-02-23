@@ -167,7 +167,7 @@ def _compute_trend(ranks: dict, field_size: int = 150) -> float:
     return blended * (1.0 + consistency_bonus)
 
 
-def compute_momentum(tournament_id: int, weights: dict) -> dict:
+def compute_momentum(tournament_id: int, weights: dict, elite_players: set = None) -> dict:
     """
     Compute momentum score for every player.
 
@@ -203,14 +203,18 @@ def compute_momentum(tournament_id: int, weights: dict) -> dict:
     results = {}
     for pk, t in trends.items():
         raw = t["raw_trend"]
-        # Scale: 0 trend -> 50, max positive -> ~90, max negative -> ~10
-        score = 50.0 + (raw / max_trend) * 40.0
-        score = max(5.0, min(95.0, score))
+        # Scale: 0 trend -> 50, max positive -> ~70, max negative -> ~30
+        score = 50.0 + (raw / max_trend) * 20.0
+        score = max(30.0, min(70.0, score))
 
         # More confidence if we have more windows
         confidence = min(1.0, t["windows_count"] / 4.0)
         # Pull toward 50 if low confidence
         score = 50.0 + confidence * (score - 50.0)
+
+        # Elite floor: top DG-skill players shouldn't crater on momentum
+        if elite_players and pk in elite_players:
+            score = max(35.0, score)
 
         # Direction uses relative thresholds based on field trends
         # This prevents labeling moderate trends as "cold" in a field

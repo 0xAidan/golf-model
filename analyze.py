@@ -264,9 +264,8 @@ def main():
             composite = apply_ai_adjustments(composite, pre_analysis)
             print(f"  Applied AI adjustments to composite scores")
 
-            # Betting decisions (if we have value bets)
+            # Betting decisions disabled — purely quantitative now
             if value_bets:
-                print(f"  Making betting decisions...")
                 decisions = make_betting_decisions(
                     tournament_id=tournament_id,
                     value_bets_by_type=value_bets,
@@ -275,12 +274,15 @@ def main():
                     tournament_name=args.tournament,
                     course_name=args.course or "",
                 )
-                n_bets = len(decisions.get("decisions", []))
-                total_units = decisions.get("total_units", 0)
-                print(f"    Recommended bets: {n_bets} ({total_units} units)")
-                for d in decisions.get("decisions", [])[:5]:
-                    print(f"      {d['player']} {d['bet_type']} @ {d['odds']} "
-                          f"({d['confidence']}) — {d['reasoning'][:60]}...")
+                if decisions is None:
+                    print(f"  AI betting decisions disabled — bet selection is purely quantitative.")
+                else:
+                    n_bets = len(decisions.get("decisions", []))
+                    total_units = decisions.get("total_units", 0)
+                    print(f"    Recommended bets: {n_bets} ({total_units} units)")
+                    for d in decisions.get("decisions", [])[:5]:
+                        print(f"      {d['player']} {d['bet_type']} @ {d['odds']} "
+                              f"({d['confidence']}) — {d['reasoning'][:60]}...")
         else:
             print(f"\n  AI brain not available (set OPENAI_API_KEY)")
 
