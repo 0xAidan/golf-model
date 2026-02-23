@@ -69,6 +69,9 @@ from src.ai_brain import (
 )
 
 
+SHADOW_MODE = os.environ.get("SHADOW_MODE", "false").lower() == "true"
+
+
 def print_header(text):
     print(f"\n{'─' * 60}")
     print(f"  {text}")
@@ -838,6 +841,27 @@ def main():
     if not all_odds_by_market:
         print("    ⚠ Could not fetch odds (may not be posted yet)")
 
+    # ── Matchup Value Bets (real sportsbook odds) ─────────────
+    matchup_bets = []
+    try:
+        from src.matchup_value import find_matchup_value_bets
+
+        matchup_odds = safe_api_call("matchup odds", fetch_matchup_odds, market="tournament_matchups")
+        if matchup_odds:
+            matchup_bets = find_matchup_value_bets(
+                composite, matchup_odds, tournament_id=tid,
+            )
+            if matchup_bets:
+                print(f"    matchups: {len(matchup_odds)} pairs, {len(matchup_bets)} value plays")
+            else:
+                print(f"    matchups: {len(matchup_odds)} pairs, 0 value plays")
+        else:
+            print("    matchups: no odds available")
+    except Exception as e:
+        logger_msg = f"Matchup value bets failed: {e}"
+        print(f"    ⚠ {logger_msg}")
+        matchup_bets = []
+
     # ── AI Betting Decisions (disabled — purely quantitative now) ──
     if ai_pre_analysis and is_ai_available() and value_bets:
         print_header("Step 7b: AI Betting Decisions")
@@ -1072,9 +1096,31 @@ def main():
         output_dir="output",
         ai_pre_analysis=ai_pre_analysis,
         ai_decisions=ai_decisions,
+        matchup_bets=matchup_bets if not SHADOW_MODE else None,
     )
     print(f"  Card saved to: {filepath}")
     print(f"\n  Open it: open {filepath}")
+
+    # ── Shadow mode: generate adaptive card side-by-side ─────
+    if SHADOW_MODE:
+        print_header("Shadow Mode: Generating Adaptive Card")
+        safe_name = event_name.lower().replace(" ", "_").replace("'", "")
+        shadow_filename = f"shadow_{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
+        shadow_path = generate_card(
+            tournament_name=event_name,
+            course_name=primary_course,
+            composite_results=composite,
+            value_bets=value_bets,
+            output_dir="output",
+            ai_pre_analysis=ai_pre_analysis,
+            ai_decisions=ai_decisions,
+            matchup_bets=matchup_bets,
+        )
+        # Rename to shadow filename
+        import shutil
+        shadow_dest = os.path.join("output", shadow_filename)
+        shutil.move(shadow_path, shadow_dest)
+        print(f"  Shadow mode: adaptive card saved to {shadow_dest}")
 
     print()
     print("=" * 60)
