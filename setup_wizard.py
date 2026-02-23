@@ -215,9 +215,10 @@ def _validate():
         checks.append(("  .env file exists", False))
 
     # Check DB
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golf_model.db")
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "golf.db")
     if os.path.exists(db_path):
-        checks.append(("  Database exists", True))
+        size_mb = os.path.getsize(db_path) / (1024 * 1024)
+        checks.append((f"  Database exists ({size_mb:.1f} MB)", True))
     else:
         checks.append(("  Database exists", False))
 

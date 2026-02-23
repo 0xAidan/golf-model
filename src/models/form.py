@@ -26,13 +26,17 @@ def _rank_to_score(rank: float, field_size: int) -> float:
 
 
 def _pct_to_score(pct: float, scale: float = 300.0) -> float:
-    """Convert a probability percentage to a 0-100 score.
+    """Convert a probability to a 0-100 score.
 
+    Handles both decimal (0.05 = 5%) and percentage (5.0 = 5%) formats.
     Uses a consistent mapping: 50 = baseline (zero signal),
     higher pct = higher score, clamped to 0-100.
     """
     if pct is None:
         return 50.0
+    # Normalize: if > 1.0, treat as percentage and convert to decimal
+    if pct > 1.0:
+        pct = pct / 100.0
     return max(0.0, min(100.0, 50.0 + pct * scale))
 
 
@@ -74,6 +78,53 @@ def _discover_available_categories(tournament_id: int) -> list[str]:
     ).fetchall()
     conn.close()
     return [r["metric_category"] for r in rows]
+
+
+def _sample_size_confidence(rounds_used: int, threshold: int = 8) -> float:
+    """
+    Bayesian-style shrinkage factor based on available sample.
+
+    At threshold rounds or more, full confidence (1.0).
+    Below threshold, proportionally shrink toward neutral.
+    E.g., 1 round -> 0.125, 4 rounds -> 0.5, 8+ rounds -> 1.0.
+    """
+    if rounds_used is None or rounds_used <= 0:
+        return 0.0
+    return min(1.0, rounds_used / threshold)
+
+
+def _get_player_round_counts(tournament_id: int) -> dict:
+    """
+    Get the number of recent rounds each player has played before this tournament.
+
+    Queries the rounds table to count actual rounds completed before the
+    tournament date. Returns {player_key: round_count}.
+    """
+    conn = db.get_conn()
+
+    # Get tournament date
+    t_info = conn.execute(
+        "SELECT date, year, name FROM tournaments WHERE id = ?",
+        (tournament_id,),
+    ).fetchone()
+
+    if not t_info or not t_info[0]:
+        conn.close()
+        return {}
+
+    tournament_date = t_info[0]
+
+    # Count rounds per player completed before the tournament
+    rows = conn.execute("""
+        SELECT player_key, COUNT(*) as round_count
+        FROM rounds
+        WHERE event_completed < ?
+          AND sg_total IS NOT NULL
+        GROUP BY player_key
+    """, (tournament_date,)).fetchall()
+
+    conn.close()
+    return {r[0]: r[1] for r in rows if r[0]}
 
 
 def _get_sg_ranks_for_window(tournament_id: int, round_window: str) -> dict:
@@ -177,6 +228,9 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
     # Get DG rankings
     dg_ranking_data = _get_dg_ranking_data(tournament_id)
 
+    # Get actual round counts per player for sample size adjustment
+    player_round_counts = _get_player_round_counts(tournament_id)
+
     # Collect all players
     all_players = set()
     for ranks in sg_by_window.values():
@@ -242,11 +296,22 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
         windows_used = []
 
         # ── Recent window scores (use all available, weighted by recency) ──
+        # Apply sample size adjustment: shrink scores toward 50.0 for players
+        # with fewer actual rounds than the window requests.
+        total_rounds = player_round_counts.get(pk, 0)
         recent_scores = []
         for w in recent_windows:
             if w in sg_by_window and pk in sg_by_window[w]:
-                score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
-                recent_scores.append((w, score))
+                raw_score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
+                # Effective sample: min of window size and actual rounds
+                try:
+                    window_int = int(w)
+                except ValueError:
+                    window_int = 50
+                effective_sample = min(window_int, total_rounds) if total_rounds > 0 else window_int
+                conf = _sample_size_confidence(effective_sample)
+                adjusted_score = 50.0 + conf * (raw_score - 50.0)
+                recent_scores.append((w, adjusted_score))
                 windows_used.append(f"recent:{w}")
         if recent_scores:
             # Weight more recent windows higher
@@ -264,8 +329,15 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
         baseline_scores = []
         for w in baseline_windows:
             if w in sg_by_window and pk in sg_by_window[w]:
-                score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
-                baseline_scores.append((w, score))
+                raw_score = _rank_to_score(sg_by_window[w][pk], field_sizes[w])
+                try:
+                    window_int = int(w)
+                except ValueError:
+                    window_int = 50
+                effective_sample = min(window_int, total_rounds) if total_rounds > 0 else window_int
+                conf = _sample_size_confidence(effective_sample)
+                adjusted_score = 50.0 + conf * (raw_score - 50.0)
+                baseline_scores.append((w, adjusted_score))
                 windows_used.append(f"baseline:{w}")
         if baseline_scores:
             baseline_score = sum(s for _, s in baseline_scores) / len(baseline_scores)
@@ -322,6 +394,15 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
                 "putt": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:P"), fs),
                 "arg": _rank_to_score(form_data.get(f"{best_window}_strokes_gained_SG:ARG"), fs),
             }
+            # Apply sample size adjustment to multi-SG scores
+            try:
+                best_w_int = int(best_window)
+            except ValueError:
+                best_w_int = 50
+            effective_sg_sample = min(best_w_int, total_rounds) if total_rounds > 0 else best_w_int
+            sg_conf = _sample_size_confidence(effective_sg_sample)
+            sg_scores = {k: 50.0 + sg_conf * (v - 50.0) for k, v in sg_scores.items()}
+
             multi_sg = (
                 w_sg_tot * sg_scores["tot"]
                 + w_sg_app * sg_scores["app"]

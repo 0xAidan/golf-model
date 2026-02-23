@@ -23,6 +23,8 @@ from typing import Optional
 from src import db
 from src.datagolf import _safe_float
 from src.player_normalizer import normalize_name
+from src.scoring import determine_outcome_from_text, compute_profit, american_to_decimal
+from backtester.pit_models import compute_pit_composite
 
 logger = logging.getLogger("strategy")
 
@@ -39,7 +41,7 @@ class StrategyConfig:
     All parameters that affect model output or bet selection are captured
     here so strategies can be compared, tracked, and optimized.
     """
-    # Model weights (must sum to 1.0)
+    # Legacy SG weights (used only as fallback when PIT sub-models unavailable)
     w_sg_total: float = 0.30
     w_sg_app: float = 0.15
     w_sg_ott: float = 0.10
@@ -48,7 +50,12 @@ class StrategyConfig:
     w_form: float = 0.15
     w_course_fit: float = 0.15
 
-    # Rolling stat window (12, 24, or 50)
+    # Sub-model weights for aligned composite (mirrors live model)
+    w_sub_course_fit: float = 0.40
+    w_sub_form: float = 0.40
+    w_sub_momentum: float = 0.20
+
+    # Rolling stat window (used for fallback only)
     stat_window: int = 24
 
     # Minimum EV threshold to place a bet (e.g., 0.05 = 5%)
@@ -197,11 +204,14 @@ class SimulationResult:
 #  Replay Engine
 # ═══════════════════════════════════════════════════════════════════
 
-def _compute_composite(pit: dict, weights: dict) -> float:
+def _compute_composite_legacy(pit: dict, weights: dict) -> float:
     """
-    Compute composite score from PIT stats using strategy weights.
+    LEGACY: Compute composite score from PIT stats using flat SG weights.
 
-    Higher is better.
+    This is the old simplified model, kept only as a fallback when PIT
+    sub-models haven't been built yet. The aligned model uses
+    compute_pit_composite() from pit_models.py which mirrors the live
+    model's course_fit + form + momentum structure.
     """
     score = 0.0
     if pit.get("sg_total") is not None:
@@ -217,41 +227,53 @@ def _compute_composite(pit: dict, weights: dict) -> float:
     return score
 
 
-def _softmax_probs(scores: list[float], temperature: float = 1.0,
+# Market-specific softmax temperatures matching the live model (src/value.py)
+MARKET_SOFTMAX_TEMPS = {
+    "win": 8.0,
+    "top_5": 10.0,
+    "top_10": 12.0,
+    "top_20": 15.0,
+    "make_cut": 20.0,
+}
+
+
+def _softmax_probs(scores: list[float], temperature: float = 12.0,
                    target_sum: float = 1.0) -> list[float]:
-    """Convert composite scores to probabilities via softmax."""
+    """
+    Convert composite scores to probabilities via softmax.
+
+    Applies clamping [0.001, 0.95] per player then renormalizes to preserve
+    target_sum, matching the live model behavior.
+    """
     if not scores:
         return []
+    n = len(scores)
     max_s = max(scores)
     exps = [math.exp((s - max_s) / max(temperature, 0.01)) for s in scores]
     total = sum(exps)
     if total == 0:
-        return [target_sum / len(scores)] * len(scores)
-    return [target_sum * e / total for e in exps]
+        return [target_sum / n] * n
+
+    raw_probs = [target_sum * e / total for e in exps]
+
+    # Clamp then renormalize (matching live model behavior)
+    clamped = [max(0.001, min(0.95, p)) for p in raw_probs]
+    clamped_sum = sum(clamped)
+    if clamped_sum > 0 and abs(clamped_sum - target_sum) > 0.001:
+        scale = target_sum / clamped_sum
+        clamped = [p * scale for p in clamped]
+
+    return clamped
 
 
-def _did_bet_win(finish_text: str, market: str) -> bool:
-    """Check if a bet won given the player's finish and market."""
-    if not finish_text:
-        return False
+def _did_bet_win(finish_text: str, market: str,
+                 all_finish_texts: list[str] = None) -> dict:
+    """
+    Check if a bet won given the player's finish and market.
 
-    fin = finish_text.strip().upper()
-    if fin in ("CUT", "MC", "WD", "W/D", "DQ"):
-        return False
-
-    try:
-        pos = int(fin.replace("T", ""))
-    except ValueError:
-        return False
-
-    thresholds = {
-        "win": 1,
-        "top_5": 5,
-        "top_10": 10,
-        "top_20": 20,
-        "make_cut": 999,  # any position = made cut
-    }
-    return pos <= thresholds.get(market, 1)
+    Returns dict with hit, fraction, is_push from unified scoring module.
+    """
+    return determine_outcome_from_text(finish_text, market, all_finish_texts)
 
 
 def _american_to_payout(price: int, wager: float = 1.0) -> float:
@@ -282,28 +304,49 @@ def replay_event(event_id: str, year: int,
     conn = db.get_conn()
     weights = strategy.normalized_weights()
 
-    # 1. Get PIT stats for all players in this event
-    pit_rows = conn.execute("""
-        SELECT player_key, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, rounds_used
-        FROM pit_rolling_stats
-        WHERE event_id = ? AND year = ? AND window = ?
-    """, (str(event_id), year, strategy.stat_window)).fetchall()
+    # 1. Compute composite using aligned PIT sub-models (course_fit + form + momentum)
+    pit_composites = compute_pit_composite(
+        str(event_id), year,
+        w_course_fit=strategy.w_sub_course_fit,
+        w_form=strategy.w_sub_form,
+        w_momentum=strategy.w_sub_momentum,
+    )
 
-    if not pit_rows:
-        return []
+    if not pit_composites:
+        # Fall back to legacy SG-weighted model if sub-models unavailable
+        pit_rows = conn.execute("""
+            SELECT player_key, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, rounds_used
+            FROM pit_rolling_stats
+            WHERE event_id = ? AND year = ? AND window = ?
+        """, (str(event_id), year, strategy.stat_window)).fetchall()
 
-    players = []
-    scores = []
-    for row in pit_rows:
-        pkey = row[0]
-        pit = {
-            "sg_total": row[1], "sg_ott": row[2], "sg_app": row[3],
-            "sg_arg": row[4], "sg_putt": row[5], "sg_t2g": row[6],
-            "rounds_used": row[7],
-        }
-        cs = _compute_composite(pit, weights)
-        players.append({"player_key": pkey, "pit": pit, "composite": cs})
-        scores.append(cs)
+        if not pit_rows:
+            return []
+
+        players = []
+        scores = []
+        for row in pit_rows:
+            pkey = row[0]
+            pit = {
+                "sg_total": row[1], "sg_ott": row[2], "sg_app": row[3],
+                "sg_arg": row[4], "sg_putt": row[5], "sg_t2g": row[6],
+                "rounds_used": row[7],
+            }
+            cs = _compute_composite_legacy(pit, weights)
+            players.append({"player_key": pkey, "pit": pit, "composite": cs})
+            scores.append(cs)
+    else:
+        players = []
+        scores = []
+        for pkey, data in pit_composites.items():
+            players.append({
+                "player_key": pkey,
+                "composite": data["composite"],
+                "course_fit": data["course_fit"],
+                "form": data["form"],
+                "momentum": data["momentum"],
+            })
+            scores.append(data["composite"])
 
     # 2. Convert to probabilities per market
     market_targets = {
@@ -319,17 +362,32 @@ def replay_event(event_id: str, year: int,
     """, (str(event_id), year)).fetchall()
 
     # Build odds lookup: {player_key: {market: best_odds_price}}
+    # NOTE: Historical odds are DG model prices (synthetic), not real
+    # sportsbook odds. We apply a vig spread to simulate real market
+    # conditions (+12% overround), making the backtested odds shorter
+    # and the resulting ROI more realistic.
+    VIG_FACTOR = 0.88  # Simulate ~12% overround (real books have 10-20%)
+
     odds_by_player = {}
     for row in odds_rows:
         dg_id, name, market, book, close_line = row
         pkey = normalize_name(name)
         if pkey not in odds_by_player:
             odds_by_player[pkey] = {}
-        # Keep the best (highest) odds for each market
-        existing = odds_by_player[pkey].get(market)
+
         if close_line is not None:
-            if existing is None or close_line > existing:
-                odds_by_player[pkey][market] = close_line
+            # Apply vig: convert to implied prob, increase by vig, convert back
+            implied = _american_to_implied(close_line)
+            vigged_implied = min(0.95, implied / VIG_FACTOR)
+            # Convert back to American odds (shorter/worse for the bettor)
+            if vigged_implied >= 0.5:
+                vigged_price = int(-100 * vigged_implied / (1 - vigged_implied))
+            else:
+                vigged_price = int(100 * (1 - vigged_implied) / vigged_implied)
+
+            existing = odds_by_player[pkey].get(market)
+            if existing is None or vigged_price > existing:
+                odds_by_player[pkey][market] = vigged_price
 
     # 4. Get actual results
     results = conn.execute("""
@@ -338,12 +396,16 @@ def replay_event(event_id: str, year: int,
         WHERE event_id = ? AND year = ?
     """, (str(event_id), year)).fetchall()
     finish_by_key = {r[0]: r[1] for r in results if r[0] and r[1]}
+    # Collect all finish texts for dead-heat detection
+    all_finish_texts = [r[1] for r in results if r[0] and r[1]]
 
     # 5. Find value bets and evaluate
     bets = []
     for market in strategy.markets:
         target = market_targets.get(market, 1.0)
-        probs = _softmax_probs(scores, strategy.softmax_temp, target)
+        # Use market-specific temperature for consistency with live model
+        temp = MARKET_SOFTMAX_TEMPS.get(market, strategy.softmax_temp)
+        probs = _softmax_probs(scores, temp, target)
 
         for i, p in enumerate(players):
             pkey = p["player_key"]
@@ -361,26 +423,44 @@ def replay_event(event_id: str, year: int,
             if implied_prob > strategy.max_implied_prob:
                 continue
 
-            ev = model_prob - implied_prob
+            # True EV: how much we expect to win per dollar wagered
+            # EV = (model_prob / implied_prob) - 1.0
+            # e.g., model=10%, market=5% → EV = 2.0 - 1.0 = +100%
+            if implied_prob > 0:
+                ev = (model_prob / implied_prob) - 1.0
+            else:
+                continue
+
             if ev < strategy.min_ev:
                 continue
 
-            # Kelly sizing
-            if implied_prob > 0:
-                edge = ev
-                odds_decimal = 1 / implied_prob - 1 if implied_prob < 1 else 0
-                if odds_decimal > 0:
-                    kelly = edge / odds_decimal
-                    wager = max(0.01, min(0.05, kelly * strategy.kelly_fraction))
-                else:
-                    wager = 0.01
+            # Kelly criterion: f* = (b*p - q) / b
+            # where b = net decimal odds, p = model_prob, q = 1 - model_prob
+            odds_decimal_net = (1.0 / implied_prob) - 1.0 if implied_prob < 1 else 0
+            if odds_decimal_net > 0:
+                kelly_full = (odds_decimal_net * model_prob - (1 - model_prob)) / odds_decimal_net
+                kelly = max(0, kelly_full)
+                wager = max(0.01, min(0.05, kelly * strategy.kelly_fraction))
             else:
                 wager = 0.01
 
-            # Check outcome
+            # Check outcome using unified scoring (dead-heat aware)
             fin_text = finish_by_key.get(pkey, "")
-            won = _did_bet_win(fin_text, market)
-            payout = _american_to_payout(price, wager) if won else 0.0
+            outcome = _did_bet_win(fin_text, market, all_finish_texts)
+            won = outcome["hit"] == 1
+            fraction = outcome["fraction"]
+            is_push = outcome["is_push"]
+
+            # Compute payout with dead-heat and push handling
+            odds_dec = american_to_decimal(price)
+            if odds_dec is not None:
+                profit = compute_profit(
+                    outcome["hit"], fraction, is_push, odds_dec, wager
+                )
+                payout = wager + profit  # total return
+            else:
+                profit = -wager
+                payout = 0.0
 
             bets.append({
                 "event_id": event_id,
@@ -390,10 +470,13 @@ def replay_event(event_id: str, year: int,
                 "model_prob": round(model_prob, 4),
                 "implied_prob": round(implied_prob, 4),
                 "ev": round(ev, 4),
+                "prob_edge": round(model_prob - implied_prob, 4),
                 "odds": price,
                 "wager": round(wager, 4),
                 "won": won,
-                "payout": round(payout, 4),
+                "fraction": round(fraction, 4),
+                "is_push": is_push,
+                "payout": round(max(0, payout), 4),
                 "clv": round(model_prob - implied_prob, 4),
                 "finish": fin_text,
             })
@@ -445,3 +528,56 @@ def simulate_strategy(strategy: StrategyConfig,
 
     result.compute_metrics()
     return result
+
+
+def walk_forward_validate(strategy: StrategyConfig,
+                          train_years: list[int] = None,
+                          test_years: list[int] = None,
+                          tour: str = "pga") -> dict:
+    """
+    Walk-forward validation: train on earlier years, test on later years.
+
+    Default split:
+      - Train: 2019-2023 (for understanding what the strategy would have done)
+      - Test: 2024-2025 (out-of-sample evaluation)
+
+    Returns dict with separate metrics for train and test periods,
+    plus a combined summary.
+    """
+    if train_years is None:
+        train_years = [2022, 2023]
+    if test_years is None:
+        test_years = [2024, 2025]
+
+    train_result = simulate_strategy(strategy, years=train_years, tour=tour)
+    test_result = simulate_strategy(strategy, years=test_years, tour=tour)
+
+    # Degradation check: how much worse is out-of-sample?
+    train_roi = train_result.roi_pct
+    test_roi = test_result.roi_pct
+    degradation = train_roi - test_roi if train_roi and test_roi else None
+
+    return {
+        "train": {
+            "years": train_years,
+            "roi_pct": train_result.roi_pct,
+            "total_bets": train_result.total_bets,
+            "sharpe": train_result.sharpe,
+            "events": train_result.events_simulated,
+            "wins": train_result.wins,
+            "calibration_error": train_result.calibration_error,
+        },
+        "test": {
+            "years": test_years,
+            "roi_pct": test_result.roi_pct,
+            "total_bets": test_result.total_bets,
+            "sharpe": test_result.sharpe,
+            "events": test_result.events_simulated,
+            "wins": test_result.wins,
+            "calibration_error": test_result.calibration_error,
+        },
+        "degradation_pct": round(degradation, 2) if degradation is not None else None,
+        "is_robust": degradation is not None and degradation < 20.0 and test_roi > 0,
+        "test_result": test_result,
+        "train_result": train_result,
+    }

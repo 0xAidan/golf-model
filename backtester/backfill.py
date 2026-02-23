@@ -54,16 +54,76 @@ def _mark_done(table_name: str, event_id: str, year: int):
 # ═══════════════════════════════════════════════════════════════════
 
 def fetch_schedule(tour: str = "pga", season: int = None) -> list[dict]:
-    """Fetch full season schedule from DataGolf."""
+    """Fetch full season schedule from DataGolf.
+
+    Falls back to deriving event list from the rounds table when the
+    get-schedule endpoint fails (it only supports recent seasons).
+    """
     params = {"tour": tour}
     if season:
         params["season"] = str(season)
-    data = _call_api("get-schedule", params)
-    if isinstance(data, dict):
-        return data.get("schedule", data.get("events", []))
-    if isinstance(data, list):
-        return data
+    try:
+        data = _call_api("get-schedule", params)
+        if isinstance(data, dict):
+            events = data.get("schedule", data.get("events", []))
+        elif isinstance(data, list):
+            events = data
+        else:
+            events = []
+        if events:
+            return events
+    except Exception:
+        pass
+
+    # Fallback: derive event list from rounds we already have in the DB
+    if season:
+        return _events_from_rounds(tour, season)
     return []
+
+
+def _events_from_rounds(tour: str, year: int) -> list[dict]:
+    """Build a minimal event list from the rounds table for a given year.
+
+    This allows backfilling predictions/weather for older seasons
+    where get-schedule returns a 400 error. Uses event_completed
+    dates from rounds to estimate tournament windows for weather.
+    """
+    conn = db.get_conn()
+    rows = conn.execute("""
+        SELECT DISTINCT event_id, event_name, course_num, course_name,
+               event_completed
+        FROM rounds
+        WHERE year = ? AND tour = ?
+        ORDER BY event_completed
+    """, (year, tour)).fetchall()
+    conn.close()
+
+    events = []
+    for r in rows:
+        end_date = r[4] or ""
+        start_date = ""
+        if end_date:
+            try:
+                ed = datetime.strptime(end_date, "%Y-%m-%d")
+                sd = ed - timedelta(days=3)
+                start_date = sd.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+
+        events.append({
+            "event_id": r[0],
+            "event_name": r[1],
+            "course_key": str(r[2]) if r[2] else "",
+            "course": r[3] or "",
+            "event_completed": end_date or True,
+            "start_date": start_date,
+            "end_date": end_date,
+            "tour": tour,
+        })
+
+    if events:
+        logger.info("Derived %d events from rounds for %s %d", len(events), tour, year)
+    return events
 
 
 def _store_event_info(events: list[dict], year: int):
@@ -98,11 +158,27 @@ def _store_event_info(events: list[dict], year: int):
 #  Historical Predictions Backfill
 # ═══════════════════════════════════════════════════════════════════
 
+def _decimal_odds_to_prob(decimal_odds) -> float | None:
+    """Convert decimal odds (e.g. 7.33) to implied probability (e.g. 0.1365).
+
+    Returns None if input is invalid or not positive.
+    """
+    try:
+        val = float(decimal_odds)
+        if val <= 0:
+            return None
+        return 1.0 / val
+    except (TypeError, ValueError):
+        return None
+
+
 def backfill_predictions(event_id: str, year: int, tour: str = "pga") -> int:
     """
     Fetch archived pre-tournament predictions for a completed event.
 
-    Uses preds/pre-tournament with event_id parameter for historical data.
+    Uses preds/pre-tournament-archive which returns actual historical data
+    with decimal odds (not probabilities). We convert to probabilities.
+
     Returns count of rows stored.
     """
     table = "historical_predictions"
@@ -110,47 +186,63 @@ def backfill_predictions(event_id: str, year: int, tour: str = "pga") -> int:
         return 0
 
     try:
-        data = _call_api("preds/pre-tournament", {
+        data = _call_api("preds/pre-tournament-archive", {
             "tour": tour,
             "event_id": str(event_id),
             "year": str(year),
-            "odds_format": "percent",
         })
     except Exception as e:
         logger.warning("Predictions backfill failed for %s/%s: %s", event_id, year, e)
         return 0
 
-    players = data if isinstance(data, list) else data.get("baseline_history_fit", data.get("data", []))
-    if not players:
+    if not isinstance(data, dict):
         return 0
 
+    # Store both model types: baseline_history_fit (preferred) and baseline
     conn = db.get_conn()
     count = 0
-    for p in players:
-        if not isinstance(p, dict):
+
+    for model_type in ["baseline_history_fit", "baseline"]:
+        players = data.get(model_type, [])
+        if not players:
             continue
-        dg_id = p.get("dg_id")
-        if not dg_id:
-            continue
-        try:
-            conn.execute("""
-                INSERT OR REPLACE INTO historical_predictions
-                (event_id, year, player_dg_id, player_name, win_prob, top5_prob,
-                 top10_prob, top20_prob, make_cut_prob, model_type)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-            """, (
-                str(event_id), year, dg_id,
-                p.get("player_name", ""),
-                _safe_float(p.get("win")),
-                _safe_float(p.get("top_5")),
-                _safe_float(p.get("top_10")),
-                _safe_float(p.get("top_20")),
-                _safe_float(p.get("make_cut")),
-                "baseline",
-            ))
-            count += 1
-        except Exception:
-            pass
+
+        for p in players:
+            if not isinstance(p, dict):
+                continue
+            dg_id = p.get("dg_id")
+            if not dg_id:
+                continue
+
+            # Archive returns decimal odds — convert to probabilities
+            win_prob = _decimal_odds_to_prob(p.get("win"))
+            top5_prob = _decimal_odds_to_prob(p.get("top_5"))
+            top10_prob = _decimal_odds_to_prob(p.get("top_10"))
+            top20_prob = _decimal_odds_to_prob(p.get("top_20"))
+            make_cut_prob = _decimal_odds_to_prob(p.get("make_cut"))
+
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO historical_predictions
+                    (event_id, year, player_dg_id, player_name, win_prob, top5_prob,
+                     top10_prob, top20_prob, make_cut_prob, model_type,
+                     actual_finish)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    str(event_id), year, dg_id,
+                    p.get("player_name", ""),
+                    round(win_prob, 6) if win_prob else None,
+                    round(top5_prob, 6) if top5_prob else None,
+                    round(top10_prob, 6) if top10_prob else None,
+                    round(top20_prob, 6) if top20_prob else None,
+                    round(make_cut_prob, 6) if make_cut_prob else None,
+                    model_type,
+                    p.get("fin_text"),
+                ))
+                count += 1
+            except Exception:
+                pass
+
     conn.commit()
 
     if count > 0:
@@ -164,47 +256,70 @@ def backfill_predictions(event_id: str, year: int, tour: str = "pga") -> int:
 
 def backfill_odds(event_id: str, year: int, tour: str = "pga") -> int:
     """
-    Fetch archived outrights odds for a completed event.
+    Store DG model odds from the predictions archive for a completed event.
 
-    Uses betting-tools/outrights with event_id/year for historical snapshots.
+    DataGolf does NOT have a historical sportsbook odds archive endpoint.
+    Instead, we extract DG's own model decimal odds from the pre-tournament
+    archive and store them as synthetic odds. This gives us:
+      - A baseline to estimate CLV and market edge
+      - Calibrated probabilities for backtesting
+
     Returns count of rows stored.
     """
     table = "historical_odds"
     if _is_done(table, event_id, year):
         return 0
 
-    from src.odds import american_to_implied_prob
-    from src.datagolf import BOOK_NAMES, _parse_american_odds
+    try:
+        data = _call_api("preds/pre-tournament-archive", {
+            "tour": tour,
+            "event_id": str(event_id),
+            "year": str(year),
+        })
+    except Exception as e:
+        logger.warning("Odds backfill (via predictions archive) %s/%s: %s", event_id, year, e)
+        return 0
 
+    if not isinstance(data, dict):
+        return 0
+
+    # Market mapping: DG field name → our market name
+    market_fields = {
+        "win": "win",
+        "top_5": "top_5",
+        "top_10": "top_10",
+        "top_20": "top_20",
+        "make_cut": "make_cut",
+    }
+
+    conn = db.get_conn()
     total = 0
-    for market in ["win", "top_5", "top_10", "top_20"]:
-        try:
-            raw = _call_api("betting-tools/outrights", {
-                "tour": tour,
-                "market": market,
-                "odds_format": "american",
-                "event_id": str(event_id),
-                "year": str(year),
-            })
-        except Exception as e:
-            logger.warning("Odds backfill %s/%s/%s: %s", event_id, year, market, e)
-            continue
 
-        odds_list = raw.get("odds", []) if isinstance(raw, dict) else []
-        conn = db.get_conn()
-        for player in odds_list:
-            if not isinstance(player, dict):
+    for model_type in ["baseline_history_fit", "baseline"]:
+        players = data.get(model_type, [])
+        book_label = "DG-CH" if model_type == "baseline_history_fit" else "DG-Base"
+
+        for p in players:
+            if not isinstance(p, dict):
                 continue
-            dg_id = player.get("dg_id")
-            name = player.get("player_name", "")
+            dg_id = p.get("dg_id")
+            name = p.get("player_name", "")
             if not dg_id:
                 continue
 
-            for book_key in BOOK_NAMES:
-                val = player.get(book_key)
-                price = _parse_american_odds(val)
-                if price is None:
+            for dg_field, market_name in market_fields.items():
+                decimal_odds = p.get(dg_field)
+                if decimal_odds is None:
                     continue
+                try:
+                    decimal_odds = float(decimal_odds)
+                    if decimal_odds <= 1.0:
+                        continue
+                    # Convert decimal odds to American for storage consistency
+                    american = int((decimal_odds - 1.0) * 100)
+                except (TypeError, ValueError):
+                    continue
+
                 try:
                     conn.execute("""
                         INSERT OR REPLACE INTO historical_odds
@@ -213,13 +328,13 @@ def backfill_odds(event_id: str, year: int, tour: str = "pga") -> int:
                         VALUES (?,?,?,?,?,?,?,?)
                     """, (
                         str(event_id), year, dg_id, name,
-                        market, book_key, price, None,
+                        market_name, book_label, american, None,
                     ))
                     total += 1
                 except Exception:
                     pass
-        conn.commit()
-        time.sleep(0.5)
+
+    conn.commit()
 
     if total > 0:
         _mark_done(table, event_id, year)
@@ -541,6 +656,24 @@ def build_courses_from_events():
     logger.info("Built %d course stubs from event history", len(events))
 
 
+def _load_course_coords() -> dict:
+    """Load course coordinates from the encyclopedia for weather fallback.
+
+    Returns {course_id: (latitude, longitude)}.
+    """
+    try:
+        conn = db.get_conn()
+        rows = conn.execute("""
+            SELECT course_id, latitude, longitude
+            FROM course_encyclopedia
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        """).fetchall()
+        conn.close()
+        return {str(r[0]): (r[1], r[2]) for r in rows}
+    except Exception:
+        return {}
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Full Backfill Orchestrator
 # ═══════════════════════════════════════════════════════════════════
@@ -594,12 +727,12 @@ def run_full_backfill(tours: list[str] = None,
 
             # 2. Schedule + event info
             print("  [2/4] Fetching schedule & event info...")
-            try:
-                events = fetch_schedule(tour=tour, season=year)
+            events = fetch_schedule(tour=tour, season=year)
+            if events:
                 _store_event_info(events, year)
-            except Exception as e:
-                summary["errors"].append(f"schedule_{tour}_{year}: {e}")
-                events = []
+                print(f"    → {len(events)} events found")
+            else:
+                print("    → No events found")
             time.sleep(1)
 
             # 3. Per-event: predictions, odds, weather
@@ -609,6 +742,10 @@ def run_full_backfill(tours: list[str] = None,
             ]
             if not completed:
                 completed = events
+
+            # Load course coordinates for weather lookup (fallback for
+            # events derived from rounds that lack lat/lon)
+            course_coords = _load_course_coords()
 
             for i, ev in enumerate(completed):
                 if not isinstance(ev, dict):
@@ -639,6 +776,13 @@ def run_full_backfill(tours: list[str] = None,
                     lon = _safe_float(ev.get("longitude"))
                     sd = ev.get("start_date", ev.get("date", ""))
                     ed = ev.get("end_date", "")
+
+                    # Try course encyclopedia if event has no coordinates
+                    if (not lat or not lon) and ev.get("course_key"):
+                        ckey = str(ev["course_key"])
+                        if ckey in course_coords:
+                            lat, lon = course_coords[ckey]
+
                     if lat and lon and sd:
                         n = backfill_weather(eid, year, lat, lon, sd, ed)
                         summary["weather_hours"] += n
