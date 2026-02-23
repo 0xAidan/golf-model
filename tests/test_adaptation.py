@@ -6,6 +6,9 @@ from src.adaptation import (
     get_rolling_market_performance,
     get_adaptation_state,
     check_recovery,
+    log_ai_adjustment,
+    evaluate_ai_adjustments,
+    get_ai_adjustment_config,
 )
 
 
@@ -62,3 +65,36 @@ def test_compute_roi_pct_rounding():
     """ROI should be rounded to 2 decimal places."""
     result = compute_roi_pct(3.0, 3.7)
     assert result == 23.33
+
+
+def test_log_ai_adjustment():
+    """Should log without error."""
+    from src import db
+    conn = db.get_conn()
+    conn.execute(
+        "INSERT OR IGNORE INTO tournaments (id, name, year) VALUES (99999, 'test_tournament', 2099)"
+    )
+    conn.commit()
+    conn.close()
+
+    log_ai_adjustment(99999, "test_player", 3.0, "test reasoning")
+
+    conn = db.get_conn()
+    conn.execute("DELETE FROM ai_adjustments WHERE tournament_id = 99999")
+    conn.execute("DELETE FROM tournaments WHERE id = 99999")
+    conn.commit()
+    conn.close()
+
+
+def test_evaluate_ai_adjustments_empty():
+    """No adjustments for tournament -> zeroed summary."""
+    result = evaluate_ai_adjustments(99998)
+    assert result["total"] == 0
+    assert result["helpful"] == 0
+
+
+def test_get_ai_adjustment_config_default():
+    """With minimal data, should return enabled with cap 5."""
+    config = get_ai_adjustment_config()
+    assert config["enabled"] is True
+    assert config["cap"] == 5.0

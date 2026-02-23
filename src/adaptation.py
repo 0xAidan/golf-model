@@ -206,6 +206,136 @@ def get_adaptation_state(market_type: str, min_bets: int = 15) -> dict:
             "stake_multiplier": 0, "suppress": True}
 
 
+def log_ai_adjustment(tournament_id: int, player_key: str,
+                      adjustment_value: float, reasoning: str = None):
+    """Log a single AI adjustment to the database."""
+    conn = db.get_conn()
+    conn.execute(
+        "INSERT INTO ai_adjustments (tournament_id, player_key, adjustment_value, reasoning) "
+        "VALUES (?, ?, ?, ?)",
+        (tournament_id, player_key, adjustment_value, reasoning),
+    )
+    conn.commit()
+    conn.close()
+
+
+def evaluate_ai_adjustments(tournament_id: int) -> dict:
+    """
+    After a tournament, evaluate whether AI adjustments helped.
+
+    For each adjustment:
+    - Get the player's actual finish vs their composite rank (baseline)
+    - If adjustment was positive and player beat baseline: helpful
+    - If adjustment was negative and player underperformed baseline: helpful
+    - Otherwise: harmful
+
+    Returns summary dict.
+    """
+    conn = db.get_conn()
+
+    adjustments = conn.execute(
+        "SELECT * FROM ai_adjustments WHERE tournament_id = ?",
+        (tournament_id,),
+    ).fetchall()
+
+    if not adjustments:
+        conn.close()
+        return {"total": 0, "helpful": 0, "harmful": 0, "inconclusive": 0}
+
+    results = conn.execute(
+        "SELECT player_key, finish_position FROM results WHERE tournament_id = ?",
+        (tournament_id,),
+    ).fetchall()
+    conn.close()
+
+    finish_map = {r["player_key"]: r["finish_position"] for r in results if r["player_key"]}
+
+    helpful = 0
+    harmful = 0
+    inconclusive = 0
+
+    for adj in adjustments:
+        pk = adj["player_key"]
+        adj_val = adj["adjustment_value"]
+        finish = finish_map.get(pk)
+
+        if finish is None:
+            inconclusive += 1
+            continue
+
+        if adj_val > 0 and finish <= 20:
+            helpful += 1
+            was_helpful = 1
+        elif adj_val < 0 and finish > 20:
+            helpful += 1
+            was_helpful = 1
+        elif adj_val > 0 and finish > 30:
+            harmful += 1
+            was_helpful = 0
+        elif adj_val < 0 and finish <= 10:
+            harmful += 1
+            was_helpful = 0
+        else:
+            inconclusive += 1
+            was_helpful = None
+
+        conn2 = db.get_conn()
+        conn2.execute(
+            "UPDATE ai_adjustments SET was_helpful = ?, actual_delta = ? WHERE id = ?",
+            (was_helpful, finish, adj["id"]),
+        )
+        conn2.commit()
+        conn2.close()
+
+    return {
+        "total": len(adjustments),
+        "helpful": helpful,
+        "harmful": harmful,
+        "inconclusive": inconclusive,
+        "net_effect": helpful - harmful,
+    }
+
+
+def get_ai_adjustment_config() -> dict:
+    """
+    Determine current AI adjustment cap and enabled status based on historical performance.
+
+    Rules:
+    - Default: enabled, cap ±5
+    - After 10+ tournaments AND 50+ adjustments with net_effect < 0: cap ±2
+    - After 5 more tournaments still negative: disabled entirely
+    """
+    conn = db.get_conn()
+
+    tournament_count = conn.execute(
+        "SELECT COUNT(DISTINCT tournament_id) as cnt FROM ai_adjustments"
+    ).fetchone()
+    total_tournaments = tournament_count["cnt"] if tournament_count else 0
+
+    stats = conn.execute(
+        "SELECT COUNT(*) as total, "
+        "SUM(CASE WHEN was_helpful = 1 THEN 1 ELSE 0 END) as helpful, "
+        "SUM(CASE WHEN was_helpful = 0 THEN 1 ELSE 0 END) as harmful "
+        "FROM ai_adjustments WHERE was_helpful IS NOT NULL"
+    ).fetchone()
+    conn.close()
+
+    total = stats["total"] if stats and stats["total"] else 0
+    helpful_count = stats["helpful"] if stats and stats["helpful"] else 0
+    harmful_count = stats["harmful"] if stats and stats["harmful"] else 0
+    net = helpful_count - harmful_count
+
+    if total_tournaments < 10 or total < 50:
+        return {"enabled": True, "cap": 5.0, "reason": f"Insufficient data ({total_tournaments} tournaments, {total} adjustments)"}
+
+    if net < 0:
+        if total_tournaments >= 15:
+            return {"enabled": False, "cap": 0.0, "reason": f"Auto-disabled: net effect {net} over {total_tournaments} tournaments"}
+        return {"enabled": True, "cap": 2.0, "reason": f"Reduced cap: net effect {net} over {total_tournaments} tournaments"}
+
+    return {"enabled": True, "cap": 5.0, "reason": f"Performing well: net effect +{net}"}
+
+
 def check_recovery(market_type: str, last_n_tracking: int = 5) -> dict:
     """Check whether a frozen market shows recovery signs.
 

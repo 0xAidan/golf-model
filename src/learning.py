@@ -491,6 +491,15 @@ def post_tournament_learn(tournament_id: int,
         logger.warning("Market performance aggregation failed: %s", e)
         summary["steps"]["market_performance"] = {"error": str(e)}
 
+    # 3d. Evaluate AI adjustments
+    try:
+        from src.adaptation import evaluate_ai_adjustments
+        ai_eval = evaluate_ai_adjustments(tournament_id)
+        summary["steps"]["ai_adjustment_eval"] = ai_eval
+    except Exception as e:
+        logger.warning("AI adjustment evaluation failed: %s", e)
+        summary["steps"]["ai_adjustment_eval"] = {"error": str(e)}
+
     # 4. Update course-specific weights
     if course_num and course_name:
         course_result = update_course_weights(tournament_id, course_num, course_name)
