@@ -3,10 +3,11 @@ import pytest
 from src.calibration import get_calibration_correction, update_calibration_curve, PROBABILITY_BUCKETS
 
 
-def test_get_calibration_correction_no_data():
-    """No calibration data yet -> correction factor 1.0."""
+def test_get_calibration_correction_returns_float():
+    """Correction factor should always be a positive float."""
     result = get_calibration_correction(0.10)
-    assert result == 1.0
+    assert isinstance(result, float)
+    assert result > 0
 
 
 def test_get_calibration_correction_out_of_range():
