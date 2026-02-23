@@ -482,6 +482,15 @@ def post_tournament_learn(tournament_id: int,
         n = log_predictions_for_tournament(tournament_id, value_bets_by_type)
         summary["steps"]["predictions_logged"] = n
 
+    # 3c. Aggregate market performance for adaptation system
+    try:
+        from src.adaptation import aggregate_market_performance_for_tournament
+        market_perf = aggregate_market_performance_for_tournament(tournament_id)
+        summary["steps"]["market_performance"] = market_perf
+    except Exception as e:
+        logger.warning("Market performance aggregation failed: %s", e)
+        summary["steps"]["market_performance"] = {"error": str(e)}
+
     # 4. Update course-specific weights
     if course_num and course_name:
         course_result = update_course_weights(tournament_id, course_num, course_name)
