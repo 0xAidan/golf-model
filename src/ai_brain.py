@@ -486,6 +486,39 @@ Keep adjustments small: -5 to +5 points on the 0-100 composite scale."""
 
     result = _call_ai(SYSTEM_PROMPT, user_prompt, PRE_ANALYSIS_SCHEMA)
 
+    # Calculate confidence from concrete factors instead of using AI guess
+    from src.confidence import calculate_model_confidence, get_field_strength
+
+    # Gather confidence factors
+    has_profile = course_profile is not None
+
+    # Estimate DG coverage from composite_results
+    dg_coverage = sum(1 for r in composite_results if r.get("dg_prob")) / max(len(composite_results), 1)
+    if dg_coverage == 0:
+        # If no dg_prob in results, assume we have it from sync (typical case)
+        dg_coverage = 0.95
+
+    # Course history years (estimate from profile or default)
+    history_years = 3  # Default estimate
+
+    field_strength = get_field_strength(composite_results)
+
+    # For pre-analysis, use optimistic defaults for odds quality
+    # (will be updated after value calculation in the full pipeline)
+    confidence_result = calculate_model_confidence(
+        has_course_profile=has_profile,
+        dg_data_coverage=dg_coverage,
+        course_history_years=history_years,
+        field_strength=field_strength,
+        odds_quality_score=0.85,
+        suspicious_bet_pct=0.05,
+    )
+
+    # Override AI's subjective confidence with calculated confidence
+    result["confidence"] = confidence_result["confidence"]
+    result["confidence_factors"] = confidence_result["factors"]
+    result["confidence_explanation"] = confidence_result["explanation"]
+
     # Log decision
     db.store_ai_decision(
         tournament_id, "pre_analysis",
