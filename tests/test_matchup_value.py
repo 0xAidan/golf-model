@@ -1,18 +1,20 @@
 """Tests for real matchup value calculator."""
 import pytest
-from src.matchup_value import find_matchup_value_bets, _american_to_implied_prob, _parse_best_odds
+from src.odds import american_to_implied_prob
+from src.matchup_value import find_matchup_value_bets, _parse_best_odds
 
 
 def test_american_to_implied_prob_positive():
-    assert abs(_american_to_implied_prob(100) - 0.5) < 0.001
+    assert abs(american_to_implied_prob(100) - 0.5) < 0.001
 
 
 def test_american_to_implied_prob_negative():
-    assert abs(_american_to_implied_prob(-200) - 0.6667) < 0.01
+    assert abs(american_to_implied_prob(-200) - 0.6667) < 0.01
 
 
 def test_american_to_implied_prob_zero():
-    assert _american_to_implied_prob(0) is None
+    # odds.american_to_implied_prob returns 0.0 for invalid (price 0)
+    assert american_to_implied_prob(0) == 0.0
 
 
 def test_parse_best_odds_nested():

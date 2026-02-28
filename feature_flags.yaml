@@ -1,0 +1,14 @@
+# Feature flags for the golf betting model.
+# Toggle features without code deploy. Used by src/feature_flags.py.
+# All flags default to false if missing; set to true to enable.
+
+# Phase 0: infrastructure only; these will be checked when features land
+dynamic_blend: false
+exposure_caps: false
+kelly_sizing: false
+kelly_stakes: false  # alias for kelly_sizing
+clv_tracking: false
+dead_heat_adjustment: false
+
+# Safe defaults for existing behavior
+use_confirmed_field_only: true

@@ -190,6 +190,53 @@ def log_predictions_for_tournament(tournament_id: int,
     if predictions:
         db.log_predictions(predictions)
 
+    # Dynamic blend: record per-source Brier for this tournament (when flag on)
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("dynamic_blend"):
+            from src.dynamic_blend import record_tournament_brier, _brier_score
+            brier_data = {}
+            for bt, bets in value_bets_by_type.items():
+                dg_probs, model_probs, blended_probs, outcomes = [], [], [], []
+                dg_used, model_used = None, None
+                for bet in bets:
+                    pk = bet.get("player_key")
+                    r = result_map.get(pk)
+                    actual = 0
+                    if r:
+                        outcome = determine_outcome(
+                            bt, r.get("finish_position"), r.get("finish_text"),
+                            r.get("made_cut", 0), all_results_list,
+                        )
+                        actual = outcome["hit"]
+                    dg_p = bet.get("dg_only_prob")
+                    model_p = bet.get("model_only_prob")
+                    blend_p = bet.get("blended_prob") or bet.get("model_prob")
+                    if dg_p is not None or model_p is not None or blend_p is not None:
+                        dg_probs.append(dg_p if dg_p is not None else 0.0)
+                        model_probs.append(model_p if model_p is not None else 0.0)
+                        blended_probs.append(blend_p if blend_p is not None else 0.0)
+                        outcomes.append(1 if actual else 0)
+                        if dg_used is None:
+                            dg_used = bet.get("blend_dg_used")
+                            model_used = bet.get("blend_model_used")
+                if not outcomes:
+                    continue
+                dg_w = dg_used if dg_used is not None else 0.70
+                model_w = model_used if model_used is not None else 0.30
+                brier_data[bt] = {
+                    "brier_dg": _brier_score(dg_probs, outcomes),
+                    "brier_model": _brier_score(model_probs, outcomes),
+                    "brier_blended": _brier_score(blended_probs, outcomes),
+                    "n_predictions": len(outcomes),
+                    "dg_weight": dg_w,
+                    "model_weight": model_w,
+                }
+            if brier_data:
+                record_tournament_brier(tournament_id, brier_data)
+    except Exception as e:
+        logger.warning("Dynamic blend Brier recording failed: %s", e)
+
     return len(predictions)
 
 

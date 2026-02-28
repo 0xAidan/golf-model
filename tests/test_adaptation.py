@@ -94,7 +94,7 @@ def test_evaluate_ai_adjustments_empty():
 
 
 def test_get_ai_adjustment_config_default():
-    """With minimal data, should return enabled with cap 5."""
+    """With minimal data, should return enabled with cap from config (3.0 per plan)."""
     config = get_ai_adjustment_config()
     assert config["enabled"] is True
-    assert config["cap"] == 5.0
+    assert config["cap"] == 3.0

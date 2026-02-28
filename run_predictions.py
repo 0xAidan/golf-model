@@ -39,6 +39,7 @@ except ImportError:
     pass
 
 from src import db
+from src import config
 from src.datagolf import (
     get_current_event_info,
     fetch_historical_rounds,
@@ -59,6 +60,7 @@ from src.course_profile import load_course_profile, course_to_model_weights
 from src.odds import get_best_odds
 from src.value import find_value_bets
 from src.card import generate_card
+from src.methodology import generate_methodology
 from src.player_normalizer import normalize_name, display_name
 from src.ai_brain import (
     is_ai_available,
@@ -70,6 +72,28 @@ from src.ai_brain import (
 
 
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "false").lower() == "true"
+
+
+def _run_data_integrity_gates(tournament_id: int, field_size: int,
+                               composite_results: list = None) -> bool:
+    """Run data integrity checks; log warnings and return False to abort if critical."""
+    ok = True
+    if field_size < config.FIELD_SIZE_MIN:
+        print(f"  ⚠ Data integrity: field size {field_size} < {config.FIELD_SIZE_MIN} (min). Check field sync.")
+        if field_size == 0:
+            ok = False
+    elif field_size > config.FIELD_SIZE_MAX:
+        print(f"  ⚠ Data integrity: field size {field_size} > {config.FIELD_SIZE_MAX} (max). Unusual.")
+    if composite_results and len(composite_results) > 0:
+        from src.value import model_score_to_prob
+        all_scores = [r["composite"] for r in composite_results]
+        outright_sum = sum(
+            model_score_to_prob(r["composite"], all_scores, "outright")
+            for r in composite_results
+        )
+        if abs(outright_sum - 1.0) > config.PROBABILITY_SUM_TOLERANCE:
+            print(f"  ⚠ Data integrity: outright prob sum = {outright_sum:.4f} (expected ~1.0).")
+    return ok
 
 
 def print_header(text):
@@ -366,10 +390,54 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
         print(f"\n  ✓ Post-review complete for {t_name}")
 
 
+_PIPELINE_LOCK_FILE = os.path.join(os.path.dirname(db.DB_PATH), ".pipeline_lock")
+_PIPELINE_LOCK_STALE_SECONDS = 7200  # 2 hours
+
+
+def _acquire_deploy_lock() -> bool:
+    """Acquire deploy lock so only one pipeline run at a time. Returns True if acquired."""
+    import time
+    if os.path.exists(_PIPELINE_LOCK_FILE):
+        try:
+            with open(_PIPELINE_LOCK_FILE) as f:
+                pid = int(f.read().strip())
+        except (ValueError, OSError):
+            pid = None
+        if pid is not None:
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, PermissionError):
+                pass
+            else:
+                age = time.time() - os.path.getmtime(_PIPELINE_LOCK_FILE)
+                if age < _PIPELINE_LOCK_STALE_SECONDS:
+                    return False
+        try:
+            os.remove(_PIPELINE_LOCK_FILE)
+        except OSError:
+            pass
+    try:
+        with open(_PIPELINE_LOCK_FILE, "w") as f:
+            f.write(str(os.getpid()))
+        return True
+    except OSError:
+        return True
+
+
+def _release_deploy_lock():
+    try:
+        if os.path.exists(_PIPELINE_LOCK_FILE):
+            os.remove(_PIPELINE_LOCK_FILE)
+    except OSError:
+        pass
+
+
 def main():
     print("=" * 60)
     print("  GOLF BETTING MODEL — Prediction Pipeline")
     print("=" * 60)
+
+    pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
 
     # ── Check API keys ────────────────────────────────────────
     dg_key = os.environ.get("DATAGOLF_API_KEY")
@@ -420,11 +488,24 @@ def main():
     # Use the first course listed
     primary_course = courses.split(";")[0].strip() if courses else "Unknown"
 
+    pipeline_ctx.update({
+        "tournament_name": event_name,
+        "course_name": primary_course,
+        "event_id": event_id,
+        "start_date": start_date,
+        "location": event_info.get("location", "") if event_info else "",
+        "course_nums": course_nums,
+    })
+
     # ── Create/get tournament ─────────────────────────────────
     tid = db.get_or_create_tournament(
         event_name, primary_course, year=datetime.now().year, event_id=str(event_id)
     )
     print(f"\n  Tournament DB ID: {tid}")
+
+    if not _acquire_deploy_lock():
+        print("\n❌ Deploy lock held (another pipeline run in progress or stale lock). Aborting.")
+        sys.exit(1)
 
     # ── Post-Tournament Review of PREVIOUS tournaments ────────
     print_header("Step 1b: Post-Tournament Review Check")
@@ -473,7 +554,12 @@ def main():
         else:
             print(f"    → No new 2026 rounds yet")
 
-    print(f"  Total rounds: {db.get_rounds_count()}")
+    pipeline_ctx["total_rounds"] = db.get_rounds_count()
+    for r in (status or []):
+        pipeline_ctx["rounds_by_year"][r["year"]] = {
+            "rounds": r["round_count"], "players": r["player_count"]
+        }
+    print(f"  Total rounds: {pipeline_ctx['total_rounds']}")
 
     # ── Sync DG predictions ───────────────────────────────────
     print_header("Step 3: Syncing Data Golf Predictions")
@@ -550,17 +636,19 @@ def main():
     print("  Fetching player decompositions...")
     decomps = safe_api_call("decompositions", _call_api,
                              "preds/player-decompositions", {"tour": "pga"})
+    n_decomps = 0
     if decomps:
-        n = _store_decompositions_as_metrics(decomps, tid)
-        print(f"    → {n} decomposition metrics")
+        n_decomps = _store_decompositions_as_metrics(decomps, tid)
+        print(f"    → {n_decomps} decomposition metrics")
 
     # Field updates
     print("  Fetching field updates...")
     from src.datagolf import fetch_field_updates
     field_data = safe_api_call("field", fetch_field_updates, "pga")
+    n_field = 0
     if field_data:
-        n = _store_field_as_metrics(field_data, tid)
-        print(f"    → {n} field metrics")
+        n_field = _store_field_as_metrics(field_data, tid)
+        print(f"    → {n_field} field metrics")
 
     # ── Sync DG Skill Ratings, Rankings & Approach Skill ──────
     print_header("Step 3b: Syncing DG Skill Data")
@@ -593,10 +681,34 @@ def main():
     else:
         print(f"    → No approach skill metrics stored")
 
+    _n_baseline = 0
+    _n_ch = 0
+    try:
+        _n_baseline = len(metric_rows) if preds and isinstance(preds, dict) else 0
+    except NameError:
+        pass
+    try:
+        _n_ch = len(metric_rows2) if preds and isinstance(preds, dict) else 0
+    except NameError:
+        pass
+    pipeline_ctx["metric_counts"].update({
+        "baseline": _n_baseline,
+        "course_history": _n_ch,
+        "decompositions": n_decomps,
+        "field": n_field,
+        "skill_ratings": n_skill or 0,
+        "rankings": n_rank or 0,
+        "approach": n_app or 0,
+    })
+
     # ── Compute rolling stats ─────────────────────────────────
     print_header("Step 4: Computing Rolling Stats")
     field_players = db.get_all_players(tid)
     print(f"  Players in field: {len(field_players)}")
+    if not _run_data_integrity_gates(tid, len(field_players)):
+        print("\n❌ Data integrity gate failed (field size). Aborting.")
+        _release_deploy_lock()
+        sys.exit(1)
 
     primary_course_num = course_nums[0] if course_nums else None
     print(f"  Primary course num: {primary_course_num}")
@@ -606,6 +718,13 @@ def main():
     print(f"    SG metrics: {rolling.get('sg_metrics', 0)}")
     print(f"    Traditional stats: {rolling.get('traditional_stat_metrics', 0)}")
     print(f"    Course-specific: {rolling.get('course_specific_metrics', 0)}")
+
+    pipeline_ctx["metric_counts"]["rolling"] = {
+        "total": rolling.get("total_metrics", 0),
+        "sg": rolling.get("sg_metrics", 0),
+        "traditional": rolling.get("traditional_stat_metrics", 0),
+        "course_specific": rolling.get("course_specific_metrics", 0),
+    }
 
     # ── Load course profile ───────────────────────────────────
     print_header("Step 5: Course Profile")
@@ -712,6 +831,15 @@ def main():
     except Exception as e:
         print(f"  Warning: Weather module error: {e}")
 
+    pipeline_ctx["profile"] = profile
+    try:
+        pipeline_ctx["weather_forecast"] = forecast
+        pipeline_ctx["weather_severity"] = severity
+    except NameError:
+        pipeline_ctx["weather_forecast"] = None
+        pipeline_ctx["weather_severity"] = None
+    pipeline_ctx["weather_adjustments"] = weather_adjustments
+
     # ── Run composite model ───────────────────────────────────
     print_header("Step 6: Running Composite Model")
     weights = db.get_active_weights()
@@ -724,9 +852,14 @@ def main():
         weather_adjustments=weather_adjustments,
     )
     print(f"  Scored {len(composite)} players")
+    _run_data_integrity_gates(tid, len(composite), composite_results=composite)
+
+    pipeline_ctx["weights"] = weights
+    pipeline_ctx["composite_results"] = composite
 
     if not composite:
         print("\n❌ No players scored. Check data.")
+        _release_deploy_lock()
         sys.exit(1)
 
     # ── AI Pre-Tournament Analysis ──────────────────────────────
@@ -1077,6 +1210,7 @@ def main():
                   f"(rank #{r['rank']})")
 
     # ── Log predictions for next week's review ──────────────────
+    n_logged = 0
     if value_bets:
         from src.learning import log_predictions_for_tournament
         try:
@@ -1085,6 +1219,35 @@ def main():
                 print(f"\n  Logged {n_logged} predictions for post-tournament review")
         except Exception as e:
             print(f"\n  ⚠ Could not log predictions: {e}")
+
+    # ── Finalize pipeline context for methodology doc ─────────
+    pipeline_ctx["ai_pre_analysis"] = ai_pre_analysis
+    pipeline_ctx["ai_decisions"] = ai_decisions
+    pipeline_ctx["value_bets"] = value_bets
+    pipeline_ctx["matchup_bets"] = matchup_bets
+    pipeline_ctx["predictions_logged"] = n_logged
+    pipeline_ctx["metric_counts"]["odds_markets"] = len(all_odds_by_market)
+    pipeline_ctx["metric_counts"]["matchups"] = len(matchup_bets) if matchup_bets else 0
+
+    # Build DG probs lookup for worked examples
+    _sim_metrics = db.get_metrics_by_category(tid, "sim")
+    _dg_probs_meth = {}
+    for m in _sim_metrics:
+        pk = m["player_key"]
+        if pk not in _dg_probs_meth:
+            _dg_probs_meth[pk] = {}
+        _dg_probs_meth[pk][m["metric_name"]] = m["metric_value"]
+    pipeline_ctx["dg_probs"] = _dg_probs_meth
+
+    # Build adaptation states
+    try:
+        from src.adaptation import get_adaptation_state
+        pipeline_ctx["adaptation_states"] = {
+            mkt: get_adaptation_state(mkt)
+            for mkt in ["outright", "top5", "top10", "top20", "matchup"]
+        }
+    except Exception:
+        pipeline_ctx["adaptation_states"] = {}
 
     # ── Generate card ─────────────────────────────────────────
     print_header("Step 8: Generating Betting Card")
@@ -1101,11 +1264,22 @@ def main():
     print(f"  Card saved to: {filepath}")
     print(f"\n  Open it: open {filepath}")
 
+    # ── Generate methodology doc ──────────────────────────────
+    print("  Generating methodology doc...")
+    try:
+        meth_path = generate_methodology(pipeline_ctx, output_dir="output")
+        print(f"  Methodology saved to: {meth_path}")
+    except Exception as e:
+        print(f"  ⚠ Methodology generation error: {e}")
+
     # ── Shadow mode: generate adaptive card side-by-side ─────
     if SHADOW_MODE:
+        import shutil
         print_header("Shadow Mode: Generating Adaptive Card")
         safe_name = event_name.lower().replace(" ", "_").replace("'", "")
         shadow_filename = f"shadow_{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
+        normal_card_backup = filepath + ".bak"
+        shutil.copy2(filepath, normal_card_backup)
         shadow_path = generate_card(
             tournament_name=event_name,
             course_name=primary_course,
@@ -1116,12 +1290,12 @@ def main():
             ai_decisions=ai_decisions,
             matchup_bets=matchup_bets,
         )
-        # Rename to shadow filename
-        import shutil
         shadow_dest = os.path.join("output", shadow_filename)
         shutil.move(shadow_path, shadow_dest)
+        shutil.move(normal_card_backup, filepath)
         print(f"  Shadow mode: adaptive card saved to {shadow_dest}")
 
+    _release_deploy_lock()
     print()
     print("=" * 60)
     print("  DONE! Predictions complete.")

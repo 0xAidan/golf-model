@@ -87,27 +87,11 @@ def american_to_implied_prob(price: int) -> float:
 
 
 # ── Odds validation ──────────────────────────────────────────────
-
-# Maximum reasonable American odds for golf outrights.
-# Even the longest longshots on real sportsbooks are around +50000.
-# Anything beyond this is almost certainly bad/corrupted data.
-MAX_REASONABLE_ODDS = 50000
-
-# Market-specific maximum reasonable American odds.
-# Anything above these thresholds for a given bet type is almost certainly
-# corrupt data (e.g. +500000 outright that generates 17,000% EV).
-MAX_REASONABLE_ODDS_BY_TYPE = {
-    "outright": 30000,
-    "outrights": 30000,
-    "top5": 5000,
-    "top_5": 5000,
-    "top10": 3000,
-    "top_10": 3000,
-    "top20": 1500,
-    "top_20": 1500,
-    "frl": 10000,
-    "make_cut": 500,
-}
+# Market-specific max odds from config (single source of truth with value.py)
+from src import config as _config
+_MAX_ODDS_ALIASES = {"outrights": "outright", "top_5": "top5", "top_10": "top10", "top_20": "top20"}
+MAX_REASONABLE_ODDS = 50000  # global fallback for code that expects a number
+MAX_REASONABLE_ODDS_BY_TYPE = _config.MAX_REASONABLE_ODDS
 
 # Minimum reasonable implied probability. Any odds implying less than
 # this are filtered as garbage (0.2% ≈ +50000).
@@ -140,9 +124,10 @@ def is_valid_odds(price: int, bet_type: str = None) -> bool:
     if price > MAX_REASONABLE_ODDS:
         return False
 
-    # Market-specific maximum
+    # Market-specific maximum (unknown market falls back to outright max 30000)
     if bet_type:
-        max_odds = MAX_REASONABLE_ODDS_BY_TYPE.get(bet_type, MAX_REASONABLE_ODDS)
+        canonical = _MAX_ODDS_ALIASES.get(bet_type, bet_type)
+        max_odds = MAX_REASONABLE_ODDS_BY_TYPE.get(canonical, MAX_REASONABLE_ODDS_BY_TYPE["outright"])
         if price > max_odds:
             return False
 

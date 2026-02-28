@@ -10,17 +10,10 @@ import logging
 import math
 
 from src.player_normalizer import normalize_name
+from src import config
+from src.odds import american_to_implied_prob
 
 logger = logging.getLogger("matchup_value")
-
-
-def _american_to_implied_prob(odds: int) -> float | None:
-    """Convert American odds to implied probability (0-1)."""
-    if odds > 0:
-        return 100.0 / (odds + 100.0)
-    if odds < 0:
-        return abs(odds) / (abs(odds) + 100.0)
-    return None
 
 
 def _parse_best_odds(matchup: dict) -> tuple[tuple[int, str] | None, tuple[int, str] | None]:
@@ -107,7 +100,8 @@ def find_matchup_value_bets(composite_results: list[dict],
         try:
             from src.adaptation import get_adaptation_state
             adaptation = get_adaptation_state("matchup")
-        except Exception:
+        except Exception as e:
+            logger.warning("Adaptation state unavailable for matchup: %s", e)
             adaptation = None
 
     if adaptation and adaptation.get("suppress"):
@@ -155,13 +149,14 @@ def find_matchup_value_bets(composite_results: list[dict],
 
         pick_odds, pick_book = pick_odds_pair
 
-        implied_prob = _american_to_implied_prob(pick_odds)
+        implied_prob = american_to_implied_prob(pick_odds)
         if not implied_prob or implied_prob <= 0:
             continue
 
-        # Model win probability via sigmoid on composite gap
+        # Model win probability via Platt-style sigmoid: P(win) = 1/(1+exp(A*gap+B))
         gap = abs(composite_gap)
-        model_win_prob = 1.0 / (1.0 + math.exp(-gap / 15.0))
+        A, B = config.MATCHUP_PLATT_A, config.MATCHUP_PLATT_B
+        model_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
 
         ev = (model_win_prob / implied_prob) - 1.0
 
@@ -186,6 +181,14 @@ def find_matchup_value_bets(composite_results: list[dict],
 
         stake_mult = adaptation["stake_multiplier"] if adaptation else 1.0
 
+        ev_pct = ev * 100
+        if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT:
+            tier = "STRONG"
+        elif ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT:
+            tier = "GOOD"
+        else:
+            tier = "LEAN"
+
         value_bets.append({
             "pick": pick_data["player_display"],
             "pick_key": pick_data["player_key"],
@@ -203,7 +206,10 @@ def find_matchup_value_bets(composite_results: list[dict],
             "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
             "adaptation_state": adaptation["state"] if adaptation else "normal",
             "stake_multiplier": stake_mult,
+            "tier": tier,
         })
 
     value_bets.sort(key=lambda x: x["ev"], reverse=True)
+    # Cap at MATCHUP_CAP
+    value_bets = value_bets[: config.MATCHUP_CAP]
     return value_bets

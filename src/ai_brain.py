@@ -482,7 +482,7 @@ Analyze this field and course. Identify:
 4. Players to fade (overrated by the model this week)
 5. Your overall confidence in the model's output for this event (0-1)
 
-Keep adjustments small: -5 to +5 points on the 0-100 composite scale."""
+Keep adjustments small: -3 to +3 points on the 0-100 composite scale."""
 
     result = _call_ai(SYSTEM_PROMPT, user_prompt, PRE_ANALYSIS_SCHEMA)
 
@@ -828,11 +828,13 @@ def apply_ai_adjustments(composite_results: list[dict],
     if not adjustments:
         return composite_results
 
-    # Apply adjustments, clamped to [-5.0, +5.0]
+    from src import config
+    cap = config.AI_ADJUSTMENT_CAP
+    # Apply adjustments, clamped to +/- cap (default +/-3)
     for r in composite_results:
         adj = adjustments.get(r["player_key"], 0)
         if adj:
-            clamped = max(-5.0, min(5.0, adj))
+            clamped = max(-cap, min(cap, adj))
             if clamped != adj:
                 import logging
                 logging.getLogger("ai_brain").warning(
@@ -884,11 +886,22 @@ def call_ai(prompt: str, system_prompt: str = None,
 
 
 def get_ai_status() -> dict:
-    """Return status of AI brain configuration."""
+    """Return status of AI brain configuration and hit rate (watches/fades)."""
     provider = _get_provider()
     available = is_ai_available()
     memory_count = len(db.get_ai_memories(limit=9999))
     topics = db.get_all_ai_memory_topics()
+
+    # Hit rate: watches (positive adj) and fades (negative adj), correct = was_helpful=1
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT adjustment_value, was_helpful FROM ai_adjustments WHERE was_helpful IS NOT NULL"
+    ).fetchall()
+    conn.close()
+    watches_ok = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] > 0 and r["was_helpful"] == 1)
+    watches_total = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] > 0)
+    fades_ok = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] < 0 and r["was_helpful"] == 1)
+    fades_total = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] < 0)
 
     return {
         "provider": provider,
@@ -900,4 +913,6 @@ def get_ai_status() -> dict:
         ),
         "memory_count": memory_count,
         "memory_topics": topics,
+        "watches_hit_rate": (watches_ok, watches_total),
+        "fades_hit_rate": (fades_ok, fades_total),
     }

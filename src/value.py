@@ -14,44 +14,21 @@ Probability priority:
   4. Softmax approximation from composite scores (fallback)
 """
 
-import os
+import logging
 
 from src.odds import american_to_implied_prob, american_to_decimal, is_valid_odds
 from src.player_normalizer import normalize_name
 from src import db
+from src import config
 
-# Default EV threshold: 2% for sharp books (bet365, Pinnacle).
-# Override via env var EV_THRESHOLD (e.g. "0.05" for 5%).
-DEFAULT_EV_THRESHOLD = float(os.environ.get("EV_THRESHOLD", "0.02"))
+logger = logging.getLogger(__name__)
 
-MARKET_EV_THRESHOLDS = {
-    "outright": 0.05,
-    "top5": 0.05,
-    "top10": 0.02,
-    "top20": 0.02,
-    "frl": 0.05,
-    "make_cut": 0.02,
-}
-
-# Maximum credible EV. Real sports betting edges are 2-20%.
-# Anything above this almost certainly indicates bad data, not a real edge.
-MAX_CREDIBLE_EV = 2.0  # 200%
-
-# Minimum market implied probability to trust odds data.
-# If market prob is below this, odds are likely corrupted/stale.
-MIN_MARKET_PROB = 0.005  # 0.5%
-
-# Market-specific maximum reasonable American odds.
-# Anything above these thresholds for a given bet type is almost certainly
-# corrupt data (e.g. +500000 outright that generates 17,000% EV).
-MAX_REASONABLE_ODDS = {
-    "outright": 30000,
-    "top5": 5000,
-    "top10": 3000,
-    "top20": 1500,
-    "frl": 10000,
-    "make_cut": 500,
-}
+# EV and blend constants moved to src.config (single source of truth)
+DEFAULT_EV_THRESHOLD = config.DEFAULT_EV_THRESHOLD
+MARKET_EV_THRESHOLDS = config.MARKET_EV_THRESHOLDS
+MAX_CREDIBLE_EV = config.MAX_CREDIBLE_EV
+MIN_MARKET_PROB = config.MIN_MARKET_PROB
+MAX_REASONABLE_ODDS = config.MAX_REASONABLE_ODDS
 
 
 def compute_ev(model_prob: float, american_odds: int) -> float:
@@ -91,17 +68,8 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
     if field_size == 0:
         return 0.0
 
-    # Temperature controls how peaked the distribution is.
-    # Higher temperature = more uniform (wider markets).
-    temp_by_type = {
-        "outright": 8.0,
-        "top5": 10.0,
-        "top10": 12.0,
-        "top20": 15.0,
-        "make_cut": 20.0,
-        "frl": 7.0,
-    }
-    temp = temp_by_type.get(bet_type, 12.0)
+    # Temperature from config
+    temp = config.SOFTMAX_TEMP_BY_TYPE.get(bet_type, 12.0)
 
     # Target sum: how many "winners" in this market
     target_sum_by_type = {
@@ -254,7 +222,8 @@ def find_value_bets(composite_results: list[dict],
         try:
             from src.adaptation import get_adaptation_state
             adaptation = get_adaptation_state(bet_type)
-        except Exception:
+        except Exception as e:
+            logger.warning("Adaptation state unavailable for %s: %s", bet_type, e)
             adaptation = None
 
     if adaptation and adaptation.get("suppress"):
@@ -263,17 +232,12 @@ def find_value_bets(composite_results: list[dict],
     if adaptation and adaptation.get("ev_threshold") is not None:
         ev_threshold = max(ev_threshold, adaptation["ev_threshold"])
 
-    BLEND_WEIGHTS = {
-        "outright": {"dg": 0.95, "model": 0.05},
-        "top5":     {"dg": 0.95, "model": 0.05},
-        "top10":    {"dg": 0.95, "model": 0.05},
-        "top20":    {"dg": 0.95, "model": 0.05},
-        "frl":      {"dg": 0.95, "model": 0.05},
-        "make_cut": {"dg": 0.95, "model": 0.05},
-    }
-    blend_cfg = BLEND_WEIGHTS.get(bet_type, {"dg": 0.85, "model": 0.15})
-    DG_BLEND_WEIGHT = blend_cfg["dg"]
-    MODEL_BLEND_WEIGHT = blend_cfg["model"]
+    from src.feature_flags import is_enabled
+    if is_enabled("dynamic_blend"):
+        from src.dynamic_blend import get_blend_ratio
+        DG_BLEND_WEIGHT, MODEL_BLEND_WEIGHT = get_blend_ratio(bet_type)
+    else:
+        DG_BLEND_WEIGHT, MODEL_BLEND_WEIGHT = config.get_blend_weights(bet_type)
 
     all_scores = [r["composite"] for r in composite_results]
 
@@ -313,7 +277,7 @@ def find_value_bets(composite_results: list[dict],
         # probability (captures course_fit, weather, momentum signals that
         # DG may not weight the same way).
         #
-        # Blend ratio varies by market (see BLEND_WEIGHTS above).
+        # Blend ratio varies by market (see config.BLEND_WEIGHTS).
         # DG is preferred; model adds course_fit, weather, momentum signals.
         dg_prob_raw = None
         prob_source = "softmax"
@@ -343,19 +307,33 @@ def find_value_bets(composite_results: list[dict],
 
         # 4. Blend or fall back
         if dg_prob_raw is not None:
-            model_prob = DG_BLEND_WEIGHT * dg_prob_raw + MODEL_BLEND_WEIGHT * softmax_prob
+            blended_prob = DG_BLEND_WEIGHT * dg_prob_raw + MODEL_BLEND_WEIGHT * softmax_prob
+            model_prob = blended_prob
             prob_source = f"blend({prob_source}+softmax)"
         else:
+            blended_prob = softmax_prob
             model_prob = softmax_prob
             prob_source = "softmax"
 
         market_prob = odds_entry["implied_prob"]
-        ev = compute_ev(model_prob, odds_entry["best_price"])
+        # Placement markets: apply dead heat discount to prob before EV (conservative)
+        prob_for_ev = model_prob
+        if bet_type == "top5":
+            prob_for_ev = model_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP5)
+        elif bet_type == "top10":
+            prob_for_ev = model_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP10)
+        elif bet_type == "top20":
+            prob_for_ev = model_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP20)
+        ev = compute_ev(prob_for_ev, odds_entry["best_price"])
 
-        # Also capture DG prob for prediction_log (even if not used for EV)
-        dg_prob_for_log = None
-        if pkey in dg_probs:
-            dg_prob_for_log = _get_best_prob(dg_probs[pkey], bet_type)
+        # Comparison logging: dg_only, model_only, blended (for isolation when changing blend/model)
+        dg_only_prob = dg_prob_raw if dg_prob_raw is not None else None
+        model_only_prob = softmax_prob
+        logger.debug(
+            "prob_sources player=%s bet_type=%s dg_only=%s model_only=%s blended=%s",
+            pkey, bet_type, dg_only_prob, model_only_prob, blended_prob,
+        )
+        dg_prob_for_log = dg_only_prob
 
         # Check if better odds exist at another book
         best_available_price = odds_entry.get("best_price")
@@ -395,6 +373,9 @@ def find_value_bets(composite_results: list[dict],
             "momentum": r["momentum"],
             "model_prob": round(model_prob, 4),
             "dg_prob": round(dg_prob_for_log, 4) if dg_prob_for_log else None,
+            "dg_only_prob": round(dg_only_prob, 4) if dg_only_prob is not None else None,
+            "model_only_prob": round(model_only_prob, 4),
+            "blended_prob": round(blended_prob, 4),
             "market_prob": round(market_prob, 4),
             "best_odds": odds_entry["best_price"],
             "best_book": odds_entry["best_book"],
@@ -410,6 +391,8 @@ def find_value_bets(composite_results: list[dict],
             "prob_source": prob_source,
             "adaptation_state": adaptation["state"] if adaptation else "normal",
             "stake_multiplier": adaptation["stake_multiplier"] if adaptation else 1.0,
+            "blend_dg_used": DG_BLEND_WEIGHT,
+            "blend_model_used": MODEL_BLEND_WEIGHT,
         })
 
     # Sort by EV descending

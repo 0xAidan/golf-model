@@ -16,6 +16,7 @@ Output: per-player form_score (0-100, higher = better form)
 """
 
 from src import db
+from src import config
 
 
 def _rank_to_score(rank: float, field_size: int) -> float:
@@ -402,6 +403,8 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
             effective_sg_sample = min(best_w_int, total_rounds) if total_rounds > 0 else best_w_int
             sg_conf = _sample_size_confidence(effective_sg_sample)
             sg_scores = {k: 50.0 + sg_conf * (v - 50.0) for k, v in sg_scores.items()}
+            # Bayesian shrinkage on putting (DG: putt least predictive)
+            sg_scores["putt"] = 50.0 + config.PUTT_SHRINKAGE_FACTOR * (sg_scores["putt"] - 50.0)
 
             multi_sg = (
                 w_sg_tot * sg_scores["tot"]

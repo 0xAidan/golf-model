@@ -13,6 +13,8 @@ Confidence factors:
 - Model/market alignment (low suspicious bet %)
 """
 
+from src import config
+
 
 def calculate_model_confidence(
     has_course_profile: bool,
@@ -38,56 +40,39 @@ def calculate_model_confidence(
     """
     factors = {}
 
-    # Factor 1: Course profile (20% weight)
-    # Manual profile = 1.0, auto-generated = 0.85, none = 0.30
+    # Factor 1: Course profile (from config weights)
     if has_course_profile:
-        factors["course_profile"] = 0.85  # Auto-generated (no manual anymore)
+        factors["course_profile"] = config.CONFIDENCE_COURSE_PROFILE_AUTO
     else:
-        factors["course_profile"] = 0.30
+        factors["course_profile"] = config.CONFIDENCE_COURSE_PROFILE_NONE
 
-    # Factor 2: DG data coverage (25% weight)
-    # DG calibrated probs are the best signal we have
+    # Factor 2: DG data coverage
     factors["dg_coverage"] = min(1.0, dg_data_coverage)
 
-    # Factor 3: Course history depth (15% weight)
-    # More years = more reliable course fit data
-    if course_history_years >= 5:
-        factors["course_history"] = 1.0
-    elif course_history_years >= 3:
-        factors["course_history"] = 0.85
-    elif course_history_years >= 1:
-        factors["course_history"] = 0.70
-    else:
-        factors["course_history"] = 0.50
+    # Factor 3: Course history depth (thresholds from config)
+    factors["course_history"] = config.CONFIDENCE_COURSE_HISTORY_DEFAULT
+    for min_years in sorted(config.CONFIDENCE_COURSE_HISTORY_YEARS.keys(), reverse=True):
+        if course_history_years >= min_years:
+            factors["course_history"] = config.CONFIDENCE_COURSE_HISTORY_YEARS[min_years]
+            break
 
-    # Factor 4: Field strength (10% weight)
-    # Strong fields = more predictable (chalk wins more often)
-    field_map = {"strong": 1.0, "average": 0.85, "weak": 0.70}
-    factors["field_strength"] = field_map.get(field_strength, 0.85)
+    # Factor 4: Field strength (from config)
+    factors["field_strength"] = config.CONFIDENCE_FIELD_STRENGTH.get(field_strength, 0.85)
 
-    # Factor 5: Odds quality (15% weight)
+    # Factor 5: Odds quality
     factors["odds_quality"] = max(0.3, odds_quality_score)
 
-    # Factor 6: Model/market alignment (15% weight)
-    # Low suspicious bet % = model and market agree (good)
+    # Factor 6: Model/market alignment
     factors["model_market_alignment"] = max(0.3, 1.0 - suspicious_bet_pct * 5)
 
-    # Weighted average
-    weights = {
-        "course_profile": 0.20,
-        "dg_coverage": 0.25,
-        "course_history": 0.15,
-        "field_strength": 0.10,
-        "odds_quality": 0.15,
-        "model_market_alignment": 0.15,
-    }
-
+    # Weighted average (weights from config)
+    weights = config.CONFIDENCE_FACTOR_WEIGHTS
     confidence = sum(factors[k] * weights[k] for k in factors)
     confidence = round(max(0.0, min(1.0, confidence)), 2)
 
-    # Build explanation
-    weak_factors = [k for k, v in factors.items() if v < 0.70]
-    strong_factors = [k for k, v in factors.items() if v >= 0.90]
+    # Build explanation (thresholds from config)
+    weak_factors = [k for k, v in factors.items() if v < config.CONFIDENCE_WEAK_THRESHOLD]
+    strong_factors = [k for k, v in factors.items() if v >= config.CONFIDENCE_STRONG_THRESHOLD]
 
     explanation = []
     if weak_factors:
@@ -105,10 +90,7 @@ def calculate_model_confidence(
 def get_field_strength(composite_results: list[dict]) -> str:
     """
     Determine field strength based on top player composite scores.
-
-    Strong field: Multiple players with composite > 70
-    Average field: Some players with composite > 65
-    Weak field: No players above 65
+    Thresholds from config.
     """
     if not composite_results:
         return "average"
@@ -117,9 +99,9 @@ def get_field_strength(composite_results: list[dict]) -> str:
     above_70 = sum(1 for s in top_scores if s > 70)
     above_65 = sum(1 for s in top_scores if s > 65)
 
-    if above_70 >= 5:
+    if above_70 >= config.CONFIDENCE_FIELD_STRONG_ABOVE_70:
         return "strong"
-    elif above_65 >= 8:
+    elif above_65 >= config.CONFIDENCE_FIELD_AVERAGE_ABOVE_65:
         return "average"
     else:
         return "weak"

@@ -18,6 +18,7 @@ Output: per-player course_fit_score (0-100, higher = better fit)
 """
 
 from src import db
+from src import config
 from src.course_profile import load_course_profile, course_to_model_weights
 
 
@@ -261,6 +262,8 @@ def compute_course_fit(tournament_id: int, weights: dict,
         components["sg_app"] = _rank_to_score(sg_app_rank, field_size)
         components["sg_ott"] = _rank_to_score(sg_ott_rank, field_size)
         components["sg_putt"] = _rank_to_score(sg_putt_rank, field_size)
+        # Bayesian shrinkage on putting (DG: putt least predictive)
+        components["sg_putt"] = 50.0 + config.PUTT_SHRINKAGE_FACTOR * (components["sg_putt"] - 50.0)
 
         # Par efficiency: average of available par efficiency ranks
         par_scores = []

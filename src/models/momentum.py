@@ -15,6 +15,7 @@ Output: per-player momentum_score (0-100, >50 = improving, <50 = declining)
 """
 
 from src import db
+from src import config
 
 
 def _window_sort_key(w: str) -> int:
@@ -112,15 +113,6 @@ def _compute_trend(ranks: dict, field_size: int = 150) -> float:
     else:
         pct_improvement = 0.0
 
-    # Elite stability bonus: players consistently in the top 10 get credit
-    # for maintaining that level, since they can't improve much further.
-    # A player ranked #3 -> #3 shows pct_improvement=0, but staying
-    # elite across windows is itself a positive signal.
-    ELITE_THRESHOLD = 10
-    if newest_rank <= ELITE_THRESHOLD and oldest_rank <= ELITE_THRESHOLD:
-        stability_bonus = 0.3 * (1.0 - (newest_rank - 1) / ELITE_THRESHOLD)
-        pct_improvement = max(pct_improvement, stability_bonus)
-
     # Also factor in absolute position: being ranked highly in the
     # most recent window is itself a positive signal.
     # A player ranked #3 in the newest window gets a small positive boost.
@@ -138,42 +130,21 @@ def _compute_trend(ranks: dict, field_size: int = 150) -> float:
 
     # The position_signal is centered at 0.5 for a mid-field player,
     # so we shift it to be centered at 0 for blending.
-    blended = (trend_weight * pct_improvement * 100.0
-               + pos_weight * (position_signal - 0.5) * 100.0)
-
-    # Check consistency across all intermediate points
-    if len(available) >= 3:
-        improving_pairs = 0
-        declining_pairs = 0
-        for i in range(len(available) - 1):
-            if available[i][1] > available[i + 1][1]:
-                improving_pairs += 1
-            elif available[i][1] < available[i + 1][1]:
-                declining_pairs += 1
-
-        total_pairs = improving_pairs + declining_pairs
-        if total_pairs > 0:
-            consistency = abs(improving_pairs - declining_pairs) / total_pairs
-        else:
-            consistency = 0.0
-
-        if consistency > 0.6:
-            consistency_bonus = 0.3 * consistency
-        else:
-            consistency_bonus = -0.15
-    else:
-        consistency_bonus = 0.0
-
-    return blended * (1.0 + consistency_bonus)
+    return (trend_weight * pct_improvement * 100.0
+            + pos_weight * (position_signal - 0.5) * 100.0)
 
 
 def compute_momentum(tournament_id: int, weights: dict, elite_players: set = None) -> dict:
     """
     Compute momentum score for every player.
+    When config.MOMENTUM_ENABLED is False (kill switch), returns neutral 50 for all.
 
     Returns: {player_key: {"score": float, "trend": float, "direction": str,
                            "windows": dict, "windows_count": int}}
     """
+    if not config.MOMENTUM_ENABLED:
+        return {}
+
     player_windows = _get_ranks_across_windows(tournament_id)
 
     if not player_windows:

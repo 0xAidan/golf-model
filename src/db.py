@@ -24,6 +24,8 @@ import json
 import os
 from datetime import datetime
 
+from src import config
+
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golf.db")
 
 
@@ -34,6 +36,7 @@ def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -240,6 +243,56 @@ def init_db():
             output_json TEXT,            -- full AI response
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        -- ═══ Dynamic blend (EWA) history ═══
+        CREATE TABLE IF NOT EXISTS blend_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER,
+            bet_type TEXT NOT NULL,
+            brier_dg REAL,
+            brier_model REAL,
+            brier_blended REAL,
+            n_predictions INTEGER DEFAULT 0,
+            dg_weight REAL NOT NULL,
+            model_weight REAL NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_blend_history_bet_type ON blend_history(bet_type);
+
+        -- ═══ Bankroll (for Kelly sizing) ═══
+        CREATE TABLE IF NOT EXISTS bankroll (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            balance REAL NOT NULL,
+            peak_balance REAL NOT NULL,
+            kelly_fraction REAL NOT NULL DEFAULT 0.25,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ═══ CLV tracking ═══
+        CREATE TABLE IF NOT EXISTS clv_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER,
+            player_key TEXT,
+            bet_type TEXT,
+            odds_taken_decimal REAL,
+            closing_odds_decimal REAL,
+            implied_taken REAL,
+            implied_closing REAL,
+            clv_pct REAL,
+            outcome INTEGER,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_clv_log_tournament ON clv_log(tournament_id);
+
+        -- ═══ Schema version (for migrations) ═══
+        CREATE TABLE IF NOT EXISTS schema_version (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            version INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO schema_version (id, version) VALUES (1, 1);
 
         -- ═══ Pipeline run logging ═══
         CREATE TABLE IF NOT EXISTS runs (
@@ -731,12 +784,32 @@ def get_player_metrics(tournament_id: int, player_key: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_all_players(tournament_id: int) -> list[str]:
+def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> list[str]:
+    """Return player_key list for this tournament.
+
+    When confirmed_field_only=True (default), only returns players that appear
+    in the confirmed field (metric_category='meta' from DG field updates).
+    This prevents phantom players from predictions/decompositions who are
+    not in the actual field. When no field data exists, returns all players
+    in metrics so the pipeline still runs.
+    """
     conn = get_conn()
-    rows = conn.execute(
-        "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
+    # Check if we have field (meta) data for this tournament
+    has_field = conn.execute(
+        "SELECT 1 FROM metrics WHERE tournament_id = ? AND metric_category = 'meta' LIMIT 1",
         (tournament_id,),
-    ).fetchall()
+    ).fetchone()
+    if confirmed_field_only and has_field:
+        rows = conn.execute(
+            """SELECT DISTINCT player_key FROM metrics
+               WHERE tournament_id = ? AND metric_category = 'meta'""",
+            (tournament_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
+            (tournament_id,),
+        ).fetchall()
     conn.close()
     return [r["player_key"] for r in rows]
 
@@ -813,30 +886,8 @@ def store_results(tournament_id: int, results_list: list[dict]):
 
 
 # ── Weights helpers ─────────────────────────────────────────────────
-
-DEFAULT_WEIGHTS = {
-    # Top-level model weights
-    "course_fit": 0.45,
-    "form": 0.45,
-    "momentum": 0.10,
-    # Within course fit
-    "course_sg_tot": 0.30,
-    "course_sg_app": 0.25,
-    "course_sg_ott": 0.20,
-    "course_sg_putt": 0.15,
-    "course_par_eff": 0.10,
-    # Within form (across timeframes)
-    "form_16r": 0.35,
-    "form_12month": 0.25,
-    "form_sim": 0.25,
-    "form_rolling": 0.15,
-    # Within form (SG sub-categories)
-    "form_sg_tot": 0.40,
-    "form_sg_app": 0.25,
-    "form_sg_ott": 0.15,
-    "form_sg_putt": 0.10,
-    "form_sg_arg": 0.10,
-}
+# Default weights from config (single source of truth)
+DEFAULT_WEIGHTS = config.DEFAULT_WEIGHTS
 
 
 def get_active_weights() -> dict:

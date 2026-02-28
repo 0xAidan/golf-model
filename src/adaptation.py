@@ -7,6 +7,7 @@ or suppress markets based on rolling performance.
 """
 
 from src import db
+from src import config
 
 
 def compute_roi_pct(wagered: float, returned: float) -> float | None:
@@ -183,24 +184,24 @@ def get_adaptation_state(market_type: str, min_bets: int = 15) -> dict:
     }
 
     if total_bets < min_bets:
-        return {**base, "state": "normal", "ev_threshold": 0.05,
+        return {**base, "state": "normal", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_NORMAL,
                 "stake_multiplier": 1.0, "suppress": False}
 
-    if consecutive_losses >= 10:
+    if consecutive_losses >= config.ADAPTATION_CONSECUTIVE_LOSSES_FROZEN:
         return {**base, "state": "frozen", "ev_threshold": None,
                 "stake_multiplier": 0, "suppress": True}
 
     if roi_pct is None or roi_pct >= 0:
-        return {**base, "state": "normal", "ev_threshold": 0.05,
+        return {**base, "state": "normal", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_NORMAL,
                 "stake_multiplier": 1.0, "suppress": False}
 
-    if roi_pct > -20:
-        return {**base, "state": "caution", "ev_threshold": 0.08,
+    if roi_pct > config.ADAPTATION_ROI_CAUTION:
+        return {**base, "state": "caution", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_CAUTION,
                 "stake_multiplier": 1.0, "suppress": False}
 
-    if roi_pct > -40:
-        return {**base, "state": "cold", "ev_threshold": 0.12,
-                "stake_multiplier": 0.5, "suppress": False}
+    if roi_pct > config.ADAPTATION_ROI_COLD:
+        return {**base, "state": "cold", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_COLD,
+                "stake_multiplier": config.ADAPTATION_STAKE_MULTIPLIER_COLD, "suppress": False}
 
     return {**base, "state": "frozen", "ev_threshold": None,
             "stake_multiplier": 0, "suppress": True}
@@ -325,15 +326,17 @@ def get_ai_adjustment_config() -> dict:
     harmful_count = stats["harmful"] if stats and stats["harmful"] else 0
     net = helpful_count - harmful_count
 
+    from src import config
+    default_cap = config.AI_ADJUSTMENT_CAP  # 3.0
     if total_tournaments < 10 or total < 50:
-        return {"enabled": True, "cap": 5.0, "reason": f"Insufficient data ({total_tournaments} tournaments, {total} adjustments)"}
+        return {"enabled": True, "cap": default_cap, "reason": f"Insufficient data ({total_tournaments} tournaments, {total} adjustments)"}
 
     if net < 0:
         if total_tournaments >= 15:
             return {"enabled": False, "cap": 0.0, "reason": f"Auto-disabled: net effect {net} over {total_tournaments} tournaments"}
         return {"enabled": True, "cap": 2.0, "reason": f"Reduced cap: net effect {net} over {total_tournaments} tournaments"}
 
-    return {"enabled": True, "cap": 5.0, "reason": f"Performing well: net effect +{net}"}
+    return {"enabled": True, "cap": default_cap, "reason": f"Performing well: net effect +{net}"}
 
 
 def check_recovery(market_type: str, last_n_tracking: int = 5) -> dict:
