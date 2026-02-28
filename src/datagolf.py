@@ -1017,7 +1017,9 @@ def fetch_matchup_odds(market: str = "tournament_matchups", tour: str = "pga",
     })
 
     if isinstance(raw, dict):
-        return raw.get("match_list", [])
+        match_list = raw.get("match_list", [])
+        if isinstance(match_list, list):
+            return match_list
     return []
 
 
@@ -1069,3 +1071,42 @@ def get_current_event_info(tour: str = "pga") -> dict | None:
     except Exception:
         pass
     return None
+
+
+def fetch_closing_odds(tour: str = "pga") -> dict:
+    """
+    Fetch closing odds from Data Golf for CLV tracking.
+
+    Uses /betting-tools/outrights with market=closing (if available).
+    Falls back to latest pre-tournament odds if closing not available.
+
+    Returns: {player_dg_id: {market: closing_decimal_odds}} or empty dict.
+    """
+    results = {}
+    for market in ["win", "top_5", "top_10", "top_20"]:
+        try:
+            raw = _call_api("betting-tools/outrights", {
+                "tour": tour,
+                "market": market,
+                "odds_format": "decimal",
+            })
+            if not raw:
+                continue
+            odds_list = raw if isinstance(raw, list) else raw.get("odds", [])
+            for entry in odds_list:
+                player_name = entry.get("player_name", "")
+                dg_id = entry.get("dg_id")
+                book_odds = []
+                for key, val in entry.items():
+                    if key not in ("player_name", "dg_id", "country", "course_name") and isinstance(val, (int, float)) and val > 1.0:
+                        book_odds.append(val)
+                if book_odds:
+                    avg_odds = sum(book_odds) / len(book_odds)
+                    pk = player_name
+                    if pk not in results:
+                        results[pk] = {}
+                    market_map = {"win": "outright", "top_5": "top5", "top_10": "top10", "top_20": "top20"}
+                    results[pk][market_map.get(market, market)] = round(avg_odds, 2)
+        except Exception:
+            continue
+    return results

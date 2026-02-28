@@ -95,6 +95,8 @@ MATCHUP_SIGMOID_DIVISOR = 20.0   # legacy; use PLATT_A/B
 MATCHUP_CAP = 15                 # max matchups to output
 MATCHUP_TIER_STRONG_EV_PCT = 15.0   # EV >= 15% -> STRONG
 MATCHUP_TIER_GOOD_EV_PCT = 8.0      # EV >= 8% -> GOOD; else LEAN
+MATCHUP_TIER_STRONG_GAP = 8.0
+MATCHUP_TIER_GOOD_GAP = 5.0
 
 # ---------------------------------------------------------------------------
 # Default weights (from db.py)

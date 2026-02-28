@@ -995,6 +995,25 @@ def main():
         print(f"    ⚠ {logger_msg}")
         matchup_bets = []
 
+    # ── 3-Ball Value Bets ──────────────────────────────────────
+    threeball_bets = []
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("3ball"):
+            from src.value import find_3ball_value_bets
+            threeball_odds = safe_api_call("3-ball odds", fetch_matchup_odds, market="3_balls")
+            if threeball_odds:
+                threeball_bets = find_3ball_value_bets(composite, threeball_odds, tournament_id=tid)
+                if threeball_bets:
+                    print(f"    3-balls: {len(threeball_odds)} groups, {len(threeball_bets)} value plays")
+                else:
+                    print(f"    3-balls: {len(threeball_odds)} groups, 0 value plays")
+            else:
+                print("    3-balls: no odds available")
+    except Exception as e:
+        print(f"    ⚠ 3-ball error: {e}")
+        threeball_bets = []
+
     # ── AI Betting Decisions (disabled — purely quantitative now) ──
     if ai_pre_analysis and is_ai_available() and value_bets:
         print_header("Step 7b: AI Betting Decisions")
@@ -1110,6 +1129,22 @@ def main():
         except Exception as e:
             print(f"\n  ⚠ AI betting decisions error: {e}")
             print(f"  Value bets still shown below without AI portfolio optimization")
+
+    # ── Exposure filtering (Phase 4A) ──────────────────────────
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("exposure_caps"):
+            from src.exposure import filter_by_exposure
+            from src.kelly import get_bankroll_state
+            state = get_bankroll_state()
+            bankroll = state["balance"] if state else None
+            value_bets, exp_warnings = filter_by_exposure(value_bets, bankroll=bankroll)
+            for w in exp_warnings:
+                print(f"    ⚠ {w}")
+            if exp_warnings:
+                print(f"    Exposure filtering applied (bankroll={'${:.0f}'.format(bankroll) if bankroll else 'N/A'})")
+    except Exception as e:
+        print(f"    ⚠ Exposure filtering error: {e}")
 
     # ── Output predictions ────────────────────────────────────
     print_header(f"PREDICTIONS: {event_name}")
@@ -1248,6 +1283,9 @@ def main():
         }
     except Exception:
         pipeline_ctx["adaptation_states"] = {}
+
+    if threeball_bets:
+        value_bets["3ball"] = threeball_bets
 
     # ── Generate card ─────────────────────────────────────────
     print_header("Step 8: Generating Betting Card")

@@ -9,6 +9,7 @@ kelly_sizing: false
 kelly_stakes: false  # alias for kelly_sizing
 clv_tracking: false
 dead_heat_adjustment: false
+3ball: false
 
 # Safe defaults for existing behavior
 use_confirmed_field_only: true

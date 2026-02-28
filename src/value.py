@@ -192,6 +192,124 @@ def _get_best_prob(player_probs: dict, bet_type: str) -> float | None:
     return None
 
 
+def find_3ball_value_bets(
+    composite_results: list[dict],
+    threeball_odds: list[dict],
+    tournament_id: int = None,
+) -> list[dict]:
+    """
+    Find value in 3-ball markets using softmax over composite scores.
+
+    threeball_odds: list of dicts from DG API, each with player1, player2, player3,
+                    and odds fields.
+    Returns list of value bet dicts.
+    """
+    import math
+    from src.feature_flags import is_enabled
+
+    if not is_enabled("3ball"):
+        return []
+
+    if not threeball_odds:
+        return []
+
+    T = config.SOFTMAX_TEMP_BY_TYPE.get("3ball", 10.0)
+    ev_threshold = config.MARKET_EV_THRESHOLDS.get("3ball", 0.05)
+
+    comp_lookup = {r["player_key"]: r for r in composite_results}
+
+    dg_probs = {}
+    if tournament_id:
+        dg_probs = _get_dg_probabilities(tournament_id)
+
+    DG_BLEND, MODEL_BLEND = config.get_blend_weights("3ball")
+
+    value_bets = []
+    for group in threeball_odds:
+        players = []
+        for pkey in ["player1", "player2", "player3"]:
+            p = group.get(pkey, {})
+            name = p.get("player_name", "")
+            if not name:
+                continue
+            nk = normalize_name(name)
+            comp = comp_lookup.get(nk)
+            if comp:
+                players.append({"name": name, "key": nk, "composite": comp["composite"], "display": comp["player_display"], "rank": comp["rank"]})
+            else:
+                players.append({"name": name, "key": nk, "composite": 50.0, "display": name, "rank": 999})
+
+        if len(players) != 3:
+            continue
+
+        scores = [p["composite"] for p in players]
+        max_s = max(scores)
+        exps = [math.exp((s - max_s) / T) for s in scores]
+        total = sum(exps)
+        model_probs = [e / total for e in exps]
+
+        for i, player in enumerate(players):
+            model_prob = model_probs[i]
+
+            dg_p = None
+            if player["key"] in dg_probs:
+                dg_candidate = dg_probs[player["key"]].get("3ball")
+                if dg_candidate and dg_candidate > 0:
+                    dg_p = dg_candidate
+
+            if dg_p is not None:
+                blended = DG_BLEND * dg_p + MODEL_BLEND * model_prob
+            else:
+                blended = model_prob
+
+            odds_key = f"player{i+1}"
+            p_data = group.get(odds_key, {})
+            best_odds = None
+            best_book = None
+            for key, val in p_data.items():
+                if key in ("player_name", "dg_id", "country") or not isinstance(val, (int, float)):
+                    continue
+                if val != 0 and (best_odds is None or abs(val) > abs(best_odds)):
+                    best_odds = val
+                    best_book = key
+
+            if best_odds is None or best_odds == 0:
+                continue
+
+            if best_odds > 0:
+                decimal_odds = 1.0 + best_odds / 100.0
+            elif best_odds < 0:
+                decimal_odds = 1.0 + 100.0 / abs(best_odds)
+            else:
+                continue
+
+            implied = 1.0 / decimal_odds if decimal_odds > 0 else 0
+            ev_val = blended * decimal_odds - 1.0
+
+            if ev_val < ev_threshold:
+                continue
+
+            opponents = [p["display"] for j, p in enumerate(players) if j != i]
+
+            value_bets.append({
+                "player_key": player["key"],
+                "player_display": player["display"],
+                "rank": player["rank"],
+                "bet_type": "3ball",
+                "best_odds": int(best_odds) if isinstance(best_odds, (int, float)) else best_odds,
+                "best_book": best_book or "—",
+                "model_prob": round(blended, 4),
+                "market_prob": round(implied, 4),
+                "ev": round(ev_val, 4),
+                "ev_pct": f"{ev_val * 100:.1f}%",
+                "is_value": True,
+                "opponents": " / ".join(opponents),
+            })
+
+    value_bets.sort(key=lambda x: x["ev"], reverse=True)
+    return value_bets
+
+
 def find_value_bets(composite_results: list[dict],
                     odds_by_player: dict,
                     bet_type: str = "top20",

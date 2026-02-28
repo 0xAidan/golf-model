@@ -259,6 +259,16 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_blend_history_bet_type ON blend_history(bet_type);
 
+        -- ═══ Matchup calibration (Platt A,B params) ═══
+        CREATE TABLE IF NOT EXISTS matchup_calibration (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            a_param REAL NOT NULL,
+            b_param REAL NOT NULL,
+            n_samples INTEGER NOT NULL DEFAULT 0,
+            brier_score REAL,
+            last_updated TEXT DEFAULT (datetime('now'))
+        );
+
         -- ═══ Bankroll (for Kelly sizing) ═══
         CREATE TABLE IF NOT EXISTS bankroll (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

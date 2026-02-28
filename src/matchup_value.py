@@ -10,10 +10,34 @@ import logging
 import math
 
 from src.player_normalizer import normalize_name
-from src import config
+from src import config, db
 from src.odds import american_to_implied_prob
 
 logger = logging.getLogger("matchup_value")
+
+_platt_cache = None
+_platt_cache_time = 0
+
+def _get_platt_params() -> tuple[float, float]:
+    """Read latest Platt A,B from matchup_calibration table, or use config defaults."""
+    import time
+    global _platt_cache, _platt_cache_time
+    now = time.time()
+    if _platt_cache and (now - _platt_cache_time) < 300:
+        return _platt_cache
+    try:
+        conn = db.get_conn()
+        row = conn.execute(
+            "SELECT a_param, b_param FROM matchup_calibration ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        if row:
+            _platt_cache = (float(row["a_param"]), float(row["b_param"]))
+            _platt_cache_time = now
+            return _platt_cache
+    except Exception:
+        pass
+    return (config.MATCHUP_PLATT_A, config.MATCHUP_PLATT_B)
 
 
 def _parse_best_odds(matchup: dict) -> tuple[tuple[int, str] | None, tuple[int, str] | None]:
@@ -155,7 +179,7 @@ def find_matchup_value_bets(composite_results: list[dict],
 
         # Model win probability via Platt-style sigmoid: P(win) = 1/(1+exp(A*gap+B))
         gap = abs(composite_gap)
-        A, B = config.MATCHUP_PLATT_A, config.MATCHUP_PLATT_B
+        A, B = _get_platt_params()
         model_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
 
         ev = (model_win_prob / implied_prob) - 1.0
@@ -182,9 +206,9 @@ def find_matchup_value_bets(composite_results: list[dict],
         stake_mult = adaptation["stake_multiplier"] if adaptation else 1.0
 
         ev_pct = ev * 100
-        if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT:
+        if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT and gap > config.MATCHUP_TIER_STRONG_GAP:
             tier = "STRONG"
-        elif ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT:
+        elif ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT and gap > config.MATCHUP_TIER_GOOD_GAP:
             tier = "GOOD"
         else:
             tier = "LEAN"
