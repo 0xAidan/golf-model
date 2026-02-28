@@ -17,6 +17,8 @@ Output: per-player momentum_score (0-100, >50 = improving, <50 = declining)
 from src import db
 from src import config
 
+ELITE_THRESHOLD = 10  # rank <= 10 in newest window counts as "elite"
+
 
 def _window_sort_key(w: str) -> int:
     """Sort windows numerically. 'all' = largest."""
