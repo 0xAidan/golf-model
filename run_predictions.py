@@ -1272,10 +1272,17 @@ def main():
 
     # ── Log predictions for next week's review ──────────────────
     n_logged = 0
-    if value_bets:
+    from src import db as _db_check
+    if _db_check.has_predictions(tid):
+        print("\n  ℹ Predictions already logged for this tournament — skipping (single-snapshot rule).")
+        print("    To re-log, delete existing entries: DELETE FROM prediction_log WHERE tournament_id = <id>")
+    elif value_bets:
         from src.learning import log_predictions_for_tournament
         try:
-            n_logged = log_predictions_for_tournament(tid, value_bets)
+            n_logged = log_predictions_for_tournament(
+                tid, value_bets,
+                odds_timing=pipeline_ctx.get("odds_timing", "unknown"),
+            )
             if n_logged:
                 print(f"\n  Logged {n_logged} predictions for post-tournament review")
         except Exception as e:

@@ -129,12 +129,14 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
 # ═══════════════════════════════════════════════════════════════════
 
 def log_predictions_for_tournament(tournament_id: int,
-                                   value_bets_by_type: dict) -> int:
+                                   value_bets_by_type: dict,
+                                   odds_timing: str = "unknown") -> int:
     """
     Log all predictions (model prob, DG prob, market prob, outcome)
     to the prediction_log table for calibration analysis.
 
     value_bets_by_type: {bet_type: [value_bet_dicts]}
+    odds_timing: 'pre_tournament', 'in_play', or 'unknown'
     """
     # Get results for outcome
     conn = db.get_conn()
@@ -185,6 +187,7 @@ def log_predictions_for_tournament(tournament_id: int,
                 "actual_outcome": actual,
                 "odds_decimal": odds_decimal,
                 "profit": profit,
+                "odds_timing": odds_timing,
             })
 
     if predictions:

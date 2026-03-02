@@ -1082,20 +1082,48 @@ def save_course_weight_profile(course_num: int, course_name: str,
 # ── Prediction log helpers ─────────────────────────────────────────
 
 def log_predictions(predictions: list[dict]):
-    """Store predictions for calibration tracking."""
+    """Store predictions for calibration tracking.
+
+    Uses INSERT OR IGNORE so the first (pre-tournament) snapshot is
+    preserved.  A mid-tournament re-run won't silently overwrite
+    pre-tournament odds with in-play prices.
+    """
     if not predictions:
         return
     conn = get_conn()
+    _migrate_prediction_log_timing(conn)
     conn.executemany(
-        """INSERT OR REPLACE INTO prediction_log
+        """INSERT OR IGNORE INTO prediction_log
            (tournament_id, player_key, bet_type, model_prob, dg_prob,
-            market_implied_prob, actual_outcome, odds_decimal, profit)
+            market_implied_prob, actual_outcome, odds_decimal, profit, odds_timing)
            VALUES (:tournament_id, :player_key, :bet_type, :model_prob, :dg_prob,
-                    :market_implied_prob, :actual_outcome, :odds_decimal, :profit)""",
+                    :market_implied_prob, :actual_outcome, :odds_decimal, :profit,
+                    :odds_timing)""",
         predictions,
     )
     conn.commit()
     conn.close()
+
+
+def has_predictions(tournament_id: int) -> bool:
+    """Check if prediction_log already has entries for this tournament."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM prediction_log WHERE tournament_id = ? LIMIT 1",
+        (tournament_id,),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def _migrate_prediction_log_timing(conn: sqlite3.Connection):
+    """Add odds_timing column to prediction_log if missing."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(prediction_log)").fetchall()]
+    if "odds_timing" not in cols:
+        conn.execute(
+            "ALTER TABLE prediction_log ADD COLUMN odds_timing TEXT DEFAULT 'unknown'"
+        )
+        conn.commit()
 
 
 def get_calibration_data(min_tournaments: int = 3) -> list[dict]:
