@@ -12,7 +12,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # Model version (single source of truth; was v3.0 in card.py, v4.0 in methodology)
 # ---------------------------------------------------------------------------
-MODEL_VERSION = "4.1"
+MODEL_VERSION = "4.2"
 
 # ---------------------------------------------------------------------------
 # Value / EV / blend (from value.py)
