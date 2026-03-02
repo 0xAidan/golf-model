@@ -61,6 +61,8 @@ from src.odds import get_best_odds
 from src.value import find_value_bets
 from src.card import generate_card
 from src.methodology import generate_methodology
+from src.portfolio import enforce_diversification
+from src.confidence import get_field_strength
 from src.player_normalizer import normalize_name, display_name
 from src.ai_brain import (
     is_ai_available,
@@ -465,6 +467,29 @@ def main():
         print(f"  Location: {location}")
         print(f"  Start: {start_date}")
         print(f"  Event ID: {event_id}")
+
+        # ── Pre-tournament timing gate ────────────────────────────
+        from datetime import date as _date_cls
+        if start_date:
+            try:
+                event_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+                today = _date_cls.today()
+                if today >= event_start and not config.ALLOW_MID_TOURNAMENT_RUN:
+                    force = "--force" in sys.argv
+                    if not force:
+                        print(f"\n  ⛔ BLOCKED: Tournament started {start_date}, today is {today}.")
+                        print("  Running mid-tournament produces in-play odds that corrupt EV calculations.")
+                        print("  Use --force to override (odds will be tagged as 'in_play').")
+                        sys.exit(1)
+                    else:
+                        print(f"\n  ⚠ WARNING: Running mid-tournament (--force). Odds tagged as in_play.")
+                        pipeline_ctx["odds_timing"] = "in_play"
+                else:
+                    pipeline_ctx["odds_timing"] = "pre_tournament"
+            except ValueError:
+                pipeline_ctx["odds_timing"] = "unknown"
+        else:
+            pipeline_ctx["odds_timing"] = "unknown"
 
         # Parse course keys for course-specific stats
         course_keys = event_info.get("course_key", "").split(";")
@@ -964,7 +989,8 @@ def main():
             bt = "frl"
         else:
             bt = market_key.replace("top_", "top")
-        vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid)
+        _fstr = get_field_strength(composite)
+        vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid, field_strength=_fstr)
         value_bets[bt] = vb
         value_count = sum(1 for v in vb if v.get("is_value"))
         book_count = len(set(o["bookmaker"] for o in odds_list))
@@ -1286,6 +1312,15 @@ def main():
 
     if threeball_bets:
         value_bets["3ball"] = threeball_bets
+
+    # ── Portfolio diversification ────────────────────────────
+    field_str = get_field_strength(composite)
+    value_bets = enforce_diversification(value_bets, field_strength=field_str)
+    total_value = sum(
+        1 for bets in value_bets.values()
+        for b in bets if b.get("is_value")
+    )
+    print(f"  Portfolio filter applied (field: {field_str}, {total_value} value bets kept)")
 
     # ── Generate card ─────────────────────────────────────────
     print_header("Step 8: Generating Betting Card")

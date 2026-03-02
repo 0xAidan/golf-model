@@ -12,23 +12,30 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # Model version (single source of truth; was v3.0 in card.py, v4.0 in methodology)
 # ---------------------------------------------------------------------------
-MODEL_VERSION = "4.0"
+MODEL_VERSION = "4.1"
 
 # ---------------------------------------------------------------------------
 # Value / EV / blend (from value.py)
 # ---------------------------------------------------------------------------
-# Default EV threshold; override via env EV_THRESHOLD (e.g. "0.05" for 5%)
-DEFAULT_EV_THRESHOLD = float(os.environ.get("EV_THRESHOLD", "0.02"))
+# Default EV threshold; override via env EV_THRESHOLD
+# v4.0 used 2% for placement — too low, most "value" was noise.
+# v4.1: raised across all markets to filter noise from uncalibrated model.
+DEFAULT_EV_THRESHOLD = float(os.environ.get("EV_THRESHOLD", "0.08"))
 
 MARKET_EV_THRESHOLDS: dict[str, float] = {
-    "outright": 0.05,
-    "top5": 0.05,
-    "top10": 0.02,
-    "top20": 0.02,
-    "frl": 0.05,
-    "make_cut": 0.02,
-    "3ball": 0.05,
+    "outright": 0.15,
+    "top5": 0.10,
+    "top10": 0.08,
+    "top20": 0.08,
+    "frl": 0.10,
+    "make_cut": 0.05,
+    "3ball": 0.08,
 }
+
+# Maximum total value bets per card (across all markets)
+# v4.0 had no cap — 23 bets on Cognizant Classic. Quality over quantity.
+MAX_TOTAL_VALUE_BETS = 10
+MAX_TOTAL_VALUE_BETS_WEAK_FIELD = 6
 
 # Maximum credible EV; above this indicates bad data, not real edge
 MAX_CREDIBLE_EV = 2.0
@@ -52,15 +59,17 @@ MAX_REASONABLE_ODDS: dict[str, int] = {
     "3ball": 5000,
 }
 
-# Blend weights: DG vs model. Plan: start 70/30 (configurable); dynamic blend later.
+# Blend weights: DG vs model.
+# v4.0 used 70/30 — model softmax is uncalibrated, inflated probabilities.
+# v4.1: 95/5 per methodology. Model is a minor tiebreaker until calibrated.
 BLEND_WEIGHTS: dict[str, dict[str, float]] = {
-    "outright": {"dg": 0.70, "model": 0.30},
-    "top5": {"dg": 0.70, "model": 0.30},
-    "top10": {"dg": 0.70, "model": 0.30},
-    "top20": {"dg": 0.70, "model": 0.30},
-    "frl": {"dg": 0.70, "model": 0.30},
-    "make_cut": {"dg": 0.70, "model": 0.30},
-    "3ball": {"dg": 0.70, "model": 0.30},
+    "outright": {"dg": 0.95, "model": 0.05},
+    "top5": {"dg": 0.95, "model": 0.05},
+    "top10": {"dg": 0.95, "model": 0.05},
+    "top20": {"dg": 0.95, "model": 0.05},
+    "frl": {"dg": 0.95, "model": 0.05},
+    "make_cut": {"dg": 0.95, "model": 0.05},
+    "3ball": {"dg": 0.95, "model": 0.05},
 }
 
 # Softmax temperature by bet type (value.py model_score_to_prob)
@@ -167,6 +176,10 @@ CONFIDENCE_FACTOR_WEIGHTS: dict[str, float] = {
     "odds_quality": 0.15,
     "model_market_alignment": 0.15,
 }
+# Weak-field adjustments: more uncertainty = higher bar for bets
+WEAK_FIELD_EV_MULTIPLIER = 1.5       # multiply EV thresholds by 1.5x for weak fields
+WEAK_FIELD_SOFTMAX_TEMP_BOOST = 1.2  # increase softmax temps by 20% for weak fields
+
 CONFIDENCE_WEAK_THRESHOLD = 0.70
 CONFIDENCE_STRONG_THRESHOLD = 0.90
 CONFIDENCE_FIELD_STRONG_ABOVE_70 = 5
@@ -180,8 +193,13 @@ FIELD_SIZE_MIN = 50
 FIELD_SIZE_MAX = 170
 PROBABILITY_SUM_TOLERANCE = 0.05   # outright probs sum in [0.95, 1.05]
 
+# Pipeline timing: block execution after R1 starts unless --force is used.
+# Mid-tournament odds are in-play prices, not pre-tournament — comparing them
+# to static DG sim probabilities produces meaningless EV calculations.
+ALLOW_MID_TOURNAMENT_RUN = False
+
 
 def get_blend_weights(bet_type: str) -> tuple[float, float]:
     """Return (dg_weight, model_weight) for a bet type."""
-    cfg = BLEND_WEIGHTS.get(bet_type, {"dg": 0.70, "model": 0.30})
+    cfg = BLEND_WEIGHTS.get(bet_type, {"dg": 0.95, "model": 0.05})
     return (cfg["dg"], cfg["model"])
