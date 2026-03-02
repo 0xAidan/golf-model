@@ -341,11 +341,19 @@ def generate_card(tournament_name: str,
     lines.append(f"*Model v{config.MODEL_VERSION}: {len(composite_results)} players scored. "
                  f"Course data: {'Yes' if any(r.get('course_rounds', 0) > 0 for r in composite_results) else 'No'}."
                  f"{ai_tag} Weights: 45% course fit / 45% form / 10% momentum."
-                 f" DG blend: market-specific (80-90% DG).*")
+                 f" DG blend: 95% DG / 5% model.*")
 
-    # Write to file
     os.makedirs(output_dir, exist_ok=True)
     safe_name = tournament_name.lower().replace(" ", "_").replace("'", "")
+
+    try:
+        from src.output_manager import archive_previous
+        archived = archive_previous(output_dir, safe_name, file_type="card")
+        if archived:
+            logger.info("Archived %d previous card(s) for %s", archived, safe_name)
+    except Exception as e:
+        logger.warning("Could not archive previous cards: %s", e)
+
     filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
     filepath = os.path.join(output_dir, filename)
 

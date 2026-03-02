@@ -7,9 +7,12 @@ These rules are applied as a post-processing step after value bets are identifie
 Based on lessons learned:
 - Genesis: 11/12 placement bets on 3 players, -6.83u when 2 busted
 - Pebble Beach: AI concentrated 87% of units on one player
+- Cognizant Classic v4.0: 23 bets, 1-22 record (-16u). No total cap enforced.
 """
 
 import logging
+
+from src import config
 
 logger = logging.getLogger("portfolio")
 
@@ -20,7 +23,65 @@ SPECULATIVE_MARKETS = {"outright", "top5", "frl"}
 CORE_MARKETS = {"top10", "top20", "make_cut"}
 
 
-def enforce_diversification(value_bets_by_market: dict) -> dict:
+MARKET_RISK_ORDER = ["top20", "top10", "make_cut", "top5", "outright", "frl"]
+SAFER_MARKET_EV_RATIO = 2.0
+
+
+def _prefer_safer_markets(value_bets_by_market: dict) -> dict:
+    """
+    When a player has value in multiple markets, keep the safer one
+    unless the riskier market's EV is at least 2x higher.
+
+    Prevents the "right player, wrong market" problem (e.g., Keith Mitchell
+    T6 finish bet as outright instead of top 10).
+    """
+    player_bets = {}
+    for market, bets in value_bets_by_market.items():
+        for bet in bets:
+            if not bet.get("is_value") or bet.get("suspicious") or bet.get("ev_capped"):
+                continue
+            pk = bet["player_key"]
+            if pk not in player_bets:
+                player_bets[pk] = []
+            player_bets[pk].append((market, bet))
+
+    drop_keys = set()
+    for pk, entries in player_bets.items():
+        if len(entries) < 2:
+            continue
+        entries.sort(key=lambda x: MARKET_RISK_ORDER.index(x[0]) if x[0] in MARKET_RISK_ORDER else 99)
+        safest_market, safest_bet = entries[0]
+        safest_ev = safest_bet.get("ev", 0)
+        for market, bet in entries[1:]:
+            riskier_ev = bet.get("ev", 0)
+            if safest_ev > 0 and riskier_ev < safest_ev * SAFER_MARKET_EV_RATIO:
+                drop_keys.add((pk, market))
+                logger.info(
+                    "Market selection: dropped %s %s (EV %.1f%%) — safer %s bet kept (EV %.1f%%)",
+                    bet.get("player_display", pk), market, riskier_ev * 100,
+                    safest_market, safest_ev * 100,
+                )
+
+    if not drop_keys:
+        return value_bets_by_market
+
+    result = {}
+    for market, bets in value_bets_by_market.items():
+        result[market] = []
+        for bet in bets:
+            pk = bet.get("player_key")
+            if (pk, market) in drop_keys:
+                bet_copy = {**bet, "is_value": False}
+                result[market].append(bet_copy)
+            else:
+                result[market].append(bet)
+    return result
+
+
+def enforce_diversification(
+    value_bets_by_market: dict,
+    field_strength: str = "average",
+) -> dict:
     """
     Apply diversification rules to value bets across all markets.
 
@@ -29,6 +90,12 @@ def enforce_diversification(value_bets_by_market: dict) -> dict:
 
     Each bet dict must have at minimum: player_key, ev, is_value.
     """
+    value_bets_by_market = _prefer_safer_markets(value_bets_by_market)
+
+    max_total = config.MAX_TOTAL_VALUE_BETS
+    if field_strength == "weak":
+        max_total = config.MAX_TOTAL_VALUE_BETS_WEAK_FIELD
+
     all_value_bets = []
     for market, bets in value_bets_by_market.items():
         for bet in bets:
@@ -45,6 +112,13 @@ def enforce_diversification(value_bets_by_market: dict) -> dict:
     placement_count = 0
 
     for bet in all_value_bets:
+        if len(selected) >= max_total:
+            logger.info(
+                "Diversification: dropped %s %s bet (total cap %d reached)",
+                bet.get("player_display", bet["player_key"]), bet["_market"], max_total,
+            )
+            continue
+
         pk = bet["player_key"]
         market = bet["_market"]
 
@@ -78,8 +152,8 @@ def enforce_diversification(value_bets_by_market: dict) -> dict:
     dropped = len(all_value_bets) - len(selected)
     if dropped > 0:
         logger.info(
-            "Diversification: kept %d of %d value bets (%d dropped, %d unique players)",
-            len(selected), len(all_value_bets), dropped, unique_players,
+            "Diversification: kept %d of %d value bets (%d dropped, %d unique players, cap %d)",
+            len(selected), len(all_value_bets), dropped, unique_players, max_total,
         )
 
     filtered = {market: [] for market in value_bets_by_market}

@@ -5,6 +5,8 @@ data/golf.db
 data/csvs/*.csv
 data/course_images/
 output/*.md
+output/archive/
+output/research/
 .DS_Store
 *.egg-info/
 dist/
