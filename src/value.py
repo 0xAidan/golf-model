@@ -44,7 +44,8 @@ def compute_ev(model_prob: float, american_odds: int) -> float:
 
 
 def model_score_to_prob(composite_score: float, all_scores: list[float],
-                        bet_type: str = "top20") -> float:
+                        bet_type: str = "top20",
+                        field_strength: str = "average") -> float:
     """
     Convert a composite score to a properly normalized probability.
 
@@ -68,8 +69,9 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
     if field_size == 0:
         return 0.0
 
-    # Temperature from config
     temp = config.SOFTMAX_TEMP_BY_TYPE.get(bet_type, 12.0)
+    if field_strength == "weak":
+        temp *= config.WEAK_FIELD_SOFTMAX_TEMP_BOOST
 
     # Target sum: how many "winners" in this market
     target_sum_by_type = {
@@ -112,18 +114,33 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
     return target_sum / max(field_size, 1)
 
 
-def _get_dg_probabilities(tournament_id: int) -> dict:
+def _get_dg_probabilities(tournament_id: int,
+                          field_players: list[str] | None = None) -> dict:
     """
-    Get Data Golf pre-tournament probabilities for all players.
+    Get Data Golf pre-tournament probabilities for confirmed field players.
+
+    DG sim data often includes 60+ phantom players (Scheffler, McIlroy, etc.)
+    who aren't in the actual field. If ``field_players`` is provided, only
+    those players are kept and probabilities are renormalized so outright
+    probs sum to ~1.0, top-N sums to ~N, etc.
 
     Returns {player_key: {bet_type: probability}} where probability is 0-1.
     Prefers course-history model; falls back to baseline.
     """
     sim_metrics = db.get_metrics_by_category(tournament_id, "sim")
+
+    if field_players is None:
+        field_players = db.get_all_players(tournament_id, confirmed_field_only=True)
+    field_set = set(field_players) if field_players else None
+
     player_probs = {}
 
     for m in sim_metrics:
         pk = m["player_key"]
+
+        if field_set and pk not in field_set:
+            continue
+
         if pk not in player_probs:
             player_probs[pk] = {}
 
@@ -132,20 +149,12 @@ def _get_dg_probabilities(tournament_id: int) -> dict:
         if val is None:
             continue
 
-        # DG probabilities from preds/pre-tournament are stored as decimals (0-1)
-        # or percentages (0-100) depending on odds_format.
-        # We requested percent format, so values could be 0.05 (5%) or 5.0 (5%).
-        # Heuristic: if value > 1.0, it's almost certainly a percentage.
-        # Secondary check: if ALL values for a player sum > 2.0, they're percentages.
         prob = val / 100.0 if val > 1.0 else val
-        # Safety: probabilities must be in (0, 1)
         if prob > 1.0:
             prob = prob / 100.0
         prob = max(0.0001, min(0.9999, prob))
 
-        # Map metric names to bet types
-        # Prefer course-history versions when available
-        if "CH" in name:  # Course-History model (better)
+        if "CH" in name:
             if "Win" in name:
                 player_probs[pk]["outright_ch"] = prob
             elif "Top 5" in name:
@@ -167,6 +176,41 @@ def _get_dg_probabilities(tournament_id: int) -> dict:
                 player_probs[pk]["top20"] = prob
             elif "Make Cut" in name or "Cut" in name:
                 player_probs[pk]["make_cut"] = prob
+
+    # ── Renormalize after removing phantom players ────────────
+    # DG sims include players not in field who absorb significant probability
+    # (e.g. 48.6% of outright prob for Cognizant Classic). After filtering,
+    # scale remaining probs so they sum to expected totals.
+    EXPECTED_SUMS = {
+        "outright": 1.0, "outright_ch": 1.0,
+        "top5": 5.0, "top5_ch": 5.0,
+        "top10": 10.0, "top10_ch": 10.0,
+        "top20": 20.0, "top20_ch": 20.0,
+    }
+
+    current_sums: dict[str, float] = {}
+    for pk_probs in player_probs.values():
+        for bt_key, prob in pk_probs.items():
+            current_sums[bt_key] = current_sums.get(bt_key, 0.0) + prob
+
+    scale_factors: dict[str, float] = {}
+    for bt_key, expected in EXPECTED_SUMS.items():
+        current = current_sums.get(bt_key, 0.0)
+        if current < 0.01:
+            continue
+        if current < expected:
+            scale_factors[bt_key] = min(expected / current, 3.0)
+
+    if scale_factors:
+        logger.info("DG prob renormalization: %s",
+                     {k: f"{v:.2f}x" for k, v in scale_factors.items()})
+        for pk in player_probs:
+            for bt_key in list(player_probs[pk].keys()):
+                if bt_key in scale_factors:
+                    player_probs[pk][bt_key] = min(
+                        player_probs[pk][bt_key] * scale_factors[bt_key],
+                        0.9999,
+                    )
 
     return player_probs
 
@@ -314,7 +358,8 @@ def find_value_bets(composite_results: list[dict],
                     odds_by_player: dict,
                     bet_type: str = "top20",
                     ev_threshold: float = None,
-                    tournament_id: int = None) -> list[dict]:
+                    tournament_id: int = None,
+                    field_strength: str = "average") -> list[dict]:
     """
     Compare model scores to market odds and find value.
 
@@ -323,6 +368,7 @@ def find_value_bets(composite_results: list[dict],
     bet_type: 'outright', 'top5', 'top10', 'top20'
     ev_threshold: minimum EV to flag as value (default from EV_THRESHOLD env or 2%)
     tournament_id: if provided, uses DG calibrated probabilities
+    field_strength: "weak", "average", "strong" — weak fields get stricter thresholds
 
     Probability priority:
       1. DG course-history model probs
@@ -333,6 +379,9 @@ def find_value_bets(composite_results: list[dict],
     """
     if ev_threshold is None:
         ev_threshold = MARKET_EV_THRESHOLDS.get(bet_type, DEFAULT_EV_THRESHOLD)
+
+    if field_strength == "weak":
+        ev_threshold *= config.WEAK_FIELD_EV_MULTIPLIER
 
     # Adaptation: check rolling market performance for graduated response
     adaptation = None
@@ -359,10 +408,11 @@ def find_value_bets(composite_results: list[dict],
 
     all_scores = [r["composite"] for r in composite_results]
 
-    # Load DG probabilities if tournament_id is available
+    # Load DG probabilities filtered to the confirmed field
     dg_probs = {}
     if tournament_id:
-        dg_probs = _get_dg_probabilities(tournament_id)
+        field_keys = [r["player_key"] for r in composite_results]
+        dg_probs = _get_dg_probabilities(tournament_id, field_players=field_keys)
 
     value_bets = []
     for r in composite_results:
@@ -421,7 +471,7 @@ def find_value_bets(composite_results: list[dict],
                         break
 
         # 3. Compute our own softmax probability from composite scores
-        softmax_prob = model_score_to_prob(r["composite"], all_scores, bet_type)
+        softmax_prob = model_score_to_prob(r["composite"], all_scores, bet_type, field_strength)
 
         # 4. Blend or fall back
         if dg_prob_raw is not None:
