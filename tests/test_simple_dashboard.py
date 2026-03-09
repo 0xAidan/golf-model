@@ -327,3 +327,16 @@ def test_latest_output_summaries_endpoint_returns_compact_cards(tmp_path, monkey
     assert body["prediction"]["summary"]["event"] == "Arnold Palmer Invitational"
     assert body["backtest"]["summary"]["candidate_tested"] == "debug"
     assert body["research"]["summary"]["candidate_title"] == "candidate_a"
+
+
+def test_home_page_recent_runs_js_escapes_report_path_safely():
+    """The dashboard JS should safely embed report paths without breaking the page script."""
+    import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    text = response.text
+    assert "const safePath = String(run.artifact_markdown_path || '')" in text
+    assert "replaceAll" in text

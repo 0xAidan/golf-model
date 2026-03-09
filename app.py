@@ -1821,7 +1821,8 @@ function renderConsole(state, runs, latestSummaries) {
 
   let html = '<table><tr><th>When</th><th>Candidate</th><th>Decision</th><th>ROI</th><th>Guardrails</th><th>Why</th><th>Report</th></tr>';
   for (const run of runs) {
-    const report = run.artifact_markdown_path ? '<span class="run-link" onclick="viewResearchReport(\\'' + String(run.artifact_markdown_path).replace(/\\/g, '/').replace(/'/g, "\\\\'") + '\\')">View report</span>' : '—';
+    const safePath = String(run.artifact_markdown_path || '').replaceAll("'", "\\'");
+    const report = run.artifact_markdown_path ? '<span class="run-link" onclick="viewResearchReport(\\'' + safePath + '\\')">View report</span>' : '—';
     const roi = run.summary_metrics && run.summary_metrics.weighted_roi_pct != null ? run.summary_metrics.weighted_roi_pct + '%' : '—';
     html += '<tr><td>' + (run.created_at || '—') + '</td><td><strong>' + (run.candidate_name || 'unknown') + '</strong><div class="subtle">' + (run.hypothesis || '') + '</div></td><td>' + (run.decision || 'unknown') + '</td><td>' + roi + '</td><td>' + (run.guardrail_verdict || 'n/a') + '</td><td>' + (run.summary_reason || 'No reason saved') + '</td><td>' + report + '</td></tr>';
   }
