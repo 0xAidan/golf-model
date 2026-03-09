@@ -442,6 +442,50 @@ def init_db():
             UNIQUE(strategy_config_json, scope)
         );
 
+        CREATE TABLE IF NOT EXISTS research_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            hypothesis TEXT NOT NULL,
+            source TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'global',
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK (status IN (
+                    'draft', 'evaluated', 'approved',
+                    'rejected', 'converted', 'error'
+                )),
+            cycle_key TEXT NOT NULL,
+            strategy_config_json TEXT NOT NULL,
+            baseline_strategy_json TEXT,
+            program_version TEXT,
+            event_weighting_mode TEXT,
+            candidate_count_in_cycle INTEGER,
+            years_json TEXT,
+            filters_json TEXT,
+            theory_metadata_json TEXT,
+            summary_metrics_json TEXT,
+            segmented_metrics_json TEXT,
+            guardrail_results_json TEXT,
+            repro_metadata_json TEXT,
+            artifact_markdown_path TEXT,
+            artifact_manifest_path TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            evaluated_at TEXT,
+            approved_at TEXT,
+            rejected_at TEXT,
+            converted_experiment_id INTEGER REFERENCES experiments(id),
+            UNIQUE(strategy_config_json, scope, cycle_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS proposal_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL REFERENCES research_proposals(id) ON DELETE CASCADE,
+            decision TEXT NOT NULL
+                CHECK (decision IN ('approved', 'rejected', 'comment')),
+            reviewer TEXT,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS course_strategies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             course_id TEXT, course_name TEXT, cluster TEXT,
@@ -458,6 +502,31 @@ def init_db():
             experiment_id INTEGER, roi_pct REAL,
             adopted_at TEXT DEFAULT (datetime('now')),
             UNIQUE(scope)
+        );
+
+        CREATE TABLE IF NOT EXISTS research_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            proposal_id INTEGER REFERENCES research_proposals(id),
+            theory_metadata_json TEXT,
+            notes TEXT,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS live_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source_research_registry_id INTEGER REFERENCES research_model_registry(id),
+            promoted_by TEXT NOT NULL DEFAULT 'manual',
+            action TEXT NOT NULL DEFAULT 'promote',
+            notes TEXT,
+            replaced_live_registry_id INTEGER REFERENCES live_model_registry(id),
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS outlier_investigations (
@@ -504,6 +573,16 @@ def init_db():
             ON pit_course_stats(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_experiments_status
             ON experiments(status, scope);
+        CREATE INDEX IF NOT EXISTS idx_research_proposals_status
+            ON research_proposals(status, scope, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_research_proposals_cycle
+            ON research_proposals(cycle_key, scope);
+        CREATE INDEX IF NOT EXISTS idx_research_model_registry_scope
+            ON research_model_registry(scope, is_current, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_live_model_registry_scope
+            ON live_model_registry(scope, is_current, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_proposal_reviews_proposal
+            ON proposal_reviews(proposal_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_intel_player
             ON intel_events(player_key, relevance_score DESC);
 
@@ -595,6 +674,50 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE pit_rolling_stats ADD COLUMN sg_total_rank INTEGER")
         conn.commit()
+
+    # Add theory metadata to research proposals if missing
+    try:
+        conn.execute("SELECT theory_metadata_json FROM research_proposals LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE research_proposals ADD COLUMN theory_metadata_json TEXT")
+        conn.commit()
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS research_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            proposal_id INTEGER REFERENCES research_proposals(id),
+            theory_metadata_json TEXT,
+            notes TEXT,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS live_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source_research_registry_id INTEGER REFERENCES research_model_registry(id),
+            promoted_by TEXT NOT NULL DEFAULT 'manual',
+            action TEXT NOT NULL DEFAULT 'promote',
+            notes TEXT,
+            replaced_live_registry_id INTEGER REFERENCES live_model_registry(id),
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_research_model_registry_scope
+        ON research_model_registry(scope, is_current, created_at DESC)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_live_model_registry_scope
+        ON live_model_registry(scope, is_current, created_at DESC)
+    """)
+    conn.commit()
 
     # Create pit_course_stats table if missing
     conn.execute("""

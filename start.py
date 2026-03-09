@@ -144,6 +144,99 @@ def cmd_setup(args):
     run_wizard()
 
 
+def _parse_years_arg(years: str | None) -> list[int] | None:
+    if not years:
+        return None
+    return [int(y.strip()) for y in years.split(",") if y.strip()]
+
+
+def cmd_research_run(args):
+    """Run one bounded manual research cycle."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.research_cycle import run_research_cycle
+
+    years = _parse_years_arg(getattr(args, "years", None))
+    result = run_research_cycle(
+        max_candidates=args.max_candidates,
+        years=years,
+        source="manual",
+        scope=args.scope,
+    )
+
+    print("\nResearch cycle complete.")
+    print(f"  Cycle key: {result['cycle_key']}")
+    print(f"  Proposals created: {result['proposals_created']}")
+    print(f"  Proposals evaluated: {result['proposals_evaluated']}")
+
+
+def cmd_research_list(args):
+    """List research proposals."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import list_proposals
+
+    rows = list_proposals(status=args.status, limit=args.limit)
+    if not rows:
+        print("\nNo research proposals found.")
+        return
+
+    print()
+    for row in rows:
+        print(f"[{row['id']}] {row['status']}  {row['name']}  ({row['scope']})")
+
+
+def cmd_research_show(args):
+    """Show one research proposal."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import get_proposal
+
+    proposal = get_proposal(args.id)
+    print()
+    for key in [
+        "id", "name", "hypothesis", "status", "scope", "cycle_key",
+        "artifact_markdown_path", "artifact_manifest_path", "converted_experiment_id",
+    ]:
+        print(f"{key}: {proposal.get(key)}")
+
+
+def cmd_research_approve(args):
+    """Approve an evaluated proposal."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import approve_proposal
+
+    approve_proposal(args.id, reviewer=args.reviewer, notes=args.notes)
+    print(f"\nApproved proposal {args.id}.")
+
+
+def cmd_research_reject(args):
+    """Reject an evaluated proposal."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import reject_proposal
+
+    reject_proposal(args.id, reviewer=args.reviewer, notes=args.notes)
+    print(f"\nRejected proposal {args.id}.")
+
+
+def cmd_research_convert(args):
+    """Convert an approved proposal into an experiment."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import convert_proposal_to_experiment
+
+    experiment_id = convert_proposal_to_experiment(args.id)
+    print(f"\nConverted proposal {args.id} into experiment {experiment_id}.")
+
+
 def cmd_status(args):
     """Show system status."""
     from src.db import ensure_initialized, get_conn
@@ -303,6 +396,37 @@ def main():
     # status
     subparsers.add_parser("status", help="Show system status")
 
+    # research-run
+    p_rr = subparsers.add_parser("research-run", help="Run one manual research cycle")
+    p_rr.add_argument("--max-candidates", type=int, default=5)
+    p_rr.add_argument("--years", default=None, help="Comma-separated years")
+    p_rr.add_argument("--scope", default="global")
+
+    # research-list
+    p_rl = subparsers.add_parser("research-list", help="List research proposals")
+    p_rl.add_argument("--status", default=None)
+    p_rl.add_argument("--limit", type=int, default=20)
+
+    # research-show
+    p_rs = subparsers.add_parser("research-show", help="Show a research proposal")
+    p_rs.add_argument("--id", type=int, required=True)
+
+    # research-approve
+    p_ra = subparsers.add_parser("research-approve", help="Approve a proposal")
+    p_ra.add_argument("--id", type=int, required=True)
+    p_ra.add_argument("--reviewer", default="manual")
+    p_ra.add_argument("--notes", default=None)
+
+    # research-reject
+    p_rj = subparsers.add_parser("research-reject", help="Reject a proposal")
+    p_rj.add_argument("--id", type=int, required=True)
+    p_rj.add_argument("--reviewer", default="manual")
+    p_rj.add_argument("--notes", default=None)
+
+    # research-convert
+    p_rc = subparsers.add_parser("research-convert", help="Convert a proposal to an experiment")
+    p_rc.add_argument("--id", type=int, required=True)
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -321,6 +445,18 @@ def main():
         cmd_setup(args)
     elif args.command == "status":
         cmd_status(args)
+    elif args.command == "research-run":
+        cmd_research_run(args)
+    elif args.command == "research-list":
+        cmd_research_list(args)
+    elif args.command == "research-show":
+        cmd_research_show(args)
+    elif args.command == "research-approve":
+        cmd_research_approve(args)
+    elif args.command == "research-reject":
+        cmd_research_reject(args)
+    elif args.command == "research-convert":
+        cmd_research_convert(args)
 
 
 if __name__ == "__main__":

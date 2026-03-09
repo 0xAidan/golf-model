@@ -9,9 +9,11 @@ Open: http://localhost:8000
 import os
 import sys
 import json
+import re
 import shutil
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,12 +49,236 @@ _last_analysis = {}
 
 CSV_DIR = os.path.join(os.path.dirname(__file__), "data", "csvs")
 os.makedirs(CSV_DIR, exist_ok=True)
+SIMPLE_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output", "backtests")
+os.makedirs(SIMPLE_OUTPUT_DIR, exist_ok=True)
+
+
+def _latest_output_file(*, subdir: str = "", suffix: str = ".md") -> str | None:
+    base_dir = os.path.join(os.path.dirname(__file__), "output", subdir) if subdir else os.path.join(os.path.dirname(__file__), "output")
+    if not os.path.isdir(base_dir):
+        return None
+    candidates = [
+        os.path.join(base_dir, name)
+        for name in os.listdir(base_dir)
+        if name.endswith(suffix)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=os.path.getmtime, reverse=True)
+    return candidates[0]
+
+
+def _output_dir_absolute():
+    """Canonical output dir for path checks."""
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "output"))
+
+
+def _relative_output_path(path: str) -> str:
+    rel = os.path.relpath(path, _output_dir_absolute()).replace("\\", "/")
+    return f"output/{rel}" if rel != "." else "output"
+
+
+def _safe_output_path(relative_path: str) -> str | None:
+    if not relative_path or not relative_path.startswith("output/"):
+        return None
+    output_root = Path(_output_dir_absolute()).resolve()
+    rel = relative_path[len("output/"):]
+    candidate = (output_root / rel).resolve()
+    try:
+        candidate.relative_to(output_root)
+    except ValueError:
+        return None
+    return str(candidate)
+
+
+def _list_output_files(output_type: str, limit: int = 20) -> list[dict]:
+    subdirs = {"prediction": "", "backtest": "backtests", "research": "research"}
+    if output_type not in subdirs:
+        raise ValueError("Invalid output type")
+    base_dir = os.path.join(_output_dir_absolute(), subdirs[output_type]) if subdirs[output_type] else _output_dir_absolute()
+    if not os.path.isdir(base_dir):
+        return []
+    files = []
+    for name in os.listdir(base_dir):
+        if not name.endswith(".md"):
+            continue
+        full_path = os.path.join(base_dir, name)
+        if os.path.isfile(full_path):
+            files.append(
+                {
+                    "path": _relative_output_path(full_path),
+                    "label": name,
+                    "mtime": os.path.getmtime(full_path),
+                }
+            )
+    files.sort(key=lambda item: item["mtime"], reverse=True)
+    return files[:limit]
+
+
+def _read_output_content(relative_path: str) -> str:
+    safe_path = _safe_output_path(relative_path)
+    if not safe_path or not os.path.exists(safe_path):
+        return ""
+    with open(safe_path, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _extract_markdown_section(content: str, heading: str) -> str:
+    match = re.search(rf"## {re.escape(heading)}\n(.*?)(?:\n## |\Z)", content, re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _summarize_prediction_output(content: str) -> dict:
+    event = ""
+    top_picks = []
+    confidence = ""
+    value_angle = ""
+    for line in content.splitlines():
+        if line.startswith("# "):
+            event = line[2:].replace(" — Betting Card", "").strip()
+        if line.startswith("**AI Analysis:**"):
+            confidence = line.replace("**AI Analysis:**", "").strip()
+        if line.startswith("| **") and len(top_picks) < 3:
+            parts = [part.strip() for part in line.split("|") if part.strip()]
+            if len(parts) >= 5:
+                top_picks.append(f"{parts[0].replace('**', '')} {parts[1]} at {parts[2]} ({parts[3]} EV)")
+        if line.startswith("- **VALUE**") and not value_angle:
+            value_angle = re.sub(r"^- \*\*VALUE\*\*\s*", "", line).strip()
+    return {
+        "event": event or "Latest prediction",
+        "top_picks": top_picks,
+        "strongest_value_angle": value_angle or "No strong value angle surfaced.",
+        "confidence_note": confidence or "AI confidence unavailable.",
+    }
+
+
+def _summarize_backtest_output(content: str) -> dict:
+    candidate = re.search(r"We tested `([^`]+)` against the current baseline `([^`]+)`", content)
+    verdict = re.search(r"\*\*Verdict: ([^*]+)\.\*\*", content)
+    candidate_roi = re.search(r"- Candidate weighted ROI: ([^\n]+)", content)
+    baseline_roi = re.search(r"- Baseline weighted ROI: ([^\n]+)", content)
+    clv_delta = re.search(r"- CLV delta: ([^\n]+)", content)
+    guardrail = re.search(r"- Passed: ([^\n]+)", content)
+    recommendation = re.search(r"## Recommendation\n(.+)", content, re.DOTALL)
+    return {
+        "candidate_tested": candidate.group(1) if candidate else "Unknown candidate",
+        "baseline_name": candidate.group(2) if candidate else "Unknown baseline",
+        "verdict": verdict.group(1).strip() if verdict else "No verdict found",
+        "candidate_roi": candidate_roi.group(1).strip() if candidate_roi else "n/a",
+        "baseline_roi": baseline_roi.group(1).strip() if baseline_roi else "n/a",
+        "clv_delta": clv_delta.group(1).strip() if clv_delta else "n/a",
+        "guardrail_result": guardrail.group(1).strip() if guardrail else "n/a",
+        "recommended_next_action": recommendation.group(1).strip() if recommendation else "Review full backtest report.",
+    }
+
+
+def _summarize_research_output(content: str) -> dict:
+    title = re.search(r"# (?:Autoresearch Run: )?(.+)", content)
+    decision = re.search(r"- Decision: ([^\n]+)", content)
+    why = re.search(r"- Why: ([^\n]+)", content)
+    hypothesis_section = _extract_markdown_section(content, "Hypothesis")
+    roi_delta = re.search(r"- ROI Delta: ([^\n]+)", content)
+    return {
+        "candidate_title": title.group(1).strip() if title else "Latest research run",
+        "why_it_was_tested": hypothesis_section.splitlines()[0] if hypothesis_section else "See full report for the tested idea.",
+        "did_it_beat_champion": "yes" if decision and decision.group(1).strip() == "kept" else "no",
+        "decision": decision.group(1).strip() if decision else "unknown",
+        "why": why.group(1).strip() if why else (f"ROI delta: {roi_delta.group(1).strip()}" if roi_delta else "No plain-English reason stored."),
+    }
+
+
+def _summarize_output(output_type: str, content: str) -> dict:
+    if output_type == "prediction":
+        return _summarize_prediction_output(content)
+    if output_type == "backtest":
+        return _summarize_backtest_output(content)
+    if output_type == "research":
+        return _summarize_research_output(content)
+    return {}
+
+
+def _latest_output_summary(output_type: str) -> dict | None:
+    files = _list_output_files(output_type, limit=1)
+    if not files:
+        return None
+    path = files[0]["path"]
+    content = _read_output_content(path)
+    return {
+        "path": path,
+        "label": files[0]["label"],
+        "summary": _summarize_output(output_type, content),
+    }
+
+
+@app.get("/api/output/latest")
+async def get_latest_output_content(type: str = "backtest"):
+    """
+    Return the latest output file content by type.
+    type: 'prediction' | 'backtest' | 'research'
+    Safe: only serves files under output/.
+    """
+    allowed = {"prediction", "backtest", "research"}
+    if type not in allowed:
+        return {"error": f"type must be one of: {', '.join(sorted(allowed))}"}
+    subdirs = {"prediction": "", "backtest": "backtests", "research": "research"}
+    path = _latest_output_file(subdir=subdirs[type], suffix=".md")
+    if not path:
+        return {"path": None, "content": None, "not_found": True}
+    path_abs = os.path.abspath(path)
+    output_abs = _output_dir_absolute()
+    if not path_abs.startswith(output_abs):
+        return {"error": "Invalid path"}
+    try:
+        with open(path_abs, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        return {"path": path, "content": None, "error": str(e)}
+    # Return path relative to project root for display
+    rel_path = os.path.relpath(path_abs, os.path.dirname(__file__))
+    return {"path": rel_path, "content": content, "not_found": False}
+
+
+@app.get("/api/output/list")
+async def get_output_list(type: str = "prediction", limit: int = 20):
+    """List readable markdown artifacts by output type."""
+    try:
+        files = _list_output_files(type, limit=limit)
+    except ValueError:
+        return JSONResponse({"error": "Invalid output type"}, status_code=400)
+    return {"files": files}
+
+
+@app.get("/api/output/content")
+async def get_output_content(path: str):
+    """Return markdown content for one artifact under output/."""
+    safe_path = _safe_output_path(path)
+    if not safe_path:
+        return JSONResponse({"error": "Invalid output path"}, status_code=400)
+    if not os.path.exists(safe_path):
+        return JSONResponse({"error": "Output file not found"}, status_code=404)
+    with open(safe_path, "r", encoding="utf-8") as handle:
+        return {"path": path, "content": handle.read()}
+
+
+@app.get("/api/output/latest-summaries")
+async def get_latest_output_summaries():
+    """Return the latest human-readable summary for each major artifact type."""
+    return {
+        "prediction": _latest_output_summary("prediction"),
+        "backtest": _latest_output_summary("backtest"),
+        "research": _latest_output_summary("research"),
+    }
 
 
 # ── API Endpoints ───────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
+    return SIMPLE_HTML_PAGE
+
+
+@app.get("/legacy", response_class=HTMLResponse)
+async def legacy_home():
     return HTML_PAGE
 
 
@@ -62,6 +288,159 @@ async def list_tournaments():
     rows = conn.execute("SELECT * FROM tournaments ORDER BY id DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def _format_delta(candidate_value, baseline_value, unit=""):
+    delta = (candidate_value or 0) - (baseline_value or 0)
+    sign = "+" if delta > 0 else ""
+    return f"{sign}{delta:.2f}{unit}"
+
+
+def _decide_backtest_verdict(summary, baseline_summary, guardrails):
+    candidate_roi = summary.get("weighted_roi_pct", 0.0)
+    baseline_roi = baseline_summary.get("weighted_roi_pct", 0.0)
+    if not guardrails.get("passed", False):
+        return "needs review"
+    if candidate_roi > baseline_roi:
+        return "better than baseline"
+    if candidate_roi < baseline_roi:
+        return "worse than baseline"
+    return "roughly tied with baseline"
+
+
+def _write_simple_backtest_report(strategy, baseline_strategy, years, evaluation):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = (strategy.name or "backtest").replace(" ", "_").lower()
+    path = os.path.join(SIMPLE_OUTPUT_DIR, f"{safe_name}_{timestamp}.md")
+    summary = evaluation["summary_metrics"]
+    baseline_summary = evaluation["baseline_summary_metrics"]
+    guardrails = evaluation["guardrail_results"]
+    verdict = _decide_backtest_verdict(summary, baseline_summary, guardrails)
+    segment_lines = []
+    for segment, metrics in (evaluation.get("segmented_metrics") or {}).items():
+        segment_lines.append(
+            f"- {segment.title()}: ROI {metrics.get('weighted_roi_pct', 0):.2f}%, "
+            f"Events {metrics.get('events_evaluated', 0)}"
+        )
+    if not segment_lines:
+        segment_lines.append("- No segment breakdown available.")
+
+    reasons = guardrails.get("reasons") or []
+    recommendation = {
+        "better than baseline": "This candidate looks stronger than the current baseline and clears the basic guardrails.",
+        "worse than baseline": "Keep the current baseline. This test did not beat it.",
+        "roughly tied with baseline": "This looks too close to call. Keep the current baseline until a clearer edge appears.",
+        "needs review": "Do not treat this as a winner yet. The guardrails found risks that need review first.",
+    }[verdict]
+
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(
+            f"# Backtest Evaluation: {strategy.name}\n\n"
+            f"## What We Tested\n"
+            f"We tested `{strategy.name}` against the current baseline `{baseline_strategy.name}` on years {years}.\n\n"
+            f"Candidate settings:\n"
+            f"- Minimum EV: {strategy.min_ev}\n"
+            f"- Stat window: {strategy.stat_window}\n"
+            f"- Kelly fraction: {strategy.kelly_fraction}\n\n"
+            f"## Synthetic Odds Warning\n"
+            f"This report uses synthetic DataGolf-derived historical odds instead of true sportsbook tape. "
+            f"Use ROI as research evidence, not as guaranteed real-world profit proof.\n\n"
+            f"## Is It Better Than The Baseline?\n"
+            f"**Verdict: {verdict}.**\n\n"
+            f"- Candidate weighted ROI: {summary.get('weighted_roi_pct', 0):.2f}%\n"
+            f"- Baseline weighted ROI: {baseline_summary.get('weighted_roi_pct', 0):.2f}%\n"
+            f"- ROI delta: {_format_delta(summary.get('weighted_roi_pct', 0), baseline_summary.get('weighted_roi_pct', 0), '%')}\n"
+            f"- Candidate weighted CLV: {summary.get('weighted_clv_avg', 0):.4f}\n"
+            f"- Baseline weighted CLV: {baseline_summary.get('weighted_clv_avg', 0):.4f}\n"
+            f"- CLV delta: {_format_delta(summary.get('weighted_clv_avg', 0), baseline_summary.get('weighted_clv_avg', 0))}\n"
+            f"- Candidate calibration error: {summary.get('weighted_calibration_error', 0):.4f}\n"
+            f"- Baseline calibration error: {baseline_summary.get('weighted_calibration_error', 0):.4f}\n"
+            f"- Drawdown: {summary.get('max_drawdown_pct', 0):.2f}% vs baseline {baseline_summary.get('max_drawdown_pct', 0):.2f}%\n"
+            f"- Events evaluated: {summary.get('events_evaluated', 0)}\n"
+            f"- Total bets: {summary.get('total_bets', 0)}\n\n"
+            f"## Guardrails\n"
+            f"- Passed: {guardrails.get('passed', False)}\n"
+            f"- Engine verdict: {guardrails.get('verdict', 'unknown')}\n"
+            f"- Reasons: {', '.join(reasons) if reasons else 'none'}\n\n"
+            f"## Segment Highlights\n"
+            f"{chr(10).join(segment_lines)}\n\n"
+            f"## Recommendation\n"
+            f"{recommendation}\n"
+        )
+    return {"path": path, "verdict": verdict}
+
+
+@app.post("/api/simple/upcoming-prediction")
+async def run_upcoming_prediction(request: Request):
+    """Run the normal upcoming-event prediction flow with simple JSON input."""
+    payload = await request.json()
+
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.model_registry import get_live_weekly_model
+    from src.services.golf_model_service import GolfModelService
+
+    live_strategy = get_live_weekly_model("global")
+    service = GolfModelService(
+        tour=payload.get("tour", "pga"),
+        strategy_config={
+            key: value for key, value in vars(live_strategy).items() if not key.startswith("_")
+        },
+    )
+    result = service.run_analysis(
+        tournament_name=payload.get("tournament"),
+        course_name=payload.get("course"),
+        enable_ai=payload.get("enable_ai", True),
+        enable_backfill=payload.get("enable_backfill", True),
+    )
+    if not result.get("output_file") and result.get("card_filepath"):
+        result["output_file"] = result["card_filepath"]
+    result["model_lane"] = "live_weekly_model"
+    result["live_model_name"] = live_strategy.name
+    return result
+
+
+@app.post("/api/simple/backtest")
+async def run_simple_backtest(request: Request):
+    """Run a readable backtest report against the active baseline."""
+    payload = await request.json()
+
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.strategy import StrategyConfig
+    from backtester.weighted_walkforward import evaluate_weighted_walkforward
+
+    strategy = StrategyConfig(name=payload.get("name") or "ui_backtest")
+    if payload.get("min_ev") is not None:
+        strategy.min_ev = float(payload["min_ev"])
+    if payload.get("window") is not None:
+        strategy.stat_window = int(payload["window"])
+
+    years = payload.get("years") or [2024, 2025]
+    baseline_strategy = get_research_champion("global") or get_live_weekly_model("global") or StrategyConfig(name="current_baseline")
+    evaluation = evaluate_weighted_walkforward(
+        strategy=strategy,
+        baseline_strategy=baseline_strategy,
+        years=years,
+    )
+    report = _write_simple_backtest_report(strategy, baseline_strategy, years, evaluation)
+    summary = evaluation["summary_metrics"]
+
+    return {
+        "status": "complete",
+        "report_path": report["path"],
+        "events_simulated": summary.get("events_evaluated", 0),
+        "total_bets": summary.get("total_bets", 0),
+        "roi_pct": summary.get("weighted_roi_pct", 0.0),
+        "clv_avg": summary.get("weighted_clv_avg", 0.0),
+        "calibration_error": summary.get("weighted_calibration_error", 0.0),
+        "max_drawdown_pct": summary.get("max_drawdown_pct", 0.0),
+        "verdict": report["verdict"],
+        "baseline_strategy": baseline_strategy.name,
+    }
 
 
 @app.post("/api/analyze")
@@ -210,6 +589,338 @@ async def get_card():
     if not _last_analysis:
         return {"error": "No analysis run yet. Upload CSVs first."}
     return _last_analysis
+
+
+@app.get("/api/dashboard/state")
+async def get_dashboard_state(scope: str = "global"):
+    """Return actionable dashboard state for the simple UI."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.model_registry import (
+        get_live_weekly_model,
+        get_live_weekly_model_record,
+        get_research_champion,
+        get_research_champion_record,
+    )
+    from backtester.optimizer_runtime import get_optimizer_status
+    from src.ai_brain import get_ai_status
+    from src.datagolf import get_datagolf_throttle_status
+
+    return {
+        "ai_status": get_ai_status(),
+        "effective_live_weekly_model": get_live_weekly_model(scope).__dict__,
+        "effective_research_champion": get_research_champion(scope).__dict__,
+        "live_weekly_model_record": get_live_weekly_model_record(scope),
+        "research_champion_record": get_research_champion_record(scope),
+        "latest_outputs": {
+            "prediction_markdown_path": _latest_output_file(subdir="", suffix=".md"),
+            "backtest_markdown_path": _latest_output_file(subdir="backtests", suffix=".md"),
+            "research_markdown_path": _latest_output_file(subdir="research", suffix=".md"),
+        },
+        "optimizer": get_optimizer_status(),
+        "autoresearch": {
+            "running": get_optimizer_status().get("running", False),
+            "run_count": get_optimizer_status().get("run_count", 0),
+            "last_started_at": get_optimizer_status().get("last_run_started_at"),
+            "last_finished_at": get_optimizer_status().get("last_run_finished_at"),
+            "last_result": get_optimizer_status().get("last_result"),
+            "last_error": get_optimizer_status().get("last_error"),
+            "scope": get_optimizer_status().get("scope", scope),
+        },
+        "datagolf": get_datagolf_throttle_status(),
+    }
+
+
+@app.get("/api/research/proposals")
+async def list_research_proposals(status: str | None = None, limit: int = 100):
+    """List research proposals for lightweight review."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import list_proposals
+
+    return list_proposals(status=status, limit=limit)
+
+
+@app.get("/api/research/proposals/{proposal_id}")
+async def get_research_proposal(proposal_id: int):
+    """Return one research proposal."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import get_proposal
+
+    return get_proposal(proposal_id)
+
+
+@app.post("/api/research/run")
+async def run_research_cycle_api(request: Request):
+    """Run one bounded manual research cycle."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.research_cycle import run_research_cycle
+
+    payload = await request.json()
+    return run_research_cycle(
+        max_candidates=payload.get("max_candidates", 5),
+        years=payload.get("years"),
+        scope=payload.get("scope", "global"),
+        source="manual",
+    )
+
+
+@app.post("/api/research/proposals/{proposal_id}/approve")
+async def approve_research_proposal(proposal_id: int, request: Request):
+    """Approve a proposal without promoting it."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import approve_proposal
+
+    payload = await request.json()
+    approve_proposal(
+        proposal_id,
+        reviewer=payload.get("reviewer", "manual"),
+        notes=payload.get("notes"),
+    )
+    return {"ok": True, "proposal_id": proposal_id, "status": "approved"}
+
+
+@app.post("/api/research/proposals/{proposal_id}/reject")
+async def reject_research_proposal(proposal_id: int, request: Request):
+    """Reject a proposal without deleting it."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import reject_proposal
+
+    payload = await request.json()
+    reject_proposal(
+        proposal_id,
+        reviewer=payload.get("reviewer", "manual"),
+        notes=payload.get("notes"),
+    )
+    return {"ok": True, "proposal_id": proposal_id, "status": "rejected"}
+
+
+@app.post("/api/research/proposals/{proposal_id}/convert")
+async def convert_research_proposal(proposal_id: int):
+    """Convert an approved proposal into an experiment."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.proposals import convert_proposal_to_experiment
+
+    experiment_id = convert_proposal_to_experiment(proposal_id)
+    return {"ok": True, "proposal_id": proposal_id, "experiment_id": experiment_id}
+
+
+@app.get("/api/model-registry")
+async def get_model_registry():
+    """Return the current research champion and live weekly model."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
+
+    return {
+        "live_weekly_model": get_live_weekly_model_record("global"),
+        "research_champion": get_research_champion_record("global"),
+    }
+
+
+@app.post("/api/model-registry/promote-research-to-live")
+async def promote_research_to_live(request: Request):
+    """Manually promote the current research champion into the live lane."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.model_registry import promote_research_champion_to_live
+
+    payload = await request.json()
+    promoted = promote_research_champion_to_live(
+        scope=payload.get("scope", "global"),
+        promoted_by=payload.get("reviewer", "manual"),
+        notes=payload.get("notes"),
+    )
+    return {"ok": True, "live_weekly_model": promoted["strategy"].__dict__}
+
+
+@app.post("/api/model-registry/rollback-live")
+async def rollback_live_model(request: Request):
+    """Manually roll back the live weekly model to the previous one."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.model_registry import rollback_live_weekly_model
+
+    payload = await request.json()
+    rolled_back = rollback_live_weekly_model(
+        scope=payload.get("scope", "global"),
+        promoted_by=payload.get("reviewer", "manual"),
+        notes=payload.get("notes"),
+    )
+    return {"ok": True, "live_weekly_model": rolled_back["strategy"].__dict__}
+
+
+@app.get("/api/optimizer/status")
+async def get_optimizer_runtime_status():
+    """Return continuous optimizer status plus DataGolf throttle health."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.optimizer_runtime import get_optimizer_status
+    from src.datagolf import get_datagolf_throttle_status
+
+    return {
+        "optimizer": get_optimizer_status(),
+        "datagolf": get_datagolf_throttle_status(),
+    }
+
+
+@app.post("/api/optimizer/start")
+async def start_optimizer_runtime(request: Request):
+    """Start the continuous optimizer loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.optimizer_runtime import start_continuous_optimizer
+
+    payload = await request.json()
+    status = start_continuous_optimizer(
+        scope=payload.get("scope", "global"),
+        interval_seconds=float(payload.get("interval_seconds", 300)),
+        max_candidates=int(payload.get("max_candidates", 3)),
+        years=payload.get("years"),
+    )
+    return {"ok": True, "optimizer": status}
+
+
+@app.post("/api/optimizer/stop")
+async def stop_optimizer_runtime():
+    """Stop the continuous optimizer loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.optimizer_runtime import stop_continuous_optimizer
+
+    status = stop_continuous_optimizer()
+    return {"ok": True, "optimizer": status}
+
+
+@app.get("/api/autoresearch/status")
+async def get_autoresearch_status():
+    """Return autoresearch runtime status using the existing optimizer runtime."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.optimizer_runtime import get_optimizer_status
+
+    status = get_optimizer_status()
+    return {
+        "status": {
+            "running": status.get("running", False),
+            "run_count": status.get("run_count", 0),
+            "last_started_at": status.get("last_run_started_at"),
+            "last_finished_at": status.get("last_run_finished_at"),
+            "last_result": status.get("last_result"),
+            "last_error": status.get("last_error"),
+            "scope": status.get("scope", "global"),
+            "interval_seconds": status.get("interval_seconds"),
+        }
+    }
+
+
+@app.post("/api/autoresearch/start")
+async def start_autoresearch_runtime(request: Request):
+    """Start the looping autoresearch runtime."""
+    return await start_optimizer_runtime(request)
+
+
+@app.post("/api/autoresearch/stop")
+async def stop_autoresearch_runtime():
+    """Stop the looping autoresearch runtime."""
+    result = await stop_optimizer_runtime()
+    optimizer = result.get("optimizer", {})
+    return {"status": {
+        "running": optimizer.get("running", False),
+        "run_count": optimizer.get("run_count", 0),
+        "last_error": optimizer.get("last_error"),
+    }}
+
+
+@app.post("/api/autoresearch/run-once")
+async def run_autoresearch_once(request: Request):
+    """Run one bounded autoresearch cycle."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.research_cycle import run_research_cycle
+
+    payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    result = run_research_cycle(
+        years=payload.get("years"),
+        max_candidates=int(payload.get("max_candidates", 1)),
+        scope=payload.get("scope", "global"),
+        source="manual_autoresearch",
+    )
+    return result
+
+
+@app.get("/api/autoresearch/runs")
+async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
+    """Return recent evaluated research proposals shaped for dashboard review."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, name, hypothesis, source, scope, status, years_json,
+               summary_metrics_json, guardrail_results_json, artifact_markdown_path,
+               created_at, evaluated_at
+        FROM research_proposals
+        WHERE scope = ?
+          AND status IN ('evaluated', 'approved', 'rejected', 'converted')
+        ORDER BY COALESCE(evaluated_at, created_at) DESC, id DESC
+        LIMIT ?
+        """,
+        (scope, limit),
+    ).fetchall()
+    conn.close()
+
+    runs = []
+    for row in rows:
+        summary_metrics = json.loads(row["summary_metrics_json"] or "{}")
+        guardrails = json.loads(row["guardrail_results_json"] or "{}")
+        status = row["status"]
+        kept = status in {"approved", "converted"}
+        runs.append(
+            {
+                "id": row["id"],
+                "scope": row["scope"],
+                "candidate_name": row["name"],
+                "baseline_name": "current champion",
+                "hypothesis": row["hypothesis"],
+                "source_type": row["source"],
+                "decision": "kept" if kept else "discarded",
+                "kept": kept,
+                "benchmark_years": json.loads(row["years_json"] or "[]"),
+                "benchmark_label": f"Fixed PIT benchmark ({', '.join(str(y) for y in json.loads(row['years_json'] or '[]'))})" if row["years_json"] else "Fixed PIT benchmark",
+                "roi_delta": None,
+                "clv_delta": None,
+                "guardrail_verdict": guardrails.get("verdict"),
+                "summary_reason": guardrails.get("summary") or ("Approved for follow-up" if kept else "Not promoted from this run."),
+                "artifact_markdown_path": row["artifact_markdown_path"],
+                "summary_metrics": summary_metrics,
+                "baseline_summary_metrics": {},
+                "guardrail_results": guardrails,
+                "created_at": row["evaluated_at"] or row["created_at"],
+            }
+        )
+    return {"runs": runs}
 
 
 @app.post("/api/results")
@@ -758,11 +1469,17 @@ async def run_experiment_endpoint(exp_id: int):
 
 @app.get("/api/active-strategy")
 async def get_active_strategy():
-    """Get the current active strategy."""
+    """Get the current live weekly model and research champion."""
     try:
-        from backtester.experiments import get_active_strategy
-        strategy = get_active_strategy("global")
-        return {"strategy": strategy.__dict__}
+        from backtester.model_registry import get_live_weekly_model, get_research_champion
+
+        live_strategy = get_live_weekly_model("global")
+        research_strategy = get_research_champion("global")
+        return {
+            "strategy": live_strategy.__dict__,
+            "live_weekly_model": live_strategy.__dict__,
+            "research_champion": research_strategy.__dict__,
+        }
     except Exception as e:
         return {"strategy": None, "error": str(e)}
 
@@ -804,6 +1521,439 @@ async def list_outlier_investigations():
 
 
 # ── HTML Page (everything in one file) ──────────────────────────────
+
+SIMPLE_HTML_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golf Model Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; }
+.hero { margin-bottom: 20px; }
+.hero h1 { font-size: 1.7rem; margin: 0 0 6px; color: #f8fafc; }
+.small { color: #94a3b8; font-size: 0.92rem; }
+.grid { display: grid; gap: 16px; }
+.card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 18px; }
+.card h2 { font-size: 1.05rem; margin: 0 0 10px; color: #f8fafc; }
+.pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pill { background: #334155; padding: 6px 10px; border-radius: 999px; font-size: 0.85rem; color: #e2e8f0; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.summary-card { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; }
+.summary-card h3 { margin: 0 0 8px; font-size: 0.95rem; color: #f8fafc; }
+.summary-card p, .summary-card li { font-size: 0.9rem; color: #cbd5e1; margin: 6px 0; }
+.summary-card ul { margin: 8px 0 0 18px; padding: 0; }
+.action-row { display: flex; flex-wrap: wrap; gap: 10px; }
+button { padding: 10px 14px; border: 0; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-weight: 500; }
+button:hover { background: #1d4ed8; }
+button.secondary { background: #475569; }
+button.secondary:hover { background: #64748b; }
+button.danger { background: #b91c1c; }
+button.danger:hover { background: #991b1b; }
+label { display: block; margin: 10px 0 4px; color: #94a3b8; font-size: 0.9rem; }
+input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f1f5f9; box-sizing: border-box; }
+.result { margin-top: 12px; padding: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; white-space: pre-wrap; font-size: 0.9rem; }
+.status { padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; }
+.status.info { background: #1e3a5f; color: #93c5fd; }
+.status.success { background: #14532d; color: #86efac; }
+.status.error { background: #450a0a; color: #fca5a5; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th, td { padding: 10px 8px; border-bottom: 1px solid #334155; text-align: left; vertical-align: top; }
+th { color: #94a3b8; font-weight: 500; }
+.viewer-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 12px; }
+.viewer-toolbar > div { min-width: 220px; flex: 1; }
+.output-viewer { min-height: 220px; padding: 16px; background: #0f172a; border-radius: 10px; border: 1px solid #334155; }
+.output-viewer h1, .output-viewer h2, .output-viewer h3 { color: #f8fafc; }
+.output-viewer p, .output-viewer li { color: #cbd5e1; }
+.subtle { color: #94a3b8; font-size: 0.85rem; }
+.run-link { color: #93c5fd; cursor: pointer; text-decoration: underline; }
+details summary { cursor: pointer; color: #f8fafc; font-weight: 600; }
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+a { color: #93c5fd; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>Golf Model Operating Console</h1>
+    <p class="small">The main dashboard now focuses on what matters first: current state, latest results, recent autoresearch runs, and the core actions. <a href="/legacy">Open legacy dashboard</a></p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Now</h2>
+      <div class="pill-row" id="nowPills"></div>
+      <div class="summary-grid" id="nowCards"></div>
+      <div id="nowError" style="margin-top:12px;"></div>
+      <p class="subtle" style="margin-top:12px;">Autoresearch is the runtime concept here. It uses the existing optimizer loop under the hood, but this page no longer labels it as the optimizer.</p>
+    </div>
+
+    <div class="card">
+      <h2>Latest Results</h2>
+      <div class="summary-grid" id="latestResults"></div>
+    </div>
+
+    <div class="card">
+      <h2>Recent Runs</h2>
+      <div id="recentRuns"></div>
+    </div>
+
+    <div class="card">
+      <h2>Actions</h2>
+      <label for="reviewNote">Review note (optional)</label>
+      <input id="reviewNote" placeholder="Why you promoted or rolled back" />
+      <div class="two-col">
+        <div>
+          <label for="autoresearchYears">Benchmark years</label>
+          <input id="autoresearchYears" value="2024,2025" />
+        </div>
+        <div>
+          <label for="autoresearchInterval">Loop interval seconds</label>
+          <input id="autoresearchInterval" value="300" />
+        </div>
+      </div>
+      <div class="action-row" style="margin-top:12px;">
+        <button onclick="runAutoresearchOnce()">Run Once</button>
+        <button onclick="startAutoresearchLoop()">Start Loop</button>
+        <button class="secondary" onclick="stopAutoresearchLoop()">Stop Loop</button>
+        <button class="secondary" onclick="promoteResearchChampionToLive()">Promote Research Champion</button>
+        <button class="danger" onclick="rollbackLiveModel()">Rollback Live</button>
+      </div>
+      <div id="actionResult" class="result">No action run yet.</div>
+    </div>
+
+    <div class="card">
+      <h2>Readable Outputs</h2>
+      <div class="viewer-toolbar">
+        <div>
+          <label for="outputTypeSelect">Type</label>
+          <select id="outputTypeSelect" onchange="handleOutputTypeChange()">
+            <option value="prediction">Prediction</option>
+            <option value="backtest" selected>Backtest</option>
+            <option value="research">Research</option>
+          </select>
+        </div>
+        <div>
+          <label for="outputFileSelect">Report</label>
+          <select id="outputFileSelect" onchange="loadOutputArtifact(document.getElementById('outputTypeSelect').value, this.value)"></select>
+        </div>
+      </div>
+      <div id="outputViewerPath" class="subtle" style="margin-bottom:10px;"></div>
+      <div id="outputViewer" class="output-viewer"><div class="status info">Loading report…</div></div>
+    </div>
+
+    <details class="card">
+      <summary>Advanced Tools</summary>
+      <p class="small" style="margin-top:12px;">These are still available, but they are lower priority than the main operating flow above.</p>
+
+      <div class="card" style="margin-top:14px;">
+        <h2>Run Upcoming Event Prediction</h2>
+        <p class="small">Uses: DataGolf + local model. OpenAI can add AI-style reasoning when prediction analysis is enabled.</p>
+        <label for="predTour">Tour</label>
+        <input id="predTour" value="pga" />
+        <label for="predTournament">Tournament</label>
+        <input id="predTournament" placeholder="Leave blank to auto-detect current event" />
+        <label for="predCourse">Course</label>
+        <input id="predCourse" placeholder="Optional" />
+        <button onclick="runUpcomingPrediction()">Run Upcoming Event Prediction</button>
+        <div id="predResult" class="result">No prediction run yet.</div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h2>Run Backtest</h2>
+        <p class="small">Uses: local backtest math + plain-English reporting. This compares your candidate settings against the current baseline and writes a markdown verdict.</p>
+        <label for="btName">Backtest Name</label>
+        <input id="btName" value="dashboard_backtest" />
+        <label for="btYears">Years</label>
+        <input id="btYears" value="2024,2025" />
+        <label for="btMinEv">Minimum EV</label>
+        <input id="btMinEv" value="0.05" />
+        <label for="btWindow">Stat Window</label>
+        <input id="btWindow" value="24" />
+        <button onclick="runBacktest()">Run Backtest</button>
+        <div id="backtestResult" class="result">No backtest run yet.</div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h2>Run Research Cycle</h2>
+        <p class="small">Uses: OpenAI theory generation + DataGolf-backed evaluation + local ranking logic.</p>
+        <label for="researchYears">Years</label>
+        <input id="researchYears" value="2024,2025" />
+        <label for="researchMaxCandidates">Max Candidates</label>
+        <input id="researchMaxCandidates" value="1" />
+        <button onclick="runResearchCycle()">Run Research Cycle</button>
+        <div id="researchResult" class="result">No research cycle run yet.</div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+function parseYears(raw) {
+  return String(raw || '').split(',').map(v => parseInt(v.trim(), 10)).filter(v => !Number.isNaN(v));
+}
+
+function formatTime(value) {
+  if (!value) return 'Not yet';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function renderSummaryCard(title, summaryPayload, type) {
+  if (!summaryPayload || !summaryPayload.summary) {
+    return '<div class="summary-card"><h3>'+title+'</h3><p>No recent '+type+' report yet.</p></div>';
+  }
+  const s = summaryPayload.summary;
+  if (type === 'prediction') {
+    return '<div class="summary-card"><h3>'+title+'</h3><p><strong>Event:</strong> '+(s.event || 'Unknown event')+'</p><p><strong>Confidence:</strong> '+(s.confidence_note || 'n/a')+'</p><p><strong>Best angle:</strong> '+(s.strongest_value_angle || 'n/a')+'</p><ul>'+((s.top_picks || []).slice(0, 3).map(item => '<li>'+item+'</li>').join('') || '<li>No headline picks found.</li>')+'</ul></div>';
+  }
+  if (type === 'backtest') {
+    return '<div class="summary-card"><h3>'+title+'</h3><p><strong>Candidate:</strong> '+(s.candidate_tested || 'n/a')+'</p><p><strong>Verdict:</strong> '+(s.verdict || 'n/a')+'</p><p><strong>ROI:</strong> '+(s.candidate_roi || 'n/a')+' vs '+(s.baseline_roi || 'n/a')+'</p><p><strong>CLV delta:</strong> '+(s.clv_delta || 'n/a')+'</p><p><strong>Guardrails:</strong> '+(s.guardrail_result || 'n/a')+'</p><p><strong>Next action:</strong> '+(s.recommended_next_action || 'n/a')+'</p></div>';
+  }
+  return '<div class="summary-card"><h3>'+title+'</h3><p><strong>Candidate:</strong> '+(s.candidate_title || 'n/a')+'</p><p><strong>Idea:</strong> '+(s.why_it_was_tested || 'n/a')+'</p><p><strong>Beat champion:</strong> '+(s.did_it_beat_champion || 'n/a')+'</p><p><strong>Decision:</strong> '+(s.decision || 'n/a')+'</p><p><strong>Why:</strong> '+(s.why || 'n/a')+'</p></div>';
+}
+
+async function loadOutputArtifact(type, path) {
+  const viewer = document.getElementById('outputViewer');
+  const label = document.getElementById('outputViewerPath');
+  if (!path) {
+    viewer.innerHTML = '<div class="status info">No report selected.</div>';
+    label.textContent = '';
+    return;
+  }
+  viewer.innerHTML = '<div class="status info">Loading report…</div>';
+  try {
+    const resp = await fetch('/api/output/content?path=' + encodeURIComponent(path));
+    const data = await resp.json();
+    if (data.error) {
+      viewer.innerHTML = '<div class="status error">' + data.error + '</div>';
+      return;
+    }
+    label.textContent = data.path;
+    viewer.innerHTML = (window.marked && window.marked.parse) ? marked.parse(data.content || '') : (data.content || '');
+  } catch (err) {
+    viewer.innerHTML = '<div class="status error">Error: ' + err.message + '</div>';
+  }
+}
+
+function handleOutputTypeChange() {
+  const type = document.getElementById('outputTypeSelect').value;
+  const fileSelect = document.getElementById('outputFileSelect');
+  const options = window.dashboardOutputFiles[type] || [];
+  fileSelect.innerHTML = options.length
+    ? options.map(f => '<option value="' + f.path + '">' + f.label + '</option>').join('')
+    : '<option value="">No reports available</option>';
+  loadOutputArtifact(type, fileSelect.value);
+}
+
+function viewResearchReport(path) {
+  const typeSelect = document.getElementById('outputTypeSelect');
+  const fileSelect = document.getElementById('outputFileSelect');
+  typeSelect.value = 'research';
+  handleOutputTypeChange();
+  if (path) {
+    fileSelect.value = path;
+    loadOutputArtifact('research', path);
+  }
+}
+
+async function loadConsole() {
+  const actionEl = document.getElementById('actionResult');
+  try {
+    const [stateResp, runsResp, summaryResp, predictionResp, backtestResp, researchResp] = await Promise.all([
+      fetch('/api/dashboard/state'),
+      fetch('/api/autoresearch/runs?limit=12'),
+      fetch('/api/output/latest-summaries'),
+      fetch('/api/output/list?type=prediction&limit=20'),
+      fetch('/api/output/list?type=backtest&limit=20'),
+      fetch('/api/output/list?type=research&limit=20')
+    ]);
+    const state = await stateResp.json();
+    const runsPayload = await runsResp.json();
+    const latestSummaries = await summaryResp.json();
+    const predictionFiles = await predictionResp.json();
+    const backtestFiles = await backtestResp.json();
+    const researchFiles = await researchResp.json();
+    window.dashboardOutputFiles = {
+      prediction: predictionFiles.files || [],
+      backtest: backtestFiles.files || [],
+      research: researchFiles.files || []
+    };
+    renderConsole(state, runsPayload.runs || [], latestSummaries);
+    handleOutputTypeChange();
+    actionEl.textContent = 'Dashboard refreshed.';
+  } catch (err) {
+    actionEl.textContent = 'Error loading dashboard: ' + err.message;
+  }
+}
+
+function renderConsole(state, runs, latestSummaries) {
+  const live = state.effective_live_weekly_model || {};
+  const research = state.effective_research_champion || {};
+  const autoresearch = state.autoresearch || {};
+  const latestRun = autoresearch.last_result || runs[0] || null;
+
+  document.getElementById('nowPills').innerHTML =
+    '<span class="pill">Live model: ' + (live.name || 'none') + '</span>' +
+    '<span class="pill">Research champion: ' + (research.name || 'none') + '</span>' +
+    '<span class="pill">Autoresearch: ' + (autoresearch.running ? 'running' : 'stopped') + '</span>' +
+    '<span class="pill">Run count: ' + (autoresearch.run_count ?? 0) + '</span>';
+
+  document.getElementById('nowCards').innerHTML =
+    '<div class="summary-card"><h3>Live lane</h3><p><strong>Name:</strong> ' + (live.name || 'none') + '</p><p><strong>Min EV:</strong> ' + (live.min_ev ?? 'n/a') + '</p><p><strong>Window:</strong> ' + (live.stat_window ?? 'n/a') + '</p></div>' +
+    '<div class="summary-card"><h3>Research lane</h3><p><strong>Name:</strong> ' + (research.name || 'none') + '</p><p><strong>Min EV:</strong> ' + (research.min_ev ?? 'n/a') + '</p><p><strong>Window:</strong> ' + (research.stat_window ?? 'n/a') + '</p></div>' +
+    '<div class="summary-card"><h3>Autoresearch status</h3><p><strong>State:</strong> ' + (autoresearch.running ? 'Running now' : 'Stopped') + '</p><p><strong>Last started:</strong> ' + formatTime(autoresearch.last_started_at) + '</p><p><strong>Last finished:</strong> ' + formatTime(autoresearch.last_finished_at) + '</p></div>' +
+    '<div class="summary-card"><h3>Last run result</h3><p><strong>Decision:</strong> ' + (latestRun ? latestRun.decision : 'No runs yet') + '</p><p><strong>Candidate:</strong> ' + (latestRun ? latestRun.candidate_name : 'n/a') + '</p><p><strong>Why:</strong> ' + (latestRun && latestRun.summary_reason ? latestRun.summary_reason : 'No plain-English summary yet.') + '</p></div>';
+
+  document.getElementById('nowError').innerHTML = autoresearch.last_error ? '<div class="status error">Last error: ' + autoresearch.last_error + '</div>' : '';
+
+  document.getElementById('latestResults').innerHTML =
+    renderSummaryCard('Latest prediction', latestSummaries.prediction, 'prediction') +
+    renderSummaryCard('Latest backtest', latestSummaries.backtest, 'backtest') +
+    renderSummaryCard('Latest research', latestSummaries.research, 'research');
+
+  if (!runs.length) {
+    document.getElementById('recentRuns').innerHTML = '<div class="status info">No autoresearch runs yet. Start with Run Once.</div>';
+    return;
+  }
+
+  let html = '<table><tr><th>When</th><th>Candidate</th><th>Decision</th><th>ROI</th><th>Guardrails</th><th>Why</th><th>Report</th></tr>';
+  for (const run of runs) {
+    const report = run.artifact_markdown_path ? '<span class="run-link" onclick="viewResearchReport(\\'' + String(run.artifact_markdown_path).replace(/\\/g, '/').replace(/'/g, "\\\\'") + '\\')">View report</span>' : '—';
+    const roi = run.summary_metrics && run.summary_metrics.weighted_roi_pct != null ? run.summary_metrics.weighted_roi_pct + '%' : '—';
+    html += '<tr><td>' + (run.created_at || '—') + '</td><td><strong>' + (run.candidate_name || 'unknown') + '</strong><div class="subtle">' + (run.hypothesis || '') + '</div></td><td>' + (run.decision || 'unknown') + '</td><td>' + roi + '</td><td>' + (run.guardrail_verdict || 'n/a') + '</td><td>' + (run.summary_reason || 'No reason saved') + '</td><td>' + report + '</td></tr>';
+  }
+  html += '</table>';
+  document.getElementById('recentRuns').innerHTML = html;
+}
+
+async function runJsonAction(url, payload, successMessage) {
+  const el = document.getElementById('actionResult');
+  el.textContent = 'Working...';
+  try {
+    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}) });
+    const data = await resp.json();
+    if (data.error) {
+      el.textContent = 'Error: ' + data.error;
+      return;
+    }
+    el.textContent = successMessage;
+    await loadConsole();
+  } catch (err) {
+    el.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function runAutoresearchOnce() {
+  await runJsonAction('/api/autoresearch/run-once', {
+    scope: 'global',
+    years: parseYears(document.getElementById('autoresearchYears').value || '2024,2025'),
+    max_candidates: 1
+  }, 'Autoresearch run complete.');
+}
+
+async function startAutoresearchLoop() {
+  await runJsonAction('/api/autoresearch/start', {
+    scope: 'global',
+    years: parseYears(document.getElementById('autoresearchYears').value || '2024,2025'),
+    interval_seconds: parseFloat(document.getElementById('autoresearchInterval').value || '300'),
+    max_candidates: 1
+  }, 'Autoresearch loop started.');
+}
+
+async function stopAutoresearchLoop() {
+  await runJsonAction('/api/autoresearch/stop', {}, 'Autoresearch loop stopped.');
+}
+
+async function promoteResearchChampionToLive() {
+  await runJsonAction('/api/model-registry/promote-research-to-live', {
+    scope: 'global',
+    reviewer: 'dashboard',
+    notes: document.getElementById('reviewNote').value || null
+  }, 'Research champion promoted to live.');
+}
+
+async function rollbackLiveModel() {
+  await runJsonAction('/api/model-registry/rollback-live', {
+    scope: 'global',
+    reviewer: 'dashboard',
+    notes: document.getElementById('reviewNote').value || null
+  }, 'Live model rolled back.');
+}
+
+async function runUpcomingPrediction() {
+  const resultEl = document.getElementById('predResult');
+  resultEl.textContent = 'Running prediction...';
+  try {
+    const resp = await fetch('/api/simple/upcoming-prediction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tour: document.getElementById('predTour').value || 'pga',
+        tournament: document.getElementById('predTournament').value || null,
+        course: document.getElementById('predCourse').value || null
+      })
+    });
+    const data = await resp.json();
+    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Status: ' + (data.status || 'unknown') + '\\nEvent: ' + (data.event_name || 'Auto-detected') + '\\nField size: ' + (data.field_size ?? 'n/a') + '\\nOutput: ' + (data.output_file || data.card_filepath || 'n/a'));
+    await loadConsole();
+  } catch (err) {
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function runBacktest() {
+  const resultEl = document.getElementById('backtestResult');
+  resultEl.textContent = 'Running backtest...';
+  try {
+    const resp = await fetch('/api/simple/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('btName').value || 'dashboard_backtest',
+        years: parseYears(document.getElementById('btYears').value || '2024,2025'),
+        min_ev: parseFloat(document.getElementById('btMinEv').value || '0.05'),
+        window: parseInt(document.getElementById('btWindow').value || '24', 10)
+      })
+    });
+    const data = await resp.json();
+    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Status: ' + data.status + '\\nVerdict: ' + (data.verdict || 'n/a') + '\\nBaseline: ' + (data.baseline_strategy || 'unknown') + '\\nROI: ' + data.roi_pct + '%\\nReport: ' + data.report_path);
+    await loadConsole();
+  } catch (err) {
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function runResearchCycle() {
+  const resultEl = document.getElementById('researchResult');
+  resultEl.textContent = 'Running research cycle...';
+  try {
+    const resp = await fetch('/api/research/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        years: parseYears(document.getElementById('researchYears').value || '2024,2025'),
+        max_candidates: parseInt(document.getElementById('researchMaxCandidates').value || '1', 10),
+        scope: 'global'
+      })
+    });
+    const data = await resp.json();
+    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Cycle key: ' + data.cycle_key + '\\nProposals created: ' + data.proposals_created + '\\nProposals evaluated: ' + data.proposals_evaluated + '\\nResearch champion updated: ' + (data.research_champion_updated ? 'yes' : 'no'));
+    await loadConsole();
+  } catch (err) {
+    resultEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadConsole();
+});
+</script>
+</body>
+</html>
+"""
 
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="en">

@@ -11,14 +11,85 @@ Handles all interactions with the Data Golf API:
 Requires DATAGOLF_API_KEY environment variable.
 """
 
+import json
 import os
 import requests
+import threading
+import time
+from collections import deque
 from typing import Optional
 
 from src import db
 from src.player_normalizer import normalize_name, display_name
 
 BASE_URL = "https://feeds.datagolf.com"
+
+
+class DataGolfRequestManager:
+    """Shared throttle and cache for all DataGolf requests."""
+
+    def __init__(self, *, max_requests: int = 45, window_seconds: int = 60, cooldown_seconds: int = 300):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.cooldown_seconds = cooldown_seconds
+        self.request_times: deque[float] = deque()
+        self.cache: dict[str, tuple[float, dict | list]] = {}
+        self.blocked_until = 0.0
+        self.lock = threading.Lock()
+
+    def _evict_old(self, now: float) -> None:
+        while self.request_times and now - self.request_times[0] >= self.window_seconds:
+            self.request_times.popleft()
+
+    def reserve_slot(self, *, now: float | None = None) -> float:
+        now = time.time() if now is None else now
+        with self.lock:
+            self._evict_old(now)
+            if now < self.blocked_until:
+                return round(self.blocked_until - now, 4)
+            if len(self.request_times) >= self.max_requests:
+                oldest = self.request_times[0]
+                return round(max(0.0, self.window_seconds - (now - oldest)) + 0.01, 4)
+            self.request_times.append(now)
+            return 0.0
+
+    def mark_rate_limited(self, *, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        with self.lock:
+            self.blocked_until = max(self.blocked_until, now + self.cooldown_seconds)
+
+    def get_cached(self, key: str, *, now: float | None = None) -> dict | list | None:
+        now = time.time() if now is None else now
+        with self.lock:
+            cached = self.cache.get(key)
+            if not cached:
+                return None
+            expires_at, value = cached
+            if now >= expires_at:
+                self.cache.pop(key, None)
+                return None
+            return value
+
+    def set_cached(self, key: str, value: dict | list, *, ttl_seconds: int, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        with self.lock:
+            self.cache[key] = (now + ttl_seconds, value)
+
+    def status(self) -> dict:
+        now = time.time()
+        with self.lock:
+            self._evict_old(now)
+            return {
+                "requests_in_window": len(self.request_times),
+                "max_requests": self.max_requests,
+                "window_seconds": self.window_seconds,
+                "cooldown_seconds": self.cooldown_seconds,
+                "blocked_until": self.blocked_until,
+                "cached_entries": len(self.cache),
+            }
+
+
+REQUEST_MANAGER = DataGolfRequestManager()
 
 
 def _safe_float(val) -> float | None:
@@ -41,7 +112,11 @@ def _get_api_key() -> str:
     return key
 
 
-def _call_api(endpoint: str, params: dict = None) -> dict | list:
+def _cache_key(endpoint: str, params: dict) -> str:
+    return f"{endpoint}:{json.dumps(params, sort_keys=True, default=str)}"
+
+
+def _call_api(endpoint: str, params: dict = None, *, cache_ttl_seconds: int = 300) -> dict | list:
     """
     Call a Data Golf API endpoint.
 
@@ -52,22 +127,43 @@ def _call_api(endpoint: str, params: dict = None) -> dict | list:
     params = params or {}
     params["key"] = key
     params.setdefault("file_format", "json")
+    cache_params = {k: v for k, v in params.items() if k != "key"}
+    cache_key = _cache_key(endpoint, cache_params)
+    cached = REQUEST_MANAGER.get_cached(cache_key)
+    if cached is not None:
+        return cached
 
     url = f"{BASE_URL}/{endpoint}"
+    wait_seconds = REQUEST_MANAGER.reserve_slot()
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+        second_wait = REQUEST_MANAGER.reserve_slot()
+        if second_wait > 0:
+            time.sleep(second_wait)
+            REQUEST_MANAGER.reserve_slot()
     try:
         resp = requests.get(url, params=params, timeout=120)
         resp.raise_for_status()
     except requests.exceptions.Timeout:
         raise RuntimeError(f"Data Golf API timeout on {endpoint} (120s)")
     except requests.exceptions.HTTPError as e:
+        if getattr(resp, "status_code", None) == 429:
+            REQUEST_MANAGER.mark_rate_limited()
         raise RuntimeError(f"Data Golf API HTTP error on {endpoint}: {e}")
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"Data Golf API connection error on {endpoint}: {e}")
 
     try:
-        return resp.json()
+        data = resp.json()
+        REQUEST_MANAGER.set_cached(cache_key, data, ttl_seconds=cache_ttl_seconds)
+        return data
     except ValueError:
         raise RuntimeError(f"Data Golf API returned non-JSON for {endpoint}: {resp.text[:200]}")
+
+
+def get_datagolf_throttle_status() -> dict:
+    """Return the shared DataGolf throttle/cache status."""
+    return REQUEST_MANAGER.status()
 
 
 # ═══════════════════════════════════════════════════════════════════
