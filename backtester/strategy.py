@@ -70,11 +70,19 @@ class StrategyConfig:
     # Kelly fraction (fraction of full Kelly to bet)
     kelly_fraction: float = 0.25
 
-    # Markets to bet
-    markets: list = field(default_factory=lambda: ["win", "top_5", "top_10", "top_20"])
+    # Markets to bet (includes "matchup" for matchup replay)
+    markets: list = field(default_factory=lambda: ["win", "top_5", "top_10", "top_20", "matchup"])
 
     # Softmax temperature for probability conversion
     softmax_temp: float = 1.0
+
+    # Matchup-specific parameters (Platt sigmoid: P(win) = 1/(1+exp(A*gap+B)))
+    platt_a: float = -0.05
+    platt_b: float = 0.0
+    min_composite_gap: float = 5.0
+    matchup_ev_threshold: float = 0.05
+    max_win_prob_cap: float = 0.85
+    matchup_market_types: list = field(default_factory=lambda: ["72-hole Match", "R1 Match-Up"])
 
     # AI adjustment cap
     ai_adj_cap: float = 5.0
@@ -496,6 +504,138 @@ def replay_event(
                 "payout": round(max(0, payout), 4),
                 "clv": round(model_prob - implied_prob, 4),
                 "finish": fin_text,
+            })
+
+    # 6. Matchup replay (if "matchup" in strategy.markets)
+    if "matchup" in strategy.markets:
+        matchup_bets = _replay_matchups_for_event(
+            event_id, year, strategy,
+            pit_composites if pit_composites else {p["player_key"]: p for p in players},
+            finish_by_key, all_finish_texts, odds_source,
+        )
+        bets.extend(matchup_bets)
+
+    return bets
+
+
+def _replay_matchups_for_event(
+    event_id: str,
+    year: int,
+    strategy: StrategyConfig,
+    pit_composites: dict,
+    finish_by_key: dict,
+    all_finish_texts: list,
+    odds_source: str = "close",
+) -> list[dict]:
+    """
+    Replay historical matchup bets for a single event using stored matchup odds.
+
+    Uses Platt sigmoid to convert composite gap to win probability,
+    then applies EV filter and determines outcomes from stored results.
+    """
+    import math
+
+    conn = db.get_conn()
+    matchup_rows = conn.execute("""
+        SELECT bet_type, p1_dg_id, p1_name, p2_dg_id, p2_name,
+               p1_open, p1_close, p2_open, p2_close,
+               p1_outcome, p2_outcome, p1_outcome_text, p2_outcome_text, tie_rule
+        FROM historical_matchup_odds
+        WHERE event_id = ? AND year = ? AND book = 'bet365'
+    """, (str(event_id), year)).fetchall()
+    conn.close()
+
+    if not matchup_rows:
+        return []
+
+    bets = []
+    for row in matchup_rows:
+        bet_type = row[0]
+        if bet_type not in strategy.matchup_market_types:
+            continue
+
+        p1_name, p2_name = row[2], row[4]
+        p1_key = normalize_name(p1_name)
+        p2_key = normalize_name(p2_name)
+
+        p1_data = pit_composites.get(p1_key)
+        p2_data = pit_composites.get(p2_key)
+        if not p1_data or not p2_data:
+            continue
+
+        p1_comp = p1_data.get("composite", 50)
+        p2_comp = p2_data.get("composite", 50)
+
+        if odds_source == "open":
+            p1_odds_str = row[5]
+            p2_odds_str = row[6]
+        else:
+            p1_odds_str = row[7] if row[7] else row[5]
+            p2_odds_str = row[8] if row[8] else row[6]
+
+        p1_outcome_text = row[11]
+        p2_outcome_text = row[12]
+
+        for pick_key, pick_comp, opp_key, opp_comp, pick_odds_str, opp_odds_str, pick_outcome in [
+            (p1_key, p1_comp, p2_key, p2_comp, p1_odds_str, p2_odds_str, p1_outcome_text),
+            (p2_key, p2_comp, p1_key, p1_comp, p2_odds_str, p1_odds_str, p2_outcome_text),
+        ]:
+            gap = pick_comp - opp_comp
+            if gap < strategy.min_composite_gap:
+                continue
+
+            model_win_prob = 1.0 / (1.0 + math.exp(strategy.platt_a * gap + strategy.platt_b))
+            model_win_prob = min(model_win_prob, strategy.max_win_prob_cap)
+
+            if not pick_odds_str:
+                continue
+            try:
+                pick_odds = int(float(pick_odds_str))
+            except (ValueError, TypeError):
+                continue
+
+            implied_prob = _american_to_implied(pick_odds)
+            if implied_prob <= 0:
+                continue
+
+            ev = (model_win_prob / implied_prob) - 1.0
+            if ev < strategy.matchup_ev_threshold:
+                continue
+
+            won = (pick_outcome == "win") if pick_outcome else False
+            is_push = (pick_outcome == "push") if pick_outcome else False
+
+            odds_dec = american_to_decimal(pick_odds)
+            wager = 0.02
+            if won:
+                profit = wager * (odds_dec - 1.0) if odds_dec else 0
+                payout = wager + profit
+            elif is_push:
+                profit = 0.0
+                payout = wager
+            else:
+                profit = -wager
+                payout = 0.0
+
+            bets.append({
+                "event_id": event_id,
+                "year": year,
+                "player_key": pick_key,
+                "market": "matchup",
+                "matchup_type": bet_type,
+                "opponent_key": opp_key,
+                "model_prob": round(model_win_prob, 4),
+                "implied_prob": round(implied_prob, 4),
+                "ev": round(ev, 4),
+                "prob_edge": round(model_win_prob - implied_prob, 4),
+                "odds": pick_odds,
+                "wager": round(wager, 4),
+                "won": won,
+                "fraction": 1.0 if won else 0.0,
+                "is_push": is_push,
+                "payout": round(max(0, payout), 4),
+                "clv": round(model_win_prob - implied_prob, 4),
+                "finish": pick_outcome or "",
             })
 
     return bets

@@ -517,10 +517,24 @@ def _release_deploy_lock():
         pass
 
 
+def _parse_mode() -> str:
+    """Parse --mode flag from sys.argv."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--mode" and i + 1 < len(sys.argv):
+            m = sys.argv[i + 1]
+            if m in ("full", "matchups-only", "placements-only", "round-matchups"):
+                return m
+    return "full"
+
+
 def main():
     print("=" * 60)
     print("  GOLF BETTING MODEL — Prediction Pipeline")
     print("=" * 60)
+
+    pipeline_mode = _parse_mode()
+    if pipeline_mode != "full":
+        print(f"  Mode: {pipeline_mode}")
 
     pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
     strategy_cfg, strategy_meta = _resolve_runtime_strategy("global")
@@ -1069,67 +1083,74 @@ def main():
     )
 
     value_bets = {}
-    for market_key, odds_list in all_odds_by_market.items():
-        if not odds_list:
-            continue
-        best = get_best_odds(odds_list)
-        # Map market to bet type
-        if market_key == "outrights":
-            bt = "outright"
-        elif market_key == "frl":
-            bt = "frl"
-        else:
-            bt = market_key.replace("top_", "top")
-        _fstr = get_field_strength(composite)
-        if bt not in runtime_settings["allowed_markets"]:
-            continue
-        vb = find_value_bets(
-            composite,
-            best,
-            bet_type=bt,
-            tournament_id=tid,
-            field_strength=_fstr,
-            ev_threshold=runtime_settings["ev_threshold"],
-        )
-        value_bets[bt] = vb
-        value_count = sum(1 for v in vb if v.get("is_value"))
-        book_count = len(set(o["bookmaker"] for o in odds_list))
-        print(f"    {market_key}: {len(best)} players, {book_count} books, "
-              f"{value_count} value plays")
+    if pipeline_mode in ("full", "placements-only"):
+        for market_key, odds_list in all_odds_by_market.items():
+            if not odds_list:
+                continue
+            best = get_best_odds(odds_list)
+            if market_key == "outrights":
+                bt = "outright"
+            elif market_key == "frl":
+                bt = "frl"
+            else:
+                bt = market_key.replace("top_", "top")
+            _fstr = get_field_strength(composite)
+            if bt not in runtime_settings["allowed_markets"]:
+                continue
+            vb = find_value_bets(
+                composite,
+                best,
+                bet_type=bt,
+                tournament_id=tid,
+                field_strength=_fstr,
+                ev_threshold=runtime_settings["ev_threshold"],
+            )
+            value_bets[bt] = vb
+            value_count = sum(1 for v in vb if v.get("is_value"))
+            book_count = len(set(o["bookmaker"] for o in odds_list))
+            print(f"    {market_key}: {len(best)} players, {book_count} books, "
+                  f"{value_count} value plays")
+    else:
+        print("    Placement markets skipped (mode: " + pipeline_mode + ")")
 
     if not all_odds_by_market:
         print("    ⚠ Could not fetch odds (may not be posted yet)")
 
     # ── Matchup Value Bets (real sportsbook odds) ─────────────
     matchup_bets = []
-    try:
-        from src.matchup_value import find_matchup_value_bets
-        matchup_markets = [
-            ("tournament_matchups", "72-hole / tournament matchups"),
-            ("round_matchups", "round matchups"),
-        ]
-        aggregated = []
-        for market_key, label in matchup_markets:
-            matchup_odds = safe_api_call(f"{label} odds", fetch_matchup_odds, market=market_key)
-            if not matchup_odds:
-                print(f"    {label}: no odds available")
-                continue
-            market_bets = find_matchup_value_bets(
-                composite,
-                matchup_odds,
-                tournament_id=tid,
-                ev_threshold=runtime_settings["ev_threshold"],
-                required_book=get_preferred_book(),
-            )
-            for bet in market_bets:
-                bet["market_type"] = market_key
-            aggregated.extend(market_bets)
-            print(f"    {label}: {len(matchup_odds)} pairs, {len(market_bets)} value plays")
-        matchup_bets = sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
-    except Exception as e:
-        logger_msg = f"Matchup value bets failed: {e}"
-        print(f"    ⚠ {logger_msg}")
-        matchup_bets = []
+    if pipeline_mode in ("full", "matchups-only", "round-matchups"):
+        try:
+            from src.matchup_value import find_matchup_value_bets
+            matchup_markets = [
+                ("tournament_matchups", "72-hole / tournament matchups"),
+                ("round_matchups", "round matchups"),
+            ]
+            if pipeline_mode == "round-matchups":
+                matchup_markets = [("round_matchups", "round matchups")]
+            aggregated = []
+            for market_key, label in matchup_markets:
+                matchup_odds = safe_api_call(f"{label} odds", fetch_matchup_odds, market=market_key)
+                if not matchup_odds:
+                    print(f"    {label}: no odds available")
+                    continue
+                market_bets = find_matchup_value_bets(
+                    composite,
+                    matchup_odds,
+                    tournament_id=tid,
+                    ev_threshold=runtime_settings["ev_threshold"],
+                    required_book=get_preferred_book(),
+                )
+                for bet in market_bets:
+                    bet["market_type"] = market_key
+                aggregated.extend(market_bets)
+                print(f"    {label}: {len(matchup_odds)} pairs, {len(market_bets)} value plays")
+            matchup_bets = sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
+        except Exception as e:
+            logger_msg = f"Matchup value bets failed: {e}"
+            print(f"    ⚠ {logger_msg}")
+            matchup_bets = []
+    else:
+        print("    Matchups skipped (mode: " + pipeline_mode + ")")
 
     # ── 3-Ball Value Bets ──────────────────────────────────────
     threeball_bets = []
@@ -1461,6 +1482,7 @@ def main():
         ai_decisions=ai_decisions,
         matchup_bets=matchup_bets if not SHADOW_MODE else None,
         strategy_meta=pipeline_ctx.get("strategy"),
+        mode=pipeline_mode,
     )
     print(f"  Card saved to: {filepath}")
     print(f"\n  Open it: open {filepath}")

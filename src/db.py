@@ -378,6 +378,48 @@ def init_db():
             UNIQUE(event_id, year, player_dg_id, market, book)
         );
 
+        -- ═══ AI adjustment tracking ═══
+        CREATE TABLE IF NOT EXISTS ai_adjustment_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER,
+            player_key TEXT,
+            adjustment REAL,
+            direction TEXT,
+            actual_finish_pos INTEGER,
+            baseline_rank INTEGER,
+            correct INTEGER,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ═══ Historical matchup odds (for backtester matchup replay) ═══
+        CREATE TABLE IF NOT EXISTS historical_matchup_odds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            bet_type TEXT NOT NULL,
+            p1_dg_id INTEGER NOT NULL,
+            p1_name TEXT NOT NULL,
+            p2_dg_id INTEGER NOT NULL,
+            p2_name TEXT NOT NULL,
+            book TEXT NOT NULL,
+            p1_open TEXT,
+            p1_close TEXT,
+            p2_open TEXT,
+            p2_close TEXT,
+            p1_outcome REAL,
+            p2_outcome REAL,
+            p1_outcome_text TEXT,
+            p2_outcome_text TEXT,
+            tie_rule TEXT,
+            open_time TEXT,
+            close_time TEXT,
+            UNIQUE(event_id, year, p1_dg_id, p2_dg_id, bet_type, book)
+        );
+        CREATE INDEX IF NOT EXISTS idx_hist_matchup_event
+            ON historical_matchup_odds(event_id, year);
+        CREATE INDEX IF NOT EXISTS idx_hist_matchup_type
+            ON historical_matchup_odds(bet_type);
+
         CREATE TABLE IF NOT EXISTS historical_predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT, year INTEGER, player_dg_id INTEGER,

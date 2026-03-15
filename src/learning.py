@@ -564,12 +564,19 @@ def post_tournament_learn(tournament_id: int,
         "changes": retune_result.get("changes", {}),
     }
 
-    # 6. Compute calibration summary
+    # 6. Compute calibration summary and update calibration curve
     cal = compute_calibration()
     summary["calibration"] = {
         "brier_score": cal.get("brier_score"),
         "roi": cal.get("roi"),
     }
+    try:
+        from src.calibration import update_calibration_curve
+        update_calibration_curve()
+        summary["steps"]["calibration_curve_updated"] = True
+    except Exception as e:
+        logger.warning("Calibration curve update failed: %s", e)
+        summary["steps"]["calibration_curve_updated"] = {"error": str(e)}
 
     # 7. Update bankroll (if kelly_sizing enabled and scoring completed)
     try:
@@ -649,7 +656,7 @@ def post_tournament_learn(tournament_id: int,
     # 9. Refit Platt sigmoid for matchups (if 100+ matchup outcomes available)
     try:
         from src.feature_flags import is_enabled
-        if is_enabled("platt_scaling") or True:  # always track, even if not using for live
+        if is_enabled("platt_scaling"):
             conn = db.get_conn()
             matchup_outcomes = conn.execute(
                 """SELECT p.model_prob, p.actual_outcome

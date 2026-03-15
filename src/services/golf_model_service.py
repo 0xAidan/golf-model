@@ -35,6 +35,7 @@ class GolfModelService:
         enable_backfill: bool = True,
         backfill_years: list[int] = None,
         output_dir: str = "output",
+        mode: str = "full",
     ) -> dict:
         """
         Run the complete prediction pipeline.
@@ -141,8 +142,11 @@ class GolfModelService:
 
         # Step 10: Fetch odds and compute value bets
         print("  Fetching odds & computing value bets...")
-        all_odds = self._fetch_odds()
-        value_bets = self._compute_value_bets(composite, all_odds, tid)
+        all_odds = {}
+        value_bets = {}
+        if mode in ("full", "placements-only"):
+            all_odds = self._fetch_odds()
+            value_bets = self._compute_value_bets(composite, all_odds, tid)
         result["value_bets"] = value_bets
         total_vb = sum(len(v) for v in value_bets.values()) if isinstance(value_bets, dict) else 0
         value_count_before = sum(
@@ -163,14 +167,19 @@ class GolfModelService:
             print(f"    → {value_count_after} value bets after diversification (was {value_count_before})")
 
         # Step 10b: Matchups and 3-ball (live focus: plus-ROI areas)
-        matchup_bets = self._fetch_matchup_value_bets(composite, tid)
+        matchup_bets = []
+        if mode in ("full", "matchups-only", "round-matchups"):
+            matchup_bets = self._fetch_matchup_value_bets(composite, tid)
+            if mode == "round-matchups":
+                matchup_bets = [b for b in matchup_bets if b.get("market_type") == "round_matchups"]
+            if matchup_bets:
+                print(f"    → {len(matchup_bets)} matchup value plays")
         result["matchup_bets"] = matchup_bets
-        if matchup_bets:
-            print(f"    → {len(matchup_bets)} matchup value plays")
-        threeball_bets = self._fetch_3ball_value_bets(composite, tid)
-        if threeball_bets:
-            value_bets.setdefault("3ball", []).extend(threeball_bets)
-            print(f"    → {len(threeball_bets)} 3-ball value plays")
+        if mode in ("full", "matchups-only"):
+            threeball_bets = self._fetch_3ball_value_bets(composite, tid)
+            if threeball_bets:
+                value_bets.setdefault("3ball", []).extend(threeball_bets)
+                print(f"    → {len(threeball_bets)} 3-ball value plays")
         result["value_bets"] = value_bets
 
         # Step 10c: Run quality check before logging anything
@@ -205,6 +214,7 @@ class GolfModelService:
             value_bets, output_dir,
             ai_pre_analysis, ai_decisions,
             matchup_bets=matchup_bets,
+            mode=mode,
         )
         result["card_filepath"] = card_path
 
@@ -539,7 +549,7 @@ class GolfModelService:
 
     def _generate_card(self, tournament_name, course_name, composite,
                         value_bets, output_dir, ai_pre_analysis, ai_decisions,
-                        matchup_bets: list = None) -> str | None:
+                        matchup_bets: list = None, mode: str = "full") -> str | None:
         """Generate markdown betting card."""
         try:
             from src.card import generate_card
@@ -552,6 +562,7 @@ class GolfModelService:
                 ai_pre_analysis=ai_pre_analysis,
                 ai_decisions=ai_decisions,
                 matchup_bets=matchup_bets or [],
+                mode=mode,
             )
         except Exception as e:
             logger.warning(f"Card generation error: {e}")

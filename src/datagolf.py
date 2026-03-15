@@ -1169,6 +1169,42 @@ def get_current_event_info(tour: str = "pga") -> dict | None:
     return None
 
 
+def fetch_dg_matchup_all_pairings(tour: str = "pga", odds_format: str = "american") -> dict:
+    """
+    Fetch DG's own model probabilities for all matchup pairings.
+
+    Returns {(p1_key, p2_key): {"p1_win_prob": float, "p2_win_prob": float}}.
+    Uses the betting-tools/matchups-all-pairings endpoint.
+    """
+    from src.player_normalizer import normalize_name as _norm
+    result = {}
+    try:
+        raw = _call_api("betting-tools/matchups-all-pairings", {
+            "tour": tour,
+            "odds_format": odds_format,
+        })
+        if not raw:
+            return result
+        pairings = raw if isinstance(raw, list) else raw.get("match_list", [])
+        for pair in pairings:
+            p1_name = pair.get("p1_player_name", "")
+            p2_name = pair.get("p2_player_name", "")
+            if not p1_name or not p2_name:
+                continue
+            p1_key = _norm(p1_name)
+            p2_key = _norm(p2_name)
+            p1_win = pair.get("p1_win_prob") or pair.get("p1_prob")
+            p2_win = pair.get("p2_win_prob") or pair.get("p2_prob")
+            if p1_win is not None and p2_win is not None:
+                result[(p1_key, p2_key)] = {
+                    "p1_win_prob": float(p1_win),
+                    "p2_win_prob": float(p2_win),
+                }
+    except Exception as e:
+        logger.warning("DG matchup all-pairings fetch failed: %s", e)
+    return result
+
+
 def fetch_closing_odds(tour: str = "pga") -> dict:
     """
     Fetch closing odds from Data Golf for CLV tracking.
@@ -1198,7 +1234,8 @@ def fetch_closing_odds(tour: str = "pga") -> dict:
                         book_odds.append(val)
                 if book_odds:
                     avg_odds = sum(book_odds) / len(book_odds)
-                    pk = player_name
+                    from src.player_normalizer import normalize_name as _norm
+                    pk = _norm(player_name)
                     if pk not in results:
                         results[pk] = {}
                     market_map = {"win": "outright", "top_5": "top5", "top_10": "top10", "top_20": "top20"}

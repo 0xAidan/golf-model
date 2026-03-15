@@ -154,9 +154,22 @@ def evaluate_guardrails(
 def compute_blended_score(
     candidate_summary: dict[str, Any],
     guardrail_results: dict[str, Any],
+    bet_details: list[dict] | None = None,
 ) -> float:
+    matchup_roi = 0.0
+    matchup_hit_rate = 0.0
+    if bet_details:
+        matchup_bets = [b for b in bet_details if b.get("market") == "matchup"]
+        if matchup_bets:
+            total_wagered = sum(b.get("wager", 0) for b in matchup_bets)
+            total_payout = sum(b.get("payout", 0) for b in matchup_bets)
+            matchup_roi = ((total_payout - total_wagered) / total_wagered * 100) if total_wagered > 0 else 0
+            matchup_hit_rate = sum(1 for b in matchup_bets if b.get("won")) / len(matchup_bets)
+
     score = (
-        candidate_summary.get("weighted_roi_pct", 0.0)
+        matchup_roi * 2.0
+        + matchup_hit_rate * 50.0
+        + candidate_summary.get("weighted_roi_pct", 0.0) * 0.5
         + candidate_summary.get("weighted_clv_avg", 0.0) * 100.0
         - candidate_summary.get("weighted_calibration_error", 0.0) * 10.0
         - candidate_summary.get("max_drawdown_pct", 0.0) * 0.1
