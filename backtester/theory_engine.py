@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any
 
 from backtester.experiments import generate_neighbor_strategies
 from backtester.strategy import StrategyConfig
 from src.ai_brain import call_ai, is_ai_available
+
+logger = logging.getLogger("theory_engine")
 
 THEORY_SCHEMA = {
     "name": "research_theories",
@@ -153,6 +156,9 @@ def generate_candidate_theories(
             theories = _openai_theories(base, max_candidates, scope, years)
             if theories:
                 return theories
-        except Exception:
-            pass
+            logger.warning("OpenAI returned no candidate theories; falling back to neighbor search.")
+        except Exception as exc:
+            logger.warning("OpenAI theory generation failed; falling back to neighbor search: %s", exc)
+    else:
+        logger.warning("AI provider unavailable for theory engine; using neighbor fallback.")
     return _fallback_theories(base, max_candidates)

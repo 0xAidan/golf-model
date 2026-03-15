@@ -19,18 +19,70 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from src import db
 from src.player_normalizer import display_name
 
 logger = logging.getLogger("ai_brain")
+_ENV_BOOTSTRAPPED = False
+
+
+def _bootstrap_env_from_dotenv() -> None:
+    """
+    Load .env values without requiring python-dotenv.
+
+    This keeps AI features working in environments where dependency install
+    is minimal but a project .env file already exists.
+    """
+    global _ENV_BOOTSTRAPPED
+    if _ENV_BOOTSTRAPPED:
+        return
+    _ENV_BOOTSTRAPPED = True
+
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        logger.warning("Failed to parse .env for AI bootstrap: %s", exc)
+
+
+def _has_real_key(value: str | None) -> bool:
+    if not value:
+        return False
+    lowered = value.strip().lower()
+    if not lowered:
+        return False
+    placeholders = {
+        "your_openai_key_here",
+        "your_anthropic_key_here",
+        "your_google_key_here",
+        "your_datagolf_key_here",
+    }
+    return lowered not in placeholders
 
 # ═══════════════════════════════════════════════════════════════════
 #  Provider Abstraction
 # ═══════════════════════════════════════════════════════════════════
 
 def _get_provider() -> str:
+    _bootstrap_env_from_dotenv()
     return os.environ.get("AI_BRAIN_PROVIDER", "openai").lower()
 
 
@@ -854,13 +906,14 @@ def apply_ai_adjustments(composite_results: list[dict],
 
 def is_ai_available() -> bool:
     """Check if an AI provider is configured and available."""
+    _bootstrap_env_from_dotenv()
     provider = _get_provider()
     if provider == "openai":
-        return bool(os.environ.get("OPENAI_API_KEY"))
+        return _has_real_key(os.environ.get("OPENAI_API_KEY"))
     elif provider == "anthropic":
-        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+        return _has_real_key(os.environ.get("ANTHROPIC_API_KEY"))
     elif provider == "gemini":
-        return bool(os.environ.get("GOOGLE_API_KEY"))
+        return _has_real_key(os.environ.get("GOOGLE_API_KEY"))
     return False
 
 
