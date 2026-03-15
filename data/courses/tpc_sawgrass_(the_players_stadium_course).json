@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "THE PLAYERS Championship",
+    "course_name": "TPC Sawgrass (THE PLAYERS Stadium Course)",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.8977,
+    "app_impact": 0.2778,
+    "arg_impact": 0.143,
+    "putt_impact": 0.1904,
+    "total_fit_spread": 0.7507,
+    "sg_category_spread": 0.6348
+  },
+  "characteristics": {}
+}

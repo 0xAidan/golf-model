@@ -200,6 +200,11 @@ def _get_preferred_book() -> str:
     return os.environ.get("PREFERRED_BOOK", "bet365")
 
 
+def get_preferred_book() -> str:
+    """Public accessor for the book we filter to (e.g. bet365)."""
+    return _get_preferred_book()
+
+
 def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
     """
     For each player, find the best actionable odds.
@@ -282,4 +287,9 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
         print(f"  ⚠ Filtered {filtered_count} odds entries with unreasonable values (>{MAX_REASONABLE_ODDS})")
 
     # Remove players that have no real sportsbook odds
-    return {k: v for k, v in by_player.items() if v["best_price"] is not None}
+    out = {k: v for k, v in by_player.items() if v["best_price"] is not None}
+    # Only return players available at the preferred book (so we only output bettable lines there)
+    preferred_only = os.environ.get("PREFERRED_BOOK_ONLY", "true").lower() in ("1", "true", "yes")
+    if preferred_only and preferred_book:
+        out = {k: v for k, v in out.items() if v.get("preferred_price") is not None}
+    return out

@@ -57,7 +57,7 @@ from src.datagolf import (
 from src.rolling_stats import compute_rolling_metrics
 from src.models.composite import compute_composite
 from src.course_profile import load_course_profile, course_to_model_weights
-from src.odds import get_best_odds
+from src.odds import get_best_odds, get_preferred_book
 from src.value import find_value_bets
 from src.card import generate_card
 from src.methodology import generate_methodology
@@ -71,9 +71,92 @@ from src.ai_brain import (
     apply_ai_adjustments,
     get_ai_status,
 )
+from backtester.experiments import get_active_strategy
+from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
+from backtester.strategy import StrategyConfig
 
 
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "false").lower() == "true"
+
+
+def _strategy_from_record(record: dict | None) -> StrategyConfig | None:
+    """Parse a model-registry record into StrategyConfig."""
+    if not record:
+        return None
+    strategy_json = record.get("strategy_config_json")
+    if not strategy_json:
+        return None
+    try:
+        return StrategyConfig.from_json(strategy_json)
+    except Exception:
+        return None
+
+
+def _resolve_runtime_strategy(scope: str = "global") -> tuple[StrategyConfig, dict]:
+    """
+    Resolve strategy with explicit fallback:
+    live_model_registry -> research_champion -> active_strategy -> defaults.
+    """
+    live_record = get_live_weekly_model_record(scope)
+    live_strategy = _strategy_from_record(live_record)
+    if live_strategy:
+        return live_strategy, {
+            "strategy_source": "live",
+            "strategy_record_id": live_record.get("id"),
+            "strategy_name": live_strategy.name or "live_weekly_model",
+        }
+
+    research_record = get_research_champion_record(scope)
+    research_strategy = _strategy_from_record(research_record)
+    if research_strategy:
+        return research_strategy, {
+            "strategy_source": "research_champion",
+            "strategy_record_id": research_record.get("id"),
+            "strategy_name": research_strategy.name or "research_champion",
+        }
+
+    active_strategy = get_active_strategy(scope)
+    if active_strategy:
+        return active_strategy, {
+            "strategy_source": "active_strategy",
+            "strategy_record_id": None,
+            "strategy_name": active_strategy.name or "active_strategy",
+        }
+
+    default_strategy = StrategyConfig(name="default")
+    return default_strategy, {
+        "strategy_source": "default",
+        "strategy_record_id": None,
+        "strategy_name": "default",
+    }
+
+
+def _map_strategy_to_runtime_settings(strategy: StrategyConfig) -> dict:
+    """Map StrategyConfig fields to live pipeline settings."""
+    allowed_markets = set()
+    market_map = {
+        "win": "outright",
+        "top_5": "top5",
+        "top_10": "top10",
+        "top_20": "top20",
+        "frl": "frl",
+        "make_cut": "make_cut",
+    }
+    for market in (strategy.markets or []):
+        mapped = market_map.get(market)
+        if mapped:
+            allowed_markets.add(mapped)
+
+    return {
+        "blend_weights": {
+            "course_fit": float(strategy.w_sub_course_fit),
+            "form": float(strategy.w_sub_form),
+            "momentum": float(strategy.w_sub_momentum),
+        },
+        "ev_threshold": float(strategy.min_ev),
+        "kelly_fraction": float(strategy.kelly_fraction),
+        "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
+    }
 
 
 def _run_data_integrity_gates(tournament_id: int, field_size: int,
@@ -440,6 +523,8 @@ def main():
     print("=" * 60)
 
     pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
+    strategy_cfg, strategy_meta = _resolve_runtime_strategy("global")
+    runtime_settings = _map_strategy_to_runtime_settings(strategy_cfg)
 
     # ── Check API keys ────────────────────────────────────────
     dg_key = os.environ.get("DATAGOLF_API_KEY")
@@ -868,9 +953,12 @@ def main():
     # ── Run composite model ───────────────────────────────────
     print_header("Step 6: Running Composite Model")
     weights = db.get_active_weights()
+    weights.update(runtime_settings["blend_weights"])
     print(f"  Weights: course={weights.get('course_fit', 0.4):.0%}, "
           f"form={weights.get('form', 0.4):.0%}, "
           f"momentum={weights.get('momentum', 0.2):.0%}")
+    print(f"  Strategy source: {strategy_meta['strategy_source']} ({strategy_meta['strategy_name']})")
+    print(f"  Strategy EV threshold: {runtime_settings['ev_threshold']:.1%}")
 
     composite = compute_composite(
         tid, weights, course_name=primary_course,
@@ -974,8 +1062,11 @@ def main():
     if all_odds_by_market is None:
         all_odds_by_market = {}
 
-    from src.value import DEFAULT_EV_THRESHOLD
-    print(f"  EV threshold: {DEFAULT_EV_THRESHOLD:.0%} (set EV_THRESHOLD env to change)")
+    print(
+        "  EV threshold: "
+        f"{runtime_settings['ev_threshold']:.0%} "
+        f"(strategy-driven from {strategy_meta['strategy_name']})"
+    )
 
     value_bets = {}
     for market_key, odds_list in all_odds_by_market.items():
@@ -990,7 +1081,16 @@ def main():
         else:
             bt = market_key.replace("top_", "top")
         _fstr = get_field_strength(composite)
-        vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid, field_strength=_fstr)
+        if bt not in runtime_settings["allowed_markets"]:
+            continue
+        vb = find_value_bets(
+            composite,
+            best,
+            bet_type=bt,
+            tournament_id=tid,
+            field_strength=_fstr,
+            ev_threshold=runtime_settings["ev_threshold"],
+        )
         value_bets[bt] = vb
         value_count = sum(1 for v in vb if v.get("is_value"))
         book_count = len(set(o["bookmaker"] for o in odds_list))
@@ -1004,18 +1104,28 @@ def main():
     matchup_bets = []
     try:
         from src.matchup_value import find_matchup_value_bets
-
-        matchup_odds = safe_api_call("matchup odds", fetch_matchup_odds, market="tournament_matchups")
-        if matchup_odds:
-            matchup_bets = find_matchup_value_bets(
-                composite, matchup_odds, tournament_id=tid,
+        matchup_markets = [
+            ("tournament_matchups", "72-hole / tournament matchups"),
+            ("round_matchups", "round matchups"),
+        ]
+        aggregated = []
+        for market_key, label in matchup_markets:
+            matchup_odds = safe_api_call(f"{label} odds", fetch_matchup_odds, market=market_key)
+            if not matchup_odds:
+                print(f"    {label}: no odds available")
+                continue
+            market_bets = find_matchup_value_bets(
+                composite,
+                matchup_odds,
+                tournament_id=tid,
+                ev_threshold=runtime_settings["ev_threshold"],
+                required_book=get_preferred_book(),
             )
-            if matchup_bets:
-                print(f"    matchups: {len(matchup_odds)} pairs, {len(matchup_bets)} value plays")
-            else:
-                print(f"    matchups: {len(matchup_odds)} pairs, 0 value plays")
-        else:
-            print("    matchups: no odds available")
+            for bet in market_bets:
+                bet["market_type"] = market_key
+            aggregated.extend(market_bets)
+            print(f"    {label}: {len(matchup_odds)} pairs, {len(market_bets)} value plays")
+        matchup_bets = sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
     except Exception as e:
         logger_msg = f"Matchup value bets failed: {e}"
         print(f"    ⚠ {logger_msg}")
@@ -1029,7 +1139,12 @@ def main():
             from src.value import find_3ball_value_bets
             threeball_odds = safe_api_call("3-ball odds", fetch_matchup_odds, market="3_balls")
             if threeball_odds:
-                threeball_bets = find_3ball_value_bets(composite, threeball_odds, tournament_id=tid)
+                threeball_bets = find_3ball_value_bets(
+                    composite, threeball_odds, tournament_id=tid,
+                    required_book=get_preferred_book(),
+                )
+                for bet in threeball_bets:
+                    bet["market_type"] = "3_balls"
                 if threeball_bets:
                     print(f"    3-balls: {len(threeball_odds)} groups, {len(threeball_bets)} value plays")
                 else:
@@ -1296,6 +1411,11 @@ def main():
     pipeline_ctx["predictions_logged"] = n_logged
     pipeline_ctx["metric_counts"]["odds_markets"] = len(all_odds_by_market)
     pipeline_ctx["metric_counts"]["matchups"] = len(matchup_bets) if matchup_bets else 0
+    pipeline_ctx["strategy"] = {
+        **strategy_meta,
+        "runtime_settings": runtime_settings,
+        "resolved_at": datetime.now().isoformat(),
+    }
 
     # Build DG probs lookup for worked examples
     _sim_metrics = db.get_metrics_by_category(tid, "sim")
@@ -1340,6 +1460,7 @@ def main():
         ai_pre_analysis=ai_pre_analysis,
         ai_decisions=ai_decisions,
         matchup_bets=matchup_bets if not SHADOW_MODE else None,
+        strategy_meta=pipeline_ctx.get("strategy"),
     )
     print(f"  Card saved to: {filepath}")
     print(f"\n  Open it: open {filepath}")
@@ -1369,6 +1490,7 @@ def main():
             ai_pre_analysis=ai_pre_analysis,
             ai_decisions=ai_decisions,
             matchup_bets=matchup_bets,
+            strategy_meta=pipeline_ctx.get("strategy"),
         )
         shadow_dest = os.path.join("output", shadow_filename)
         shutil.move(shadow_path, shadow_dest)

@@ -1,0 +1,34 @@
+{
+  "course_facts": {
+    "tournament": "Arnold Palmer Invitational presented by Mastercard",
+    "course_name": "Arnold Palmer's Bay Hill Club & Lodge",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": [
+      "TPC Sawgrass",
+      "Muirfield Village",
+      "Quail Hollow Club",
+      "East Lake Golf Club"
+    ]
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Average",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.2327,
+    "app_impact": 0.2343,
+    "arg_impact": 0.0514,
+    "putt_impact": 0.1728,
+    "total_fit_spread": 0.1165,
+    "sg_category_spread": 0.5759
+  },
+  "characteristics": {
+    "grass": "bermuda",
+    "climate": "southeast",
+    "sg_ott_emphasis": "average",
+    "sg_app_emphasis": "difficult",
+    "scoring": "average"
+  }
+}

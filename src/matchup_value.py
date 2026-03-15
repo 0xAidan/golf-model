@@ -104,10 +104,38 @@ def _parse_best_odds(matchup: dict) -> tuple[tuple[int, str] | None, tuple[int, 
     return p1, p2
 
 
+def _parse_book_odds(matchup: dict, book: str) -> tuple[int | None, int | None]:
+    """Get (p1_odds, p2_odds) for a single book. Returns (None, None) if book doesn't have both sides."""
+    books_data = matchup.get("odds", {})
+    if not books_data:
+        for key, val in matchup.items():
+            if isinstance(val, dict) and (
+                key.startswith("book_")
+                or key.lower() in ("draftkings", "fanduel", "betmgm", "caesars", "bet365", "pinnacle")
+            ):
+                books_data[key] = val
+    book_lower = book.lower()
+    for book_name, book_odds in books_data.items():
+        if not isinstance(book_odds, dict) or book_name.lower() != book_lower:
+            continue
+        p1_price = book_odds.get("p1") or book_odds.get("odds_1") or book_odds.get("player_1")
+        p2_price = book_odds.get("p2") or book_odds.get("odds_2") or book_odds.get("player_2")
+        try:
+            p1_val = int(float(p1_price)) if p1_price is not None else None
+            p2_val = int(float(p2_price)) if p2_price is not None else None
+            if p1_val is not None and p2_val is not None:
+                return (p1_val, p2_val)
+        except (ValueError, TypeError):
+            pass
+        return (None, None)
+    return (None, None)
+
+
 def find_matchup_value_bets(composite_results: list[dict],
                              matchup_odds: list[dict],
                              ev_threshold: float = 0.05,
-                             tournament_id: int = None) -> list[dict]:
+                             tournament_id: int = None,
+                             required_book: str | None = None) -> list[dict]:
     """
     Find value in real sportsbook matchups using model composite scores.
 
@@ -154,7 +182,13 @@ def find_matchup_value_bets(composite_results: list[dict],
         if not p1_data or not p2_data:
             continue
 
-        p1_best, p2_best = _parse_best_odds(matchup)
+        if required_book:
+            p1_odds, p2_odds = _parse_book_odds(matchup, required_book)
+            if p1_odds is None or p2_odds is None:
+                continue
+            p1_best, p2_best = (p1_odds, required_book), (p2_odds, required_book)
+        else:
+            p1_best, p2_best = _parse_best_odds(matchup)
 
         composite_gap = p1_data["composite"] - p2_data["composite"]
         if composite_gap == 0:

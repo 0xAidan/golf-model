@@ -97,11 +97,13 @@ ADAPTATION_STAKE_MULTIPLIER_COLD = 0.5
 
 # ---------------------------------------------------------------------------
 # Matchup sigmoid: Platt-style P(win) = 1/(1+exp(A*gap+B)). Refit after each tournament.
+# Live focus: matchups have been plus-ROI; use a lower EV threshold to surface more.
 # ---------------------------------------------------------------------------
 MATCHUP_PLATT_A = -1.0 / 20.0   # -0.05; more conservative until Platt fitted
 MATCHUP_PLATT_B = 0.0
 MATCHUP_SIGMOID_DIVISOR = 20.0   # legacy; use PLATT_A/B
-MATCHUP_CAP = 15                 # max matchups to output
+MATCHUP_EV_THRESHOLD = float(os.environ.get("MATCHUP_EV_THRESHOLD", "0.05"))  # 5% min EV for matchups (live focus)
+MATCHUP_CAP = 20                 # max matchups to output (live: more matchup options)
 MATCHUP_TIER_STRONG_EV_PCT = 15.0   # EV >= 15% -> STRONG
 MATCHUP_TIER_GOOD_EV_PCT = 8.0      # EV >= 8% -> GOOD; else LEAN
 MATCHUP_TIER_STRONG_GAP = 8.0

@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Cognizant Classic",
+    "course_name": "PGA National Resort (The Champion Course)",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.2045,
+    "app_impact": 0.3419,
+    "arg_impact": 0.2119,
+    "putt_impact": 0.1743,
+    "total_fit_spread": 0.2919,
+    "sg_category_spread": 0.5811
+  },
+  "characteristics": {}
+}

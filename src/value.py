@@ -240,18 +240,22 @@ def find_3ball_value_bets(
     composite_results: list[dict],
     threeball_odds: list[dict],
     tournament_id: int = None,
+    enable_for_live: bool = False,
+    required_book: str | None = None,
 ) -> list[dict]:
     """
     Find value in 3-ball markets using softmax over composite scores.
 
     threeball_odds: list of dicts from DG API, each with player1, player2, player3,
                     and odds fields.
+    enable_for_live: if True, run 3-ball logic regardless of feature flag (for live pipeline).
+    required_book: if set, only include groups where this book has odds for all three players.
     Returns list of value bet dicts.
     """
     import math
     from src.feature_flags import is_enabled
 
-    if not is_enabled("3ball"):
+    if not enable_for_live and not is_enabled("3ball"):
         return []
 
     if not threeball_odds:
@@ -269,6 +273,7 @@ def find_3ball_value_bets(
     DG_BLEND, MODEL_BLEND = config.get_blend_weights("3ball")
 
     value_bets = []
+    book_lower = required_book.lower() if required_book else None
     for group in threeball_odds:
         players = []
         for pkey in ["player1", "player2", "player3"]:
@@ -276,6 +281,9 @@ def find_3ball_value_bets(
             name = p.get("player_name", "")
             if not name:
                 continue
+            if required_book:
+                if not any(k.lower() == book_lower for k in p if k not in ("player_name", "dg_id", "country") and isinstance(p.get(k), (int, float))):
+                    break
             nk = normalize_name(name)
             comp = comp_lookup.get(nk)
             if comp:
@@ -312,6 +320,8 @@ def find_3ball_value_bets(
             best_book = None
             for key, val in p_data.items():
                 if key in ("player_name", "dg_id", "country") or not isinstance(val, (int, float)):
+                    continue
+                if required_book and key.lower() != book_lower:
                     continue
                 if val != 0 and (best_odds is None or abs(val) > abs(best_odds)):
                     best_odds = val
