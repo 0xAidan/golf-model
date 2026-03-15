@@ -296,7 +296,12 @@ function initTools() {
   const overlay = document.getElementById('toolsOverlay');
   const openBtn = document.getElementById('toolsOpenBtn');
   const closeBtn = document.getElementById('toolsCloseBtn');
-  if (openBtn) openBtn.addEventListener('click', openTools);
+  if (openBtn) {
+    openBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      openTools();
+    });
+  }
   if (closeBtn) closeBtn.addEventListener('click', closeTools);
   if (overlay) {
     overlay.addEventListener('click', function (e) {
@@ -326,6 +331,12 @@ document.addEventListener('DOMContentLoaded', function () {
   loadStatus();
   loadBestCandidates();
   initTools();
+  const runPredictionBtn = document.getElementById('runPredictionBtn');
+  const runAutoresearchBtn = document.getElementById('runAutoresearchBtn');
+  const downloadCardBtn = document.getElementById('downloadCardBtn');
+  if (runPredictionBtn) runPredictionBtn.addEventListener('click', runPrediction);
+  if (runAutoresearchBtn) runAutoresearchBtn.addEventListener('click', runAutoresearch);
+  if (downloadCardBtn) downloadCardBtn.addEventListener('click', downloadCard);
   const revealEls = document.querySelectorAll('.reveal');
   if (revealEls.length && 'IntersectionObserver' in window) {
     const observer = new IntersectionObserver(
