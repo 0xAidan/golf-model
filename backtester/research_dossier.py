@@ -40,6 +40,12 @@ def write_research_dossier(
 ## Hypothesis
 {proposal.get("hypothesis", "")}
 
+## Quick Read
+- What we tested: {theory_metadata.get("what_tested", proposal.get("hypothesis", "n/a"))}
+- Outcome: {guardrails.get("summary", "No summary available.")}
+- Positive test: {"yes" if guardrails.get("is_positive_test") else "no"}
+- Next attempt: {guardrails.get("next_attempt_hint", "Continue iterating on highest-impact factors.")}
+
 ## Theory Metadata
 - Title: {theory_metadata.get("title", "n/a")}
 - Source: {theory_metadata.get("source_type", proposal.get("source", "unknown"))}

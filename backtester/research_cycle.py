@@ -16,6 +16,27 @@ from backtester.strategy import StrategyConfig
 from backtester.theory_engine import generate_candidate_theories
 from backtester.weighted_walkforward import compute_blended_score, evaluate_weighted_walkforward
 
+FIELD_LABELS: dict[str, str] = {
+    "w_sg_total": "SG total",
+    "w_sg_app": "approach",
+    "w_sg_ott": "off-the-tee",
+    "w_sg_arg": "around-green",
+    "w_sg_putt": "putting",
+    "w_form": "form",
+    "w_course_fit": "course fit",
+    "w_sub_course_fit": "sub-course fit",
+    "w_sub_form": "sub-form",
+    "w_sub_momentum": "sub-momentum",
+    "stat_window": "stat window",
+    "min_ev": "min EV",
+    "max_implied_prob": "max implied prob",
+    "min_model_prob": "min model prob",
+    "kelly_fraction": "kelly fraction",
+    "softmax_temp": "softmax temp",
+    "ai_adj_cap": "AI adjustment cap",
+    "use_weather": "weather flag",
+}
+
 
 def _git_commit() -> str | None:
     try:
@@ -51,8 +72,10 @@ def _proposal_payload_from_strategy(
     seed: int,
 ) -> dict[str, Any]:
     strategy: StrategyConfig = theory["strategy"]
+    display_title = _derive_display_title(theory, strategy, baseline_strategy)
+    what_tested = _build_what_tested(theory, strategy, baseline_strategy)
     return {
-        "name": theory.get("title") or strategy.name or f"{scope}_proposal",
+        "name": display_title,
         "hypothesis": theory.get("hypothesis") or f"Evaluate candidate strategy {strategy.name or 'candidate'} against current baseline",
         "strategy_config": {
             key: value for key, value in vars(strategy).items() if not key.startswith("_")
@@ -69,9 +92,11 @@ def _proposal_payload_from_strategy(
         "years": years,
         "filters": {"scope": scope},
         "theory_metadata": {
-            "title": theory.get("title"),
+            "title": display_title,
+            "raw_title": theory.get("title"),
             "source_type": theory.get("source_type", source),
             "why_it_may_work": theory.get("why_it_may_work"),
+            "what_tested": what_tested,
             "novelty_score": theory.get("novelty_score"),
             "duplicate_marker": theory.get("duplicate_marker"),
             "ranking_hint": theory.get("ranking_hint"),
@@ -86,6 +111,106 @@ def _proposal_payload_from_strategy(
             "theory_source": theory.get("source_type", source),
         },
     }
+
+
+def _format_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if isinstance(value, (int, float)):
+        return f"{value:.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _strategy_change_descriptions(
+    strategy: StrategyConfig,
+    baseline_strategy: StrategyConfig,
+    *,
+    max_items: int = 3,
+) -> list[str]:
+    base_values = vars(baseline_strategy)
+    candidate_values = vars(strategy)
+    changes: list[tuple[float, str]] = []
+    for key, label in FIELD_LABELS.items():
+        if key not in base_values or key not in candidate_values:
+            continue
+        new_value = candidate_values.get(key)
+        old_value = base_values.get(key)
+        if new_value == old_value:
+            continue
+        weight = 1.0
+        if isinstance(new_value, (int, float)) and isinstance(old_value, (int, float)):
+            weight = abs(float(new_value) - float(old_value))
+        direction = "set to"
+        if isinstance(new_value, (int, float)) and isinstance(old_value, (int, float)):
+            if float(new_value) > float(old_value):
+                direction = "increased to"
+            elif float(new_value) < float(old_value):
+                direction = "decreased to"
+        description = f"{label} {direction} {_format_value(new_value)} (was {_format_value(old_value)})"
+        changes.append((weight, description))
+    changes.sort(key=lambda item: item[0], reverse=True)
+    return [desc for _, desc in changes[:max_items]]
+
+
+def _derive_display_title(theory: dict[str, Any], strategy: StrategyConfig, baseline_strategy: StrategyConfig) -> str:
+    title = (theory.get("title") or "").strip()
+    if title and not title.lower().startswith("neighbor search"):
+        return title
+    changes = _strategy_change_descriptions(strategy, baseline_strategy, max_items=1)
+    if changes:
+        return changes[0].capitalize()
+    return title or strategy.name or "Candidate strategy test"
+
+
+def _build_what_tested(theory: dict[str, Any], strategy: StrategyConfig, baseline_strategy: StrategyConfig) -> str:
+    hypothesis = (theory.get("hypothesis") or "").strip()
+    changes = _strategy_change_descriptions(strategy, baseline_strategy, max_items=3)
+    if not changes:
+        return hypothesis or "Tested a nearby parameter variation against the current baseline."
+    change_text = "; ".join(changes)
+    if hypothesis:
+        return f"{hypothesis} Key parameter shifts: {change_text}."
+    return f"Tested these parameter shifts: {change_text}."
+
+
+def _next_attempt_hint(guardrail_results: dict[str, Any]) -> str:
+    reasons = guardrail_results.get("reasons") or []
+    if "insufficient_sample" in reasons:
+        return "Increase sample size or broaden benchmark years before trusting this variant."
+    if "clv_regression" in reasons:
+        return "Keep ROI ideas but tune for better market alignment to improve CLV."
+    if "calibration_regression" in reasons:
+        return "Reduce aggressive probability shifts and retest calibration-focused variants."
+    if "drawdown_regression" in reasons:
+        return "Lower risk concentration and explore milder weight adjustments."
+    return "Iterate on the strongest changed factor while keeping guardrails stable."
+
+
+def _build_run_summary(
+    summary_metrics: dict[str, Any],
+    baseline_summary_metrics: dict[str, Any],
+    guardrail_results: dict[str, Any],
+) -> tuple[str, bool]:
+    roi = float(summary_metrics.get("weighted_roi_pct", 0.0) or 0.0)
+    base_roi = float(baseline_summary_metrics.get("weighted_roi_pct", 0.0) or 0.0)
+    clv = float(summary_metrics.get("weighted_clv_avg", 0.0) or 0.0)
+    base_clv = float(baseline_summary_metrics.get("weighted_clv_avg", 0.0) or 0.0)
+    passed = bool(guardrail_results.get("passed", False))
+    positive = passed and roi > base_roi and clv >= base_clv
+    if positive:
+        return (
+            f"Positive test: ROI {roi:.2f}% beat baseline {base_roi:.2f}% and guardrails passed.",
+            True,
+        )
+    if not passed:
+        return (
+            f"Blocked by guardrails: ROI {roi:.2f}% vs baseline {base_roi:.2f}%.",
+            False,
+        )
+    return (
+        f"Not promoted: ROI {roi:.2f}% vs baseline {base_roi:.2f}%, CLV {clv:.3f} vs {base_clv:.3f}.",
+        False,
+    )
 
 
 def _should_promote_research_champion(candidate_ranking: dict[str, Any]) -> bool:
@@ -165,11 +290,21 @@ def run_research_cycle(
             repro_metadata=payload["repro_metadata"],
             output_dir=output_dir,
         )
+        enriched_guardrails = dict(evaluation["guardrail_results"])
+        summary_text, positive_test = _build_run_summary(
+            evaluation["summary_metrics"],
+            evaluation["baseline_summary_metrics"],
+            enriched_guardrails,
+        )
+        enriched_guardrails["summary"] = summary_text
+        enriched_guardrails["is_positive_test"] = positive_test
+        enriched_guardrails["next_attempt_hint"] = _next_attempt_hint(enriched_guardrails)
+        enriched_guardrails["baseline_summary_metrics"] = evaluation["baseline_summary_metrics"]
         update_proposal_evaluation(
             proposal_id,
             summary_metrics=evaluation["summary_metrics"],
             segmented_metrics=evaluation["segmented_metrics"],
-            guardrail_results=evaluation["guardrail_results"],
+            guardrail_results=enriched_guardrails,
             artifact_markdown_path=artifact_paths["markdown_path"],
             artifact_manifest_path=artifact_paths["manifest_path"],
         )
@@ -182,17 +317,17 @@ def run_research_cycle(
                 "source_type": theory.get("source_type", source),
                 "summary_metrics": evaluation["summary_metrics"],
                 "baseline_summary_metrics": evaluation["baseline_summary_metrics"],
-                "guardrail_results": evaluation["guardrail_results"],
+                "guardrail_results": enriched_guardrails,
                 "blended_score": compute_blended_score(
                     evaluation["summary_metrics"],
-                    evaluation["guardrail_results"],
+                    enriched_guardrails,
                 ),
                 "artifact_markdown_path": artifact_paths["markdown_path"],
                 "artifact_manifest_path": artifact_paths["manifest_path"],
-                "theory_title": theory.get("title"),
+                "theory_title": payload["name"],
                 "why_it_may_work": theory.get("why_it_may_work"),
                 "ready_for_live_review": (
-                    evaluation["guardrail_results"].get("passed", False)
+                    enriched_guardrails.get("passed", False)
                     and evaluation["summary_metrics"].get("weighted_roi_pct", 0.0) > 0
                 ),
             }

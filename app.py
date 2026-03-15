@@ -1215,7 +1215,7 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
     conn = get_conn()
     rows = conn.execute(
         """
-        SELECT id, name, hypothesis, source, scope, status, years_json,
+        SELECT id, name, hypothesis, source, scope, status, years_json, theory_metadata_json,
                summary_metrics_json, guardrail_results_json, artifact_markdown_path,
                created_at, evaluated_at
         FROM research_proposals
@@ -1232,6 +1232,7 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
     for row in rows:
         summary_metrics = json.loads(row["summary_metrics_json"] or "{}")
         guardrails = json.loads(row["guardrail_results_json"] or "{}")
+        theory = json.loads(row["theory_metadata_json"] or "{}")
         status = row["status"]
         kept = status in {"approved", "converted"}
         blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
@@ -1242,6 +1243,7 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 "id": row["id"],
                 "scope": row["scope"],
                 "candidate_name": row["name"],
+                "display_title": theory.get("title") or row["name"],
                 "baseline_name": "current champion",
                 "hypothesis": row["hypothesis"],
                 "source_type": row["source"],
@@ -1251,13 +1253,22 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 "blocked_reason": blocked_reason,
                 "benchmark_years": json.loads(row["years_json"] or "[]"),
                 "benchmark_label": f"Fixed PIT benchmark ({', '.join(str(y) for y in json.loads(row['years_json'] or '[]'))})" if row["years_json"] else "Fixed PIT benchmark",
-                "roi_delta": None,
-                "clv_delta": None,
+                "roi_delta": (
+                    float(summary_metrics.get("weighted_roi_pct", 0.0) or 0.0)
+                    - float((guardrails.get("baseline_summary_metrics", {}) or {}).get("weighted_roi_pct", 0.0) or 0.0)
+                ),
+                "clv_delta": (
+                    float(summary_metrics.get("weighted_clv_avg", 0.0) or 0.0)
+                    - float((guardrails.get("baseline_summary_metrics", {}) or {}).get("weighted_clv_avg", 0.0) or 0.0)
+                ),
                 "guardrail_verdict": guardrails.get("verdict"),
                 "summary_reason": guardrails.get("summary") or ("Approved for follow-up" if kept else "Not promoted from this run."),
+                "what_tested": theory.get("what_tested") or row["hypothesis"],
+                "next_attempt_hint": guardrails.get("next_attempt_hint"),
+                "is_positive_test": bool(guardrails.get("is_positive_test", False)),
                 "artifact_markdown_path": row["artifact_markdown_path"],
                 "summary_metrics": summary_metrics,
-                "baseline_summary_metrics": {},
+                "baseline_summary_metrics": guardrails.get("baseline_summary_metrics", {}),
                 "guardrail_results": guardrails,
                 "created_at": row["evaluated_at"] or row["created_at"],
             }
@@ -1312,10 +1323,15 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
         content_path = (_relative_output_path(art_path) if art_path and (art_path.startswith("/") or (len(art_path) > 1 and art_path[1] == ":")) else art_path) if art_path else None
         candidates.append({
             "id": row["id"],
-            "name": row["name"],
+            "name": theory.get("title") or row["name"],
             "hypothesis": row["hypothesis"],
             "strategy_tldr": strategy_tldr,
+            "what_tested": theory.get("what_tested") or row["hypothesis"],
+            "summary_reason": guardrails.get("summary"),
+            "next_attempt_hint": guardrails.get("next_attempt_hint"),
+            "is_positive_test": bool(guardrails.get("is_positive_test", False)),
             "summary_metrics": summary,
+            "baseline_summary_metrics": guardrails.get("baseline_summary_metrics", {}),
             "guardrail_results": guardrails,
             "blended_score": score,
             "artifact_markdown_path": art_path,

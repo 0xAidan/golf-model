@@ -295,15 +295,28 @@ async function loadAutoresearchRuns() {
       runsEl.textContent = 'Recent runs: none yet.';
       return;
     }
-    const lines = runs.map(function (r) {
-      const when = formatTime(r.created_at);
-      const decision = r.decision || 'unknown';
-      const name = r.candidate_name || 'unnamed';
-      return when + ' · ' + name + ' · ' + decision;
-    });
     runsEl.style.display = 'block';
-    runsEl.className = 'result';
-    runsEl.textContent = 'Recent runs:\n' + lines.join('\n');
+    runsEl.className = 'result run-feed';
+    let html = '<div class="run-feed-title">Recent runs</div>';
+    for (const r of runs) {
+      const when = formatTime(r.created_at);
+      const name = escapeHtml(r.display_title || r.candidate_name || 'Unnamed');
+      const whatTested = escapeHtml((r.what_tested || r.hypothesis || 'No test description.').slice(0, 220));
+      const summary = escapeHtml((r.summary_reason || 'No summary available.').slice(0, 220));
+      const nextHint = escapeHtml((r.next_attempt_hint || 'Continue from strongest factor.').slice(0, 160));
+      const verdictClass = r.is_positive_test ? 'positive' : (r.decision === 'blocked_by_guardrails' ? 'blocked' : 'neutral');
+      const roiDelta = r.roi_delta == null ? '—' : (r.roi_delta >= 0 ? '+' : '') + Number(r.roi_delta).toFixed(2) + '%';
+      html +=
+        '<article class="run-item">' +
+        '<div class="run-item-head"><h4>' + name + '</h4>' +
+        '<span class="run-verdict ' + verdictClass + '">' + escapeHtml(r.decision || 'unknown') + '</span></div>' +
+        '<div class="run-item-meta">' + escapeHtml(when) + ' · ROI delta: ' + escapeHtml(roiDelta) + '</div>' +
+        '<div class="run-item-text"><strong>Tested:</strong> ' + whatTested + '</div>' +
+        '<div class="run-item-text"><strong>Result:</strong> ' + summary + '</div>' +
+        '<div class="run-item-text"><strong>Next:</strong> ' + nextHint + '</div>' +
+        '</article>';
+    }
+    runsEl.innerHTML = html;
   } catch (err) {
     runsEl.style.display = 'block';
     runsEl.className = 'result status error';
@@ -330,12 +343,19 @@ async function loadBestCandidates() {
         c.summary_metrics && c.summary_metrics.weighted_roi_pct != null
           ? c.summary_metrics.weighted_roi_pct.toFixed(1) + '%'
           : '—';
+      const baseRoi =
+        c.baseline_summary_metrics && c.baseline_summary_metrics.weighted_roi_pct != null
+          ? c.baseline_summary_metrics.weighted_roi_pct.toFixed(1) + '%'
+          : '—';
       const clv =
         c.summary_metrics && c.summary_metrics.weighted_clv_avg != null
           ? c.summary_metrics.weighted_clv_avg.toFixed(3)
           : '—';
       const passed = c.guardrail_results && c.guardrail_results.passed ? 'Yes' : 'No';
-      const tldr = escapeHtml((c.strategy_tldr || '').slice(0, 400));
+      const tldr = escapeHtml((c.strategy_tldr || '').slice(0, 280));
+      const whatTested = escapeHtml((c.what_tested || c.hypothesis || 'No test description.').slice(0, 220));
+      const summaryReason = escapeHtml((c.summary_reason || 'No summary available.').slice(0, 200));
+      const nextAttempt = escapeHtml((c.next_attempt_hint || 'Keep iterating around strongest improvements.').slice(0, 160));
       const reportPath = c.artifact_content_path || c.artifact_markdown_path;
       const reportLink = reportPath
         ? '<a href="#" class="report-link link-secondary" data-path="' +
@@ -351,10 +371,14 @@ async function loadBestCandidates() {
         '</h3>' +
         '<div class="tldr">' +
         tldr +
-        (tldr.length >= 400 ? '…' : '') +
+        (tldr.length >= 280 ? '…' : '') +
         '</div>' +
+        '<div class="run-item-text"><strong>Tested:</strong> ' + whatTested + '</div>' +
+        '<div class="run-item-text"><strong>Result:</strong> ' + summaryReason + '</div>' +
+        '<div class="run-item-text"><strong>Next:</strong> ' + nextAttempt + '</div>' +
         '<div class="metrics">ROI: ' +
         roi +
+        ' (base ' + baseRoi + ')' +
         ' · CLV: ' +
         clv +
         ' · Guardrails: ' +

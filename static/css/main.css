@@ -273,6 +273,77 @@ body {
   color: var(--muted);
 }
 
+.run-feed {
+  display: block;
+}
+
+.run-feed-title {
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.run-item {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.run-item:last-child {
+  margin-bottom: 0;
+}
+
+.run-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.run-item-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.run-verdict {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+}
+
+.run-verdict.positive {
+  color: var(--success-text);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.run-verdict.blocked {
+  color: var(--error-text);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.run-verdict.neutral {
+  color: var(--muted);
+}
+
+.run-item-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+
+.run-item-text {
+  color: var(--text);
+  font-size: 0.84rem;
+  margin: 4px 0;
+}
+
+.run-item-text strong {
+  color: var(--muted);
+}
+
 /* Card viewer (prediction markdown) */
 .card-viewer {
   min-height: 100px;
