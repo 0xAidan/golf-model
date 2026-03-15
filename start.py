@@ -17,6 +17,8 @@ One script to rule them all. Usage:
 import os
 import sys
 import argparse
+import json
+from datetime import datetime
 
 # Ensure project root is on path
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -296,6 +298,280 @@ def cmd_status(args):
     print()
 
 
+def _write_markdown(path: str, content: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+
+
+def cmd_select_baseline(args):
+    """Select the best baseline strategy from evaluated research proposals."""
+    from src.db import ensure_initialized, get_conn
+    ensure_initialized()
+
+    from backtester.strategy import StrategyConfig
+    from backtester.weighted_walkforward import compute_blended_score
+    from backtester.model_registry import (
+        get_live_weekly_model,
+        get_live_weekly_model_record,
+        set_research_champion,
+    )
+
+    scope = args.scope
+    limit = args.limit
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, name, source, status, strategy_config_json, summary_metrics_json,
+               guardrail_results_json, created_at
+        FROM research_proposals
+        WHERE scope = ?
+          AND status IN ('evaluated', 'approved', 'converted')
+          AND summary_metrics_json IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (scope, limit),
+    ).fetchall()
+    conn.close()
+
+    live_strategy = get_live_weekly_model(scope)
+    live_record = get_live_weekly_model_record(scope) or {}
+    candidates = []
+    for row in rows:
+        try:
+            strategy = StrategyConfig.from_json(row["strategy_config_json"])
+            summary = json.loads(row["summary_metrics_json"] or "{}")
+            guardrails = json.loads(row["guardrail_results_json"] or "{}")
+            score = compute_blended_score(summary, guardrails)
+        except Exception:
+            continue
+        candidates.append(
+            {
+                "proposal_id": row["id"],
+                "name": row["name"],
+                "source": row["source"],
+                "status": row["status"],
+                "strategy": strategy,
+                "summary": summary,
+                "guardrails": guardrails,
+                "blended_score": score,
+                "created_at": row["created_at"],
+            }
+        )
+
+    if not candidates:
+        print("\nNo evaluated proposals found; keeping current baseline.")
+        return
+
+    candidates.sort(
+        key=lambda item: (
+            item["blended_score"],
+            item["summary"].get("weighted_roi_pct", -999),
+            item["summary"].get("weighted_clv_avg", -999),
+        ),
+        reverse=True,
+    )
+    winner = candidates[0]
+    baseline_summary = {
+        "name": live_strategy.name,
+        "source": "live",
+        "record_id": live_record.get("id"),
+    }
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = os.path.join(ROOT, "output", "backtests")
+    md_path = os.path.join(out_dir, f"baseline_selector_{timestamp}.md")
+    json_path = os.path.join(out_dir, f"baseline_selector_{timestamp}.json")
+    report = [
+        "# Baseline Selector Report",
+        "",
+        f"- Scope: `{scope}`",
+        f"- Current live baseline: `{baseline_summary['name']}` (record id: {baseline_summary['record_id']})",
+        f"- Candidates scanned: {len(candidates)}",
+        "",
+        "## Winner",
+        "",
+        f"- Proposal id: {winner['proposal_id']}",
+        f"- Name: `{winner['name']}`",
+        f"- Strategy: `{winner['strategy'].name}`",
+        f"- Blended score: {winner['blended_score']}",
+        f"- Weighted ROI: {winner['summary'].get('weighted_roi_pct', 0)}%",
+        f"- Weighted CLV: {winner['summary'].get('weighted_clv_avg', 0)}",
+        f"- Guardrails: {winner['guardrails'].get('verdict', 'unknown')}",
+        "",
+        "## Top Candidates",
+        "",
+    ]
+    for idx, item in enumerate(candidates[:10], start=1):
+        report.append(
+            f"{idx}. `{item['strategy'].name}` (proposal {item['proposal_id']}) "
+            f"score={item['blended_score']}, "
+            f"roi={item['summary'].get('weighted_roi_pct', 0)}%, "
+            f"clv={item['summary'].get('weighted_clv_avg', 0):.4f}, "
+            f"guardrails={item['guardrails'].get('verdict', 'unknown')}"
+        )
+    report.append("")
+
+    _write_markdown(md_path, "\n".join(report))
+    with open(json_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "scope": scope,
+                "generated_at": datetime.now().isoformat(),
+                "current_live": baseline_summary,
+                "winner": {
+                    "proposal_id": winner["proposal_id"],
+                    "name": winner["name"],
+                    "strategy_name": winner["strategy"].name,
+                    "blended_score": winner["blended_score"],
+                    "summary_metrics": winner["summary"],
+                    "guardrail_results": winner["guardrails"],
+                },
+                "top_candidates": [
+                    {
+                        "proposal_id": item["proposal_id"],
+                        "strategy_name": item["strategy"].name,
+                        "blended_score": item["blended_score"],
+                        "summary_metrics": item["summary"],
+                        "guardrail_results": item["guardrails"],
+                    }
+                    for item in candidates[:10]
+                ],
+            },
+            handle,
+            indent=2,
+        )
+
+    if args.set_research_champion:
+        set_research_champion(
+            winner["strategy"],
+            scope=scope,
+            source="manual_baseline_selector",
+            proposal_id=winner["proposal_id"],
+            notes=f"Selected by start.py select-baseline at {datetime.now().isoformat()}",
+        )
+        print("\nSelected winner has been set as research champion.")
+
+    print("\nBaseline selection complete.")
+    print(f"  Winner: {winner['strategy'].name} (proposal {winner['proposal_id']})")
+    print(f"  Blended score: {winner['blended_score']}")
+    print(f"  Markdown report: {md_path}")
+    print(f"  JSON report: {json_path}")
+
+
+def cmd_autoresearch_batch(args):
+    """Run multiple bounded autoresearch cycles and aggregate results."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from backtester.research_cycle import run_research_cycle
+
+    years = _parse_years_arg(getattr(args, "years", None))
+    cycles = max(1, int(args.cycles))
+    all_results = []
+    print(f"\nRunning bounded autoresearch batch: {cycles} cycle(s)")
+    for idx in range(cycles):
+        result = run_research_cycle(
+            max_candidates=args.max_candidates,
+            years=years,
+            source="manual_autoresearch_batch",
+            scope=args.scope,
+            seed=42 + idx,
+        )
+        all_results.append(result)
+        winner = result.get("winner") or {}
+        print(
+            f"  Cycle {idx + 1}/{cycles}: "
+            f"{winner.get('strategy_name', 'no winner')} "
+            f"(score={winner.get('blended_score', 'n/a')})"
+        )
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = os.path.join(ROOT, "output", "research")
+    md_path = os.path.join(out_dir, f"autoresearch_batch_{timestamp}.md")
+    json_path = os.path.join(out_dir, f"autoresearch_batch_{timestamp}.json")
+
+    winners = [r.get("winner") for r in all_results if r.get("winner")]
+    winners_sorted = sorted(winners, key=lambda x: x.get("blended_score", -999), reverse=True)
+    lines = [
+        "# Autoresearch Batch Summary",
+        "",
+        f"- Scope: `{args.scope}`",
+        f"- Cycles run: {cycles}",
+        f"- Max candidates/cycle: {args.max_candidates}",
+        f"- Years: {years or 'default'}",
+        "",
+        "## Winners by Cycle",
+        "",
+    ]
+    for idx, result in enumerate(all_results, start=1):
+        winner = result.get("winner") or {}
+        lines.append(
+            f"{idx}. `{winner.get('strategy_name', 'n/a')}` "
+            f"(score={winner.get('blended_score', 'n/a')}, "
+            f"decision={result.get('promotion_decision', 'n/a')})"
+        )
+    lines.append("")
+    lines.append("## Best Overall Candidate")
+    lines.append("")
+    if winners_sorted:
+        best = winners_sorted[0]
+        lines.append(f"- Strategy: `{best.get('strategy_name', 'n/a')}`")
+        lines.append(f"- Proposal id: {best.get('proposal_id', 'n/a')}")
+        lines.append(f"- Blended score: {best.get('blended_score', 'n/a')}")
+        lines.append(f"- Guardrails: {best.get('guardrail_results', {}).get('verdict', 'n/a')}")
+    else:
+        lines.append("- No winner produced in this batch.")
+    lines.append("")
+    _write_markdown(md_path, "\n".join(lines))
+
+    with open(json_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "scope": args.scope,
+                "cycles": cycles,
+                "max_candidates": args.max_candidates,
+                "years": years,
+                "results": all_results,
+                "best_winner": winners_sorted[0] if winners_sorted else None,
+                "generated_at": datetime.now().isoformat(),
+            },
+            handle,
+            indent=2,
+        )
+
+    print("\nAutoresearch batch complete.")
+    print(f"  Summary markdown: {md_path}")
+    print(f"  Summary json: {json_path}")
+
+
+def cmd_autoresearch(args):
+    """Run the keep/discard autoresearch loop locally."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    import subprocess
+
+    script = os.path.join(ROOT, "scripts", "run_autoresearch_loop.py")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            script,
+            "--iterations",
+            str(max(1, int(args.iterations))),
+            "--seed",
+            str(int(args.seed)),
+            "--timeout-seconds",
+            str(max(30, int(args.timeout_seconds))),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    print("\nAutoresearch loop finished.")
+    print(proc.stdout.strip() or proc.stderr.strip())
+
+
 def interactive_menu():
     """Show an interactive menu for users who just run 'python start.py'."""
     print()
@@ -427,6 +703,25 @@ def main():
     p_rc = subparsers.add_parser("research-convert", help="Convert a proposal to an experiment")
     p_rc.add_argument("--id", type=int, required=True)
 
+    # select-baseline
+    p_sb = subparsers.add_parser("select-baseline", help="Select best baseline from evaluated proposals")
+    p_sb.add_argument("--scope", default="global")
+    p_sb.add_argument("--limit", type=int, default=200)
+    p_sb.add_argument("--set-research-champion", action="store_true")
+
+    # autoresearch-batch
+    p_ab = subparsers.add_parser("autoresearch-batch", help="Run N bounded autoresearch cycles")
+    p_ab.add_argument("--scope", default="global")
+    p_ab.add_argument("--cycles", type=int, default=3)
+    p_ab.add_argument("--max-candidates", type=int, default=3)
+    p_ab.add_argument("--years", default=None, help="Comma-separated years")
+
+    # autoresearch
+    p_ar = subparsers.add_parser("autoresearch", help="Run keep/discard autoresearch loop")
+    p_ar.add_argument("--iterations", type=int, default=10)
+    p_ar.add_argument("--seed", type=int, default=42)
+    p_ar.add_argument("--timeout-seconds", type=int, default=120)
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -457,6 +752,12 @@ def main():
         cmd_research_reject(args)
     elif args.command == "research-convert":
         cmd_research_convert(args)
+    elif args.command == "select-baseline":
+        cmd_select_baseline(args)
+    elif args.command == "autoresearch-batch":
+        cmd_autoresearch_batch(args)
+    elif args.command == "autoresearch":
+        cmd_autoresearch(args)
 
 
 if __name__ == "__main__":

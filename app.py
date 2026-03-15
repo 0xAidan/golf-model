@@ -41,8 +41,14 @@ from src.value import find_value_bets
 from src.scoring import determine_outcome
 
 import pandas as pd
+from pathlib import Path
+
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Golf Betting Model")
+
+BASE_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 # Store last analysis in memory for the card page
 _last_analysis = {}
@@ -272,9 +278,22 @@ async def get_latest_output_summaries():
 
 # ── API Endpoints ───────────────────────────────────────────────────
 
+def _render_dashboard_html():
+    """Load dashboard template from templates/index.html."""
+    path = BASE_DIR / "templates" / "index.html"
+    if not path.is_file():
+        return _fallback_dashboard_html()
+    return path.read_text(encoding="utf-8")
+
+
+def _fallback_dashboard_html():
+    """Fallback if template is missing (e.g. in tests)."""
+    return SIMPLE_HTML_PAGE
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    return SIMPLE_HTML_PAGE
+    return _render_dashboard_html()
 
 
 @app.get("/legacy", response_class=HTMLResponse)
@@ -396,6 +415,20 @@ async def run_upcoming_prediction(request: Request):
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]
+    if result.get("card_filepath"):
+        result["card_content_path"] = _relative_output_path(result["card_filepath"])
+        # Include card markdown in response so frontend can show it without a second request
+        card_path_abs = _safe_output_path(result["card_content_path"])
+        if not card_path_abs and result["card_filepath"] and os.path.isabs(result["card_filepath"]):
+            card_path_abs = result["card_filepath"]
+        if card_path_abs and os.path.isfile(card_path_abs):
+            try:
+                with open(card_path_abs, "r", encoding="utf-8") as f:
+                    result["card_content"] = f.read()
+            except Exception:
+                result["card_content"] = None
+        else:
+            result["card_content"] = None
     result["model_lane"] = "live_weekly_model"
     result["live_model_name"] = live_strategy.name
     return result
@@ -613,6 +646,12 @@ async def get_dashboard_state(scope: str = "global"):
         "effective_research_champion": get_research_champion(scope).__dict__,
         "live_weekly_model_record": get_live_weekly_model_record(scope),
         "research_champion_record": get_research_champion_record(scope),
+        "baseline_provenance": {
+            "strategy_source": "live" if get_live_weekly_model_record(scope) else "research_champion",
+            "live_record_id": (get_live_weekly_model_record(scope) or {}).get("id"),
+            "research_record_id": (get_research_champion_record(scope) or {}).get("id"),
+            "live_strategy_name": get_live_weekly_model(scope).__dict__.get("name"),
+        },
         "latest_outputs": {
             "prediction_markdown_path": _latest_output_file(subdir="", suffix=".md"),
             "backtest_markdown_path": _latest_output_file(subdir="backtests", suffix=".md"),
@@ -731,21 +770,257 @@ async def get_model_registry():
     }
 
 
+@app.post("/api/baseline/select")
+async def select_best_baseline(request: Request):
+    """Select best evaluated proposal by blended score; optionally set research champion."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.weighted_walkforward import compute_blended_score
+    from backtester.strategy import StrategyConfig
+    from backtester.model_registry import set_research_champion
+
+    payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    scope = payload.get("scope", "global")
+    limit = int(payload.get("limit", 200))
+    set_champion = bool(payload.get("set_research_champion", False))
+
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, name, source, strategy_config_json, summary_metrics_json, guardrail_results_json
+        FROM research_proposals
+        WHERE scope = ?
+          AND status IN ('evaluated', 'approved', 'converted')
+          AND summary_metrics_json IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (scope, limit),
+    ).fetchall()
+    conn.close()
+
+    candidates = []
+    for row in rows:
+        try:
+            strategy = StrategyConfig.from_json(row["strategy_config_json"])
+            summary = json.loads(row["summary_metrics_json"] or "{}")
+            guardrails = json.loads(row["guardrail_results_json"] or "{}")
+            score = compute_blended_score(summary, guardrails)
+        except Exception:
+            continue
+        candidates.append(
+            {
+                "proposal_id": row["id"],
+                "candidate_name": row["name"],
+                "strategy_name": strategy.name,
+                "strategy_source": row["source"],
+                "summary_metrics": summary,
+                "guardrail_results": guardrails,
+                "blended_score": score,
+                "strategy": strategy,
+            }
+        )
+
+    if not candidates:
+        return JSONResponse({"ok": False, "error": "No evaluated proposals found."}, status_code=404)
+
+    candidates.sort(
+        key=lambda item: (
+            item["blended_score"],
+            item["summary_metrics"].get("weighted_roi_pct", -999),
+            item["summary_metrics"].get("weighted_clv_avg", -999),
+        ),
+        reverse=True,
+    )
+    winner = candidates[0]
+    if set_champion:
+        set_research_champion(
+            winner["strategy"],
+            scope=scope,
+            source="manual_baseline_selector_ui",
+            proposal_id=winner["proposal_id"],
+            notes=f"Selected from /api/baseline/select at {datetime.now().isoformat()}",
+        )
+    winner.pop("strategy", None)
+    for item in candidates:
+        item.pop("strategy", None)
+    return {
+        "ok": True,
+        "scope": scope,
+        "decision": "kept",
+        "winner": winner,
+        "top_candidates": candidates[:10],
+    }
+
+
 @app.post("/api/model-registry/promote-research-to-live")
 async def promote_research_to_live(request: Request):
     """Manually promote the current research champion into the live lane."""
     from src.db import ensure_initialized
     ensure_initialized()
 
-    from backtester.model_registry import promote_research_champion_to_live
+    from backtester.model_registry import (
+        HoldoutGateError,
+        PromotionGateError,
+        evaluate_live_promotion_gates,
+        promote_research_champion_to_live,
+    )
 
     payload = await request.json()
-    promoted = promote_research_champion_to_live(
-        scope=payload.get("scope", "global"),
-        promoted_by=payload.get("reviewer", "manual"),
-        notes=payload.get("notes"),
+    scope = payload.get("scope", "global")
+    try:
+        promoted = promote_research_champion_to_live(
+            scope=scope,
+            promoted_by=payload.get("reviewer", "manual"),
+            notes=payload.get("notes"),
+            enforce_gates=bool(payload.get("enforce_gates", True)),
+            enforce_holdout=bool(payload.get("enforce_holdout", False)),
+            holdout_artifact_path=payload.get("holdout_artifact_path"),
+        )
+        return {
+            "ok": True,
+            "decision": "kept",
+            "strategy_source": "research_champion",
+            "live_weekly_model": promoted["strategy"].__dict__,
+        }
+    except HoldoutGateError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "decision": "failed_holdout",
+                "error": str(exc),
+                "strategy_source": "research_champion",
+            },
+            status_code=200,
+        )
+    except PromotionGateError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "decision": "blocked_by_guardrails",
+                "blocked_reason": exc.result.reasons,
+                "guardrail_metrics": exc.result.metrics,
+                "strategy_source": "research_champion",
+            },
+            status_code=200,
+        )
+    except Exception as exc:
+        gate_state = evaluate_live_promotion_gates(scope)
+        return JSONResponse(
+            {
+                "ok": False,
+                "decision": "error",
+                "error": str(exc),
+                "blocked_reason": gate_state.reasons if not gate_state.passed else [],
+                "guardrail_metrics": gate_state.metrics,
+                "strategy_source": "research_champion",
+            },
+            status_code=400,
+        )
+
+
+@app.post("/api/model-registry/promote-proposal-to-live")
+async def promote_proposal_to_live(request: Request):
+    """Set the given proposal as research champion and promote it to live in one shot."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.model_registry import (
+        HoldoutGateError,
+        PromotionGateError,
+        evaluate_live_promotion_gates,
+        promote_research_champion_to_live,
+        set_research_champion,
     )
-    return {"ok": True, "live_weekly_model": promoted["strategy"].__dict__}
+    from backtester.proposals import get_proposal
+    from backtester.strategy import StrategyConfig
+
+    payload = await request.json()
+    proposal_id = payload.get("proposal_id")
+    scope = payload.get("scope", "global")
+    if proposal_id is None:
+        return JSONResponse({"ok": False, "error": "proposal_id required"}, status_code=400)
+
+    try:
+        proposal = get_proposal(proposal_id)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+
+    strategy = StrategyConfig.from_json(proposal["strategy_config_json"])
+    theory_metadata = json.loads(proposal.get("theory_metadata_json") or "{}")
+
+    set_research_champion(
+        strategy,
+        scope=scope,
+        source=payload.get("reviewer", "dashboard"),
+        proposal_id=proposal_id,
+        theory_metadata=theory_metadata,
+        notes=payload.get("notes") or f"Promoted proposal {proposal_id} to live via dashboard",
+    )
+
+    try:
+        promoted = promote_research_champion_to_live(
+            scope=scope,
+            promoted_by=payload.get("reviewer", "dashboard"),
+            notes=payload.get("notes"),
+            enforce_gates=bool(payload.get("enforce_gates", True)),
+            enforce_holdout=bool(payload.get("enforce_holdout", False)),
+            holdout_artifact_path=payload.get("holdout_artifact_path"),
+        )
+        return {
+            "ok": True,
+            "decision": "kept",
+            "strategy_source": "proposal",
+            "live_weekly_model": promoted["strategy"].__dict__,
+        }
+    except HoldoutGateError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "decision": "failed_holdout",
+                "error": str(exc),
+                "strategy_source": "proposal",
+            },
+            status_code=200,
+        )
+    except PromotionGateError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "decision": "blocked_by_guardrails",
+                "blocked_reason": exc.result.reasons,
+                "guardrail_metrics": exc.result.metrics,
+                "strategy_source": "proposal",
+            },
+            status_code=200,
+        )
+    except Exception as exc:
+        gate_state = evaluate_live_promotion_gates(scope)
+        return JSONResponse(
+            {
+                "ok": False,
+                "decision": "error",
+                "error": str(exc),
+                "blocked_reason": gate_state.reasons if not gate_state.passed else [],
+                "guardrail_metrics": gate_state.metrics,
+                "strategy_source": "proposal",
+            },
+            status_code=400,
+        )
+
+
+@app.get("/api/model-registry/gates")
+async def get_live_promotion_gates(scope: str = "global"):
+    """Return charter gate status for live promotion decisions."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.model_registry import evaluate_live_promotion_gates
+
+    result = evaluate_live_promotion_gates(scope)
+    return {
+        "passed": result.passed,
+        "blocked_reason": result.reasons,
+        "metrics": result.metrics,
+    }
 
 
 @app.post("/api/model-registry/rollback-live")
@@ -819,8 +1094,22 @@ async def get_autoresearch_status():
     from backtester.optimizer_runtime import get_optimizer_status
 
     status = get_optimizer_status()
+    running = status.get("running", False)
+    last_error = status.get("last_error")
+    if running:
+        state = "running"
+    elif last_error:
+        state = "error"
+    elif status.get("run_count", 0) > 0:
+        state = "completed"
+    else:
+        state = "idle"
+    last_result = status.get("last_result") or {}
+    winner = last_result.get("winner") or {}
+    winner_score = winner.get("blended_score")
     return {
         "status": {
+            "state": state,
             "running": status.get("running", False),
             "run_count": status.get("run_count", 0),
             "last_started_at": status.get("last_run_started_at"),
@@ -829,6 +1118,14 @@ async def get_autoresearch_status():
             "last_error": status.get("last_error"),
             "scope": status.get("scope", "global"),
             "interval_seconds": status.get("interval_seconds"),
+            "best_metric": winner_score,
+            "baseline_metric": None,
+            "delta_metric": None,
+            "guardrail_failures": 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1,
+            "last_updated_at": status.get("last_run_finished_at") or status.get("last_run_started_at"),
+            "keep_rate": status.get("keep_rate", 0.0),
+            "crash_rate": status.get("crash_rate", 0.0),
+            "guardrail_fail_rate": status.get("guardrail_fail_rate", 0.0),
         }
     }
 
@@ -866,7 +1163,47 @@ async def run_autoresearch_once(request: Request):
         scope=payload.get("scope", "global"),
         source="manual_autoresearch",
     )
-    return result
+    return {
+        "state": "completed",
+        "decision": "kept" if result.get("winner") else "discarded",
+        **result,
+    }
+
+
+@app.post("/api/autoresearch/run-batch")
+async def run_autoresearch_batch(request: Request):
+    """Run N bounded autoresearch cycles and return aggregated result."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.research_cycle import run_research_cycle
+
+    payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    scope = payload.get("scope", "global")
+    years = payload.get("years")
+    cycles = max(1, int(payload.get("cycles", 3)))
+    max_candidates = max(1, int(payload.get("max_candidates", 3)))
+    runs = []
+    for idx in range(cycles):
+        runs.append(
+            run_research_cycle(
+                years=years,
+                max_candidates=max_candidates,
+                scope=scope,
+                source="manual_autoresearch_batch",
+                seed=42 + idx,
+            )
+        )
+    winners = [r.get("winner") for r in runs if r.get("winner")]
+    best_winner = sorted(winners, key=lambda x: x.get("blended_score", -999), reverse=True)[0] if winners else None
+    return {
+        "status": "complete",
+        "state": "completed",
+        "scope": scope,
+        "cycles": cycles,
+        "max_candidates": max_candidates,
+        "runs": runs,
+        "best_winner": best_winner,
+    }
 
 
 @app.get("/api/autoresearch/runs")
@@ -897,6 +1234,9 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
         guardrails = json.loads(row["guardrail_results_json"] or "{}")
         status = row["status"]
         kept = status in {"approved", "converted"}
+        blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
+        blocked_by_guardrails = bool(blocked_reason) or guardrails.get("verdict") == "blocked_by_guardrails"
+        decision = "blocked_by_guardrails" if blocked_by_guardrails else ("kept" if kept else "discarded")
         runs.append(
             {
                 "id": row["id"],
@@ -905,8 +1245,10 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 "baseline_name": "current champion",
                 "hypothesis": row["hypothesis"],
                 "source_type": row["source"],
-                "decision": "kept" if kept else "discarded",
+                "strategy_source": row["source"],
+                "decision": decision,
                 "kept": kept,
+                "blocked_reason": blocked_reason,
                 "benchmark_years": json.loads(row["years_json"] or "[]"),
                 "benchmark_label": f"Fixed PIT benchmark ({', '.join(str(y) for y in json.loads(row['years_json'] or '[]'))})" if row["years_json"] else "Fixed PIT benchmark",
                 "roi_delta": None,
@@ -921,6 +1263,74 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
             }
         )
     return {"runs": runs}
+
+
+@app.get("/api/autoresearch/best-candidates")
+async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 10):
+    """Return best evaluated proposals by blended score with strategy TLDR for dashboard."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.weighted_walkforward import compute_blended_score
+    from backtester.strategy import StrategyConfig
+
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, name, hypothesis, source, strategy_config_json,
+               summary_metrics_json, guardrail_results_json, theory_metadata_json,
+               artifact_markdown_path
+        FROM research_proposals
+        WHERE scope = ?
+          AND status IN ('evaluated', 'approved', 'converted')
+          AND summary_metrics_json IS NOT NULL
+          AND guardrail_results_json IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (scope, max(limit, 50)),
+    ).fetchall()
+    conn.close()
+
+    candidates = []
+    for row in rows:
+        try:
+            summary = json.loads(row["summary_metrics_json"] or "{}")
+            guardrails = json.loads(row["guardrail_results_json"] or "{}")
+            score = compute_blended_score(summary, guardrails)
+            theory = json.loads(row["theory_metadata_json"] or "{}")
+            why = (theory.get("why_it_may_work") or "").strip()
+            hypothesis = (row["hypothesis"] or "").strip()
+            strategy_tldr = hypothesis
+            if why:
+                strategy_tldr = f"{hypothesis}\n\n{why}" if hypothesis else why
+            strategy_tldr = strategy_tldr.strip() or "No description."
+            if len(strategy_tldr) > 500:
+                strategy_tldr = strategy_tldr[:497] + "..."
+        except Exception:
+            continue
+        art_path = row["artifact_markdown_path"]
+        content_path = (_relative_output_path(art_path) if art_path and (art_path.startswith("/") or (len(art_path) > 1 and art_path[1] == ":")) else art_path) if art_path else None
+        candidates.append({
+            "id": row["id"],
+            "name": row["name"],
+            "hypothesis": row["hypothesis"],
+            "strategy_tldr": strategy_tldr,
+            "summary_metrics": summary,
+            "guardrail_results": guardrails,
+            "blended_score": score,
+            "artifact_markdown_path": art_path,
+            "artifact_content_path": content_path,
+        })
+
+    candidates.sort(
+        key=lambda item: (
+            item["blended_score"],
+            item["summary_metrics"].get("weighted_roi_pct", -999),
+            item["summary_metrics"].get("weighted_clv_avg", -999),
+        ),
+        reverse=True,
+    )
+    return {"candidates": candidates[:limit]}
 
 
 @app.post("/api/results")
@@ -1531,425 +1941,260 @@ SIMPLE_HTML_PAGE = """<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; line-height: 1.5; }
-.wrap { max-width: 1180px; margin: 0 auto; }
-.hero { margin-bottom: 20px; }
-.hero h1 { font-size: 1.7rem; margin: 0 0 6px; color: #f8fafc; }
-.small { color: #94a3b8; font-size: 0.92rem; }
-.grid { display: grid; gap: 16px; }
-.card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 18px; }
-.card h2 { font-size: 1.05rem; margin: 0 0 10px; color: #f8fafc; }
-.pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.pill { background: #334155; padding: 6px 10px; border-radius: 999px; font-size: 0.85rem; color: #e2e8f0; }
-.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-.summary-card { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; }
-.summary-card h3 { margin: 0 0 8px; font-size: 0.95rem; color: #f8fafc; }
-.summary-card p, .summary-card li { font-size: 0.9rem; color: #cbd5e1; margin: 6px 0; }
-.summary-card ul { margin: 8px 0 0 18px; padding: 0; }
-.action-row { display: flex; flex-wrap: wrap; gap: 10px; }
-button { padding: 10px 14px; border: 0; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-weight: 500; }
+.wrap { max-width: 900px; margin: 0 auto; }
+.hero { margin-bottom: 24px; }
+.hero h1 { font-size: 1.5rem; margin: 0 0 4px; color: #f8fafc; }
+.status-line { color: #94a3b8; font-size: 0.9rem; margin-top: 8px; }
+.grid { display: grid; gap: 20px; }
+.card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 20px; }
+.card h2 { font-size: 1.1rem; margin: 0 0 14px; color: #f8fafc; }
+button { padding: 10px 18px; border: 0; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-weight: 500; }
 button:hover { background: #1d4ed8; }
-button.secondary { background: #475569; }
-button.secondary:hover { background: #64748b; }
-button.danger { background: #b91c1c; }
-button.danger:hover { background: #991b1b; }
-label { display: block; margin: 10px 0 4px; color: #94a3b8; font-size: 0.9rem; }
-input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f1f5f9; box-sizing: border-box; }
-.result { margin-top: 12px; padding: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; white-space: pre-wrap; font-size: 0.9rem; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+button.promote { background: #059669; }
+button.promote:hover { background: #047857; }
+.result { margin-top: 14px; padding: 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; white-space: pre-wrap; font-size: 0.9rem; }
+.card-viewer { min-height: 120px; margin-top: 14px; padding: 16px; background: #0f172a; border-radius: 10px; border: 1px solid #334155; }
+.card-viewer h1, .card-viewer h2, .card-viewer h3 { color: #f8fafc; }
+.card-viewer p, .card-viewer li { color: #cbd5e1; }
 .status { padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; }
 .status.info { background: #1e3a5f; color: #93c5fd; }
 .status.success { background: #14532d; color: #86efac; }
 .status.error { background: #450a0a; color: #fca5a5; }
-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-th, td { padding: 10px 8px; border-bottom: 1px solid #334155; text-align: left; vertical-align: top; }
-th { color: #94a3b8; font-weight: 500; }
-.viewer-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 12px; }
-.viewer-toolbar > div { min-width: 220px; flex: 1; }
-.output-viewer { min-height: 220px; padding: 16px; background: #0f172a; border-radius: 10px; border: 1px solid #334155; }
-.output-viewer h1, .output-viewer h2, .output-viewer h3 { color: #f8fafc; }
-.output-viewer p, .output-viewer li { color: #cbd5e1; }
+.candidate-list { display: flex; flex-direction: column; gap: 14px; }
+.candidate-item { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; }
+.candidate-item h3 { margin: 0 0 8px; font-size: 1rem; color: #f8fafc; }
+.tldr { color: #cbd5e1; font-size: 0.9rem; margin: 8px 0; white-space: pre-wrap; }
+.metrics { font-size: 0.85rem; color: #94a3b8; margin: 8px 0; }
+.candidate-actions { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .subtle { color: #94a3b8; font-size: 0.85rem; }
-.run-link { color: #93c5fd; cursor: pointer; text-decoration: underline; }
-details summary { cursor: pointer; color: #f8fafc; font-weight: 600; }
-.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid #334155; }
 a { color: #93c5fd; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hero">
-    <h1>Golf Model Operating Console</h1>
-    <p class="small">The main dashboard now focuses on what matters first: current state, latest results, recent autoresearch runs, and the core actions. <a href="/legacy">Open legacy dashboard</a></p>
+    <h1>Golf Model</h1>
+    <p id="statusLine" class="status-line">Loading…</p>
   </div>
 
   <div class="grid">
     <div class="card">
-      <h2>Now</h2>
-      <div class="pill-row" id="nowPills"></div>
-      <div class="summary-grid" id="nowCards"></div>
-      <div id="nowError" style="margin-top:12px;"></div>
-      <p class="subtle" style="margin-top:12px;">Autoresearch is the runtime concept here. It uses the existing optimizer loop under the hood, but this page no longer labels it as the optimizer.</p>
+      <h2>Run prediction for upcoming tournament</h2>
+      <p class="subtle">Uses the current live model and DataGolf to detect this weekend's event. Results appear below.</p>
+      <button id="runPredictionBtn" onclick="runPrediction()">Run prediction</button>
+      <div id="predResult" class="result" style="display:none;"></div>
+      <div id="predCardViewer" class="card-viewer" style="display:none;"></div>
+      <button id="downloadCardBtn" type="button" class="secondary" style="display:none; margin-top: 0.75rem;" onclick="downloadCard()" aria-label="Download prediction card as markdown file">Download card (.md)</button>
     </div>
 
     <div class="card">
-      <h2>Latest Results</h2>
-      <div class="summary-grid" id="latestResults"></div>
+      <h2>Run autoresearch</h2>
+      <p class="subtle">Generate and evaluate strategy candidates. Best candidates appear below with a TLDR and option to promote to live.</p>
+      <button id="runAutoresearchBtn" onclick="runAutoresearch()">Run autoresearch</button>
+      <div id="autoresearchResult" class="result" style="display:none;"></div>
+      <div id="bestCandidates" class="candidate-list"></div>
     </div>
+  </div>
 
-    <div class="card">
-      <h2>Recent Runs</h2>
-      <div id="recentRuns"></div>
-    </div>
-
-    <div class="card">
-      <h2>Actions</h2>
-      <label for="reviewNote">Review note (optional)</label>
-      <input id="reviewNote" placeholder="Why you promoted or rolled back" />
-      <div class="two-col">
-        <div>
-          <label for="autoresearchYears">Benchmark years</label>
-          <input id="autoresearchYears" value="2024,2025" />
-        </div>
-        <div>
-          <label for="autoresearchInterval">Loop interval seconds</label>
-          <input id="autoresearchInterval" value="300" />
-        </div>
-      </div>
-      <div class="action-row" style="margin-top:12px;">
-        <button onclick="runAutoresearchOnce()">Run Once</button>
-        <button onclick="startAutoresearchLoop()">Start Loop</button>
-        <button class="secondary" onclick="stopAutoresearchLoop()">Stop Loop</button>
-        <button class="secondary" onclick="promoteResearchChampionToLive()">Promote Research Champion</button>
-        <button class="danger" onclick="rollbackLiveModel()">Rollback Live</button>
-      </div>
-      <div id="actionResult" class="result">No action run yet.</div>
-    </div>
-
-    <div class="card">
-      <h2>Readable Outputs</h2>
-      <div class="viewer-toolbar">
-        <div>
-          <label for="outputTypeSelect">Type</label>
-          <select id="outputTypeSelect" onchange="handleOutputTypeChange()">
-            <option value="prediction">Prediction</option>
-            <option value="backtest" selected>Backtest</option>
-            <option value="research">Research</option>
-          </select>
-        </div>
-        <div>
-          <label for="outputFileSelect">Report</label>
-          <select id="outputFileSelect" onchange="loadOutputArtifact(document.getElementById('outputTypeSelect').value, this.value)"></select>
-        </div>
-      </div>
-      <div id="outputViewerPath" class="subtle" style="margin-bottom:10px;"></div>
-      <div id="outputViewer" class="output-viewer"><div class="status info">Loading report…</div></div>
-    </div>
-
-    <details class="card">
-      <summary>Advanced Tools</summary>
-      <p class="small" style="margin-top:12px;">These are still available, but they are lower priority than the main operating flow above.</p>
-
-      <div class="card" style="margin-top:14px;">
-        <h2>Run Upcoming Event Prediction</h2>
-        <p class="small">Uses: DataGolf + local model. OpenAI can add AI-style reasoning when prediction analysis is enabled.</p>
-        <label for="predTour">Tour</label>
-        <input id="predTour" value="pga" />
-        <label for="predTournament">Tournament</label>
-        <input id="predTournament" placeholder="Leave blank to auto-detect current event" />
-        <label for="predCourse">Course</label>
-        <input id="predCourse" placeholder="Optional" />
-        <button onclick="runUpcomingPrediction()">Run Upcoming Event Prediction</button>
-        <div id="predResult" class="result">No prediction run yet.</div>
-      </div>
-
-      <div class="card" style="margin-top:14px;">
-        <h2>Run Backtest</h2>
-        <p class="small">Uses: local backtest math + plain-English reporting. This compares your candidate settings against the current baseline and writes a markdown verdict.</p>
-        <label for="btName">Backtest Name</label>
-        <input id="btName" value="dashboard_backtest" />
-        <label for="btYears">Years</label>
-        <input id="btYears" value="2024,2025" />
-        <label for="btMinEv">Minimum EV</label>
-        <input id="btMinEv" value="0.05" />
-        <label for="btWindow">Stat Window</label>
-        <input id="btWindow" value="24" />
-        <button onclick="runBacktest()">Run Backtest</button>
-        <div id="backtestResult" class="result">No backtest run yet.</div>
-      </div>
-
-      <div class="card" style="margin-top:14px;">
-        <h2>Run Research Cycle</h2>
-        <p class="small">Uses: OpenAI theory generation + DataGolf-backed evaluation + local ranking logic.</p>
-        <label for="researchYears">Years</label>
-        <input id="researchYears" value="2024,2025" />
-        <label for="researchMaxCandidates">Max Candidates</label>
-        <input id="researchMaxCandidates" value="1" />
-        <button onclick="runResearchCycle()">Run Research Cycle</button>
-        <div id="researchResult" class="result">No research cycle run yet.</div>
-      </div>
-    </details>
+  <div class="footer">
+    <a href="/legacy">Legacy dashboard</a> (loop, backtest, rollback, outputs)
   </div>
 </div>
 
 <script>
-function parseYears(raw) {
-  return String(raw || '').split(',').map(v => parseInt(v.trim(), 10)).filter(v => !Number.isNaN(v));
+function escapeHtml(s) {
+  if (!s) return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
 }
 
 function formatTime(value) {
-  if (!value) return 'Not yet';
+  if (!value) return 'Never';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
-function renderSummaryCard(title, summaryPayload, type) {
-  if (!summaryPayload || !summaryPayload.summary) {
-    return '<div class="summary-card"><h3>'+title+'</h3><p>No recent '+type+' report yet.</p></div>';
-  }
-  const s = summaryPayload.summary;
-  if (type === 'prediction') {
-    return '<div class="summary-card"><h3>'+title+'</h3><p><strong>Event:</strong> '+(s.event || 'Unknown event')+'</p><p><strong>Confidence:</strong> '+(s.confidence_note || 'n/a')+'</p><p><strong>Best angle:</strong> '+(s.strongest_value_angle || 'n/a')+'</p><ul>'+((s.top_picks || []).slice(0, 3).map(item => '<li>'+item+'</li>').join('') || '<li>No headline picks found.</li>')+'</ul></div>';
-  }
-  if (type === 'backtest') {
-    return '<div class="summary-card"><h3>'+title+'</h3><p><strong>Candidate:</strong> '+(s.candidate_tested || 'n/a')+'</p><p><strong>Verdict:</strong> '+(s.verdict || 'n/a')+'</p><p><strong>ROI:</strong> '+(s.candidate_roi || 'n/a')+' vs '+(s.baseline_roi || 'n/a')+'</p><p><strong>CLV delta:</strong> '+(s.clv_delta || 'n/a')+'</p><p><strong>Guardrails:</strong> '+(s.guardrail_result || 'n/a')+'</p><p><strong>Next action:</strong> '+(s.recommended_next_action || 'n/a')+'</p></div>';
-  }
-  return '<div class="summary-card"><h3>'+title+'</h3><p><strong>Candidate:</strong> '+(s.candidate_title || 'n/a')+'</p><p><strong>Idea:</strong> '+(s.why_it_was_tested || 'n/a')+'</p><p><strong>Beat champion:</strong> '+(s.did_it_beat_champion || 'n/a')+'</p><p><strong>Decision:</strong> '+(s.decision || 'n/a')+'</p><p><strong>Why:</strong> '+(s.why || 'n/a')+'</p></div>';
-}
-
-async function loadOutputArtifact(type, path) {
-  const viewer = document.getElementById('outputViewer');
-  const label = document.getElementById('outputViewerPath');
-  if (!path) {
-    viewer.innerHTML = '<div class="status info">No report selected.</div>';
-    label.textContent = '';
-    return;
-  }
-  viewer.innerHTML = '<div class="status info">Loading report…</div>';
+async function loadStatus() {
   try {
-    const resp = await fetch('/api/output/content?path=' + encodeURIComponent(path));
-    const data = await resp.json();
-    if (data.error) {
-      viewer.innerHTML = '<div class="status error">' + data.error + '</div>';
-      return;
-    }
-    label.textContent = data.path;
-    viewer.innerHTML = (window.marked && window.marked.parse) ? marked.parse(data.content || '') : (data.content || '');
-  } catch (err) {
-    viewer.innerHTML = '<div class="status error">Error: ' + err.message + '</div>';
+    const resp = await fetch('/api/dashboard/state');
+    const state = await resp.json();
+    const live = state.effective_live_weekly_model || {};
+    const research = state.effective_research_champion || {};
+    const ar = state.autoresearch || {};
+    document.getElementById('statusLine').textContent =
+      'Live: ' + (live.name || 'none') + ' | Research champion: ' + (research.name || 'none') + ' | Last autoresearch: ' + formatTime(ar.last_finished_at);
+  } catch (_) {
+    document.getElementById('statusLine').textContent = 'Could not load status.';
   }
 }
 
-function handleOutputTypeChange() {
-  const type = document.getElementById('outputTypeSelect').value;
-  const fileSelect = document.getElementById('outputFileSelect');
-  const options = window.dashboardOutputFiles[type] || [];
-  fileSelect.innerHTML = options.length
-    ? options.map(f => '<option value="' + f.path + '">' + f.label + '</option>').join('')
-    : '<option value="">No reports available</option>';
-  loadOutputArtifact(type, fileSelect.value);
-}
-
-function viewResearchReport(path) {
-  const typeSelect = document.getElementById('outputTypeSelect');
-  const fileSelect = document.getElementById('outputFileSelect');
-  typeSelect.value = 'research';
-  handleOutputTypeChange();
-  if (path) {
-    fileSelect.value = path;
-    loadOutputArtifact('research', path);
-  }
-}
-
-async function loadConsole() {
-  const actionEl = document.getElementById('actionResult');
-  try {
-    const [stateResp, runsResp, summaryResp, predictionResp, backtestResp, researchResp] = await Promise.all([
-      fetch('/api/dashboard/state'),
-      fetch('/api/autoresearch/runs?limit=12'),
-      fetch('/api/output/latest-summaries'),
-      fetch('/api/output/list?type=prediction&limit=20'),
-      fetch('/api/output/list?type=backtest&limit=20'),
-      fetch('/api/output/list?type=research&limit=20')
-    ]);
-    const state = await stateResp.json();
-    const runsPayload = await runsResp.json();
-    const latestSummaries = await summaryResp.json();
-    const predictionFiles = await predictionResp.json();
-    const backtestFiles = await backtestResp.json();
-    const researchFiles = await researchResp.json();
-    window.dashboardOutputFiles = {
-      prediction: predictionFiles.files || [],
-      backtest: backtestFiles.files || [],
-      research: researchFiles.files || []
-    };
-    renderConsole(state, runsPayload.runs || [], latestSummaries);
-    handleOutputTypeChange();
-    actionEl.textContent = 'Dashboard refreshed.';
-  } catch (err) {
-    actionEl.textContent = 'Error loading dashboard: ' + err.message;
-  }
-}
-
-function renderConsole(state, runs, latestSummaries) {
-  const live = state.effective_live_weekly_model || {};
-  const research = state.effective_research_champion || {};
-  const autoresearch = state.autoresearch || {};
-  const latestRun = autoresearch.last_result || runs[0] || null;
-
-  document.getElementById('nowPills').innerHTML =
-    '<span class="pill">Live model: ' + (live.name || 'none') + '</span>' +
-    '<span class="pill">Research champion: ' + (research.name || 'none') + '</span>' +
-    '<span class="pill">Autoresearch: ' + (autoresearch.running ? 'running' : 'stopped') + '</span>' +
-    '<span class="pill">Run count: ' + (autoresearch.run_count ?? 0) + '</span>';
-
-  document.getElementById('nowCards').innerHTML =
-    '<div class="summary-card"><h3>Live lane</h3><p><strong>Name:</strong> ' + (live.name || 'none') + '</p><p><strong>Min EV:</strong> ' + (live.min_ev ?? 'n/a') + '</p><p><strong>Window:</strong> ' + (live.stat_window ?? 'n/a') + '</p></div>' +
-    '<div class="summary-card"><h3>Research lane</h3><p><strong>Name:</strong> ' + (research.name || 'none') + '</p><p><strong>Min EV:</strong> ' + (research.min_ev ?? 'n/a') + '</p><p><strong>Window:</strong> ' + (research.stat_window ?? 'n/a') + '</p></div>' +
-    '<div class="summary-card"><h3>Autoresearch status</h3><p><strong>State:</strong> ' + (autoresearch.running ? 'Running now' : 'Stopped') + '</p><p><strong>Last started:</strong> ' + formatTime(autoresearch.last_started_at) + '</p><p><strong>Last finished:</strong> ' + formatTime(autoresearch.last_finished_at) + '</p></div>' +
-    '<div class="summary-card"><h3>Last run result</h3><p><strong>Decision:</strong> ' + (latestRun ? latestRun.decision : 'No runs yet') + '</p><p><strong>Candidate:</strong> ' + (latestRun ? latestRun.candidate_name : 'n/a') + '</p><p><strong>Why:</strong> ' + (latestRun && latestRun.summary_reason ? latestRun.summary_reason : 'No plain-English summary yet.') + '</p></div>';
-
-  document.getElementById('nowError').innerHTML = autoresearch.last_error ? '<div class="status error">Last error: ' + autoresearch.last_error + '</div>' : '';
-
-  document.getElementById('latestResults').innerHTML =
-    renderSummaryCard('Latest prediction', latestSummaries.prediction, 'prediction') +
-    renderSummaryCard('Latest backtest', latestSummaries.backtest, 'backtest') +
-    renderSummaryCard('Latest research', latestSummaries.research, 'research');
-
-  if (!runs.length) {
-    document.getElementById('recentRuns').innerHTML = '<div class="status info">No autoresearch runs yet. Start with Run Once.</div>';
-    return;
-  }
-
-  let html = '<table><tr><th>When</th><th>Candidate</th><th>Decision</th><th>ROI</th><th>Guardrails</th><th>Why</th><th>Report</th></tr>';
-  for (const run of runs) {
-    const safePath = String(run.artifact_markdown_path || '').replaceAll("'", "\\'");
-    const report = run.artifact_markdown_path ? '<span class="run-link" onclick="viewResearchReport(\\'' + safePath + '\\')">View report</span>' : '—';
-    const roi = run.summary_metrics && run.summary_metrics.weighted_roi_pct != null ? run.summary_metrics.weighted_roi_pct + '%' : '—';
-    html += '<tr><td>' + (run.created_at || '—') + '</td><td><strong>' + (run.candidate_name || 'unknown') + '</strong><div class="subtle">' + (run.hypothesis || '') + '</div></td><td>' + (run.decision || 'unknown') + '</td><td>' + roi + '</td><td>' + (run.guardrail_verdict || 'n/a') + '</td><td>' + (run.summary_reason || 'No reason saved') + '</td><td>' + report + '</td></tr>';
-  }
-  html += '</table>';
-  document.getElementById('recentRuns').innerHTML = html;
-}
-
-async function runJsonAction(url, payload, successMessage) {
-  const el = document.getElementById('actionResult');
-  el.textContent = 'Working...';
-  try {
-    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}) });
-    const data = await resp.json();
-    if (data.error) {
-      el.textContent = 'Error: ' + data.error;
-      return;
-    }
-    el.textContent = successMessage;
-    await loadConsole();
-  } catch (err) {
-    el.textContent = 'Error: ' + err.message;
-  }
-}
-
-async function runAutoresearchOnce() {
-  await runJsonAction('/api/autoresearch/run-once', {
-    scope: 'global',
-    years: parseYears(document.getElementById('autoresearchYears').value || '2024,2025'),
-    max_candidates: 1
-  }, 'Autoresearch run complete.');
-}
-
-async function startAutoresearchLoop() {
-  await runJsonAction('/api/autoresearch/start', {
-    scope: 'global',
-    years: parseYears(document.getElementById('autoresearchYears').value || '2024,2025'),
-    interval_seconds: parseFloat(document.getElementById('autoresearchInterval').value || '300'),
-    max_candidates: 1
-  }, 'Autoresearch loop started.');
-}
-
-async function stopAutoresearchLoop() {
-  await runJsonAction('/api/autoresearch/stop', {}, 'Autoresearch loop stopped.');
-}
-
-async function promoteResearchChampionToLive() {
-  await runJsonAction('/api/model-registry/promote-research-to-live', {
-    scope: 'global',
-    reviewer: 'dashboard',
-    notes: document.getElementById('reviewNote').value || null
-  }, 'Research champion promoted to live.');
-}
-
-async function rollbackLiveModel() {
-  await runJsonAction('/api/model-registry/rollback-live', {
-    scope: 'global',
-    reviewer: 'dashboard',
-    notes: document.getElementById('reviewNote').value || null
-  }, 'Live model rolled back.');
-}
-
-async function runUpcomingPrediction() {
+async function runPrediction() {
+  const btn = document.getElementById('runPredictionBtn');
   const resultEl = document.getElementById('predResult');
-  resultEl.textContent = 'Running prediction...';
+  const viewerEl = document.getElementById('predCardViewer');
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Running prediction…';
+  viewerEl.style.display = 'none';
+  viewerEl.innerHTML = '';
   try {
     const resp = await fetch('/api/simple/upcoming-prediction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tour: document.getElementById('predTour').value || 'pga',
-        tournament: document.getElementById('predTournament').value || null,
-        course: document.getElementById('predCourse').value || null
-      })
+      body: JSON.stringify({ tour: 'pga' })
     });
     const data = await resp.json();
-    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Status: ' + (data.status || 'unknown') + '\\nEvent: ' + (data.event_name || 'Auto-detected') + '\\nField size: ' + (data.field_size ?? 'n/a') + '\\nOutput: ' + (data.output_file || data.card_filepath || 'n/a'));
-    await loadConsole();
+    if (data.error || data.errors?.length) {
+      resultEl.textContent = 'Error: ' + (data.error || (data.errors && data.errors.join(' ')) || 'Unknown');
+      return;
+    }
+    resultEl.textContent = 'Done. Event: ' + (data.event_name || '—') + ' | Field: ' + (data.field_size ?? '—');
+    let cardMarkdown = data.card_content;
+    if (!cardMarkdown && (data.card_content_path || data.output_file || data.card_filepath)) {
+      const path = data.card_content_path || data.output_file || data.card_filepath;
+      const pathForApi = path.startsWith('output/') ? path : 'output/' + path.replace(/^.*[/]output[/]?/, '');
+      const contentResp = await fetch('/api/output/content?path=' + encodeURIComponent(pathForApi));
+      const contentData = await contentResp.json();
+      cardMarkdown = contentData.error ? null : (contentData.content || null);
+    }
+    if (cardMarkdown) {
+      window.lastCardMarkdown = cardMarkdown;
+      window.lastCardEventName = (data.event_name || 'prediction_card').replace(/[^a-zA-Z0-9\\s-]/g, '').replace(/\\s+/g, '_').toLowerCase();
+      viewerEl.style.display = 'block';
+      viewerEl.innerHTML = (window.marked && window.marked.parse) ? marked.parse(cardMarkdown) : escapeHtml(cardMarkdown);
+      document.getElementById('downloadCardBtn').style.display = 'inline-block';
+    } else {
+      window.lastCardMarkdown = null;
+      document.getElementById('downloadCardBtn').style.display = 'none';
+    }
+    loadStatus();
   } catch (err) {
     resultEl.textContent = 'Error: ' + err.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 
-async function runBacktest() {
-  const resultEl = document.getElementById('backtestResult');
-  resultEl.textContent = 'Running backtest...';
+function downloadCard() {
+  const md = window.lastCardMarkdown;
+  if (!md) return;
+  const base = (window.lastCardEventName || 'prediction_card').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const now = new Date();
+  const ymd = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  const filename = base + '_' + ymd + '.md';
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+async function runAutoresearch() {
+  const btn = document.getElementById('runAutoresearchBtn');
+  const resultEl = document.getElementById('autoresearchResult');
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Running autoresearch (this may take a while)…';
   try {
-    const resp = await fetch('/api/simple/backtest', {
+    const resp = await fetch('/api/autoresearch/run-once', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: document.getElementById('btName').value || 'dashboard_backtest',
-        years: parseYears(document.getElementById('btYears').value || '2024,2025'),
-        min_ev: parseFloat(document.getElementById('btMinEv').value || '0.05'),
-        window: parseInt(document.getElementById('btWindow').value || '24', 10)
-      })
+      body: JSON.stringify({ scope: 'global', max_candidates: 2 })
     });
     const data = await resp.json();
-    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Status: ' + data.status + '\\nVerdict: ' + (data.verdict || 'n/a') + '\\nBaseline: ' + (data.baseline_strategy || 'unknown') + '\\nROI: ' + data.roi_pct + '%\\nReport: ' + data.report_path);
-    await loadConsole();
+    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Cycle complete. Proposals evaluated: ' + (data.proposals_evaluated ?? '—'));
+    await loadBestCandidates();
+    loadStatus();
   } catch (err) {
     resultEl.textContent = 'Error: ' + err.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 
-async function runResearchCycle() {
-  const resultEl = document.getElementById('researchResult');
-  resultEl.textContent = 'Running research cycle...';
+async function loadBestCandidates() {
+  const container = document.getElementById('bestCandidates');
   try {
-    const resp = await fetch('/api/research/run', {
+    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=10');
+    const data = await resp.json();
+    const candidates = data.candidates || [];
+    if (!candidates.length) {
+      container.innerHTML = '<div class="status info">No evaluated candidates yet. Run autoresearch first.</div>';
+      return;
+    }
+    let html = '';
+    for (const c of candidates) {
+      const roi = c.summary_metrics && c.summary_metrics.weighted_roi_pct != null ? c.summary_metrics.weighted_roi_pct.toFixed(1) + '%' : '—';
+      const clv = c.summary_metrics && c.summary_metrics.weighted_clv_avg != null ? c.summary_metrics.weighted_clv_avg.toFixed(3) : '—';
+      const passed = c.guardrail_results && c.guardrail_results.passed ? 'Yes' : 'No';
+      const tldr = escapeHtml((c.strategy_tldr || '').slice(0, 400));
+      const reportPath = c.artifact_content_path || c.artifact_markdown_path;
+      const reportLink = reportPath
+        ? '<a href="#" class="report-link" data-path="' + escapeHtml(reportPath) + '">View report</a>'
+        : '';
+      html += '<div class="candidate-item">' +
+        '<h3>' + escapeHtml(c.name || 'Unnamed') + '</h3>' +
+        '<div class="tldr">' + tldr + (tldr.length >= 400 ? '…' : '') + '</div>' +
+        '<div class="metrics">ROI: ' + roi + ' | CLV: ' + clv + ' | Guardrails: ' + passed + ' ' + reportLink + '</div>' +
+        '<div class="candidate-actions">' +
+        '<button class="promote" onclick="promoteToLive(' + c.id + ')">Promote to live</button>' +
+        '<span id="promoteMsg' + c.id + '" class="subtle"></span>' +
+        '</div></div>';
+    }
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div class="status error">Failed to load candidates: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+async function viewReport(path) {
+  const resp = await fetch('/api/output/content?path=' + encodeURIComponent(path));
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  const win = window.open('', '_blank');
+  win.document.write('<html><head><title>Report</title></head><body style="background:#0f172a;color:#e2e8f0;padding:20px;font-family:system-ui;">');
+  win.document.write((window.marked && window.marked.parse) ? marked.parse(data.content || '') : '<pre>' + escapeHtml(data.content || '') + '</pre>');
+  win.document.write('</body></html>');
+  win.document.close();
+}
+
+document.addEventListener('click', function(e) {
+  if (e.target && e.target.classList && e.target.classList.contains('report-link')) {
+    e.preventDefault();
+    viewReport(e.target.getAttribute('data-path'));
+  }
+});
+
+async function promoteToLive(proposalId) {
+  const msgEl = document.getElementById('promoteMsg' + proposalId);
+  if (msgEl) msgEl.textContent = 'Promoting…';
+  try {
+    const resp = await fetch('/api/model-registry/promote-proposal-to-live', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        years: parseYears(document.getElementById('researchYears').value || '2024,2025'),
-        max_candidates: parseInt(document.getElementById('researchMaxCandidates').value || '1', 10),
-        scope: 'global'
-      })
+      body: JSON.stringify({ proposal_id: proposalId, scope: 'global', reviewer: 'dashboard' })
     });
     const data = await resp.json();
-    resultEl.textContent = data.error ? ('Error: ' + data.error) : ('Cycle key: ' + data.cycle_key + '\\nProposals created: ' + data.proposals_created + '\\nProposals evaluated: ' + data.proposals_evaluated + '\\nResearch champion updated: ' + (data.research_champion_updated ? 'yes' : 'no'));
-    await loadConsole();
+    if (msgEl) {
+      if (data.ok) msgEl.textContent = 'Promoted.';
+      else msgEl.textContent = data.blocked_reason && data.blocked_reason.length ? ('Blocked: ' + data.blocked_reason.join(', ')) : (data.error || 'Failed');
+    }
+    loadStatus();
+    loadBestCandidates();
   } catch (err) {
-    resultEl.textContent = 'Error: ' + err.message;
+    if (msgEl) msgEl.textContent = 'Error: ' + err.message;
   }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  loadConsole();
+  loadStatus();
+  loadBestCandidates();
 });
 </script>
 </body>

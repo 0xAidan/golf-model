@@ -75,6 +75,7 @@ def test_manual_promotion_and_rollback_preserve_audit_history():
         scope="global",
         promoted_by="manual-review",
         notes="approved for weekly use",
+        enforce_gates=False,
     )
     live_after_promote = get_live_weekly_model("global")
     rollback = rollback_live_weekly_model(
@@ -88,6 +89,35 @@ def test_manual_promotion_and_rollback_preserve_audit_history():
     assert live_after_promote.name == "research_v2"
     assert rollback["strategy"].name == "live_v1"
     assert live_after_rollback.name == "live_v1"
+
+
+def test_promotion_gates_can_block_live_promotion(monkeypatch):
+    from backtester.model_registry import (
+        PromotionGateError,
+        promote_research_champion_to_live,
+        set_research_champion,
+    )
+    from backtester.strategy import StrategyConfig
+
+    set_research_champion(
+        StrategyConfig(name="research_blocked", min_ev=0.07),
+        scope="global",
+        source="optimizer",
+    )
+    monkeypatch.setattr(
+        "backtester.model_registry.evaluate_live_promotion_gates",
+        lambda scope="global": type(
+            "GateResult",
+            (),
+            {"passed": False, "reasons": ["minimum_bets_not_met"], "metrics": {"total_bets": 42}},
+        )(),
+    )
+
+    try:
+        promote_research_champion_to_live(scope="global", enforce_gates=True)
+        assert False, "Expected promotion to be blocked"
+    except PromotionGateError as exc:
+        assert "minimum_bets_not_met" in exc.result.reasons
 
 
 def test_upcoming_prediction_uses_live_weekly_model(monkeypatch):

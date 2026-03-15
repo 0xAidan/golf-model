@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Golf Model Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <div class="wrap" id="main">
+    <header class="status-strip" aria-live="polite">
+      <span>Live: <strong id="liveModel">—</strong></span>
+      <span>Research: <strong id="researchModel">—</strong></span>
+      <span>Last run: <time id="lastRun">—</time></span>
+      <a href="#tools" id="toolsOpenBtn" class="tools-link" aria-label="Open tools panel">Tools</a>
+    </header>
+
+    <div class="hero">
+      <h1>Golf Model</h1>
+    </div>
+
+    <div class="grid">
+      <section class="card reveal" aria-labelledby="prediction-heading">
+        <h2 id="prediction-heading">Prediction</h2>
+        <p class="subtle">Uses the current live model and DataGolf to detect this weekend's event. Results appear below.</p>
+        <button type="button" id="runPredictionBtn" class="btn btn-primary" aria-label="Run prediction for this week">
+          Run prediction
+        </button>
+        <div id="predResult" class="result" style="display:none;"></div>
+        <div id="predCardViewer" class="card-viewer" style="display:none;"></div>
+        <button type="button" id="downloadCardBtn" class="btn btn-secondary" style="display:none; margin-top: 12px;" aria-label="Download prediction card as markdown file">
+          Download card (.md)
+        </button>
+      </section>
+
+      <section class="card reveal" aria-labelledby="autoresearch-heading">
+        <h2 id="autoresearch-heading">Autoresearch</h2>
+        <p class="subtle">Generate and evaluate strategy candidates. Best candidates appear below with a TLDR and option to promote to live.</p>
+        <button type="button" id="runAutoresearchBtn" class="btn btn-secondary">
+          Run autoresearch
+        </button>
+        <div id="autoresearchResult" class="result" style="display:none;"></div>
+        <div id="bestCandidates" class="candidate-list"></div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <a href="/legacy">Legacy dashboard</a> (loop, backtest, rollback, outputs)
+    </footer>
+  </div>
+
+  <div id="toolsOverlay" class="tools-overlay" aria-hidden="true" aria-label="Tools panel">
+    <div class="tools-drawer" role="dialog" aria-modal="true" aria-labelledby="tools-title">
+      <h2 id="tools-title">Tools <button type="button" id="toolsCloseBtn" class="close-btn" aria-label="Close tools">&times;</button></h2>
+      <div class="tools-section">
+        <h3>Setup &amp; sync</h3>
+        <p class="subtle">Tournament setup and Data Golf sync.</p>
+        <a href="/legacy">Open in legacy dashboard</a>
+      </div>
+      <div class="tools-section">
+        <h3>Backtester</h3>
+        <p class="subtle">Run backtests and view experiments.</p>
+        <a href="/legacy">Open in legacy dashboard</a>
+      </div>
+      <div class="tools-section">
+        <h3>Data</h3>
+        <p class="subtle">Upload CSVs, course profiles.</p>
+        <a href="/legacy">Open in legacy dashboard</a>
+      </div>
+      <div class="tools-section">
+        <h3>Results</h3>
+        <p class="subtle">Enter tournament results.</p>
+        <a href="/legacy">Open in legacy dashboard</a>
+      </div>
+      <div class="tools-section">
+        <h3>AI Brain · Experiments · Agent</h3>
+        <a href="/legacy">Open in legacy dashboard</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

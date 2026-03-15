@@ -1,0 +1,8 @@
+{
+  "mode": "single_tournament_checkpoints",
+  "scope": "global",
+  "cycles": 3,
+  "max_candidates_per_cycle": 3,
+  "holdout_tournaments": 3,
+  "seed": 42
+}

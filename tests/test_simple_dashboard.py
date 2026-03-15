@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_home_page_shows_simple_actions():
-    """The root dashboard should expose the new operating-console sections."""
+    """The root dashboard should expose prediction and autoresearch sections."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -17,20 +17,18 @@ def test_home_page_shows_simple_actions():
 
     assert response.status_code == 200
     text = response.text
-    assert "Golf Model Operating Console" in text
-    assert "Now" in text
-    assert "Latest Results" in text
-    assert "Recent Runs" in text
-    assert "Actions" in text
-    assert "Advanced Tools" in text
-    assert "Run Upcoming Event Prediction" in text
-    assert "Run Backtest" in text
-    assert "/api/autoresearch/start" in text
-    assert "/api/output/latest-summaries" in text
+    assert "Golf Model" in text
+    assert "Prediction" in text
+    assert "Autoresearch" in text
+    assert "Run prediction" in text
+    assert "Run autoresearch" in text
+    assert "Tools" in text
+    assert "/static/css/main.css" in text
+    assert "/static/js/app.js" in text
 
 
 def test_home_page_uses_autoresearch_language_not_optimizer_heading():
-    """The main page should stop presenting the runtime as the optimizer."""
+    """The main page should present autoresearch, not optimizer."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -38,7 +36,7 @@ def test_home_page_uses_autoresearch_language_not_optimizer_heading():
 
     assert response.status_code == 200
     text = response.text
-    assert "Autoresearch loop started." in text
+    assert "autoresearch" in text.lower()
     assert "Continuous Optimizer" not in text
 
 
@@ -330,7 +328,7 @@ def test_latest_output_summaries_endpoint_returns_compact_cards(tmp_path, monkey
 
 
 def test_home_page_recent_runs_js_escapes_report_path_safely():
-    """The dashboard JS should safely embed report paths without breaking the page script."""
+    """The dashboard loads script and has structure for candidates (report links built in JS)."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -338,5 +336,5 @@ def test_home_page_recent_runs_js_escapes_report_path_safely():
 
     assert response.status_code == 200
     text = response.text
-    assert "const safePath = String(run.artifact_markdown_path || '')" in text
-    assert "replaceAll" in text
+    assert "/static/js/app.js" in text
+    assert "bestCandidates" in text

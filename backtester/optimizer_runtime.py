@@ -23,6 +23,9 @@ _state: dict[str, Any] = {
     "last_run_started_at": None,
     "last_run_finished_at": None,
     "last_error": None,
+    "keep_rate": 0.0,
+    "crash_rate": 0.0,
+    "guardrail_fail_rate": 0.0,
 }
 
 
@@ -43,10 +46,16 @@ def _run_loop(scope: str, interval_seconds: float, max_candidates: int, years: l
                 _state["last_cycle_key"] = result.get("cycle_key")
                 _state["last_result"] = result
                 _state["last_run_finished_at"] = datetime.now(timezone.utc).isoformat()
+                winner = result.get("winner") or {}
+                guardrails = (winner.get("guardrail_results") or {}) if isinstance(winner, dict) else {}
+                _state["keep_rate"] = 1.0 if winner else 0.0
+                _state["crash_rate"] = 0.0
+                _state["guardrail_fail_rate"] = 0.0 if guardrails.get("passed", True) else 1.0
         except Exception as exc:
             with _state_lock:
                 _state["last_error"] = str(exc)
                 _state["last_run_finished_at"] = datetime.now(timezone.utc).isoformat()
+                _state["crash_rate"] = 1.0
         if _stop_event.wait(interval_seconds):
             break
     with _state_lock:
