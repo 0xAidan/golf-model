@@ -10,11 +10,25 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+function parseBackendDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value !== 'string') return new Date(value);
+  const raw = value.trim();
+  if (!raw) return null;
+
+  // Backend often emits UTC-naive strings: "YYYY-MM-DD HH:MM:SS"
+  const naiveMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?$/);
+  if (naiveMatch) {
+    return new Date(naiveMatch[1] + 'T' + naiveMatch[2] + 'Z');
+  }
+  return new Date(raw);
+}
+
 function formatTime(value) {
-  if (!value) return 'Never';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString('en-US', {
+  const parsed = parseBackendDate(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return value || 'Never';
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
@@ -23,9 +37,14 @@ function formatTime(value) {
     minute: '2-digit',
     second: '2-digit',
     hour12: true,
-    timeZoneName: 'short',
-  });
+  }).format(parsed) + ' ET';
 }
+
+const APP_STATE = {
+  recentRuns: [],
+  runRoiCache: new Map(),
+  watchlist: new Set(),
+};
 
 let autoresearchPollTimer = null;
 
@@ -34,8 +53,68 @@ function setAutoresearchPollingInterval(ms) {
     window.clearInterval(autoresearchPollTimer);
   }
   autoresearchPollTimer = window.setInterval(async function () {
-    await loadAutoresearchStatus();
+    await Promise.all([
+      loadAutoresearchStatus(),
+      loadAutoresearchRuns(),
+      loadBestCandidates(),
+    ]);
   }, ms);
+}
+
+function toFiniteNumber(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === '—' || trimmed.toLowerCase() === 'n/a') return null;
+    const cleaned = trimmed.replace(/[%,$+]/g, '').replace(/,/g, '');
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatPctDelta(value) {
+  const num = toFiniteNumber(value);
+  if (num == null) return '—';
+  const abs = Math.abs(num);
+  const decimals = abs >= 1 ? 2 : abs >= 0.1 ? 3 : 4;
+  return (num >= 0 ? '+' : '') + num.toFixed(decimals) + '%';
+}
+
+function computeRunRoiDelta(run) {
+  const direct = toFiniteNumber(run.roi_delta);
+  if (direct != null) return direct;
+  const candidateRoi = toFiniteNumber(run.candidate_roi ?? run.summary_metrics?.weighted_roi_pct);
+  const baselineRoi = toFiniteNumber(run.baseline_roi ?? run.baseline_summary_metrics?.weighted_roi_pct);
+  if (candidateRoi != null && baselineRoi != null) return candidateRoi - baselineRoi;
+  return null;
+}
+
+function computeCandidateConfidence(run) {
+  let score = 50;
+  const roiDelta = computeRunRoiDelta(run);
+  const clvDelta = toFiniteNumber(run.clv_delta);
+  if (roiDelta != null) score += Math.max(-25, Math.min(25, roiDelta * 1.5));
+  if (clvDelta != null) score += Math.max(-15, Math.min(15, clvDelta * 250));
+  if (run.guardrail_results && run.guardrail_results.passed) score += 10;
+  if (run.is_positive_test) score += 8;
+  if (String(run.decision || '').toLowerCase() === 'discarded') score -= 12;
+  return Math.max(5, Math.min(98, Math.round(score)));
+}
+
+function renderWatchlist() {
+  const list = document.getElementById('watchlistItems');
+  if (!list) return;
+  const items = Array.from(APP_STATE.watchlist);
+  if (!items.length) {
+    list.innerHTML = '<div class="status info">No pinned players yet.</div>';
+    return;
+  }
+  list.innerHTML = items.map(function (name) {
+    return '<div class="run-item"><div class="run-item-head"><h4>' + escapeHtml(name) + '</h4>' +
+      '<button type="button" class="btn btn-secondary btn-sm" data-action="remove-watch" data-player="' + escapeHtml(name) + '">Remove</button></div></div>';
+  }).join('');
 }
 
 async function loadStatus() {
@@ -297,18 +376,20 @@ async function loadAutoresearchRuns() {
   const runsEl = document.getElementById('autoresearchRuns');
   if (!runsEl) return;
   try {
-    const resp = await fetch('/api/autoresearch/runs?scope=global&limit=5');
+    const resp = await fetch('/api/autoresearch/runs?scope=global&limit=20');
     const data = await resp.json();
     const runs = data.runs || [];
+    APP_STATE.recentRuns = runs;
+    renderPromotionQueue(runs);
     if (!runs.length) {
       runsEl.style.display = 'block';
-      runsEl.className = 'result status info';
+      runsEl.className = 'result status info recent-runs-feed';
       runsEl.textContent = 'Recent runs: none yet.';
       return;
     }
     runsEl.style.display = 'block';
-    runsEl.className = 'result run-feed';
-    let html = '<div class="run-feed-title">Recent runs</div>';
+    runsEl.className = 'result run-feed recent-runs-feed';
+    let html = '';
     for (const r of runs) {
       const when = formatTime(r.created_at);
       const name = escapeHtml(r.display_title || r.candidate_name || 'Unnamed');
@@ -316,15 +397,18 @@ async function loadAutoresearchRuns() {
       const summary = escapeHtml((r.summary_reason || 'No summary available.').slice(0, 220));
       const nextHint = escapeHtml((r.next_attempt_hint || 'Continue from strongest factor.').slice(0, 160));
       const verdictClass = r.is_positive_test ? 'positive' : (r.decision === 'blocked_by_guardrails' ? 'blocked' : 'neutral');
-      const roiDeltaValue = Number(r.roi_delta);
-      const roiDelta = Number.isFinite(roiDeltaValue)
-        ? (roiDeltaValue >= 0 ? '+' : '') + roiDeltaValue.toFixed(2) + '%'
-        : 'N/A';
+      const roiDelta = formatPctDelta(computeRunRoiDelta(r));
+      const confidence = computeCandidateConfidence(r);
       html +=
         '<article class="run-item">' +
         '<div class="run-item-head"><h4>' + name + '</h4>' +
         '<span class="run-verdict ' + verdictClass + '">' + escapeHtml(r.decision || 'unknown') + '</span></div>' +
-        '<div class="run-item-meta">' + escapeHtml(when) + ' · ROI delta: ' + escapeHtml(roiDelta) + '</div>' +
+        '<div class="run-item-meta">' + escapeHtml(when) + '</div>' +
+        '<div class="run-metrics">' +
+        '<span class="metric-pill">ROI delta: ' + escapeHtml(roiDelta) + '</span>' +
+        '<span class="metric-pill">Confidence: ' + confidence + '%</span>' +
+        '</div>' +
+        '<div class="confidence-wrap"><div class="confidence-track"><div class="confidence-fill" style="width:' + confidence + '%"></div></div></div>' +
         '<div class="run-item-text"><strong>Tested:</strong> ' + whatTested + '</div>' +
         '<div class="run-item-text"><strong>Result:</strong> ' + summary + '</div>' +
         '<div class="run-item-text"><strong>Next:</strong> ' + nextHint + '</div>' +
@@ -333,7 +417,7 @@ async function loadAutoresearchRuns() {
     runsEl.innerHTML = html;
   } catch (err) {
     runsEl.style.display = 'block';
-    runsEl.className = 'result status error';
+    runsEl.className = 'result status error recent-runs-feed';
     runsEl.textContent = 'Failed to load recent runs: ' + err.message;
   }
 }
@@ -343,7 +427,7 @@ async function loadBestCandidates() {
   if (!container) return;
 
   try {
-    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=10');
+    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=25');
     const data = await resp.json();
     const candidates = data.candidates || [];
     if (!candidates.length) {
@@ -365,6 +449,7 @@ async function loadBestCandidates() {
         c.summary_metrics && c.summary_metrics.weighted_clv_avg != null
           ? c.summary_metrics.weighted_clv_avg.toFixed(3)
           : '—';
+      const confidence = Math.max(10, Math.min(98, Math.round(50 + (toFiniteNumber(c.roi_delta) || 0) * 2)));
       const passed = c.guardrail_results && c.guardrail_results.passed ? 'Yes' : 'No';
       const tldr = escapeHtml((c.strategy_tldr || '').slice(0, 280));
       const whatTested = escapeHtml((c.what_tested || c.hypothesis || 'No test description.').slice(0, 220));
@@ -377,7 +462,7 @@ async function loadBestCandidates() {
           '" data-action="report">View report</a>'
         : '';
       html +=
-        '<article class="candidate-item" data-id="' +
+        '<article class="candidate-item" draggable="true" data-player="' + escapeHtml(c.name || c.candidate_name || 'candidate') + '" data-id="' +
         escapeHtml(String(c.id)) +
         '">' +
         '<h3 class="candidate-name">' +
@@ -400,6 +485,7 @@ async function loadBestCandidates() {
         ' ' +
         reportLink +
         '</div>' +
+        '<div class="confidence-wrap"><div class="confidence-track"><div class="confidence-fill" style="width:' + confidence + '%"></div></div></div>' +
         '<div class="candidate-actions">' +
         '<button type="button" class="btn btn-promote btn-sm" data-action="promote" data-id="' +
         escapeHtml(String(c.id)) +
@@ -414,6 +500,36 @@ async function loadBestCandidates() {
     container.innerHTML =
       '<div class="status error">Failed to load candidates: ' + escapeHtml(err.message) + '</div>';
   }
+}
+
+function renderPromotionQueue(runs) {
+  const queueEl = document.getElementById('promotionQueue');
+  if (!queueEl) return;
+  const promotable = (runs || []).filter(function (r) {
+    const kept = String(r.decision || '').toLowerCase() === 'kept';
+    const guardFail = String(r.guardrail_verdict || '').toLowerCase().includes('fail');
+    const delta = computeRunRoiDelta(r);
+    return kept && !guardFail && delta != null && delta > 0;
+  }).slice(0, 8);
+
+  if (!promotable.length) {
+    queueEl.innerHTML = '<div class="status info">No promotable +EV runs yet.</div>';
+    return;
+  }
+  let html = '';
+  for (const run of promotable) {
+    const delta = formatPctDelta(computeRunRoiDelta(run));
+    const promoteId = run.proposal_id || run.id || '';
+    const promoteLabel = run.proposal_id ? 'Promote' : 'Review';
+    html += '<article class="run-item">' +
+      '<div class="run-item-head"><h4>' + escapeHtml(run.candidate_name || 'candidate') + '</h4>' +
+      '<span class="run-verdict positive">promotable</span></div>' +
+      '<div class="run-metrics"><span class="metric-pill">ROI delta: ' + escapeHtml(delta) + '</span></div>' +
+      '<div class="candidate-actions"><button type="button" class="btn btn-promote btn-sm" data-action="promote" data-id="' +
+      escapeHtml(String(promoteId)) + '">' + promoteLabel + '</button></div>' +
+      '</article>';
+  }
+  queueEl.innerHTML = html;
 }
 
 async function viewReport(path) {
@@ -500,6 +616,107 @@ function initTools() {
   }
 }
 
+function initCommandMenu() {
+  const dialog = document.getElementById('commandMenuDialog');
+  const openBtn = document.getElementById('commandMenuBtn');
+  const closeBtn = document.getElementById('commandMenuCloseBtn');
+  if (!dialog) return;
+
+  const open = function () {
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+  };
+  const close = function () {
+    if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+  };
+
+  if (openBtn) {
+    openBtn.addEventListener('click', function () {
+      open();
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function () {
+      close();
+    });
+  }
+
+  dialog.addEventListener('click', function (e) {
+    if (e.target === dialog) close();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
+    if (isCmdK) {
+      e.preventDefault();
+      open();
+      return;
+    }
+    if (e.key === 'Escape' && dialog.open) close();
+  });
+
+  dialog.addEventListener('click', function (e) {
+    const button = e.target.closest('button[data-command]');
+    if (!button) return;
+    const cmd = button.getAttribute('data-command');
+    if (cmd === 'prediction') runPrediction();
+    if (cmd === 'run-once') runAutoresearch();
+    if (cmd === 'start-engine') startAutoresearchEngine();
+    if (cmd === 'workspace') openWorkspace();
+    close();
+  });
+}
+
+function showPanel(panelKey, opts) {
+  const options = opts || {};
+  const tabs = document.querySelectorAll('.workspace-tab');
+  const panels = document.querySelectorAll('.workspace-panel');
+  tabs.forEach(function (tab) {
+    tab.classList.toggle('is-active', tab.getAttribute('data-panel') === panelKey);
+  });
+  panels.forEach(function (panel) {
+    panel.classList.toggle('is-active', panel.getAttribute('data-panel') === panelKey);
+  });
+  if (options.openOverlay) openWorkspace();
+}
+
+function openWorkspace() {
+  const overlay = document.getElementById('workspaceOverlay');
+  if (!overlay) return;
+  overlay.classList.add('is-open');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeWorkspace() {
+  const overlay = document.getElementById('workspaceOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('is-open');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+function initWorkspaceOverlay() {
+  const openBtn = document.getElementById('workspaceOpenBtn');
+  const hideBtn = document.getElementById('workspaceHideBtn');
+  const closeBtn = document.getElementById('workspaceCloseBtn');
+  const overlay = document.getElementById('workspaceOverlay');
+  if (openBtn) openBtn.addEventListener('click', openWorkspace);
+  if (hideBtn) hideBtn.addEventListener('click', closeWorkspace);
+  if (closeBtn) closeBtn.addEventListener('click', closeWorkspace);
+  if (overlay) {
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeWorkspace();
+    });
+  }
+  document.querySelectorAll('.workspace-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      const panel = tab.getAttribute('data-panel');
+      if (panel) showPanel(panel, { openOverlay: false });
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeWorkspace();
+  });
+}
+
 document.addEventListener('click', function (e) {
   const reportLink = e.target.closest('.report-link');
   if (reportLink) {
@@ -510,8 +727,25 @@ document.addEventListener('click', function (e) {
   const promoteBtn = e.target.closest('[data-action="promote"]');
   if (promoteBtn && promoteBtn.dataset.id) {
     e.preventDefault();
-    promoteToLive(parseInt(promoteBtn.dataset.id, 10));
+    const parsedId = parseInt(promoteBtn.dataset.id, 10);
+    if (Number.isFinite(parsedId) && parsedId > 0) {
+      promoteToLive(parsedId);
+    }
   }
+  const removeWatchBtn = e.target.closest('[data-action="remove-watch"]');
+  if (removeWatchBtn && removeWatchBtn.dataset.player) {
+    APP_STATE.watchlist.delete(removeWatchBtn.dataset.player);
+    renderWatchlist();
+  }
+});
+
+document.addEventListener('dragstart', function (e) {
+  const card = e.target.closest('.candidate-item, .run-item');
+  if (!card) return;
+  const player = card.getAttribute('data-player') || card.querySelector('h4')?.textContent || '';
+  if (!player || !e.dataTransfer) return;
+  e.dataTransfer.effectAllowed = 'copy';
+  e.dataTransfer.setData('text/plain', player);
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -520,6 +754,28 @@ document.addEventListener('DOMContentLoaded', function () {
   loadAutoresearchStatus();
   loadAutoresearchRuns();
   initTools();
+  initCommandMenu();
+  initWorkspaceOverlay();
+  showPanel('setup', { openOverlay: false });
+  renderWatchlist();
+  const dropzone = document.getElementById('watchlistDropzone');
+  if (dropzone) {
+    dropzone.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      dropzone.classList.add('is-drag-over');
+    });
+    dropzone.addEventListener('dragleave', function () {
+      dropzone.classList.remove('is-drag-over');
+    });
+    dropzone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropzone.classList.remove('is-drag-over');
+      const player = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+      if (!player) return;
+      APP_STATE.watchlist.add(player);
+      renderWatchlist();
+    });
+  }
   const runPredictionBtn = document.getElementById('runPredictionBtn');
   const runAutoresearchBtn = document.getElementById('runAutoresearchBtn');
   const startAutoresearchBtn = document.getElementById('startAutoresearchBtn');

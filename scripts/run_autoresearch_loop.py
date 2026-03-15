@@ -97,6 +97,16 @@ def _save_strategy(payload: dict[str, Any]) -> None:
     STRATEGY_CONFIG_PATH.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _git_add_commit(_message: str) -> None:
+    """No-op kept for compatibility; loop no longer mutates git history."""
+    return None
+
+
+def _git_reset_previous() -> None:
+    """No-op kept for compatibility; destructive reset is intentionally disabled."""
+    return None
+
+
 def _mutate_strategy(payload: dict[str, Any], rng: random.Random) -> dict[str, Any]:
     updated = dict(payload)
     key = rng.choice(MUTABLE_NUMERIC_KEYS)
@@ -124,15 +134,6 @@ def _mutate_strategy(payload: dict[str, Any], rng: random.Random) -> dict[str, A
     return updated
 
 
-def _git_add_commit(message: str) -> None:
-    subprocess.run(["git", "add", str(STRATEGY_CONFIG_PATH.relative_to(ROOT))], cwd=ROOT, check=False)
-    subprocess.run(["git", "commit", "-m", message], cwd=ROOT, check=False)
-
-
-def _git_reset_previous() -> None:
-    subprocess.run(["git", "reset", "--hard", "HEAD~1"], cwd=ROOT, check=False)
-
-
 def run_loop(iterations: int, seed: int, timeout_seconds: int) -> dict[str, Any]:
     rng = random.Random(seed)
     pilot_contract = load_pilot_contract()
@@ -147,7 +148,6 @@ def run_loop(iterations: int, seed: int, timeout_seconds: int) -> dict[str, Any]
         current = _load_strategy()
         candidate = _mutate_strategy(current, rng)
         _save_strategy(candidate)
-        _git_add_commit(f"autoresearch: candidate iteration {i + 1}")
 
         decision = "discarded"
         failure_reason = None
@@ -165,11 +165,11 @@ def run_loop(iterations: int, seed: int, timeout_seconds: int) -> dict[str, Any]
                 kept += 1
                 decision = "kept"
             else:
-                _git_reset_previous()
+                _save_strategy(current)
         except Exception as exc:
             failed += 1
             failure_reason = str(exc)
-            _git_reset_previous()
+            _save_strategy(current)
             decision = "error"
 
         row = {

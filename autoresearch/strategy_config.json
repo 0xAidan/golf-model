@@ -1,13 +1,13 @@
 {
-  "ai_adj_cap": 5.0,
-  "kelly_fraction": 0.25,
-  "max_implied_prob": 0.5,
-  "min_ev": 0.05,
-  "min_model_prob": 0.005,
   "name": "autoresearch_candidate",
+  "w_sub_course_fit": 0.4,
+  "w_sub_form": 0.4,
+  "w_sub_momentum": 0.2,
+  "min_ev": 0.05,
+  "max_implied_prob": 0.5,
+  "min_model_prob": 0.005,
+  "kelly_fraction": 0.25,
   "softmax_temp": 1.0,
-  "use_weather": true,
-  "w_sub_course_fit": 0.4199,
-  "w_sub_form": 0.3701,
-  "w_sub_momentum": 0.21
+  "ai_adj_cap": 5.0,
+  "use_weather": true
 }

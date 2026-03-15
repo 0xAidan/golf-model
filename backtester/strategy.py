@@ -385,7 +385,12 @@ def replay_event(
         if pkey not in odds_by_player:
             odds_by_player[pkey] = {}
 
-        raw_price = close_line if odds_column == "close_line" else open_line
+        if odds_column == "open_line":
+            # Historical datasets may not include open lines yet; fall back to close
+            # so checkpoint replay can still evaluate candidate behavior.
+            raw_price = open_line if open_line is not None else close_line
+        else:
+            raw_price = close_line
         if raw_price is not None:
             # Apply vig: convert to implied prob, increase by vig, convert back
             implied = _american_to_implied(raw_price)

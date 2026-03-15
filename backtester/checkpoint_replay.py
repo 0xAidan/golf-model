@@ -32,25 +32,71 @@ class PilotEvent:
 def resolve_recent_signature_event() -> PilotEvent:
     """Resolve the most recent signature event from stored historical events."""
     conn = db.get_conn()
-    rows = conn.execute(
-        """
-        SELECT event_id, year, event_name, start_date
-        FROM historical_event_info
-        WHERE event_id IS NOT NULL AND start_date IS NOT NULL
-        ORDER BY start_date DESC, year DESC
-        """
-    ).fetchall()
-    conn.close()
-    for row in rows:
-        event_name = (row["event_name"] or "").strip().lower()
-        if any(keyword in event_name for keyword in SIGNATURE_KEYWORDS):
-            return PilotEvent(
-                event_id=str(row["event_id"]),
-                year=int(row["year"]),
-                event_name=row["event_name"],
-                start_date=row["start_date"],
-            )
-    raise ValueError("No signature event found in historical_event_info")
+    try:
+        rows = conn.execute(
+            """
+            SELECT event_id, year, event_name, start_date
+            FROM historical_event_info
+            WHERE event_id IS NOT NULL AND start_date IS NOT NULL
+            ORDER BY start_date DESC, year DESC
+            """
+        ).fetchall()
+        today = date.today()
+        saw_signature = False
+        saw_replay_ready_signature = False
+        for row in rows:
+            event_name = (row["event_name"] or "").strip().lower()
+            if any(keyword in event_name for keyword in SIGNATURE_KEYWORDS):
+                saw_signature = True
+                start_date = row["start_date"]
+                try:
+                    if start_date and date.fromisoformat(start_date) > today:
+                        continue
+                except ValueError:
+                    continue
+
+                event_id = str(row["event_id"])
+                year = int(row["year"])
+                has_odds = (
+                    conn.execute(
+                        """
+                        SELECT 1
+                        FROM historical_odds
+                        WHERE event_id = ? AND year = ?
+                        LIMIT 1
+                        """,
+                        (event_id, year),
+                    ).fetchone()
+                    is not None
+                )
+                has_pit = (
+                    conn.execute(
+                        """
+                        SELECT 1
+                        FROM pit_rolling_stats
+                        WHERE event_id = ? AND year = ?
+                        LIMIT 1
+                        """,
+                        (event_id, year),
+                    ).fetchone()
+                    is not None
+                )
+                if not (has_odds and has_pit):
+                    continue
+
+                saw_replay_ready_signature = True
+                return PilotEvent(
+                    event_id=event_id,
+                    year=year,
+                    event_name=row["event_name"],
+                    start_date=start_date,
+                )
+
+        if saw_signature and not saw_replay_ready_signature:
+            raise ValueError("No replay-ready signature event found in historical_event_info")
+        raise ValueError("No signature event found in historical_event_info")
+    finally:
+        conn.close()
 
 
 def get_pilot_checkpoints() -> dict[str, Any]:
@@ -126,17 +172,28 @@ def assert_checkpoint_temporal_integrity(event_id: str, year: int, as_of_date: s
     conn = db.get_conn()
     row = conn.execute(
         """
-        SELECT MAX(r.event_completed) AS max_source_date
+        SELECT MAX(
+            CASE
+                WHEN p.rounds_used > (
+                    SELECT COUNT(*)
+                    FROM rounds r
+                    WHERE r.player_key = p.player_key
+                      AND r.sg_total IS NOT NULL
+                      AND r.event_completed < ?
+                )
+                THEN 1
+                ELSE 0
+            END
+        ) AS has_leakage
         FROM pit_rolling_stats p
-        JOIN rounds r ON r.player_key = p.player_key
         WHERE p.event_id = ? AND p.year = ?
         """,
-        (str(event_id), int(year)),
+        (as_of_date, str(event_id), int(year)),
     ).fetchone()
     conn.close()
-    max_source = row["max_source_date"] if row else None
-    if max_source and date.fromisoformat(max_source) > date.fromisoformat(as_of_date):
+    has_leakage = int(row["has_leakage"] or 0) if row else 0
+    if has_leakage:
         raise ValueError(
-            f"Temporal leakage detected for event {event_id}/{year}: source {max_source} > as_of {as_of_date}"
+            f"Temporal leakage detected for event {event_id}/{year}: PIT rounds exceed pre-{as_of_date} history"
         )
 

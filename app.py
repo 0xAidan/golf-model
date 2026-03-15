@@ -318,6 +318,11 @@ async def home():
 
 @app.get("/legacy", response_class=HTMLResponse)
 async def legacy_home():
+    return _render_dashboard_html()
+
+
+@app.get("/legacy-classic", response_class=HTMLResponse)
+async def legacy_classic_home():
     return HTML_PAGE
 
 
