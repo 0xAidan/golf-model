@@ -316,7 +316,10 @@ async function loadAutoresearchRuns() {
       const summary = escapeHtml((r.summary_reason || 'No summary available.').slice(0, 220));
       const nextHint = escapeHtml((r.next_attempt_hint || 'Continue from strongest factor.').slice(0, 160));
       const verdictClass = r.is_positive_test ? 'positive' : (r.decision === 'blocked_by_guardrails' ? 'blocked' : 'neutral');
-      const roiDelta = r.roi_delta == null ? '—' : (r.roi_delta >= 0 ? '+' : '') + Number(r.roi_delta).toFixed(2) + '%';
+      const roiDeltaValue = Number(r.roi_delta);
+      const roiDelta = Number.isFinite(roiDeltaValue)
+        ? (roiDeltaValue >= 0 ? '+' : '') + roiDeltaValue.toFixed(2) + '%'
+        : 'N/A';
       html +=
         '<article class="run-item">' +
         '<div class="run-item-head"><h4>' + name + '</h4>' +

@@ -84,6 +84,26 @@ def _relative_output_path(path: str) -> str:
     return f"output/{rel}" if rel != "." else "output"
 
 
+def _extract_roi_metrics_from_dossier_file(artifact_markdown_path: str | None) -> tuple[float | None, float | None]:
+    """Best-effort extraction of candidate and baseline ROI from markdown dossier."""
+    if not artifact_markdown_path:
+        return (None, None)
+    try:
+        path = Path(artifact_markdown_path)
+        if not path.is_absolute():
+            path = Path(os.path.dirname(__file__)) / artifact_markdown_path
+        if not path.exists():
+            return (None, None)
+        content = path.read_text(encoding="utf-8")
+        candidate_match = re.search(r"-\s+Weighted ROI:\s*([-\d.]+)", content)
+        baseline_match = re.search(r"-\s+Baseline Weighted ROI:\s*([-\d.]+)", content)
+        candidate_roi = float(candidate_match.group(1)) if candidate_match else None
+        baseline_roi = float(baseline_match.group(1)) if baseline_match else None
+        return (candidate_roi, baseline_roi)
+    except Exception:
+        return (None, None)
+
+
 def _safe_output_path(relative_path: str) -> str | None:
     if not relative_path or not relative_path.startswith("output/"):
         return None
@@ -1233,6 +1253,23 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
         summary_metrics = json.loads(row["summary_metrics_json"] or "{}")
         guardrails = json.loads(row["guardrail_results_json"] or "{}")
         theory = json.loads(row["theory_metadata_json"] or "{}")
+        baseline_summary = guardrails.get("baseline_summary_metrics", {}) or {}
+        candidate_roi = summary_metrics.get("weighted_roi_pct")
+        baseline_roi = baseline_summary.get("weighted_roi_pct")
+        if candidate_roi is None or baseline_roi is None:
+            dossier_candidate_roi, dossier_baseline_roi = _extract_roi_metrics_from_dossier_file(row["artifact_markdown_path"])
+            if candidate_roi is None and dossier_candidate_roi is not None:
+                summary_metrics["weighted_roi_pct"] = dossier_candidate_roi
+                candidate_roi = dossier_candidate_roi
+            if baseline_roi is None and dossier_baseline_roi is not None:
+                baseline_summary["weighted_roi_pct"] = dossier_baseline_roi
+                baseline_roi = dossier_baseline_roi
+        roi_delta = None
+        if candidate_roi is not None and baseline_roi is not None:
+            try:
+                roi_delta = float(candidate_roi) - float(baseline_roi)
+            except Exception:
+                roi_delta = None
         status = row["status"]
         kept = status in {"approved", "converted"}
         blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
@@ -1253,10 +1290,7 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 "blocked_reason": blocked_reason,
                 "benchmark_years": json.loads(row["years_json"] or "[]"),
                 "benchmark_label": f"Fixed PIT benchmark ({', '.join(str(y) for y in json.loads(row['years_json'] or '[]'))})" if row["years_json"] else "Fixed PIT benchmark",
-                "roi_delta": (
-                    float(summary_metrics.get("weighted_roi_pct", 0.0) or 0.0)
-                    - float((guardrails.get("baseline_summary_metrics", {}) or {}).get("weighted_roi_pct", 0.0) or 0.0)
-                ),
+                "roi_delta": roi_delta,
                 "clv_delta": (
                     float(summary_metrics.get("weighted_clv_avg", 0.0) or 0.0)
                     - float((guardrails.get("baseline_summary_metrics", {}) or {}).get("weighted_clv_avg", 0.0) or 0.0)
@@ -1268,7 +1302,7 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 "is_positive_test": bool(guardrails.get("is_positive_test", False)),
                 "artifact_markdown_path": row["artifact_markdown_path"],
                 "summary_metrics": summary_metrics,
-                "baseline_summary_metrics": guardrails.get("baseline_summary_metrics", {}),
+                "baseline_summary_metrics": baseline_summary,
                 "guardrail_results": guardrails,
                 "created_at": row["evaluated_at"] or row["created_at"],
             }
