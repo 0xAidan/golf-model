@@ -16,6 +16,17 @@ function formatTime(value) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
+let autoresearchPollTimer = null;
+
+function setAutoresearchPollingInterval(ms) {
+  if (autoresearchPollTimer) {
+    window.clearInterval(autoresearchPollTimer);
+  }
+  autoresearchPollTimer = window.setInterval(async function () {
+    await loadAutoresearchStatus();
+  }, ms);
+}
+
 async function loadStatus() {
   const liveEl = document.getElementById('liveModel');
   const researchEl = document.getElementById('researchModel');
@@ -151,6 +162,8 @@ async function runAutoresearch() {
       ? 'Error: ' + data.error
       : 'Cycle complete. Proposals evaluated: ' + (data.proposals_evaluated ?? '—');
     resultEl.className = data.error ? 'result status error' : 'result status success';
+    await loadAutoresearchStatus();
+    await loadAutoresearchRuns();
     await loadBestCandidates();
     loadStatus();
   } catch (err) {
@@ -159,6 +172,142 @@ async function runAutoresearch() {
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-loading');
+  }
+}
+
+async function startAutoresearchEngine() {
+  const startBtn = document.getElementById('startAutoresearchBtn');
+  const resultEl = document.getElementById('autoresearchResult');
+  if (!startBtn || !resultEl) return;
+
+  startBtn.disabled = true;
+  startBtn.classList.add('is-loading');
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Starting autoresearch engine...';
+  resultEl.className = 'result status loading';
+
+  try {
+    const resp = await fetch('/api/autoresearch/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'global', interval_seconds: 60, max_candidates: 3 }),
+    });
+    const data = await resp.json();
+    const running = data && data.optimizer && data.optimizer.running;
+    resultEl.textContent = running
+      ? 'Autoresearch engine started. It will continue running every 60 seconds.'
+      : 'Start request returned, but engine is not running.';
+    resultEl.className = running ? 'result status success' : 'result status error';
+    await loadAutoresearchStatus();
+    await loadAutoresearchRuns();
+    await loadBestCandidates();
+    loadStatus();
+  } catch (err) {
+    resultEl.textContent = 'Error: ' + err.message;
+    resultEl.className = 'result status error';
+  } finally {
+    startBtn.disabled = false;
+    startBtn.classList.remove('is-loading');
+  }
+}
+
+async function stopAutoresearchEngine() {
+  const stopBtn = document.getElementById('stopAutoresearchBtn');
+  const resultEl = document.getElementById('autoresearchResult');
+  if (!stopBtn || !resultEl) return;
+
+  stopBtn.disabled = true;
+  stopBtn.classList.add('is-loading');
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Stopping autoresearch engine...';
+  resultEl.className = 'result status loading';
+
+  try {
+    const resp = await fetch('/api/autoresearch/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    const running = data && data.status && data.status.running;
+    resultEl.textContent = running ? 'Engine is still running.' : 'Autoresearch engine stopped.';
+    resultEl.className = running ? 'result status error' : 'result status success';
+    await loadAutoresearchStatus();
+    await loadAutoresearchRuns();
+    loadStatus();
+  } catch (err) {
+    resultEl.textContent = 'Error: ' + err.message;
+    resultEl.className = 'result status error';
+  } finally {
+    stopBtn.disabled = false;
+    stopBtn.classList.remove('is-loading');
+  }
+}
+
+async function loadAutoresearchStatus() {
+  const statusEl = document.getElementById('autoresearchEngineStatus');
+  const startBtn = document.getElementById('startAutoresearchBtn');
+  const stopBtn = document.getElementById('stopAutoresearchBtn');
+  if (!statusEl) return;
+
+  try {
+    const resp = await fetch('/api/autoresearch/status');
+    const data = await resp.json();
+    const status = data.status || {};
+    const running = !!status.running;
+    const state = status.state || (running ? 'running' : 'idle');
+    const runCount = status.run_count || 0;
+    const intervalSeconds = status.interval_seconds || 0;
+    const lastFinished = status.last_finished_at ? formatTime(status.last_finished_at) : 'Never';
+    const lastError = status.last_error || '';
+
+    statusEl.style.display = 'block';
+    statusEl.className = 'result status ' + (running ? 'success' : (lastError ? 'error' : 'info'));
+    statusEl.textContent =
+      'Engine: ' + state +
+      ' | Runs: ' + runCount +
+      ' | Interval: ' + intervalSeconds + 's' +
+      ' | Last finished: ' + lastFinished +
+      (lastError ? ' | Last error: ' + lastError : '');
+
+    if (startBtn) startBtn.disabled = running;
+    if (stopBtn) stopBtn.disabled = !running;
+
+    setAutoresearchPollingInterval(running ? 5000 : 15000);
+  } catch (err) {
+    statusEl.style.display = 'block';
+    statusEl.className = 'result status error';
+    statusEl.textContent = 'Failed to load engine status: ' + err.message;
+    setAutoresearchPollingInterval(15000);
+  }
+}
+
+async function loadAutoresearchRuns() {
+  const runsEl = document.getElementById('autoresearchRuns');
+  if (!runsEl) return;
+  try {
+    const resp = await fetch('/api/autoresearch/runs?scope=global&limit=5');
+    const data = await resp.json();
+    const runs = data.runs || [];
+    if (!runs.length) {
+      runsEl.style.display = 'block';
+      runsEl.className = 'result status info';
+      runsEl.textContent = 'Recent runs: none yet.';
+      return;
+    }
+    const lines = runs.map(function (r) {
+      const when = formatTime(r.created_at);
+      const decision = r.decision || 'unknown';
+      const name = r.candidate_name || 'unnamed';
+      return when + ' · ' + name + ' · ' + decision;
+    });
+    runsEl.style.display = 'block';
+    runsEl.className = 'result';
+    runsEl.textContent = 'Recent runs:\n' + lines.join('\n');
+  } catch (err) {
+    runsEl.style.display = 'block';
+    runsEl.className = 'result status error';
+    runsEl.textContent = 'Failed to load recent runs: ' + err.message;
   }
 }
 
@@ -330,12 +479,18 @@ document.addEventListener('click', function (e) {
 document.addEventListener('DOMContentLoaded', function () {
   loadStatus();
   loadBestCandidates();
+  loadAutoresearchStatus();
+  loadAutoresearchRuns();
   initTools();
   const runPredictionBtn = document.getElementById('runPredictionBtn');
   const runAutoresearchBtn = document.getElementById('runAutoresearchBtn');
+  const startAutoresearchBtn = document.getElementById('startAutoresearchBtn');
+  const stopAutoresearchBtn = document.getElementById('stopAutoresearchBtn');
   const downloadCardBtn = document.getElementById('downloadCardBtn');
   if (runPredictionBtn) runPredictionBtn.addEventListener('click', runPrediction);
   if (runAutoresearchBtn) runAutoresearchBtn.addEventListener('click', runAutoresearch);
+  if (startAutoresearchBtn) startAutoresearchBtn.addEventListener('click', startAutoresearchEngine);
+  if (stopAutoresearchBtn) stopAutoresearchBtn.addEventListener('click', stopAutoresearchEngine);
   if (downloadCardBtn) downloadCardBtn.addEventListener('click', downloadCard);
   const revealEls = document.querySelectorAll('.reveal');
   if (revealEls.length && 'IntersectionObserver' in window) {

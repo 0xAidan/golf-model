@@ -21,7 +21,8 @@ def test_home_page_shows_simple_actions():
     assert "Prediction" in text
     assert "Autoresearch" in text
     assert "Run prediction" in text
-    assert "Run autoresearch" in text
+    assert "Start autoresearch engine" in text
+    assert "Run once" in text
     assert "Tools" in text
     assert "/static/css/main.css" in text
     assert "/static/js/app.js" in text

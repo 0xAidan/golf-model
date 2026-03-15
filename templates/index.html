@@ -40,11 +40,21 @@
 
       <section class="card reveal" aria-labelledby="autoresearch-heading">
         <h2 id="autoresearch-heading">Autoresearch</h2>
-        <p class="subtle">Generate and evaluate strategy candidates. Best candidates appear below with a TLDR and option to promote to live.</p>
-        <button type="button" id="runAutoresearchBtn" class="btn btn-secondary">
-          Run autoresearch
-        </button>
+        <p class="subtle">Autonomous engine mode runs continuously on an interval. Use run once only for a single manual cycle.</p>
+        <div class="autoresearch-controls">
+          <button type="button" id="startAutoresearchBtn" class="btn btn-primary" aria-label="Start autoresearch engine">
+            Start autoresearch engine
+          </button>
+          <button type="button" id="stopAutoresearchBtn" class="btn btn-secondary" aria-label="Stop autoresearch engine">
+            Stop
+          </button>
+          <button type="button" id="runAutoresearchBtn" class="btn btn-secondary" aria-label="Run one autoresearch cycle">
+            Run once
+          </button>
+        </div>
+        <div id="autoresearchEngineStatus" class="result status info" style="display:block;">Engine state: idle</div>
         <div id="autoresearchResult" class="result" style="display:none;"></div>
+        <div id="autoresearchRuns" class="result" style="display:none;"></div>
         <div id="bestCandidates" class="candidate-list"></div>
       </section>
     </div>
