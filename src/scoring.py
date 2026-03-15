@@ -303,12 +303,11 @@ def determine_outcome_from_text(finish_text: str,
 
 
 def american_to_decimal(price: int) -> Optional[float]:
-    """Convert American odds to decimal odds. Returns None for invalid input."""
-    if price > 0:
-        return 1.0 + price / 100.0
-    elif price < 0:
-        return 1.0 + 100.0 / abs(price)
-    return None  # price == 0 is invalid
+    """Convert American odds to decimal odds. Returns None for invalid input (price == 0)."""
+    if price == 0:
+        return None
+    from src.odds_utils import american_to_decimal as _canonical
+    return _canonical(price)
 
 
 def parse_odds_to_decimal(odds_text) -> Optional[float]:

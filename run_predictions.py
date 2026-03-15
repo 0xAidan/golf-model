@@ -23,6 +23,7 @@ save_course_profile('YOUR COURSE NAME', data)
 "
 """
 
+import logging
 import os
 import sys
 import time
@@ -67,7 +68,6 @@ from src.player_normalizer import normalize_name, display_name
 from src.ai_brain import (
     is_ai_available,
     pre_tournament_analysis,
-    make_betting_decisions,
     apply_ai_adjustments,
     get_ai_status,
 )
@@ -75,6 +75,8 @@ from backtester.experiments import get_active_strategy
 from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
 from backtester.strategy import StrategyConfig
 
+
+logger = logging.getLogger(__name__)
 
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "false").lower() == "true"
 
@@ -89,6 +91,7 @@ def _strategy_from_record(record: dict | None) -> StrategyConfig | None:
     try:
         return StrategyConfig.from_json(strategy_json)
     except Exception:
+        logger.warning("Failed to parse strategy config JSON, skipping", exc_info=True)
         return None
 
 
@@ -382,7 +385,7 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
                                                 )
                                                 conn2.commit()
                                             except Exception:
-                                                pass
+                                                logger.warning("Failed to update tournament event_id", exc_info=True)
                                             conn2.close()
                                         else:
                                             print(f"    -> {result.get('message', 'No results available')}")
@@ -1176,120 +1179,8 @@ def main():
         print(f"    ⚠ 3-ball error: {e}")
         threeball_bets = []
 
-    # ── AI Betting Decisions (disabled — purely quantitative now) ──
-    if ai_pre_analysis and is_ai_available() and value_bets:
-        print_header("Step 7b: AI Betting Decisions")
-        try:
-            ai_decisions = make_betting_decisions(
-                tournament_id=tid,
-                value_bets_by_type=value_bets,
-                pre_analysis=ai_pre_analysis,
-                composite_results=composite,
-                tournament_name=event_name,
-                course_name=primary_course,
-            )
-
-            if ai_decisions is None:
-                print("  AI betting decisions disabled — bet selection is purely quantitative.")
-
-            decisions_list = (ai_decisions or {}).get("decisions", [])
-            if decisions_list:
-                print(f"\n  AI Recommended Bets ({len(decisions_list)} picks):")
-                print(f"  {'Player':<25} {'Bet':<10} {'Odds':>8} {'Stake':>8} "
-                      f"{'Conf':<8} Reasoning")
-                print(f"  {'─' * 90}")
-                for d in decisions_list:
-                    reasoning = d.get("reasoning", "")
-                    # Truncate reasoning for terminal display
-                    if len(reasoning) > 60:
-                        reasoning = reasoning[:57] + "..."
-                    print(f"  {d['player']:<25} {d['bet_type']:<10} "
-                          f"{d.get('odds', '?'):>8} {d.get('recommended_stake', '?'):>8} "
-                          f"{d.get('confidence', '?'):<8} {reasoning}")
-
-            portfolio_notes = (ai_decisions or {}).get("portfolio_notes", "")
-            if portfolio_notes:
-                print(f"\n  Portfolio Notes:")
-                for line in _wrap_text(portfolio_notes, 56):
-                    print(f"    {line}")
-
-            pass_notes = (ai_decisions or {}).get("pass_notes", "")
-            if pass_notes:
-                print(f"\n  Passing On:")
-                for line in _wrap_text(pass_notes, 56):
-                    print(f"    {line}")
-
-            total_units = (ai_decisions or {}).get("total_units", 0)
-            expected_roi = (ai_decisions or {}).get("expected_roi", "N/A")
-            print(f"\n  Total units wagered: {total_units}")
-            print(f"  Expected ROI: {expected_roi}")
-
-            # ── Auto-log AI picks to the picks table for post-tournament scoring ──
-            if decisions_list:
-                # Build a lookup from composite results for model scores
-                composite_lookup = {r["player_key"]: r for r in composite}
-                display_to_key = {r["player_display"].lower(): r["player_key"] for r in composite}
-
-                pick_rows = []
-                for d in decisions_list:
-                    # Match AI player name to a composite player_key
-                    player_name = d.get("player", "")
-                    pk = normalize_name(player_name)
-                    # Fallback: try matching by display name
-                    if pk not in composite_lookup:
-                        pk = display_to_key.get(player_name.lower(), pk)
-
-                    comp_data = composite_lookup.get(pk, {})
-
-                    # Parse odds string to int (e.g. "+200" -> 200, "-150" -> -150)
-                    odds_str = str(d.get("odds", ""))
-                    try:
-                        odds_int = int(odds_str.replace("+", ""))
-                    except (ValueError, TypeError):
-                        odds_int = None
-
-                    # Map AI bet_type names to our standard types
-                    ai_bt = d.get("bet_type", "").lower().replace(" ", "_")
-                    bt_map = {
-                        "outright": "outright", "outright_win": "outright",
-                        "top_5": "top5", "top5": "top5", "top_5_finish": "top5",
-                        "top_10": "top10", "top10": "top10", "top_10_finish": "top10",
-                        "top_20": "top20", "top20": "top20", "top_20_finish": "top20",
-                        "frl": "frl", "first_round_leader": "frl",
-                        "make_cut": "make_cut",
-                    }
-                    bet_type = bt_map.get(ai_bt, ai_bt)
-
-                    market_implied = None
-                    if odds_int is not None:
-                        from src.odds import american_to_implied_prob
-                        market_implied = american_to_implied_prob(odds_int)
-
-                    pick_rows.append({
-                        "tournament_id": tid,
-                        "bet_type": bet_type,
-                        "player_key": pk,
-                        "player_display": d.get("player", ""),
-                        "opponent_key": None,
-                        "opponent_display": None,
-                        "composite_score": comp_data.get("composite"),
-                        "course_fit_score": comp_data.get("course_fit"),
-                        "form_score": comp_data.get("form"),
-                        "momentum_score": comp_data.get("momentum"),
-                        "model_prob": d.get("model_ev"),
-                        "market_odds": odds_str,
-                        "market_implied_prob": market_implied,
-                        "ev": d.get("model_ev"),
-                        "confidence": d.get("confidence"),
-                        "reasoning": d.get("reasoning", ""),
-                    })
-
-                if pick_rows:
-                    db.store_picks(pick_rows)
-                    print(f"\n  ✓ {len(pick_rows)} AI picks logged for post-tournament scoring")
-
-        except Exception as e:
-            print(f"\n  ⚠ AI betting decisions error: {e}")
+    # AI betting decisions are disabled — bet selection is purely quantitative.
+    # See ai_brain.make_betting_decisions() for rationale.
             print(f"  Value bets still shown below without AI portfolio optimization")
 
     # ── Exposure filtering (Phase 4A) ──────────────────────────

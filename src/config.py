@@ -217,6 +217,21 @@ PROBABILITY_SUM_TOLERANCE = 0.05   # outright probs sum in [0.95, 1.05]
 # to static DG sim probabilities produces meaningless EV calculations.
 ALLOW_MID_TOURNAMENT_RUN = False
 
+# ---------------------------------------------------------------------------
+# API / pipeline timing
+# ---------------------------------------------------------------------------
+API_TIMEOUT = 120
+API_RATE_LIMIT_SECONDS = 1.0
+API_SLEEP_SECONDS = 2.0
+PIPELINE_LOCK_STALE_SECONDS = 7200
+PLATT_CACHE_TTL = 300
+
+# Supported sportsbooks for odds comparison
+SUPPORTED_BOOKS = [
+    "draftkings", "fanduel", "betmgm", "caesars", "bet365",
+    "pointsbet", "betrivers", "fanatics",
+]
+
 
 def get_blend_weights(bet_type: str) -> tuple[float, float]:
     """Return (dg_weight, model_weight) for a bet type."""

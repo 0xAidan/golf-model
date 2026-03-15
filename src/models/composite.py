@@ -8,6 +8,8 @@ Weights are tunable and stored in the database.
 Output: ranked player list with composite score and all sub-scores.
 """
 
+import logging
+
 from src import db
 from src.models.course_fit import compute_course_fit
 from src.models.form import compute_form
@@ -74,7 +76,7 @@ def compute_composite(tournament_id: int, weights: dict = None,
             sorted_players = sorted(player_sg_totals.items(), key=lambda x: x[1], reverse=True)
             elite_players = {pk for pk, _ in sorted_players[:15]}
     except Exception:
-        pass
+        logging.getLogger(__name__).warning("Elite players lookup failed, using empty set", exc_info=True)
 
     momentum_scores = compute_momentum(tournament_id, weights, elite_players=elite_players)
 

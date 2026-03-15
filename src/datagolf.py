@@ -12,6 +12,7 @@ Requires DATAGOLF_API_KEY environment variable.
 """
 
 import json
+import logging
 import os
 import requests
 import threading
@@ -21,6 +22,8 @@ from typing import Optional
 
 from src import db
 from src.player_normalizer import normalize_name, display_name
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://feeds.datagolf.com"
 
@@ -1165,7 +1168,7 @@ def get_current_event_info(tour: str = "pga") -> dict | None:
             if events:
                 return events[0]
     except Exception:
-        pass
+        logger.warning("get_current_event_info failed", exc_info=True)
     return None
 
 
@@ -1241,5 +1244,6 @@ def fetch_closing_odds(tour: str = "pga") -> dict:
                     market_map = {"win": "outright", "top_5": "top5", "top_10": "top10", "top_20": "top20"}
                     results[pk][market_map.get(market, market)] = round(avg_odds, 2)
         except Exception:
+            logger.debug("Closing odds fetch failed for market=%s", market, exc_info=True)
             continue
     return results

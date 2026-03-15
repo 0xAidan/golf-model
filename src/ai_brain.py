@@ -663,113 +663,15 @@ def make_betting_decisions(tournament_id: int,
                            pre_analysis: dict = None,
                            composite_results: list[dict] = None,
                            tournament_name: str = "",
-                           course_name: str = "") -> dict:
+                           course_name: str = "") -> None:
     """
     DISABLED: AI betting decisions removed due to poor performance.
+
     The AI concentrated 87% of units on one player and recommended bets on
     corrupted +500000 odds data. Betting decisions are now purely quantitative.
-    Returns None so all callers (service, run_predictions, app, analyze) skip AI bets.
+    Returns None so all callers skip AI bets.
     """
-    logger.info("AI betting decisions disabled — returning None")
     return None
-
-    # --- Original implementation below (preserved for potential re-enablement) ---
-    # Build value bets context — show top bets per market (not just positive EV)
-    value_lines = []
-    for bet_type, bets in value_bets_by_type.items():
-        value_only = [b for b in bets if b.get("is_value")]
-        if value_only:
-            value_lines.append(f"\n--- {bet_type.upper()} ({len(value_only)} POSITIVE-EV bets) ---")
-            value_lines.append(_build_value_context(value_only))
-        else:
-            # Show top 8 closest-to-value bets so AI has context
-            top_bets = sorted(bets, key=lambda x: x.get("ev", -999), reverse=True)[:8]
-            if top_bets:
-                value_lines.append(f"\n--- {bet_type.upper()} (0 positive-EV, showing top 8 closest) ---")
-                value_lines.append(_build_value_context(top_bets))
-    value_ctx = "\n".join(value_lines) if value_lines else "No value bets found in any market."
-
-    # Build composite rankings context so AI knows the model's player ordering
-    rankings_ctx = "No composite rankings available."
-    if composite_results:
-        rank_lines = []
-        for r in composite_results[:35]:
-            rank_lines.append(
-                f"#{r['rank']} {r['player_display']}: "
-                f"composite={r['composite']:.1f}, "
-                f"course_fit={r['course_fit']:.1f}, "
-                f"form={r['form']:.1f}, "
-                f"momentum={r['momentum']:.1f} ({r.get('momentum_direction', '?')})"
-            )
-        rankings_ctx = "\n".join(rank_lines)
-
-    pre_ctx = ""
-    if pre_analysis:
-        pre_ctx = (
-            f"Your pre-tournament analysis:\n"
-            f"Narrative: {pre_analysis.get('course_narrative', 'N/A')}\n"
-            f"Key factors: {', '.join(pre_analysis.get('key_factors', []))}\n"
-            f"Confidence: {pre_analysis.get('confidence', 'N/A')}"
-        )
-
-    roi_ctx = _build_roi_context()
-
-    memory_topics = ["betting_strategy", "bankroll", "bet_sizing"]
-    if course_name:
-        memory_topics.append(course_name.lower().replace(" ", "_"))
-    memory_ctx = _build_memory_context(memory_topics)
-
-    user_prompt = f"""Tournament: {tournament_name} at {course_name}
-
-=== MODEL COMPOSITE RANKINGS (Top 35) ===
-IMPORTANT: You may ONLY recommend bets on players listed below.
-Do NOT recommend any player outside this top-35 ranking.
-
-{rankings_ctx}
-
-=== ODDS & EV BY MARKET ===
-{value_ctx}
-
-=== YOUR PRE-TOURNAMENT ANALYSIS ===
-{pre_ctx}
-
-=== HISTORICAL PERFORMANCE ===
-{roi_ctx}
-
-=== RELEVANT MEMORIES ===
-{memory_ctx}
-
-Make your betting decisions for this tournament. For each bet:
-- State the player, bet type, odds, EV, and recommended stake (in units)
-- The player MUST be in the top-35 composite rankings above
-- Explain your reasoning (2-3 sentences), referencing their model scores
-- Rate confidence: "high", "medium", or "low"
-
-If no bets have genuine edge this week, it is fine to pass entirely (empty decisions list).
-
-Also provide:
-- Portfolio notes (correlation, total exposure)
-- What you're passing on and why
-- Total units to be wagered
-- Expected ROI for this week's bets
-
-PORTFOLIO RULES (enforced post-hoc, but follow them to avoid scaling):
-- Max 40% of total units on any single player across all bet types
-- Max 3 units on any individual bet
-- Diversify across at least 3 players when placing 3+ bets"""
-
-    result = _call_ai(SYSTEM_PROMPT, user_prompt, BETTING_DECISIONS_SCHEMA)
-
-    # Enforce portfolio diversification limits post-hoc
-    result = _enforce_portfolio_limits(result)
-
-    db.store_ai_decision(
-        tournament_id, "betting_decisions",
-        f"Tournament: {tournament_name}, Markets: {list(value_bets_by_type.keys())}",
-        json.dumps(result),
-    )
-
-    return result
 
 
 def post_tournament_review(tournament_id: int,
