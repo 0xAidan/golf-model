@@ -68,6 +68,24 @@ def build_expanding_splits(
     return splits
 
 
+def _compute_peak_to_trough_drawdown(event_results: list[dict[str, Any]]) -> float:
+    """Compute peak-to-trough drawdown from cumulative weighted ROI across events."""
+    if not event_results:
+        return 0.0
+    cumulative = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    for result in event_results:
+        weighted_roi = result.get("roi_pct", 0.0) * result.get("weight", 1.0)
+        cumulative += weighted_roi
+        if cumulative > peak:
+            peak = cumulative
+        drawdown = peak - cumulative
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+    return max_drawdown
+
+
 def compute_weighted_metrics(event_results: list[dict[str, Any]]) -> dict[str, Any]:
     if not event_results:
         return {
@@ -102,7 +120,7 @@ def compute_weighted_metrics(event_results: list[dict[str, Any]]) -> dict[str, A
         "unweighted_clv_avg": _avg("clv_avg"),
         "weighted_calibration_error": _weighted_avg("calibration_error"),
         "unweighted_calibration_error": _avg("calibration_error"),
-        "max_drawdown_pct": round(max(result.get("max_drawdown_pct", 0.0) for result in event_results), 4),
+        "max_drawdown_pct": round(_compute_peak_to_trough_drawdown(event_results), 4),
     }
 
 
@@ -212,6 +230,7 @@ def evaluate_weighted_walkforward(
     min_train_events: int = 2,
     test_window_size: int = 1,
     weighting_mode: str = "full_season_weighted",
+    precomputed_baseline: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if events is None:
         events = load_historical_events(years)
@@ -222,13 +241,15 @@ def evaluate_weighted_walkforward(
     candidate_results: list[dict[str, Any]] = []
     baseline_results: list[dict[str, Any]] = []
 
+    if precomputed_baseline is not None:
+        baseline_results = list(precomputed_baseline)
+
     for split in splits:
         for event in split["test_events"]:
             event_class = classify_event(event.get("event_name"))
             weight = event_weight(event_class, weighting_mode=weighting_mode)
 
             candidate_metrics = replay_runner(event, strategy)
-            baseline_metrics = replay_runner(event, baseline_strategy)
 
             candidate_results.append(
                 {
@@ -238,14 +259,16 @@ def evaluate_weighted_walkforward(
                     "weight": weight,
                 }
             )
-            baseline_results.append(
-                {
-                    **event,
-                    **baseline_metrics,
-                    "event_class": event_class,
-                    "weight": weight,
-                }
-            )
+            if precomputed_baseline is None:
+                baseline_metrics = replay_runner(event, baseline_strategy)
+                baseline_results.append(
+                    {
+                        **event,
+                        **baseline_metrics,
+                        "event_class": event_class,
+                        "weight": weight,
+                    }
+                )
 
     summary_metrics = compute_weighted_metrics(candidate_results)
     baseline_summary = compute_weighted_metrics(baseline_results)

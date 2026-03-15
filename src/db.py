@@ -19,14 +19,68 @@ Tables:
   ai_adjustments          – tracked AI-driven player adjustments
 """
 
+import logging
 import sqlite3
 import json
 import os
+import shutil
 from datetime import datetime
 
 from src import config
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golf.db")
+_logger = logging.getLogger("golf.db")
+
+# Project data path (may be overridden when project lives in a cloud-synced folder)
+_PROJECT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golf.db")
+
+
+def _is_likely_synced(path: str) -> bool:
+    """True if path is under a folder commonly synced (iCloud, Dropbox, etc.) where SQLite often hits disk I/O errors."""
+    path = os.path.abspath(path)
+    home = os.path.expanduser("~")
+    docs = os.path.join(home, "Documents")
+    mobile_docs = os.path.join(home, "Library", "Mobile Documents")
+    if path.startswith(mobile_docs) or "iCloud" in path or "CloudStorage" in path:
+        return True
+    if path.startswith(docs):
+        return True
+    if "Dropbox" in path or "OneDrive" in path or "Google Drive" in path:
+        return True
+    return False
+
+
+def _local_db_dir() -> str:
+    """Directory for DB when project is in a synced location (avoids disk I/O errors)."""
+    return os.path.join(os.path.expanduser("~"), ".golf-model", "data")
+
+
+def _resolve_db_path() -> str:
+    """
+    Use project data/golf.db unless the project appears to be in a cloud-synced folder,
+    in which case use ~/.golf-model/data/golf.db and copy from project once if needed.
+    """
+    project_path = os.path.abspath(_PROJECT_DB_PATH)
+    if not _is_likely_synced(project_path):
+        return project_path
+    local_dir = _local_db_dir()
+    local_path = os.path.join(local_dir, "golf.db")
+    _logger.info("DB path redirected from synced folder to %s", local_path)
+    os.makedirs(local_dir, exist_ok=True)
+    # One-time copy: if project has a DB and local doesn't (or is empty), copy so we don't start empty
+    if os.path.exists(project_path) and os.path.getsize(project_path) > 0:
+        if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
+            try:
+                shutil.copy2(project_path, local_path)
+                for suffix in ("-wal", "-shm"):
+                    src = project_path + suffix
+                    if os.path.exists(src):
+                        shutil.copy2(src, local_path + suffix)
+            except OSError as exc:
+                _logger.warning("Failed to copy DB from project to local path: %s", exc)
+    return local_path
+
+
+DB_PATH = _resolve_db_path()
 
 
 _DB_INITIALIZED = False
@@ -34,10 +88,12 @@ _DB_INITIALIZED = False
 
 def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
     # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=15000")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 

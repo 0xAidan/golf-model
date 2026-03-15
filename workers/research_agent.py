@@ -15,10 +15,7 @@ respect API rate limits and CPU usage.
 
 import json
 import logging
-import os
 import signal
-import subprocess
-import sys
 import threading
 import time
 from datetime import datetime
@@ -382,25 +379,24 @@ def optimizer_loop(interval_hours: float = 4.0):
 
 def autoresearch_loop(interval_hours: float = 6.0):
     """Runs a bounded keep/discard loop at a fixed interval."""
-    script = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "scripts",
-        "run_autoresearch_loop.py",
-    )
+    from backtester.research_cycle import run_research_cycle
+
     while not _shutdown.is_set():
         try:
             logger.info("[AUTORESEARCH] Running bounded loop...")
-            proc = subprocess.run(
-                [sys.executable, script, "--iterations", "5", "--seed", str(int(time.time()) % 100000)],
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=600,
+            result = run_research_cycle(
+                max_candidates=5,
+                scope="global",
+                source="research_agent",
+                seed=int(time.time()) % 100000,
             )
-            if proc.returncode == 0:
-                logger.info("[AUTORESEARCH] Completed loop: %s", proc.stdout.strip())
-            else:
-                logger.error("[AUTORESEARCH] Loop failed: %s", (proc.stdout or proc.stderr).strip())
+            cycle_key = result.get("cycle_key", "?")
+            winner = result.get("winner")
+            logger.info(
+                "[AUTORESEARCH] Completed cycle_key=%s winner=%s",
+                cycle_key,
+                "yes" if winner else "no",
+            )
         except Exception as e:
             logger.error("[AUTORESEARCH] Error: %s", e)
 

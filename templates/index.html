@@ -14,83 +14,92 @@
   <a href="#main" class="skip-link">Skip to main content</a>
   <div class="wrap board-shell" id="main">
     <header class="status-strip" aria-live="polite">
+      <span class="app-title">Golf Model</span>
       <span>Live: <strong id="liveModel">—</strong></span>
       <span>Research: <strong id="researchModel">—</strong></span>
       <span>Last run: <time id="lastRun">—</time></span>
       <button type="button" id="commandMenuBtn" class="btn btn-secondary btn-sm" aria-label="Open Command Menu">Command Menu</button>
-      <button type="button" id="workspaceOpenBtn" class="btn btn-secondary btn-sm" aria-label="Open Workspace">Open Workspace</button>
-      <button type="button" id="workspaceHideBtn" class="btn btn-secondary btn-sm" aria-label="Hide Workspace">Hide Workspace</button>
-      <a href="#tools" id="toolsOpenBtn" class="tools-link" aria-label="Open tools panel">Tools</a>
     </header>
 
-    <div class="hero">
-      <h1>Golf Model</h1>
-      <p class="subtle">Trading board mode: scan rank, edge, and actions in one place.</p>
-    </div>
+    <nav class="main-tabs" role="tablist" aria-label="Main navigation">
+      <button type="button" class="main-tab is-active" role="tab" aria-selected="true" aria-controls="tab-predictions" id="tab-btn-predictions" tabindex="0">Predictions</button>
+      <button type="button" class="main-tab" role="tab" aria-selected="false" aria-controls="tab-autoresearch" id="tab-btn-autoresearch" tabindex="-1">Autoresearch</button>
+    </nav>
 
-    <div class="grid board-grid">
-      <section class="card reveal" aria-labelledby="rank-heading">
-        <h2 id="rank-heading">Rank Board</h2>
-        <p class="subtle">Top-ranked opportunities appear after a prediction run.</p>
-        <div class="autoresearch-controls" style="margin-bottom:12px;">
+    <!-- ═══════ PREDICTIONS TAB ═══════ -->
+    <div id="tab-predictions" role="tabpanel" aria-labelledby="tab-btn-predictions" class="tab-panel is-active">
+      <section class="card reveal" aria-labelledby="pred-heading">
+        <h2 id="pred-heading">Run Prediction</h2>
+        <p class="subtle">Uses the current live model and DataGolf to detect this weekend's event.</p>
+        <div class="autoresearch-controls">
           <button type="button" id="runPredictionBtn" class="btn btn-primary" aria-label="Run prediction for this week">Run prediction</button>
-          <button type="button" id="startAutoresearchBtn" class="btn btn-primary" aria-label="Start autoresearch engine">Start autoresearch engine</button>
-          <button type="button" id="stopAutoresearchBtn" class="btn btn-secondary" aria-label="Stop autoresearch engine">Stop</button>
-          <button type="button" id="runAutoresearchBtn" class="btn btn-secondary" aria-label="Run one autoresearch cycle">Run once</button>
         </div>
-        <div id="autoresearchEngineStatus" class="result status info" style="display:block;">Engine state: idle</div>
-        <div id="autoresearchResult" class="result" style="display:none;"></div>
         <div id="predResult" class="result" style="display:none;"></div>
         <div id="predCardViewer" class="card-viewer" style="display:none;"></div>
-        <button type="button" id="downloadCardBtn" class="btn btn-secondary" style="display:none; margin-top: 12px;" aria-label="Download prediction card as markdown file">
-          Download card (.md)
-        </button>
-      </section>
-
-      <section class="card reveal" aria-labelledby="value-heading">
-        <h2 id="value-heading">Value Board</h2>
-        <p class="subtle">Most recent candidate evaluations and signals.</p>
-        <div id="valueBoardCards" class="candidate-list">
-          <div class="status info">Value cards populate after runs complete.</div>
-        </div>
-      </section>
-
-      <section class="card reveal action-panel" aria-labelledby="runs-heading">
-        <h2 id="runs-heading">Action Dock</h2>
-        <div class="result status info" id="taskChips" style="display:block;">Task chips load automatically after runs complete.</div>
-
-        <div class="action-upper-zone">
-          <div class="zone-block">
-            <h3>Pinned Watchlist</h3>
-            <div id="watchlistDropzone" class="result status info">Drag cards here to pin players.</div>
-            <div id="watchlistItems" class="candidate-list"></div>
-          </div>
-
-          <div class="zone-block">
-            <h3>Promotion Queue (+EV)</h3>
-            <div id="promotionQueue" class="candidate-list"></div>
-          </div>
-
-          <div class="zone-block">
-            <h3>Top Candidates</h3>
-            <div id="bestCandidates" class="candidate-list"></div>
-          </div>
-        </div>
-
-        <div class="zone-block recent-runs-zone">
-          <h3>Recent Runs</h3>
-          <div id="autoresearchRuns" class="result recent-runs-feed" style="display:block;">Loading recent runs…</div>
-        </div>
+        <button type="button" id="downloadCardBtn" class="btn btn-secondary" style="display:none; margin-top: 12px;" aria-label="Download prediction card as markdown file">Download card (.md)</button>
       </section>
     </div>
 
-    <section class="card reveal" aria-labelledby="split-heading">
-      <h2 id="split-heading">Split Detail</h2>
-      <div id="splitDetail" class="result status info">Select a report or run to view details here.</div>
-    </section>
+    <!-- ═══════ AUTORESEARCH TAB ═══════ -->
+    <div id="tab-autoresearch" role="tabpanel" aria-labelledby="tab-btn-autoresearch" class="tab-panel" hidden>
+      
+      <!-- Engine control strip -->
+      <div class="ar-control-strip">
+        <div class="ar-controls">
+          <button type="button" id="startAutoresearchBtn" class="btn btn-primary btn-sm" aria-label="Start autoresearch engine">Start Engine</button>
+          <button type="button" id="stopAutoresearchBtn" class="btn btn-secondary btn-sm" aria-label="Stop autoresearch engine">Stop</button>
+          <button type="button" id="runAutoresearchBtn" class="btn btn-secondary btn-sm" aria-label="Run one autoresearch cycle">Run Once</button>
+          <button type="button" id="resetAutoresearchBtn" class="btn btn-secondary btn-sm" aria-label="Reset research state">Reset State</button>
+        </div>
+        <div id="autoresearchEngineStatus" class="ar-status-badge">Engine: idle</div>
+      </div>
+      <div id="autoresearchResult" class="result" style="display:none;"></div>
+
+      <div class="ar-grid">
+        <!-- Left column: activity feed -->
+        <div class="ar-feed-col">
+          <section class="card" aria-labelledby="runs-heading">
+            <h2 id="runs-heading">Research Activity</h2>
+            <p class="subtle">Real-time feed of evaluated proposals and their results.</p>
+            <div id="autoresearchRuns" class="run-feed">
+              <div class="skeleton-block"></div>
+              <div class="skeleton-block"></div>
+              <div class="skeleton-block"></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right column: intelligence -->
+        <div class="ar-intel-col">
+          <section class="card" aria-labelledby="candidates-heading">
+            <h2 id="candidates-heading">Best Candidates</h2>
+            <p class="subtle">Top proposals ranked by blended score. Promote the best to live.</p>
+            <div id="bestCandidates" class="candidate-list">
+              <div class="skeleton-block"></div>
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="baseline-heading">
+            <h2 id="baseline-heading">Baseline vs Champion</h2>
+            <div id="baselineComparison" class="comparison-table">
+              <div class="subtle">Comparison loads after first research cycle.</div>
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="promo-heading">
+            <h2 id="promo-heading">Promotion Queue</h2>
+            <p class="subtle">Candidates that beat baseline with passing guardrails.</p>
+            <div id="promotionQueue" class="candidate-list">
+              <div class="status info">No promotable runs yet.</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
 
   </div>
 
+  <!-- Command Menu dialog -->
   <dialog id="commandMenuDialog" class="tools-drawer" aria-label="Command Menu">
     <h2 id="command-menu-title">Command Menu <button type="button" id="commandMenuCloseBtn" class="close-btn" aria-label="Close command menu">&times;</button></h2>
     <div class="tools-section">
@@ -99,67 +108,10 @@
         <button type="button" class="btn btn-primary btn-sm" data-command="prediction">Run prediction</button>
         <button type="button" class="btn btn-secondary btn-sm" data-command="run-once">Run autoresearch once</button>
         <button type="button" class="btn btn-secondary btn-sm" data-command="start-engine">Start engine</button>
-        <button type="button" class="btn btn-secondary btn-sm" data-command="workspace">Open workspace</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-command="reset-state">Reset research state</button>
       </div>
-    </div>
-    <div class="tools-section">
-      <h3>Navigation</h3>
-      <span class="subtle">Use workspace tabs and command actions for all workflows.</span>
     </div>
   </dialog>
-
-  <div id="workspaceOverlay" class="workspace-overlay" aria-hidden="true" aria-label="Workspace">
-    <div class="workspace-shell" role="dialog" aria-modal="true">
-      <div class="workspace-head">
-        <strong>Workspace</strong>
-        <button type="button" id="workspaceCloseBtn" class="close-btn" aria-label="Close workspace">&times;</button>
-      </div>
-      <div class="workspace-tabs">
-        <button type="button" class="workspace-tab is-active" data-panel="setup">Setup</button>
-        <button type="button" class="workspace-tab" data-panel="ai">AI</button>
-        <button type="button" class="workspace-tab" data-panel="backtest">Backtest</button>
-        <button type="button" class="workspace-tab" data-panel="experiments">Experiments</button>
-        <button type="button" class="workspace-tab" data-panel="data">Data</button>
-        <button type="button" class="workspace-tab" data-panel="dashboard">Dashboard</button>
-        <button type="button" class="workspace-tab" data-panel="agent">Agent</button>
-      </div>
-      <div class="workspace-panels">
-        <section class="workspace-panel is-active" data-panel="setup"><p class="subtle">Setup and sync are available from top actions and board controls.</p></section>
-        <section class="workspace-panel" data-panel="ai"><p class="subtle">AI workflows run through command menu and autoresearch controls.</p></section>
-        <section class="workspace-panel" data-panel="backtest"><p class="subtle">Backtest controls are integrated in the current board runtime.</p></section>
-        <section class="workspace-panel" data-panel="experiments"><p class="subtle">Experiment history and candidates are shown in Action Dock sections.</p></section>
-        <section class="workspace-panel" data-panel="data"><p class="subtle">Data flows are integrated through sync, upload, and run actions.</p></section>
-        <section class="workspace-panel" data-panel="dashboard"><p class="subtle">Performance status appears in top rail and recent run diagnostics.</p></section>
-        <section class="workspace-panel" data-panel="agent"><p class="subtle">Agent and autoresearch runtime state appears in Action Dock.</p></section>
-      </div>
-    </div>
-  </div>
-
-  <div id="toolsOverlay" class="tools-overlay" aria-hidden="true" aria-label="Tools panel">
-    <div class="tools-drawer" role="dialog" aria-modal="true" aria-labelledby="tools-title">
-      <h2 id="tools-title">Tools <button type="button" id="toolsCloseBtn" class="close-btn" aria-label="Close tools">&times;</button></h2>
-      <div class="tools-section">
-        <h3>Setup &amp; sync</h3>
-        <p class="subtle">Tournament setup and Data Golf sync run from board actions.</p>
-      </div>
-      <div class="tools-section">
-        <h3>Backtester</h3>
-        <p class="subtle">Run backtests and view experiments from the command menu.</p>
-      </div>
-      <div class="tools-section">
-        <h3>Data</h3>
-        <p class="subtle">Upload CSVs and course profiles from workspace actions.</p>
-      </div>
-      <div class="tools-section">
-        <h3>Results</h3>
-        <p class="subtle">Enter results through board-integrated workflows.</p>
-      </div>
-      <div class="tools-section">
-        <h3>AI Brain · Experiments · Agent</h3>
-        <p class="subtle">All workflows are available from this interface.</p>
-      </div>
-    </div>
-  </div>
 
   <script src="/static/js/app.js"></script>
 </body>

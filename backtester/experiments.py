@@ -368,21 +368,36 @@ def get_experiment_leaderboard(scope: str = "global",
 #  Bayesian Optimization Helper
 # ═══════════════════════════════════════════════════════════════════
 
+WINDOWS = [12, 24, 50]
+
+_PIT_SUB_FIELDS = ["w_sub_course_fit", "w_sub_form", "w_sub_momentum"]
+_LEGACY_SG_FIELDS = [
+    "w_sg_total", "w_sg_app", "w_sg_ott", "w_sg_arg",
+    "w_sg_putt", "w_form", "w_course_fit",
+]
+
+
+def _normalize_sub_weights(cfg: StrategyConfig) -> None:
+    """Ensure w_sub_* weights sum to 1.0."""
+    total = cfg.w_sub_course_fit + cfg.w_sub_form + cfg.w_sub_momentum
+    if total > 0:
+        cfg.w_sub_course_fit = round(cfg.w_sub_course_fit / total, 4)
+        cfg.w_sub_form = round(cfg.w_sub_form / total, 4)
+        cfg.w_sub_momentum = round(1.0 - cfg.w_sub_course_fit - cfg.w_sub_form, 4)
+
+
 def generate_neighbor_strategies(base: StrategyConfig,
                                  n: int = 5,
-                                 perturbation: float = 0.03) -> list[StrategyConfig]:
+                                 perturbation: float = 0.05) -> list[StrategyConfig]:
     """
-    Generate neighboring strategies by perturbing base weights.
+    Generate neighboring strategies by perturbing model weights and betting parameters.
 
-    Used by the autonomous agent for Bayesian-style exploration.
-    Each neighbor has one or two weights adjusted by +/- perturbation.
+    Primary targets: PIT sub-model weights (w_sub_*) which drive the production model.
+    Secondary targets: betting params (min_ev, kelly_fraction, softmax_temp, max_implied_prob).
+    Tertiary targets: legacy SG weights for backward compatibility.
     """
     import random
     neighbors = []
-    weight_fields = [
-        "w_sg_total", "w_sg_app", "w_sg_ott", "w_sg_arg",
-        "w_sg_putt", "w_form", "w_course_fit",
-    ]
 
     for _ in range(n):
         cfg = StrategyConfig(**{
@@ -390,26 +405,35 @@ def generate_neighbor_strategies(base: StrategyConfig,
             if not k.startswith("_")
         })
 
-        # Perturb 1-2 weights
-        fields_to_change = random.sample(weight_fields, min(2, len(weight_fields)))
-        for f in fields_to_change:
+        sub_fields_to_change = random.sample(_PIT_SUB_FIELDS, random.randint(1, 2))
+        for f in sub_fields_to_change:
             current = getattr(cfg, f)
             delta = random.uniform(-perturbation, perturbation)
-            new_val = max(0.0, min(0.5, current + delta))
+            new_val = max(0.05, min(0.80, current + delta))
             setattr(cfg, f, round(new_val, 4))
+        _normalize_sub_weights(cfg)
 
-        # Optionally perturb other parameters
+        if random.random() < 0.6:
+            cfg.min_ev = round(max(0.01, min(0.20, cfg.min_ev + random.uniform(-0.03, 0.03))), 3)
+        if random.random() < 0.5:
+            cfg.kelly_fraction = round(max(0.05, min(0.50, cfg.kelly_fraction + random.uniform(-0.05, 0.05))), 3)
+        if random.random() < 0.4:
+            cfg.softmax_temp = round(max(0.3, min(3.0, cfg.softmax_temp + random.uniform(-0.3, 0.3))), 2)
         if random.random() < 0.3:
-            cfg.min_ev = round(max(0.01, min(0.15, cfg.min_ev + random.uniform(-0.02, 0.02))), 3)
-        if random.random() < 0.3:
-            cfg.softmax_temp = round(max(0.5, min(3.0, cfg.softmax_temp + random.uniform(-0.3, 0.3))), 2)
-        if random.random() < 0.2:
+            cfg.max_implied_prob = round(max(0.15, min(0.70, cfg.max_implied_prob + random.uniform(-0.05, 0.05))), 3)
+
+        if random.random() < 0.25:
+            legacy_to_change = random.sample(_LEGACY_SG_FIELDS, min(2, len(_LEGACY_SG_FIELDS)))
+            for f in legacy_to_change:
+                current = getattr(cfg, f)
+                delta = random.uniform(-perturbation * 0.5, perturbation * 0.5)
+                new_val = max(0.0, min(0.5, current + delta))
+                setattr(cfg, f, round(new_val, 4))
+
+        if random.random() < 0.15:
             cfg.stat_window = random.choice(WINDOWS)
 
         cfg.name = f"{base.name}_neighbor_{len(neighbors)}"
         neighbors.append(cfg)
 
     return neighbors
-
-
-WINDOWS = [12, 24, 50]

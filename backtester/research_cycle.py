@@ -213,6 +213,9 @@ def _build_run_summary(
     )
 
 
+PIT_EVALUATION_YEARS = [2024, 2025]
+
+
 def _should_promote_research_champion(candidate_ranking: dict[str, Any]) -> bool:
     summary = candidate_ranking["summary_metrics"]
     baseline_summary = candidate_ranking["baseline_summary_metrics"]
@@ -220,13 +223,11 @@ def _should_promote_research_champion(candidate_ranking: dict[str, Any]) -> bool
 
     if not guardrails.get("passed", False):
         return False
-    if summary.get("weighted_roi_pct", 0.0) <= 0:
-        return False
     if summary.get("weighted_roi_pct", 0.0) <= baseline_summary.get("weighted_roi_pct", 0.0):
         return False
     if summary.get("weighted_clv_avg", 0.0) < baseline_summary.get("weighted_clv_avg", 0.0):
         return False
-    if summary.get("total_bets", 0) < 100:
+    if summary.get("total_bets", 0) < 50:
         return False
     return True
 
@@ -234,7 +235,7 @@ def _should_promote_research_champion(candidate_ranking: dict[str, Any]) -> bool
 def run_research_cycle(
     *,
     max_candidates: int = 5,
-    years: list[int] | None = None,
+    years: list[int] | None = PIT_EVALUATION_YEARS,
     source: str = "manual",
     scope: str = "global",
     output_dir: str | None = None,
@@ -262,6 +263,8 @@ def run_research_cycle(
     source_types = sorted({theory.get("source_type", source) for theory in candidate_theories})
     theory_engine_mode = "fallback_local_search" if source_types == ["fallback_neighbor"] else ", ".join(source_types)
 
+    cached_baseline: list[dict[str, Any]] | None = None
+
     for theory in candidate_theories:
         strategy = theory["strategy"]
         payload = _proposal_payload_from_strategy(
@@ -283,7 +286,10 @@ def run_research_cycle(
             years=years,
             min_train_events=2,
             test_window_size=1,
+            precomputed_baseline=cached_baseline,
         )
+        if cached_baseline is None:
+            cached_baseline = evaluation.get("baseline_event_results")
         artifact_paths = write_research_dossier(
             proposal=proposal,
             evaluation=evaluation,

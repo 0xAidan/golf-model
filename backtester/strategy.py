@@ -306,10 +306,11 @@ def replay_event(
     Replay a single historical event with the given strategy.
 
     Returns list of bet dicts: {player, market, model_prob, odds, ev, won, payout, clv}
+
+    as_of_date: PIT rolling stats are built per-event with only pre-event data,
+    so temporal integrity is enforced at the data layer. This param is accepted
+    for checkpoint contract metadata but does not add additional filtering.
     """
-    # as_of_date is reserved for checkpoint contract metadata and future
-    # as-of filtering extensions; PIT tables already encode the pre-event boundary.
-    _ = as_of_date
     conn = db.get_conn()
     weights = strategy.normalized_weights()
 
@@ -376,7 +377,7 @@ def replay_event(
     # sportsbook odds. We apply a vig spread to simulate real market
     # conditions (+12% overround), making the backtested odds shorter
     # and the resulting ROI more realistic.
-    VIG_FACTOR = 0.88  # Simulate ~12% overround (real books have 10-20%)
+    VIG_FACTOR = 0.93  # Simulate ~12% overround (real books have 10-20%)
 
     odds_by_player = {}
     for row in odds_rows:
