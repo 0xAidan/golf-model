@@ -103,6 +103,36 @@ function computeCandidateConfidence(run) {
   return Math.max(5, Math.min(98, Math.round(score)));
 }
 
+function initMainTabs() {
+  const tabBtns = document.querySelectorAll('.main-tab');
+  const panels = document.querySelectorAll('.tab-panel');
+  if (!tabBtns.length || !panels.length) return;
+
+  tabBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const targetId = btn.getAttribute('aria-controls');
+      if (!targetId) return;
+      tabBtns.forEach(function (b) {
+        b.classList.remove('is-active');
+        b.setAttribute('aria-selected', 'false');
+        b.setAttribute('tabindex', '-1');
+      });
+      panels.forEach(function (p) {
+        p.classList.remove('is-active');
+        p.hidden = true;
+      });
+      btn.classList.add('is-active');
+      btn.setAttribute('aria-selected', 'true');
+      btn.setAttribute('tabindex', '0');
+      const targetPanel = document.getElementById(targetId);
+      if (targetPanel) {
+        targetPanel.classList.add('is-active');
+        targetPanel.hidden = false;
+      }
+    });
+  });
+}
+
 function renderWatchlist() {
   const list = document.getElementById('watchlistItems');
   if (!list) return;
@@ -245,8 +275,12 @@ async function runAutoresearch() {
     const resp = await fetch('/api/autoresearch/run-once', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: 'global', max_candidates: 2 }),
+      body: JSON.stringify({ scope: 'global', max_candidates: 3 }),
     });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function () { return {}; });
+      throw new Error(errData.error || 'Server error (' + resp.status + ')');
+    }
     const data = await resp.json();
     resultEl.textContent = data.error
       ? 'Error: ' + data.error
@@ -280,12 +314,16 @@ async function startAutoresearchEngine() {
     const resp = await fetch('/api/autoresearch/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: 'global', interval_seconds: 60, max_candidates: 3 }),
+      body: JSON.stringify({ scope: 'global', interval_seconds: 300, max_candidates: 5 }),
     });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function () { return {}; });
+      throw new Error(errData.error || 'Server error (' + resp.status + ')');
+    }
     const data = await resp.json();
     const running = data && data.optimizer && data.optimizer.running;
     resultEl.textContent = running
-      ? 'Autoresearch engine started. It will continue running every 60 seconds.'
+      ? 'Autoresearch engine started. Running every 5 minutes with 5 candidates per cycle.'
       : 'Start request returned, but engine is not running.';
     resultEl.className = running ? 'result status success' : 'result status error';
     await loadAutoresearchStatus();
@@ -298,6 +336,43 @@ async function startAutoresearchEngine() {
   } finally {
     startBtn.disabled = false;
     startBtn.classList.remove('is-loading');
+  }
+}
+
+async function resetAutoresearchState() {
+  const btn = document.getElementById('resetAutoresearchBtn');
+  const resultEl = document.getElementById('autoresearchResult');
+  if (!btn || !resultEl) return;
+
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Resetting research state...';
+  resultEl.className = 'result status loading';
+
+  try {
+    const resp = await fetch('/api/autoresearch/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function () { return {}; });
+      throw new Error(errData.error || 'Server error (' + resp.status + ')');
+    }
+    const data = await resp.json();
+    resultEl.textContent = data.error ? 'Error: ' + data.error : (data.message || 'Research state reset.');
+    resultEl.className = data.error ? 'result status error' : 'result status success';
+    await loadAutoresearchStatus();
+    await loadAutoresearchRuns();
+    await loadBestCandidates();
+    loadStatus();
+  } catch (err) {
+    resultEl.textContent = 'Error: ' + err.message;
+    resultEl.className = 'result status error';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
   }
 }
 
@@ -318,6 +393,10 @@ async function stopAutoresearchEngine() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function () { return {}; });
+      throw new Error(errData.error || 'Server error (' + resp.status + ')');
+    }
     const data = await resp.json();
     const running = data && data.status && data.status.running;
     resultEl.textContent = running ? 'Engine is still running.' : 'Autoresearch engine stopped.';
@@ -342,6 +421,7 @@ async function loadAutoresearchStatus() {
 
   try {
     const resp = await fetch('/api/autoresearch/status');
+    if (!resp.ok) throw new Error('Server error (' + resp.status + ')');
     const data = await resp.json();
     const status = data.status || {};
     const running = !!status.running;
@@ -350,15 +430,21 @@ async function loadAutoresearchStatus() {
     const intervalSeconds = status.interval_seconds || 0;
     const lastFinished = status.last_finished_at ? formatTime(status.last_finished_at) : 'Never';
     const lastError = status.last_error || '';
+    const isDiskIO = lastError && /disk I\/O|I\/O error/i.test(lastError);
 
     statusEl.style.display = 'block';
-    statusEl.className = 'result status ' + (running ? 'success' : (lastError ? 'error' : 'info'));
+    statusEl.className = 'ar-status-badge' + (running ? ' is-running' : (lastError ? ' is-error' : ''));
     statusEl.textContent =
       'Engine: ' + state +
-      ' | Runs: ' + runCount +
-      ' | Interval: ' + intervalSeconds + 's' +
-      ' | Last finished: ' + lastFinished +
-      (lastError ? ' | Last error: ' + lastError : '');
+      ' · Runs: ' + runCount +
+      ' · Interval: ' + intervalSeconds + 's' +
+      ' · Last: ' + lastFinished +
+      (lastError ? ' · Error: ' + lastError : '');
+    if (isDiskIO && statusEl.title !== 'dismissed') {
+      statusEl.title = 'Often caused by: project in iCloud/synced folder, another app using the DB, or full disk. Move data/ off cloud sync and avoid other processes using golf.db.';
+    } else if (!isDiskIO) {
+      statusEl.title = '';
+    }
 
     if (startBtn) startBtn.disabled = running;
     if (stopBtn) stopBtn.disabled = !running;
@@ -377,6 +463,10 @@ async function loadAutoresearchRuns() {
   if (!runsEl) return;
   try {
     const resp = await fetch('/api/autoresearch/runs?scope=global&limit=20');
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function () { return {}; });
+      throw new Error(errData.error || 'Server error (' + resp.status + ')');
+    }
     const data = await resp.json();
     const runs = data.runs || [];
     APP_STATE.recentRuns = runs;
@@ -428,6 +518,10 @@ async function loadBestCandidates() {
 
   try {
     const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=25');
+    if (!resp.ok) {
+      const errData = await resp.json().catch(function () { return {}; });
+      throw new Error(errData.error || 'Server error (' + resp.status + ')');
+    }
     const data = await resp.json();
     const candidates = data.candidates || [];
     if (!candidates.length) {
@@ -661,7 +755,7 @@ function initCommandMenu() {
     if (cmd === 'prediction') runPrediction();
     if (cmd === 'run-once') runAutoresearch();
     if (cmd === 'start-engine') startAutoresearchEngine();
-    if (cmd === 'workspace') openWorkspace();
+    if (cmd === 'reset-state') resetAutoresearchState();
     close();
   });
 }
@@ -753,38 +847,20 @@ document.addEventListener('DOMContentLoaded', function () {
   loadBestCandidates();
   loadAutoresearchStatus();
   loadAutoresearchRuns();
-  initTools();
+  initMainTabs();
   initCommandMenu();
-  initWorkspaceOverlay();
-  showPanel('setup', { openOverlay: false });
-  renderWatchlist();
-  const dropzone = document.getElementById('watchlistDropzone');
-  if (dropzone) {
-    dropzone.addEventListener('dragover', function (e) {
-      e.preventDefault();
-      dropzone.classList.add('is-drag-over');
-    });
-    dropzone.addEventListener('dragleave', function () {
-      dropzone.classList.remove('is-drag-over');
-    });
-    dropzone.addEventListener('drop', function (e) {
-      e.preventDefault();
-      dropzone.classList.remove('is-drag-over');
-      const player = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-      if (!player) return;
-      APP_STATE.watchlist.add(player);
-      renderWatchlist();
-    });
-  }
+
   const runPredictionBtn = document.getElementById('runPredictionBtn');
   const runAutoresearchBtn = document.getElementById('runAutoresearchBtn');
   const startAutoresearchBtn = document.getElementById('startAutoresearchBtn');
   const stopAutoresearchBtn = document.getElementById('stopAutoresearchBtn');
+  const resetAutoresearchBtn = document.getElementById('resetAutoresearchBtn');
   const downloadCardBtn = document.getElementById('downloadCardBtn');
   if (runPredictionBtn) runPredictionBtn.addEventListener('click', runPrediction);
   if (runAutoresearchBtn) runAutoresearchBtn.addEventListener('click', runAutoresearch);
   if (startAutoresearchBtn) startAutoresearchBtn.addEventListener('click', startAutoresearchEngine);
   if (stopAutoresearchBtn) stopAutoresearchBtn.addEventListener('click', stopAutoresearchEngine);
+  if (resetAutoresearchBtn) resetAutoresearchBtn.addEventListener('click', resetAutoresearchState);
   if (downloadCardBtn) downloadCardBtn.addEventListener('click', downloadCard);
   const revealEls = document.querySelectorAll('.reveal');
   if (revealEls.length && 'IntersectionObserver' in window) {

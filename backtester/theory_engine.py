@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from dataclasses import asdict
 from typing import Any
@@ -125,15 +127,84 @@ def _apply_overrides(base: StrategyConfig, overrides: dict[str, Any], index: int
     return StrategyConfig(**values)
 
 
+def _get_recent_results_context(limit: int = 10) -> str:
+    """Query recent evaluated proposals for context in the prompt."""
+    try:
+        from src import db
+        conn = db.get_conn()
+        rows = conn.execute(
+            """
+            SELECT name, summary_metrics_json, guardrail_results_json, strategy_config_json
+            FROM research_proposals
+            WHERE summary_metrics_json IS NOT NULL
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return "No prior results available."
+        lines = []
+        for r in rows:
+            metrics = json.loads(r["summary_metrics_json"]) if r["summary_metrics_json"] else {}
+            guardrails = json.loads(r["guardrail_results_json"]) if r["guardrail_results_json"] else {}
+            roi = metrics.get("weighted_roi_pct", 0)
+            clv = metrics.get("weighted_clv_avg", 0)
+            passed = guardrails.get("passed", False)
+            lines.append(f"  - {r['name']}: ROI={roi:+.2f}%, CLV={clv:.4f}, guardrails={'pass' if passed else 'fail'}")
+        return "\n".join(lines)
+    except Exception:
+        return "Could not load prior results."
+
+
+def _get_existing_strategy_hashes() -> set[str]:
+    """Return hashes of already-evaluated strategy configs to avoid duplicates."""
+    try:
+        from src import db
+        conn = db.get_conn()
+        rows = conn.execute(
+            "SELECT DISTINCT strategy_config_json FROM research_proposals WHERE strategy_config_json IS NOT NULL"
+        ).fetchall()
+        conn.close()
+        return {hashlib.md5(r["strategy_config_json"].encode()).hexdigest() for r in rows}
+    except Exception:
+        return set()
+
+
+def _strategy_hash(strategy: StrategyConfig) -> str:
+    config_json = json.dumps(
+        {k: v for k, v in vars(strategy).items() if not k.startswith("_")},
+        sort_keys=True,
+    )
+    return hashlib.md5(config_json.encode()).hexdigest()
+
+
 def _build_openai_prompt(base: StrategyConfig, max_candidates: int, scope: str, years: list[int] | None) -> str:
+    prior_context = _get_recent_results_context(10)
     return (
-        "Invent candidate golf betting strategy theories for the existing model.\n"
-        f"Scope: {scope}\n"
-        f"Years for evaluation: {years or 'default historical sample'}\n"
-        f"Max candidates: {max_candidates}\n"
-        "Return only practical, bounded experiments that change StrategyConfig fields.\n"
-        f"Baseline strategy JSON: {base.to_json()}\n"
-        "Prioritize explainable ideas that could improve ROI without major CLV, calibration, or drawdown regressions."
+        "You are optimizing a golf betting model. Generate candidate strategy theories.\n\n"
+        "## Model architecture\n"
+        "The production model uses PIT (point-in-time) sub-model composites for 2024+ events:\n"
+        "  - w_sub_course_fit: weight for course fit sub-model\n"
+        "  - w_sub_form: weight for recent form sub-model\n"
+        "  - w_sub_momentum: weight for momentum sub-model\n"
+        "These three weights are normalized to sum to 1.0. They are the PRIMARY levers.\n"
+        "Legacy SG weights (w_sg_total, w_sg_app, etc.) are fallback for older events.\n\n"
+        "## Betting parameters (also important)\n"
+        "  - min_ev: minimum expected value threshold to place a bet (higher = fewer, more selective bets)\n"
+        "  - kelly_fraction: Kelly criterion fraction for sizing (higher = more aggressive)\n"
+        "  - softmax_temp: temperature for probability conversion (lower = more concentrated)\n"
+        "  - max_implied_prob: filter out heavy favorites above this threshold\n\n"
+        f"## Current baseline\n{base.to_json()}\n\n"
+        f"## Recent evaluation results (what's been tried):\n{prior_context}\n\n"
+        f"Scope: {scope} | Evaluation years: {years or 'default'} | Max candidates: {max_candidates}\n\n"
+        "Generate {max_candidates} diverse, practical experiments. Focus on:\n"
+        "1. Varying w_sub_* weights (the actual production levers)\n"
+        "2. Adjusting min_ev and kelly_fraction for bet selection/sizing\n"
+        "3. Exploring different softmax temperatures\n"
+        "4. Build on what worked in recent results, avoid repeating failures\n"
+        "Prioritize strategies that improve ROI relative to baseline without CLV regression."
     )
 
 
@@ -167,12 +238,13 @@ def _openai_theories(base: StrategyConfig, max_candidates: int, scope: str, year
 
 def _fallback_theories(base: StrategyConfig, max_candidates: int) -> list[dict[str, Any]]:
     theories = []
-    for index, strategy in enumerate(generate_neighbor_strategies(base, n=max_candidates, perturbation=0.03)[:max_candidates]):
+    candidates = generate_neighbor_strategies(base, n=max_candidates + 3, perturbation=0.05)
+    for index, strategy in enumerate(candidates[:max_candidates]):
         theories.append(
             {
                 "title": f"Neighbor search {index + 1}",
                 "hypothesis": f"Test nearby parameter changes around {base.name or 'baseline'}.",
-                "why_it_may_work": "Local fallback search explores nearby settings when OpenAI is unavailable.",
+                "why_it_may_work": "Local search explores nearby PIT sub-model weights and betting parameters.",
                 "source_type": "fallback_neighbor",
                 "novelty_score": 0.2,
                 "duplicate_marker": "",
@@ -184,6 +256,21 @@ def _fallback_theories(base: StrategyConfig, max_candidates: int) -> list[dict[s
     return theories
 
 
+def _deduplicate_theories(
+    theories: list[dict[str, Any]], existing_hashes: set[str]
+) -> list[dict[str, Any]]:
+    """Remove theories whose strategy config has already been evaluated."""
+    unique = []
+    for theory in theories:
+        h = _strategy_hash(theory["strategy"])
+        if h not in existing_hashes:
+            existing_hashes.add(h)
+            unique.append(theory)
+        else:
+            logger.info("Skipping duplicate theory: %s", theory.get("title", "?"))
+    return unique
+
+
 def generate_candidate_theories(
     base: StrategyConfig,
     *,
@@ -191,14 +278,23 @@ def generate_candidate_theories(
     scope: str = "global",
     years: list[int] | None = None,
 ) -> list[dict[str, Any]]:
+    existing_hashes = _get_existing_strategy_hashes()
+
     if is_ai_available():
         try:
             theories = _openai_theories(base, max_candidates, scope, years)
             if theories:
-                return theories
-            logger.warning("OpenAI returned no candidate theories; falling back to neighbor search.")
+                theories = _deduplicate_theories(theories, existing_hashes)
+                if theories:
+                    return theories
+                logger.warning("All OpenAI theories were duplicates; falling back to neighbor search.")
+            else:
+                logger.warning("OpenAI returned no candidate theories; falling back to neighbor search.")
         except Exception as exc:
             logger.warning("OpenAI theory generation failed; falling back to neighbor search: %s", exc)
     else:
         logger.warning("AI provider unavailable for theory engine; using neighbor fallback.")
-    return _fallback_theories(base, max_candidates)
+
+    fallback = _fallback_theories(base, max_candidates + 5)
+    fallback = _deduplicate_theories(fallback, existing_hashes)
+    return fallback[:max_candidates]

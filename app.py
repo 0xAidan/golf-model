@@ -1158,7 +1158,10 @@ async def get_autoresearch_status():
 @app.post("/api/autoresearch/start")
 async def start_autoresearch_runtime(request: Request):
     """Start the looping autoresearch runtime."""
-    return await start_optimizer_runtime(request)
+    try:
+        return await start_optimizer_runtime(request)
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/autoresearch/stop")
@@ -1178,21 +1181,22 @@ async def run_autoresearch_once(request: Request):
     """Run one bounded autoresearch cycle."""
     from src.db import ensure_initialized
     ensure_initialized()
-
-    from backtester.research_cycle import run_research_cycle
-
-    payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
-    result = run_research_cycle(
-        years=payload.get("years"),
-        max_candidates=int(payload.get("max_candidates", 1)),
-        scope=payload.get("scope", "global"),
-        source="manual_autoresearch",
-    )
-    return {
-        "state": "completed",
-        "decision": "kept" if result.get("winner") else "discarded",
-        **result,
-    }
+    try:
+        from backtester.research_cycle import run_research_cycle
+        payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        result = run_research_cycle(
+            years=payload.get("years"),
+            max_candidates=int(payload.get("max_candidates", 3)),
+            scope=payload.get("scope", "global"),
+            source="manual_autoresearch",
+        )
+        return {
+            "state": "completed",
+            "decision": "kept" if result.get("winner") else "discarded",
+            **result,
+        }
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/autoresearch/run-batch")
@@ -1236,83 +1240,85 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
     """Return recent evaluated research proposals shaped for dashboard review."""
     from src.db import ensure_initialized
     ensure_initialized()
+    try:
+        conn = get_conn()
+        rows = conn.execute(
+            """
+            SELECT id, name, hypothesis, source, scope, status, years_json, theory_metadata_json,
+                   summary_metrics_json, guardrail_results_json, artifact_markdown_path,
+                   created_at, evaluated_at
+            FROM research_proposals
+            WHERE scope = ?
+              AND status IN ('evaluated', 'approved', 'rejected', 'converted')
+            ORDER BY COALESCE(evaluated_at, created_at) DESC, id DESC
+            LIMIT ?
+            """,
+            (scope, limit),
+        ).fetchall()
+        conn.close()
 
-    conn = get_conn()
-    rows = conn.execute(
-        """
-        SELECT id, name, hypothesis, source, scope, status, years_json, theory_metadata_json,
-               summary_metrics_json, guardrail_results_json, artifact_markdown_path,
-               created_at, evaluated_at
-        FROM research_proposals
-        WHERE scope = ?
-          AND status IN ('evaluated', 'approved', 'rejected', 'converted')
-        ORDER BY COALESCE(evaluated_at, created_at) DESC, id DESC
-        LIMIT ?
-        """,
-        (scope, limit),
-    ).fetchall()
-    conn.close()
-
-    runs = []
-    for row in rows:
-        summary_metrics = json.loads(row["summary_metrics_json"] or "{}")
-        guardrails = json.loads(row["guardrail_results_json"] or "{}")
-        theory = json.loads(row["theory_metadata_json"] or "{}")
-        baseline_summary = guardrails.get("baseline_summary_metrics", {}) or {}
-        candidate_roi = summary_metrics.get("weighted_roi_pct")
-        baseline_roi = baseline_summary.get("weighted_roi_pct")
-        if candidate_roi is None or baseline_roi is None:
-            dossier_candidate_roi, dossier_baseline_roi = _extract_roi_metrics_from_dossier_file(row["artifact_markdown_path"])
-            if candidate_roi is None and dossier_candidate_roi is not None:
-                summary_metrics["weighted_roi_pct"] = dossier_candidate_roi
-                candidate_roi = dossier_candidate_roi
-            if baseline_roi is None and dossier_baseline_roi is not None:
-                baseline_summary["weighted_roi_pct"] = dossier_baseline_roi
-                baseline_roi = dossier_baseline_roi
-        roi_delta = None
-        if candidate_roi is not None and baseline_roi is not None:
-            try:
-                roi_delta = float(candidate_roi) - float(baseline_roi)
-            except Exception:
-                roi_delta = None
-        status = row["status"]
-        kept = status in {"approved", "converted"}
-        blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
-        blocked_by_guardrails = bool(blocked_reason) or guardrails.get("verdict") == "blocked_by_guardrails"
-        decision = "blocked_by_guardrails" if blocked_by_guardrails else ("kept" if kept else "discarded")
-        runs.append(
-            {
-                "id": row["id"],
-                "scope": row["scope"],
-                "candidate_name": row["name"],
-                "display_title": theory.get("title") or row["name"],
-                "baseline_name": "current champion",
-                "hypothesis": row["hypothesis"],
-                "source_type": row["source"],
-                "strategy_source": row["source"],
-                "decision": decision,
-                "kept": kept,
-                "blocked_reason": blocked_reason,
-                "benchmark_years": json.loads(row["years_json"] or "[]"),
-                "benchmark_label": f"Fixed PIT benchmark ({', '.join(str(y) for y in json.loads(row['years_json'] or '[]'))})" if row["years_json"] else "Fixed PIT benchmark",
-                "roi_delta": roi_delta,
-                "clv_delta": (
-                    float(summary_metrics.get("weighted_clv_avg", 0.0) or 0.0)
-                    - float((guardrails.get("baseline_summary_metrics", {}) or {}).get("weighted_clv_avg", 0.0) or 0.0)
-                ),
-                "guardrail_verdict": guardrails.get("verdict"),
-                "summary_reason": guardrails.get("summary") or ("Approved for follow-up" if kept else "Not promoted from this run."),
-                "what_tested": theory.get("what_tested") or row["hypothesis"],
-                "next_attempt_hint": guardrails.get("next_attempt_hint"),
-                "is_positive_test": bool(guardrails.get("is_positive_test", False)),
-                "artifact_markdown_path": row["artifact_markdown_path"],
-                "summary_metrics": summary_metrics,
-                "baseline_summary_metrics": baseline_summary,
-                "guardrail_results": guardrails,
-                "created_at": row["evaluated_at"] or row["created_at"],
-            }
-        )
-    return {"runs": runs}
+        runs = []
+        for row in rows:
+            summary_metrics = json.loads(row["summary_metrics_json"] or "{}")
+            guardrails = json.loads(row["guardrail_results_json"] or "{}")
+            theory = json.loads(row["theory_metadata_json"] or "{}")
+            baseline_summary = guardrails.get("baseline_summary_metrics", {}) or {}
+            candidate_roi = summary_metrics.get("weighted_roi_pct")
+            baseline_roi = baseline_summary.get("weighted_roi_pct")
+            if candidate_roi is None or baseline_roi is None:
+                dossier_candidate_roi, dossier_baseline_roi = _extract_roi_metrics_from_dossier_file(row["artifact_markdown_path"])
+                if candidate_roi is None and dossier_candidate_roi is not None:
+                    summary_metrics["weighted_roi_pct"] = dossier_candidate_roi
+                    candidate_roi = dossier_candidate_roi
+                if baseline_roi is None and dossier_baseline_roi is not None:
+                    baseline_summary["weighted_roi_pct"] = dossier_baseline_roi
+                    baseline_roi = dossier_baseline_roi
+            roi_delta = None
+            if candidate_roi is not None and baseline_roi is not None:
+                try:
+                    roi_delta = float(candidate_roi) - float(baseline_roi)
+                except Exception:
+                    roi_delta = None
+            status = row["status"]
+            kept = status in {"approved", "converted"}
+            blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
+            blocked_by_guardrails = bool(blocked_reason) or guardrails.get("verdict") == "blocked_by_guardrails"
+            decision = "blocked_by_guardrails" if blocked_by_guardrails else ("kept" if kept else "discarded")
+            runs.append(
+                {
+                    "id": row["id"],
+                    "scope": row["scope"],
+                    "candidate_name": row["name"],
+                    "display_title": theory.get("title") or row["name"],
+                    "baseline_name": "current champion",
+                    "hypothesis": row["hypothesis"],
+                    "source_type": row["source"],
+                    "strategy_source": row["source"],
+                    "decision": decision,
+                    "kept": kept,
+                    "blocked_reason": blocked_reason,
+                    "benchmark_years": json.loads(row["years_json"] or "[]"),
+                    "benchmark_label": f"Fixed PIT benchmark ({', '.join(str(y) for y in json.loads(row['years_json'] or '[]'))})" if row["years_json"] else "Fixed PIT benchmark",
+                    "roi_delta": roi_delta,
+                    "clv_delta": (
+                        float(summary_metrics.get("weighted_clv_avg", 0.0) or 0.0)
+                        - float((guardrails.get("baseline_summary_metrics", {}) or {}).get("weighted_clv_avg", 0.0) or 0.0)
+                    ),
+                    "guardrail_verdict": guardrails.get("verdict"),
+                    "summary_reason": guardrails.get("summary") or ("Approved for follow-up" if kept else "Not promoted from this run."),
+                    "what_tested": theory.get("what_tested") or row["hypothesis"],
+                    "next_attempt_hint": guardrails.get("next_attempt_hint"),
+                    "is_positive_test": bool(guardrails.get("is_positive_test", False)),
+                    "artifact_markdown_path": row["artifact_markdown_path"],
+                    "summary_metrics": summary_metrics,
+                    "baseline_summary_metrics": baseline_summary,
+                    "guardrail_results": guardrails,
+                    "created_at": row["evaluated_at"] or row["created_at"],
+                }
+            )
+        return {"runs": runs}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc), "runs": []})
 
 
 @app.get("/api/autoresearch/best-candidates")
@@ -1320,72 +1326,98 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
     """Return best evaluated proposals by blended score with strategy TLDR for dashboard."""
     from src.db import ensure_initialized
     ensure_initialized()
-    from backtester.weighted_walkforward import compute_blended_score
-    from backtester.strategy import StrategyConfig
+    try:
+        from backtester.weighted_walkforward import compute_blended_score
+        from backtester.strategy import StrategyConfig
 
-    conn = get_conn()
-    rows = conn.execute(
-        """
-        SELECT id, name, hypothesis, source, strategy_config_json,
-               summary_metrics_json, guardrail_results_json, theory_metadata_json,
-               artifact_markdown_path
-        FROM research_proposals
-        WHERE scope = ?
-          AND status IN ('evaluated', 'approved', 'converted')
-          AND summary_metrics_json IS NOT NULL
-          AND guardrail_results_json IS NOT NULL
-        ORDER BY id DESC
-        LIMIT ?
-        """,
-        (scope, max(limit, 50)),
-    ).fetchall()
-    conn.close()
+        conn = get_conn()
+        rows = conn.execute(
+            """
+            SELECT id, name, hypothesis, source, strategy_config_json,
+                   summary_metrics_json, guardrail_results_json, theory_metadata_json,
+                   artifact_markdown_path
+            FROM research_proposals
+            WHERE scope = ?
+              AND status IN ('evaluated', 'approved', 'converted')
+              AND summary_metrics_json IS NOT NULL
+              AND guardrail_results_json IS NOT NULL
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (scope, max(limit, 50)),
+        ).fetchall()
+        conn.close()
 
-    candidates = []
-    for row in rows:
-        try:
-            summary = json.loads(row["summary_metrics_json"] or "{}")
-            guardrails = json.loads(row["guardrail_results_json"] or "{}")
-            score = compute_blended_score(summary, guardrails)
-            theory = json.loads(row["theory_metadata_json"] or "{}")
-            why = (theory.get("why_it_may_work") or "").strip()
-            hypothesis = (row["hypothesis"] or "").strip()
-            strategy_tldr = hypothesis
-            if why:
-                strategy_tldr = f"{hypothesis}\n\n{why}" if hypothesis else why
-            strategy_tldr = strategy_tldr.strip() or "No description."
-            if len(strategy_tldr) > 500:
-                strategy_tldr = strategy_tldr[:497] + "..."
-        except Exception:
-            continue
-        art_path = row["artifact_markdown_path"]
-        content_path = (_relative_output_path(art_path) if art_path and (art_path.startswith("/") or (len(art_path) > 1 and art_path[1] == ":")) else art_path) if art_path else None
-        candidates.append({
-            "id": row["id"],
-            "name": theory.get("title") or row["name"],
-            "hypothesis": row["hypothesis"],
-            "strategy_tldr": strategy_tldr,
-            "what_tested": theory.get("what_tested") or row["hypothesis"],
-            "summary_reason": guardrails.get("summary"),
-            "next_attempt_hint": guardrails.get("next_attempt_hint"),
-            "is_positive_test": bool(guardrails.get("is_positive_test", False)),
-            "summary_metrics": summary,
-            "baseline_summary_metrics": guardrails.get("baseline_summary_metrics", {}),
-            "guardrail_results": guardrails,
-            "blended_score": score,
-            "artifact_markdown_path": art_path,
-            "artifact_content_path": content_path,
-        })
+        candidates = []
+        for row in rows:
+            try:
+                summary = json.loads(row["summary_metrics_json"] or "{}")
+                guardrails = json.loads(row["guardrail_results_json"] or "{}")
+                score = compute_blended_score(summary, guardrails)
+                theory = json.loads(row["theory_metadata_json"] or "{}")
+                why = (theory.get("why_it_may_work") or "").strip()
+                hypothesis = (row["hypothesis"] or "").strip()
+                strategy_tldr = hypothesis
+                if why:
+                    strategy_tldr = f"{hypothesis}\n\n{why}" if hypothesis else why
+                strategy_tldr = strategy_tldr.strip() or "No description."
+                if len(strategy_tldr) > 500:
+                    strategy_tldr = strategy_tldr[:497] + "..."
+            except Exception:
+                continue
+            art_path = row["artifact_markdown_path"]
+            content_path = (_relative_output_path(art_path) if art_path and (art_path.startswith("/") or (len(art_path) > 1 and art_path[1] == ":")) else art_path) if art_path else None
+            candidates.append({
+                "id": row["id"],
+                "name": theory.get("title") or row["name"],
+                "hypothesis": row["hypothesis"],
+                "strategy_tldr": strategy_tldr,
+                "what_tested": theory.get("what_tested") or row["hypothesis"],
+                "summary_reason": guardrails.get("summary"),
+                "next_attempt_hint": guardrails.get("next_attempt_hint"),
+                "is_positive_test": bool(guardrails.get("is_positive_test", False)),
+                "summary_metrics": summary,
+                "baseline_summary_metrics": guardrails.get("baseline_summary_metrics", {}),
+                "guardrail_results": guardrails,
+                "blended_score": score,
+                "artifact_markdown_path": art_path,
+                "artifact_content_path": content_path,
+            })
 
-    candidates.sort(
-        key=lambda item: (
-            item["blended_score"],
-            item["summary_metrics"].get("weighted_roi_pct", -999),
-            item["summary_metrics"].get("weighted_clv_avg", -999),
-        ),
-        reverse=True,
-    )
-    return {"candidates": candidates[:limit]}
+        candidates.sort(
+            key=lambda item: (
+                item["blended_score"],
+                item["summary_metrics"].get("weighted_roi_pct", -999),
+                item["summary_metrics"].get("weighted_clv_avg", -999),
+            ),
+            reverse=True,
+        )
+        return {"candidates": candidates[:limit]}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc), "candidates": []})
+
+
+@app.post("/api/autoresearch/reset")
+async def reset_autoresearch_state():
+    """Reset research champion and mark old proposals as legacy for a fresh start."""
+    from src.db import ensure_initialized, get_conn
+    ensure_initialized()
+    try:
+        conn = get_conn()
+        # Mark old research champion entries as legacy
+        conn.execute("UPDATE research_model_registry SET scope = 'legacy_' || scope WHERE scope NOT LIKE 'legacy_%'")
+        # Mark old proposals evaluated under flawed scope
+        conn.execute("""
+            UPDATE research_proposals 
+            SET status = 'legacy' 
+            WHERE status = 'evaluated' 
+            AND id <= (SELECT COALESCE(MAX(id), 0) FROM research_proposals)
+        """)
+        conn.commit()
+        conn.close()
+        return {"ok": True, "message": "Research state reset. Old proposals marked as legacy. Next cycle will establish new baseline."}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/results")

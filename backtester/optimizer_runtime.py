@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from backtester.research_cycle import run_research_cycle
+from backtester.research_cycle import PIT_EVALUATION_YEARS, run_research_cycle
 
 _logger = logging.getLogger("autoresearch.runtime")
 _state_lock = threading.Lock()
@@ -18,7 +18,7 @@ _state: dict[str, Any] = {
     "running": False,
     "scope": "global",
     "interval_seconds": 300,
-    "max_candidates": 3,
+    "max_candidates": 5,
     "years": None,
     "run_count": 0,
     "last_cycle_key": None,
@@ -38,6 +38,8 @@ def _emit(message: str) -> None:
 
 
 def _run_loop(scope: str, interval_seconds: float, max_candidates: int, years: list[int] | None) -> None:
+    if years is None:
+        years = PIT_EVALUATION_YEARS
     while not _stop_event.is_set():
         cycle_started = datetime.now(timezone.utc)
         with _state_lock:
@@ -50,12 +52,26 @@ def _run_loop(scope: str, interval_seconds: float, max_candidates: int, years: l
             f" years={years or 'auto'}"
         )
         try:
-            result = run_research_cycle(
-                scope=scope,
-                source="optimizer_daemon",
-                max_candidates=max_candidates,
-                years=years,
-            )
+            result = None
+            last_exc = None
+            for attempt in range(2):
+                try:
+                    result = run_research_cycle(
+                        scope=scope,
+                        source="optimizer_daemon",
+                        max_candidates=max_candidates,
+                        years=years,
+                    )
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt == 0 and ("disk I/O" in str(exc) or "I/O error" in str(exc).lower()):
+                        _emit("disk I/O error, retrying in 5s...")
+                        _stop_event.wait(5.0)
+                        continue
+                    raise
+            if result is None:
+                raise last_exc
             cycle_finished = datetime.now(timezone.utc)
             with _state_lock:
                 _state["run_count"] += 1
@@ -96,7 +112,7 @@ def start_continuous_optimizer(
     *,
     scope: str = "global",
     interval_seconds: float = 300,
-    max_candidates: int = 3,
+    max_candidates: int = 5,
     years: list[int] | None = None,
 ) -> dict[str, Any]:
     global _thread
