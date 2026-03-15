@@ -8,6 +8,7 @@ Only shows matchups that are actually bettable.
 
 import logging
 import math
+import time
 
 from src.player_normalizer import normalize_name
 from src import config, db
@@ -20,10 +21,9 @@ _platt_cache_time = 0
 
 def _get_platt_params() -> tuple[float, float]:
     """Read latest Platt A,B from matchup_calibration table, or use config defaults."""
-    import time
     global _platt_cache, _platt_cache_time
     now = time.time()
-    if _platt_cache and (now - _platt_cache_time) < 300:
+    if _platt_cache and (now - _platt_cache_time) < config.PLATT_CACHE_TTL:
         return _platt_cache
     try:
         conn = db.get_conn()
@@ -36,7 +36,7 @@ def _get_platt_params() -> tuple[float, float]:
             _platt_cache_time = now
             return _platt_cache
     except Exception:
-        pass
+        logger.warning("Platt params DB fetch failed, using config defaults", exc_info=True)
     return (config.MATCHUP_PLATT_A, config.MATCHUP_PLATT_B)
 
 

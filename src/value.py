@@ -15,6 +15,7 @@ Probability priority:
 """
 
 import logging
+import math
 
 from src.odds import american_to_implied_prob, american_to_decimal, is_valid_odds
 from src.player_normalizer import normalize_name
@@ -60,8 +61,6 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
 
     This is a fallback — DG calibrated probabilities are preferred.
     """
-    import math
-
     if not all_scores:
         return 0.0
 
@@ -252,7 +251,6 @@ def find_3ball_value_bets(
     required_book: if set, only include groups where this book has odds for all three players.
     Returns list of value bet dicts.
     """
-    import math
     from src.feature_flags import is_enabled
 
     if not enable_for_live and not is_enabled("3ball"):

@@ -36,6 +36,10 @@ class GolfModelService:
         backfill_years: list[int] = None,
         output_dir: str = "output",
         mode: str = "full",
+        include_weather: bool = False,
+        include_post_review: bool = False,
+        include_methodology: bool = False,
+        strategy_source: str = "config",
     ) -> dict:
         """
         Run the complete prediction pipeline.
@@ -111,6 +115,15 @@ class GolfModelService:
         print("  Loading course profile...")
         profile = self._load_course_profile(course_name, sync_result.get("decompositions_raw"))
 
+        # Step 7a: Resolve strategy from model registry if requested
+        if strategy_source == "registry":
+            resolved = self._resolve_strategy()
+            if resolved:
+                strategy, meta = resolved
+                self.strategy_config = self._map_strategy_to_config(strategy)
+                result["strategy_meta"] = meta
+                logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
+
         # Step 8: Run composite model
         print("  Running composite model...")
         weights = self._get_weights(course_num)
@@ -123,6 +136,12 @@ class GolfModelService:
             return result
 
         print(f"    → {len(composite)} players scored")
+
+        # Step 8a: Weather adjustments (optional)
+        if include_weather:
+            weather_adj = self._compute_weather(tid, course_name)
+            if weather_adj:
+                result["weather_adjustments"] = weather_adj
 
         # Step 9: AI pre-tournament analysis (if enabled)
         ai_pre_analysis = None
@@ -218,7 +237,19 @@ class GolfModelService:
         )
         result["card_filepath"] = card_path
 
-        # Step 14: Log run metadata
+        # Step 13a: Generate methodology document (optional)
+        if include_methodology and card_path:
+            meth_path = self._generate_methodology(
+                tournament_name, course_name, composite, value_bets,
+                output_dir, ai_pre_analysis, matchup_bets, profile,
+            )
+            result["methodology_filepath"] = meth_path
+
+        # Step 14: Post-tournament review for prior events (optional)
+        if include_post_review:
+            self._run_post_review(tid, tournament_name, course_name, enable_ai)
+
+        # Step 15: Log run metadata
         run_end = datetime.now()
         result["status"] = "complete"
         result["run_duration_seconds"] = (run_end - run_start).total_seconds()
@@ -592,3 +623,94 @@ class GolfModelService:
             conn.close()
         except Exception:
             pass  # Non-critical
+
+    def _resolve_strategy(self) -> tuple | None:
+        """Resolve strategy from model registry with fallback chain."""
+        try:
+            from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
+            from backtester.experiments import get_active_strategy
+            from backtester.strategy import StrategyConfig
+
+            for source, fetch in [
+                ("live", lambda: get_live_weekly_model_record("global")),
+                ("research_champion", lambda: get_research_champion_record("global")),
+            ]:
+                record = fetch()
+                if record and record.get("strategy_config_json"):
+                    try:
+                        strategy = StrategyConfig.from_json(record["strategy_config_json"])
+                        return strategy, {"strategy_source": source, "strategy_name": strategy.name or source}
+                    except Exception:
+                        logger.warning("Failed to parse %s strategy config", source, exc_info=True)
+
+            active = get_active_strategy("global")
+            if active:
+                return active, {"strategy_source": "active_strategy", "strategy_name": active.name or "active"}
+
+            return StrategyConfig(name="default"), {"strategy_source": "default", "strategy_name": "default"}
+        except Exception:
+            logger.warning("Strategy resolution failed, using defaults", exc_info=True)
+            return None
+
+    def _map_strategy_to_config(self, strategy) -> dict:
+        """Map a StrategyConfig dataclass to a dict for pipeline consumption."""
+        market_map = {
+            "win": "outright", "top_5": "top5", "top_10": "top10",
+            "top_20": "top20", "frl": "frl", "make_cut": "make_cut",
+        }
+        allowed_markets = {market_map.get(m, m) for m in (strategy.markets or [])}
+        return {
+            "weights": {
+                "course_fit": float(strategy.w_sub_course_fit),
+                "form": float(strategy.w_sub_form),
+                "momentum": float(strategy.w_sub_momentum),
+            },
+            "ev_threshold": float(strategy.min_ev),
+            "kelly_fraction": float(strategy.kelly_fraction),
+            "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
+        }
+
+    def _compute_weather(self, tournament_id: int, course_name: str) -> dict | None:
+        """Fetch forecast and compute weather adjustments."""
+        try:
+            from src.models.weather import fetch_forecast, compute_weather_adjustments
+            forecast = fetch_forecast(course_name)
+            if forecast:
+                return compute_weather_adjustments(forecast)
+        except Exception:
+            logger.warning("Weather adjustments failed (non-fatal)", exc_info=True)
+        return None
+
+    def _generate_methodology(self, tournament_name, course_name, composite,
+                               value_bets, output_dir, ai_pre_analysis,
+                               matchup_bets, course_profile) -> str | None:
+        """Generate methodology document alongside the betting card."""
+        try:
+            from src.methodology import generate_methodology
+            return generate_methodology(
+                tournament_name, course_name or "Unknown",
+                composite, value_bets,
+                output_dir=output_dir,
+                ai_pre_analysis=ai_pre_analysis,
+                matchup_bets=matchup_bets or [],
+                course_profile=course_profile,
+            )
+        except Exception:
+            logger.warning("Methodology generation failed (non-fatal)", exc_info=True)
+            return None
+
+    def _run_post_review(self, tournament_id: int, tournament_name: str,
+                          course_name: str, enable_ai: bool):
+        """Run post-tournament review and learning for completed events."""
+        try:
+            from src.learning import run_post_tournament_learning
+            run_post_tournament_learning(tournament_id)
+            if enable_ai and self._is_ai_available():
+                from src.ai_brain import post_tournament_review
+                post_tournament_review(
+                    tournament_id=tournament_id,
+                    tournament_name=tournament_name,
+                    course_name=course_name or "",
+                )
+        except Exception:
+            logger.warning("Post-tournament review failed (non-fatal)", exc_info=True)

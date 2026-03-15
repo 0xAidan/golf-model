@@ -12,17 +12,10 @@ from datetime import datetime
 
 from src import config
 from src.feature_flags import is_enabled
+from src.kelly import units_for_bet
+from src.odds_utils import american_to_decimal as _american_to_decimal
 
 logger = logging.getLogger("card")
-
-
-def _american_to_decimal(american: int) -> float:
-    """Convert American odds to decimal for stake calculation."""
-    if not american:
-        return 1.0
-    if american > 0:
-        return 1.0 + american / 100.0
-    return 1.0 + 100.0 / abs(american)
 
 
 def _fmt_odds(price: int) -> str:
@@ -77,11 +70,10 @@ def _top_bets_for_summary(value_bets: dict, matchup_bets: list[dict] | None) -> 
                 stake = None
                 if is_enabled("kelly_sizing") or is_enabled("kelly_stakes"):
                     try:
-                        from src.kelly import units_for_bet
                         dec = _american_to_decimal(b.get("best_odds", 0))
                         stake = units_for_bet(b.get("model_prob", 0.5), dec)
                     except Exception:
-                        pass
+                        logger.warning("Kelly stake calc failed for %s, skipping stake", b.get("player_display", "?"), exc_info=True)
                 pick = b.get("player_display", "")
                 if bet_type == "3ball" and b.get("opponents"):
                     pick = f"{pick} (3-ball vs {b['opponents']})"

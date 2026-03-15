@@ -849,7 +849,7 @@ def _run_migrations(conn: sqlite3.Connection):
         """)
         conn.commit()
     except Exception:
-        pass  # Table might be empty or not exist yet
+        logging.getLogger(__name__).debug("Metrics dedup skipped (table may be empty or not exist yet)", exc_info=True)
 
     try:
         conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_metrics_unique'")
@@ -863,7 +863,7 @@ def _run_migrations(conn: sqlite3.Connection):
             """)
             conn.commit()
     except Exception:
-        pass  # Index might already exist or dedup failed
+        logging.getLogger(__name__).debug("Metrics unique index creation skipped", exc_info=True)
 
     # Add UNIQUE constraints via indexes (safe to run repeatedly)
     _add_unique_constraints(conn)
