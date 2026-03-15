@@ -294,13 +294,22 @@ def _american_to_implied(price: int) -> float:
     return 0.5
 
 
-def replay_event(event_id: str, year: int,
-                 strategy: StrategyConfig) -> list[dict]:
+def replay_event(
+    event_id: str,
+    year: int,
+    strategy: StrategyConfig,
+    *,
+    odds_source: str = "close",
+    as_of_date: str | None = None,
+) -> list[dict]:
     """
     Replay a single historical event with the given strategy.
 
     Returns list of bet dicts: {player, market, model_prob, odds, ev, won, payout, clv}
     """
+    # as_of_date is reserved for checkpoint contract metadata and future
+    # as-of filtering extensions; PIT tables already encode the pre-event boundary.
+    _ = as_of_date
     conn = db.get_conn()
     weights = strategy.normalized_weights()
 
@@ -355,8 +364,9 @@ def replay_event(event_id: str, year: int,
     }
 
     # 3. Get historical odds for this event
+    odds_column = "close_line" if odds_source == "close" else "open_line"
     odds_rows = conn.execute("""
-        SELECT player_dg_id, player_name, market, book, close_line
+        SELECT player_dg_id, player_name, market, book, open_line, close_line
         FROM historical_odds
         WHERE event_id = ? AND year = ?
     """, (str(event_id), year)).fetchall()
@@ -370,14 +380,20 @@ def replay_event(event_id: str, year: int,
 
     odds_by_player = {}
     for row in odds_rows:
-        dg_id, name, market, book, close_line = row
+        dg_id, name, market, book, open_line, close_line = row
         pkey = normalize_name(name)
         if pkey not in odds_by_player:
             odds_by_player[pkey] = {}
 
-        if close_line is not None:
+        if odds_column == "open_line":
+            # Historical datasets may not include open lines yet; fall back to close
+            # so checkpoint replay can still evaluate candidate behavior.
+            raw_price = open_line if open_line is not None else close_line
+        else:
+            raw_price = close_line
+        if raw_price is not None:
             # Apply vig: convert to implied prob, increase by vig, convert back
-            implied = _american_to_implied(close_line)
+            implied = _american_to_implied(raw_price)
             vigged_implied = min(0.95, implied / VIG_FACTOR)
             # Convert back to American odds (shorter/worse for the bettor)
             if vigged_implied >= 0.5:

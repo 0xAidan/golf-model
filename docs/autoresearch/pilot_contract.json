@@ -1,0 +1,38 @@
+{
+  "pilot_contract_version": 1,
+  "evaluation_contract_version": 1,
+  "score_formula_version": 1,
+  "guardrail_version": 1,
+  "anchor_policy": "recent_signature_event",
+  "resolved_event": {
+    "event_id": null,
+    "year": null,
+    "event_name": null
+  },
+  "checkpoint_set_id": "v1_pre_day2_day3",
+  "checkpoints": [
+    {
+      "id": "pre_tournament",
+      "label": "Pre-tournament snapshot",
+      "offset_days_from_start": 0
+    },
+    {
+      "id": "before_day_2",
+      "label": "Before day 2 snapshot",
+      "offset_days_from_start": 1
+    },
+    {
+      "id": "before_day_3",
+      "label": "Before day 3 snapshot",
+      "offset_days_from_start": 2
+    }
+  ],
+  "benchmark": {
+    "years": [
+      2024,
+      2025
+    ],
+    "min_train_events": 2,
+    "test_window_size": 1
+  }
+}

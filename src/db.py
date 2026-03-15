@@ -14,12 +14,17 @@ Tables:
   prediction_log          – calibration tracking (model vs market vs actual)
   ai_memory               – persistent AI brain memory
   ai_decisions            – logged AI analysis/decisions
+  market_performance      – rolling ROI tracking by market type
+  calibration_curve       – probability calibration buckets
+  ai_adjustments          – tracked AI-driven player adjustments
 """
 
 import sqlite3
 import json
 import os
 from datetime import datetime
+
+from src import config
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golf.db")
 
@@ -31,6 +36,7 @@ def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -238,6 +244,66 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        -- ═══ Dynamic blend (EWA) history ═══
+        CREATE TABLE IF NOT EXISTS blend_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER,
+            bet_type TEXT NOT NULL,
+            brier_dg REAL,
+            brier_model REAL,
+            brier_blended REAL,
+            n_predictions INTEGER DEFAULT 0,
+            dg_weight REAL NOT NULL,
+            model_weight REAL NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_blend_history_bet_type ON blend_history(bet_type);
+
+        -- ═══ Matchup calibration (Platt A,B params) ═══
+        CREATE TABLE IF NOT EXISTS matchup_calibration (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            a_param REAL NOT NULL,
+            b_param REAL NOT NULL,
+            n_samples INTEGER NOT NULL DEFAULT 0,
+            brier_score REAL,
+            last_updated TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ═══ Bankroll (for Kelly sizing) ═══
+        CREATE TABLE IF NOT EXISTS bankroll (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            balance REAL NOT NULL,
+            peak_balance REAL NOT NULL,
+            kelly_fraction REAL NOT NULL DEFAULT 0.25,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ═══ CLV tracking ═══
+        CREATE TABLE IF NOT EXISTS clv_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER,
+            player_key TEXT,
+            bet_type TEXT,
+            odds_taken_decimal REAL,
+            closing_odds_decimal REAL,
+            implied_taken REAL,
+            implied_closing REAL,
+            clv_pct REAL,
+            outcome INTEGER,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_clv_log_tournament ON clv_log(tournament_id);
+
+        -- ═══ Schema version (for migrations) ═══
+        CREATE TABLE IF NOT EXISTS schema_version (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            version INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO schema_version (id, version) VALUES (1, 1);
+
         -- ═══ Pipeline run logging ═══
         CREATE TABLE IF NOT EXISTS runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,6 +442,50 @@ def init_db():
             UNIQUE(strategy_config_json, scope)
         );
 
+        CREATE TABLE IF NOT EXISTS research_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            hypothesis TEXT NOT NULL,
+            source TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'global',
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK (status IN (
+                    'draft', 'evaluated', 'approved',
+                    'rejected', 'converted', 'error'
+                )),
+            cycle_key TEXT NOT NULL,
+            strategy_config_json TEXT NOT NULL,
+            baseline_strategy_json TEXT,
+            program_version TEXT,
+            event_weighting_mode TEXT,
+            candidate_count_in_cycle INTEGER,
+            years_json TEXT,
+            filters_json TEXT,
+            theory_metadata_json TEXT,
+            summary_metrics_json TEXT,
+            segmented_metrics_json TEXT,
+            guardrail_results_json TEXT,
+            repro_metadata_json TEXT,
+            artifact_markdown_path TEXT,
+            artifact_manifest_path TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            evaluated_at TEXT,
+            approved_at TEXT,
+            rejected_at TEXT,
+            converted_experiment_id INTEGER REFERENCES experiments(id),
+            UNIQUE(strategy_config_json, scope, cycle_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS proposal_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL REFERENCES research_proposals(id) ON DELETE CASCADE,
+            decision TEXT NOT NULL
+                CHECK (decision IN ('approved', 'rejected', 'comment')),
+            reviewer TEXT,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS course_strategies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             course_id TEXT, course_name TEXT, cluster TEXT,
@@ -392,6 +502,31 @@ def init_db():
             experiment_id INTEGER, roi_pct REAL,
             adopted_at TEXT DEFAULT (datetime('now')),
             UNIQUE(scope)
+        );
+
+        CREATE TABLE IF NOT EXISTS research_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            proposal_id INTEGER REFERENCES research_proposals(id),
+            theory_metadata_json TEXT,
+            notes TEXT,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS live_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source_research_registry_id INTEGER REFERENCES research_model_registry(id),
+            promoted_by TEXT NOT NULL DEFAULT 'manual',
+            action TEXT NOT NULL DEFAULT 'promote',
+            notes TEXT,
+            replaced_live_registry_id INTEGER REFERENCES live_model_registry(id),
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS outlier_investigations (
@@ -438,8 +573,56 @@ def init_db():
             ON pit_course_stats(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_experiments_status
             ON experiments(status, scope);
+        CREATE INDEX IF NOT EXISTS idx_research_proposals_status
+            ON research_proposals(status, scope, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_research_proposals_cycle
+            ON research_proposals(cycle_key, scope);
+        CREATE INDEX IF NOT EXISTS idx_research_model_registry_scope
+            ON research_model_registry(scope, is_current, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_live_model_registry_scope
+            ON live_model_registry(scope, is_current, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_proposal_reviews_proposal
+            ON proposal_reviews(proposal_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_intel_player
             ON intel_events(player_key, relevance_score DESC);
+
+        -- ═══ Adaptive ROI / market performance tracking ═══
+        CREATE TABLE IF NOT EXISTS market_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_type TEXT NOT NULL,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            bets_placed INTEGER NOT NULL DEFAULT 0,
+            wins INTEGER NOT NULL DEFAULT 0,
+            losses INTEGER NOT NULL DEFAULT 0,
+            pushes INTEGER NOT NULL DEFAULT 0,
+            units_wagered REAL NOT NULL DEFAULT 0,
+            units_returned REAL NOT NULL DEFAULT 0,
+            roi_pct REAL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_perf_type ON market_performance(market_type);
+        CREATE INDEX IF NOT EXISTS idx_market_perf_tournament ON market_performance(tournament_id);
+
+        CREATE TABLE IF NOT EXISTS calibration_curve (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            probability_bucket TEXT NOT NULL,
+            predicted_avg REAL NOT NULL,
+            actual_hit_rate REAL NOT NULL,
+            sample_size INTEGER NOT NULL,
+            correction_factor REAL NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            player_key TEXT NOT NULL,
+            adjustment_value REAL NOT NULL,
+            reasoning TEXT,
+            was_helpful INTEGER,
+            actual_delta REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
 
@@ -491,6 +674,50 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE pit_rolling_stats ADD COLUMN sg_total_rank INTEGER")
         conn.commit()
+
+    # Add theory metadata to research proposals if missing
+    try:
+        conn.execute("SELECT theory_metadata_json FROM research_proposals LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE research_proposals ADD COLUMN theory_metadata_json TEXT")
+        conn.commit()
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS research_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            proposal_id INTEGER REFERENCES research_proposals(id),
+            theory_metadata_json TEXT,
+            notes TEXT,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS live_model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'global',
+            strategy_config_json TEXT NOT NULL,
+            source_research_registry_id INTEGER REFERENCES research_model_registry(id),
+            promoted_by TEXT NOT NULL DEFAULT 'manual',
+            action TEXT NOT NULL DEFAULT 'promote',
+            notes TEXT,
+            replaced_live_registry_id INTEGER REFERENCES live_model_registry(id),
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_research_model_registry_scope
+        ON research_model_registry(scope, is_current, created_at DESC)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_live_model_registry_scope
+        ON live_model_registry(scope, is_current, created_at DESC)
+    """)
+    conn.commit()
 
     # Create pit_course_stats table if missing
     conn.execute("""
@@ -690,12 +917,32 @@ def get_player_metrics(tournament_id: int, player_key: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_all_players(tournament_id: int) -> list[str]:
+def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> list[str]:
+    """Return player_key list for this tournament.
+
+    When confirmed_field_only=True (default), only returns players that appear
+    in the confirmed field (metric_category='meta' from DG field updates).
+    This prevents phantom players from predictions/decompositions who are
+    not in the actual field. When no field data exists, returns all players
+    in metrics so the pipeline still runs.
+    """
     conn = get_conn()
-    rows = conn.execute(
-        "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
+    # Check if we have field (meta) data for this tournament
+    has_field = conn.execute(
+        "SELECT 1 FROM metrics WHERE tournament_id = ? AND metric_category = 'meta' LIMIT 1",
         (tournament_id,),
-    ).fetchall()
+    ).fetchone()
+    if confirmed_field_only and has_field:
+        rows = conn.execute(
+            """SELECT DISTINCT player_key FROM metrics
+               WHERE tournament_id = ? AND metric_category = 'meta'""",
+            (tournament_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
+            (tournament_id,),
+        ).fetchall()
     conn.close()
     return [r["player_key"] for r in rows]
 
@@ -772,30 +1019,8 @@ def store_results(tournament_id: int, results_list: list[dict]):
 
 
 # ── Weights helpers ─────────────────────────────────────────────────
-
-DEFAULT_WEIGHTS = {
-    # Top-level model weights
-    "course_fit": 0.45,
-    "form": 0.45,
-    "momentum": 0.10,
-    # Within course fit
-    "course_sg_tot": 0.30,
-    "course_sg_app": 0.25,
-    "course_sg_ott": 0.20,
-    "course_sg_putt": 0.15,
-    "course_par_eff": 0.10,
-    # Within form (across timeframes)
-    "form_16r": 0.35,
-    "form_12month": 0.25,
-    "form_sim": 0.25,
-    "form_rolling": 0.15,
-    # Within form (SG sub-categories)
-    "form_sg_tot": 0.40,
-    "form_sg_app": 0.25,
-    "form_sg_ott": 0.15,
-    "form_sg_putt": 0.10,
-    "form_sg_arg": 0.10,
-}
+# Default weights from config (single source of truth)
+DEFAULT_WEIGHTS = config.DEFAULT_WEIGHTS
 
 
 def get_active_weights() -> dict:
@@ -980,20 +1205,48 @@ def save_course_weight_profile(course_num: int, course_name: str,
 # ── Prediction log helpers ─────────────────────────────────────────
 
 def log_predictions(predictions: list[dict]):
-    """Store predictions for calibration tracking."""
+    """Store predictions for calibration tracking.
+
+    Uses INSERT OR IGNORE so the first (pre-tournament) snapshot is
+    preserved.  A mid-tournament re-run won't silently overwrite
+    pre-tournament odds with in-play prices.
+    """
     if not predictions:
         return
     conn = get_conn()
+    _migrate_prediction_log_timing(conn)
     conn.executemany(
-        """INSERT OR REPLACE INTO prediction_log
+        """INSERT OR IGNORE INTO prediction_log
            (tournament_id, player_key, bet_type, model_prob, dg_prob,
-            market_implied_prob, actual_outcome, odds_decimal, profit)
+            market_implied_prob, actual_outcome, odds_decimal, profit, odds_timing)
            VALUES (:tournament_id, :player_key, :bet_type, :model_prob, :dg_prob,
-                    :market_implied_prob, :actual_outcome, :odds_decimal, :profit)""",
+                    :market_implied_prob, :actual_outcome, :odds_decimal, :profit,
+                    :odds_timing)""",
         predictions,
     )
     conn.commit()
     conn.close()
+
+
+def has_predictions(tournament_id: int) -> bool:
+    """Check if prediction_log already has entries for this tournament."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM prediction_log WHERE tournament_id = ? LIMIT 1",
+        (tournament_id,),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def _migrate_prediction_log_timing(conn: sqlite3.Connection):
+    """Add odds_timing column to prediction_log if missing."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(prediction_log)").fetchall()]
+    if "odds_timing" not in cols:
+        conn.execute(
+            "ALTER TABLE prediction_log ADD COLUMN odds_timing TEXT DEFAULT 'unknown'"
+        )
+        conn.commit()
 
 
 def get_calibration_data(min_tournaments: int = 3) -> list[dict]:

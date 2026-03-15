@@ -39,6 +39,7 @@ except ImportError:
     pass
 
 from src import db
+from src import config
 from src.datagolf import (
     get_current_event_info,
     fetch_historical_rounds,
@@ -56,9 +57,12 @@ from src.datagolf import (
 from src.rolling_stats import compute_rolling_metrics
 from src.models.composite import compute_composite
 from src.course_profile import load_course_profile, course_to_model_weights
-from src.odds import get_best_odds
+from src.odds import get_best_odds, get_preferred_book
 from src.value import find_value_bets
 from src.card import generate_card
+from src.methodology import generate_methodology
+from src.portfolio import enforce_diversification
+from src.confidence import get_field_strength
 from src.player_normalizer import normalize_name, display_name
 from src.ai_brain import (
     is_ai_available,
@@ -67,6 +71,114 @@ from src.ai_brain import (
     apply_ai_adjustments,
     get_ai_status,
 )
+from backtester.experiments import get_active_strategy
+from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
+from backtester.strategy import StrategyConfig
+
+
+SHADOW_MODE = os.environ.get("SHADOW_MODE", "false").lower() == "true"
+
+
+def _strategy_from_record(record: dict | None) -> StrategyConfig | None:
+    """Parse a model-registry record into StrategyConfig."""
+    if not record:
+        return None
+    strategy_json = record.get("strategy_config_json")
+    if not strategy_json:
+        return None
+    try:
+        return StrategyConfig.from_json(strategy_json)
+    except Exception:
+        return None
+
+
+def _resolve_runtime_strategy(scope: str = "global") -> tuple[StrategyConfig, dict]:
+    """
+    Resolve strategy with explicit fallback:
+    live_model_registry -> research_champion -> active_strategy -> defaults.
+    """
+    live_record = get_live_weekly_model_record(scope)
+    live_strategy = _strategy_from_record(live_record)
+    if live_strategy:
+        return live_strategy, {
+            "strategy_source": "live",
+            "strategy_record_id": live_record.get("id"),
+            "strategy_name": live_strategy.name or "live_weekly_model",
+        }
+
+    research_record = get_research_champion_record(scope)
+    research_strategy = _strategy_from_record(research_record)
+    if research_strategy:
+        return research_strategy, {
+            "strategy_source": "research_champion",
+            "strategy_record_id": research_record.get("id"),
+            "strategy_name": research_strategy.name or "research_champion",
+        }
+
+    active_strategy = get_active_strategy(scope)
+    if active_strategy:
+        return active_strategy, {
+            "strategy_source": "active_strategy",
+            "strategy_record_id": None,
+            "strategy_name": active_strategy.name or "active_strategy",
+        }
+
+    default_strategy = StrategyConfig(name="default")
+    return default_strategy, {
+        "strategy_source": "default",
+        "strategy_record_id": None,
+        "strategy_name": "default",
+    }
+
+
+def _map_strategy_to_runtime_settings(strategy: StrategyConfig) -> dict:
+    """Map StrategyConfig fields to live pipeline settings."""
+    allowed_markets = set()
+    market_map = {
+        "win": "outright",
+        "top_5": "top5",
+        "top_10": "top10",
+        "top_20": "top20",
+        "frl": "frl",
+        "make_cut": "make_cut",
+    }
+    for market in (strategy.markets or []):
+        mapped = market_map.get(market)
+        if mapped:
+            allowed_markets.add(mapped)
+
+    return {
+        "blend_weights": {
+            "course_fit": float(strategy.w_sub_course_fit),
+            "form": float(strategy.w_sub_form),
+            "momentum": float(strategy.w_sub_momentum),
+        },
+        "ev_threshold": float(strategy.min_ev),
+        "kelly_fraction": float(strategy.kelly_fraction),
+        "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
+    }
+
+
+def _run_data_integrity_gates(tournament_id: int, field_size: int,
+                               composite_results: list = None) -> bool:
+    """Run data integrity checks; log warnings and return False to abort if critical."""
+    ok = True
+    if field_size < config.FIELD_SIZE_MIN:
+        print(f"  ⚠ Data integrity: field size {field_size} < {config.FIELD_SIZE_MIN} (min). Check field sync.")
+        if field_size == 0:
+            ok = False
+    elif field_size > config.FIELD_SIZE_MAX:
+        print(f"  ⚠ Data integrity: field size {field_size} > {config.FIELD_SIZE_MAX} (max). Unusual.")
+    if composite_results and len(composite_results) > 0:
+        from src.value import model_score_to_prob
+        all_scores = [r["composite"] for r in composite_results]
+        outright_sum = sum(
+            model_score_to_prob(r["composite"], all_scores, "outright")
+            for r in composite_results
+        )
+        if abs(outright_sum - 1.0) > config.PROBABILITY_SUM_TOLERANCE:
+            print(f"  ⚠ Data integrity: outright prob sum = {outright_sum:.4f} (expected ~1.0).")
+    return ok
 
 
 def print_header(text):
@@ -363,10 +475,56 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
         print(f"\n  ✓ Post-review complete for {t_name}")
 
 
+_PIPELINE_LOCK_FILE = os.path.join(os.path.dirname(db.DB_PATH), ".pipeline_lock")
+_PIPELINE_LOCK_STALE_SECONDS = 7200  # 2 hours
+
+
+def _acquire_deploy_lock() -> bool:
+    """Acquire deploy lock so only one pipeline run at a time. Returns True if acquired."""
+    import time
+    if os.path.exists(_PIPELINE_LOCK_FILE):
+        try:
+            with open(_PIPELINE_LOCK_FILE) as f:
+                pid = int(f.read().strip())
+        except (ValueError, OSError):
+            pid = None
+        if pid is not None:
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, PermissionError):
+                pass
+            else:
+                age = time.time() - os.path.getmtime(_PIPELINE_LOCK_FILE)
+                if age < _PIPELINE_LOCK_STALE_SECONDS:
+                    return False
+        try:
+            os.remove(_PIPELINE_LOCK_FILE)
+        except OSError:
+            pass
+    try:
+        with open(_PIPELINE_LOCK_FILE, "w") as f:
+            f.write(str(os.getpid()))
+        return True
+    except OSError:
+        return True
+
+
+def _release_deploy_lock():
+    try:
+        if os.path.exists(_PIPELINE_LOCK_FILE):
+            os.remove(_PIPELINE_LOCK_FILE)
+    except OSError:
+        pass
+
+
 def main():
     print("=" * 60)
     print("  GOLF BETTING MODEL — Prediction Pipeline")
     print("=" * 60)
+
+    pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
+    strategy_cfg, strategy_meta = _resolve_runtime_strategy("global")
+    runtime_settings = _map_strategy_to_runtime_settings(strategy_cfg)
 
     # ── Check API keys ────────────────────────────────────────
     dg_key = os.environ.get("DATAGOLF_API_KEY")
@@ -395,6 +553,29 @@ def main():
         print(f"  Start: {start_date}")
         print(f"  Event ID: {event_id}")
 
+        # ── Pre-tournament timing gate ────────────────────────────
+        from datetime import date as _date_cls
+        if start_date:
+            try:
+                event_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+                today = _date_cls.today()
+                if today >= event_start and not config.ALLOW_MID_TOURNAMENT_RUN:
+                    force = "--force" in sys.argv
+                    if not force:
+                        print(f"\n  ⛔ BLOCKED: Tournament started {start_date}, today is {today}.")
+                        print("  Running mid-tournament produces in-play odds that corrupt EV calculations.")
+                        print("  Use --force to override (odds will be tagged as 'in_play').")
+                        sys.exit(1)
+                    else:
+                        print(f"\n  ⚠ WARNING: Running mid-tournament (--force). Odds tagged as in_play.")
+                        pipeline_ctx["odds_timing"] = "in_play"
+                else:
+                    pipeline_ctx["odds_timing"] = "pre_tournament"
+            except ValueError:
+                pipeline_ctx["odds_timing"] = "unknown"
+        else:
+            pipeline_ctx["odds_timing"] = "unknown"
+
         # Parse course keys for course-specific stats
         course_keys = event_info.get("course_key", "").split(";")
         course_nums = []
@@ -417,11 +598,24 @@ def main():
     # Use the first course listed
     primary_course = courses.split(";")[0].strip() if courses else "Unknown"
 
+    pipeline_ctx.update({
+        "tournament_name": event_name,
+        "course_name": primary_course,
+        "event_id": event_id,
+        "start_date": start_date,
+        "location": event_info.get("location", "") if event_info else "",
+        "course_nums": course_nums,
+    })
+
     # ── Create/get tournament ─────────────────────────────────
     tid = db.get_or_create_tournament(
         event_name, primary_course, year=datetime.now().year, event_id=str(event_id)
     )
     print(f"\n  Tournament DB ID: {tid}")
+
+    if not _acquire_deploy_lock():
+        print("\n❌ Deploy lock held (another pipeline run in progress or stale lock). Aborting.")
+        sys.exit(1)
 
     # ── Post-Tournament Review of PREVIOUS tournaments ────────
     print_header("Step 1b: Post-Tournament Review Check")
@@ -470,7 +664,12 @@ def main():
         else:
             print(f"    → No new 2026 rounds yet")
 
-    print(f"  Total rounds: {db.get_rounds_count()}")
+    pipeline_ctx["total_rounds"] = db.get_rounds_count()
+    for r in (status or []):
+        pipeline_ctx["rounds_by_year"][r["year"]] = {
+            "rounds": r["round_count"], "players": r["player_count"]
+        }
+    print(f"  Total rounds: {pipeline_ctx['total_rounds']}")
 
     # ── Sync DG predictions ───────────────────────────────────
     print_header("Step 3: Syncing Data Golf Predictions")
@@ -547,17 +746,19 @@ def main():
     print("  Fetching player decompositions...")
     decomps = safe_api_call("decompositions", _call_api,
                              "preds/player-decompositions", {"tour": "pga"})
+    n_decomps = 0
     if decomps:
-        n = _store_decompositions_as_metrics(decomps, tid)
-        print(f"    → {n} decomposition metrics")
+        n_decomps = _store_decompositions_as_metrics(decomps, tid)
+        print(f"    → {n_decomps} decomposition metrics")
 
     # Field updates
     print("  Fetching field updates...")
     from src.datagolf import fetch_field_updates
     field_data = safe_api_call("field", fetch_field_updates, "pga")
+    n_field = 0
     if field_data:
-        n = _store_field_as_metrics(field_data, tid)
-        print(f"    → {n} field metrics")
+        n_field = _store_field_as_metrics(field_data, tid)
+        print(f"    → {n_field} field metrics")
 
     # ── Sync DG Skill Ratings, Rankings & Approach Skill ──────
     print_header("Step 3b: Syncing DG Skill Data")
@@ -590,10 +791,34 @@ def main():
     else:
         print(f"    → No approach skill metrics stored")
 
+    _n_baseline = 0
+    _n_ch = 0
+    try:
+        _n_baseline = len(metric_rows) if preds and isinstance(preds, dict) else 0
+    except NameError:
+        pass
+    try:
+        _n_ch = len(metric_rows2) if preds and isinstance(preds, dict) else 0
+    except NameError:
+        pass
+    pipeline_ctx["metric_counts"].update({
+        "baseline": _n_baseline,
+        "course_history": _n_ch,
+        "decompositions": n_decomps,
+        "field": n_field,
+        "skill_ratings": n_skill or 0,
+        "rankings": n_rank or 0,
+        "approach": n_app or 0,
+    })
+
     # ── Compute rolling stats ─────────────────────────────────
     print_header("Step 4: Computing Rolling Stats")
     field_players = db.get_all_players(tid)
     print(f"  Players in field: {len(field_players)}")
+    if not _run_data_integrity_gates(tid, len(field_players)):
+        print("\n❌ Data integrity gate failed (field size). Aborting.")
+        _release_deploy_lock()
+        sys.exit(1)
 
     primary_course_num = course_nums[0] if course_nums else None
     print(f"  Primary course num: {primary_course_num}")
@@ -603,6 +828,13 @@ def main():
     print(f"    SG metrics: {rolling.get('sg_metrics', 0)}")
     print(f"    Traditional stats: {rolling.get('traditional_stat_metrics', 0)}")
     print(f"    Course-specific: {rolling.get('course_specific_metrics', 0)}")
+
+    pipeline_ctx["metric_counts"]["rolling"] = {
+        "total": rolling.get("total_metrics", 0),
+        "sg": rolling.get("sg_metrics", 0),
+        "traditional": rolling.get("traditional_stat_metrics", 0),
+        "course_specific": rolling.get("course_specific_metrics", 0),
+    }
 
     # ── Load course profile ───────────────────────────────────
     print_header("Step 5: Course Profile")
@@ -709,21 +941,38 @@ def main():
     except Exception as e:
         print(f"  Warning: Weather module error: {e}")
 
+    pipeline_ctx["profile"] = profile
+    try:
+        pipeline_ctx["weather_forecast"] = forecast
+        pipeline_ctx["weather_severity"] = severity
+    except NameError:
+        pipeline_ctx["weather_forecast"] = None
+        pipeline_ctx["weather_severity"] = None
+    pipeline_ctx["weather_adjustments"] = weather_adjustments
+
     # ── Run composite model ───────────────────────────────────
     print_header("Step 6: Running Composite Model")
     weights = db.get_active_weights()
+    weights.update(runtime_settings["blend_weights"])
     print(f"  Weights: course={weights.get('course_fit', 0.4):.0%}, "
           f"form={weights.get('form', 0.4):.0%}, "
           f"momentum={weights.get('momentum', 0.2):.0%}")
+    print(f"  Strategy source: {strategy_meta['strategy_source']} ({strategy_meta['strategy_name']})")
+    print(f"  Strategy EV threshold: {runtime_settings['ev_threshold']:.1%}")
 
     composite = compute_composite(
         tid, weights, course_name=primary_course,
         weather_adjustments=weather_adjustments,
     )
     print(f"  Scored {len(composite)} players")
+    _run_data_integrity_gates(tid, len(composite), composite_results=composite)
+
+    pipeline_ctx["weights"] = weights
+    pipeline_ctx["composite_results"] = composite
 
     if not composite:
         print("\n❌ No players scored. Check data.")
+        _release_deploy_lock()
         sys.exit(1)
 
     # ── AI Pre-Tournament Analysis ──────────────────────────────
@@ -813,8 +1062,11 @@ def main():
     if all_odds_by_market is None:
         all_odds_by_market = {}
 
-    from src.value import DEFAULT_EV_THRESHOLD
-    print(f"  EV threshold: {DEFAULT_EV_THRESHOLD:.0%} (set EV_THRESHOLD env to change)")
+    print(
+        "  EV threshold: "
+        f"{runtime_settings['ev_threshold']:.0%} "
+        f"(strategy-driven from {strategy_meta['strategy_name']})"
+    )
 
     value_bets = {}
     for market_key, odds_list in all_odds_by_market.items():
@@ -828,7 +1080,17 @@ def main():
             bt = "frl"
         else:
             bt = market_key.replace("top_", "top")
-        vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid)
+        _fstr = get_field_strength(composite)
+        if bt not in runtime_settings["allowed_markets"]:
+            continue
+        vb = find_value_bets(
+            composite,
+            best,
+            bet_type=bt,
+            tournament_id=tid,
+            field_strength=_fstr,
+            ev_threshold=runtime_settings["ev_threshold"],
+        )
         value_bets[bt] = vb
         value_count = sum(1 for v in vb if v.get("is_value"))
         book_count = len(set(o["bookmaker"] for o in odds_list))
@@ -837,6 +1099,61 @@ def main():
 
     if not all_odds_by_market:
         print("    ⚠ Could not fetch odds (may not be posted yet)")
+
+    # ── Matchup Value Bets (real sportsbook odds) ─────────────
+    matchup_bets = []
+    try:
+        from src.matchup_value import find_matchup_value_bets
+        matchup_markets = [
+            ("tournament_matchups", "72-hole / tournament matchups"),
+            ("round_matchups", "round matchups"),
+        ]
+        aggregated = []
+        for market_key, label in matchup_markets:
+            matchup_odds = safe_api_call(f"{label} odds", fetch_matchup_odds, market=market_key)
+            if not matchup_odds:
+                print(f"    {label}: no odds available")
+                continue
+            market_bets = find_matchup_value_bets(
+                composite,
+                matchup_odds,
+                tournament_id=tid,
+                ev_threshold=runtime_settings["ev_threshold"],
+                required_book=get_preferred_book(),
+            )
+            for bet in market_bets:
+                bet["market_type"] = market_key
+            aggregated.extend(market_bets)
+            print(f"    {label}: {len(matchup_odds)} pairs, {len(market_bets)} value plays")
+        matchup_bets = sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
+    except Exception as e:
+        logger_msg = f"Matchup value bets failed: {e}"
+        print(f"    ⚠ {logger_msg}")
+        matchup_bets = []
+
+    # ── 3-Ball Value Bets ──────────────────────────────────────
+    threeball_bets = []
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("3ball"):
+            from src.value import find_3ball_value_bets
+            threeball_odds = safe_api_call("3-ball odds", fetch_matchup_odds, market="3_balls")
+            if threeball_odds:
+                threeball_bets = find_3ball_value_bets(
+                    composite, threeball_odds, tournament_id=tid,
+                    required_book=get_preferred_book(),
+                )
+                for bet in threeball_bets:
+                    bet["market_type"] = "3_balls"
+                if threeball_bets:
+                    print(f"    3-balls: {len(threeball_odds)} groups, {len(threeball_bets)} value plays")
+                else:
+                    print(f"    3-balls: {len(threeball_odds)} groups, 0 value plays")
+            else:
+                print("    3-balls: no odds available")
+    except Exception as e:
+        print(f"    ⚠ 3-ball error: {e}")
+        threeball_bets = []
 
     # ── AI Betting Decisions (disabled — purely quantitative now) ──
     if ai_pre_analysis and is_ai_available() and value_bets:
@@ -954,6 +1271,22 @@ def main():
             print(f"\n  ⚠ AI betting decisions error: {e}")
             print(f"  Value bets still shown below without AI portfolio optimization")
 
+    # ── Exposure filtering (Phase 4A) ──────────────────────────
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("exposure_caps"):
+            from src.exposure import filter_by_exposure
+            from src.kelly import get_bankroll_state
+            state = get_bankroll_state()
+            bankroll = state["balance"] if state else None
+            value_bets, exp_warnings = filter_by_exposure(value_bets, bankroll=bankroll)
+            for w in exp_warnings:
+                print(f"    ⚠ {w}")
+            if exp_warnings:
+                print(f"    Exposure filtering applied (bankroll={'${:.0f}'.format(bankroll) if bankroll else 'N/A'})")
+    except Exception as e:
+        print(f"    ⚠ Exposure filtering error: {e}")
+
     # ── Output predictions ────────────────────────────────────
     print_header(f"PREDICTIONS: {event_name}")
     print(f"  Course: {courses}")
@@ -1053,14 +1386,68 @@ def main():
                   f"(rank #{r['rank']})")
 
     # ── Log predictions for next week's review ──────────────────
-    if value_bets:
+    n_logged = 0
+    from src import db as _db_check
+    if _db_check.has_predictions(tid):
+        print("\n  ℹ Predictions already logged for this tournament — skipping (single-snapshot rule).")
+        print("    To re-log, delete existing entries: DELETE FROM prediction_log WHERE tournament_id = <id>")
+    elif value_bets:
         from src.learning import log_predictions_for_tournament
         try:
-            n_logged = log_predictions_for_tournament(tid, value_bets)
+            n_logged = log_predictions_for_tournament(
+                tid, value_bets,
+                odds_timing=pipeline_ctx.get("odds_timing", "unknown"),
+            )
             if n_logged:
                 print(f"\n  Logged {n_logged} predictions for post-tournament review")
         except Exception as e:
             print(f"\n  ⚠ Could not log predictions: {e}")
+
+    # ── Finalize pipeline context for methodology doc ─────────
+    pipeline_ctx["ai_pre_analysis"] = ai_pre_analysis
+    pipeline_ctx["ai_decisions"] = ai_decisions
+    pipeline_ctx["value_bets"] = value_bets
+    pipeline_ctx["matchup_bets"] = matchup_bets
+    pipeline_ctx["predictions_logged"] = n_logged
+    pipeline_ctx["metric_counts"]["odds_markets"] = len(all_odds_by_market)
+    pipeline_ctx["metric_counts"]["matchups"] = len(matchup_bets) if matchup_bets else 0
+    pipeline_ctx["strategy"] = {
+        **strategy_meta,
+        "runtime_settings": runtime_settings,
+        "resolved_at": datetime.now().isoformat(),
+    }
+
+    # Build DG probs lookup for worked examples
+    _sim_metrics = db.get_metrics_by_category(tid, "sim")
+    _dg_probs_meth = {}
+    for m in _sim_metrics:
+        pk = m["player_key"]
+        if pk not in _dg_probs_meth:
+            _dg_probs_meth[pk] = {}
+        _dg_probs_meth[pk][m["metric_name"]] = m["metric_value"]
+    pipeline_ctx["dg_probs"] = _dg_probs_meth
+
+    # Build adaptation states
+    try:
+        from src.adaptation import get_adaptation_state
+        pipeline_ctx["adaptation_states"] = {
+            mkt: get_adaptation_state(mkt)
+            for mkt in ["outright", "top5", "top10", "top20", "matchup"]
+        }
+    except Exception:
+        pipeline_ctx["adaptation_states"] = {}
+
+    if threeball_bets:
+        value_bets["3ball"] = threeball_bets
+
+    # ── Portfolio diversification ────────────────────────────
+    field_str = get_field_strength(composite)
+    value_bets = enforce_diversification(value_bets, field_strength=field_str)
+    total_value = sum(
+        1 for bets in value_bets.values()
+        for b in bets if b.get("is_value")
+    )
+    print(f"  Portfolio filter applied (field: {field_str}, {total_value} value bets kept)")
 
     # ── Generate card ─────────────────────────────────────────
     print_header("Step 8: Generating Betting Card")
@@ -1072,10 +1459,45 @@ def main():
         output_dir="output",
         ai_pre_analysis=ai_pre_analysis,
         ai_decisions=ai_decisions,
+        matchup_bets=matchup_bets if not SHADOW_MODE else None,
+        strategy_meta=pipeline_ctx.get("strategy"),
     )
     print(f"  Card saved to: {filepath}")
     print(f"\n  Open it: open {filepath}")
 
+    # ── Generate methodology doc ──────────────────────────────
+    print("  Generating methodology doc...")
+    try:
+        meth_path = generate_methodology(pipeline_ctx, output_dir="output")
+        print(f"  Methodology saved to: {meth_path}")
+    except Exception as e:
+        print(f"  ⚠ Methodology generation error: {e}")
+
+    # ── Shadow mode: generate adaptive card side-by-side ─────
+    if SHADOW_MODE:
+        import shutil
+        print_header("Shadow Mode: Generating Adaptive Card")
+        safe_name = event_name.lower().replace(" ", "_").replace("'", "")
+        shadow_filename = f"shadow_{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
+        normal_card_backup = filepath + ".bak"
+        shutil.copy2(filepath, normal_card_backup)
+        shadow_path = generate_card(
+            tournament_name=event_name,
+            course_name=primary_course,
+            composite_results=composite,
+            value_bets=value_bets,
+            output_dir="output",
+            ai_pre_analysis=ai_pre_analysis,
+            ai_decisions=ai_decisions,
+            matchup_bets=matchup_bets,
+            strategy_meta=pipeline_ctx.get("strategy"),
+        )
+        shadow_dest = os.path.join("output", shadow_filename)
+        shutil.move(shadow_path, shadow_dest)
+        shutil.move(normal_card_backup, filepath)
+        print(f"  Shadow mode: adaptive card saved to {shadow_dest}")
+
+    _release_deploy_lock()
     print()
     print("=" * 60)
     print("  DONE! Predictions complete.")

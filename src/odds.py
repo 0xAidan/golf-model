@@ -87,35 +87,56 @@ def american_to_implied_prob(price: int) -> float:
 
 
 # ── Odds validation ──────────────────────────────────────────────
-
-# Maximum reasonable American odds for golf outrights.
-# Even the longest longshots on real sportsbooks are around +50000.
-# Anything beyond this is almost certainly bad/corrupted data.
-MAX_REASONABLE_ODDS = 50000
+# Market-specific max odds from config (single source of truth with value.py)
+from src import config as _config
+_MAX_ODDS_ALIASES = {"outrights": "outright", "top_5": "top5", "top_10": "top10", "top_20": "top20"}
+MAX_REASONABLE_ODDS = 50000  # global fallback for code that expects a number
+MAX_REASONABLE_ODDS_BY_TYPE = _config.MAX_REASONABLE_ODDS
 
 # Minimum reasonable implied probability. Any odds implying less than
 # this are filtered as garbage (0.2% ≈ +50000).
 MIN_REASONABLE_IMPLIED_PROB = 0.002
 
 
-def is_valid_odds(price: int) -> bool:
-    """Check if American odds value is within reasonable bounds for golf."""
+def is_valid_odds(price: int, bet_type: str = None) -> bool:
+    """
+    Check if American odds value is within reasonable bounds.
+
+    Args:
+        price: The American odds value to check
+        bet_type: Optional bet type for market-specific limits
+
+    Returns:
+        True if odds are valid, False if likely corrupted
+    """
     if price is None:
         return False
-    if price > MAX_REASONABLE_ODDS:
-        return False
-    if price < -10000:
+    try:
+        price = int(price)
+    except (ValueError, TypeError):
         return False
     if price == 0:
         return False
+    if price < -10000:
+        return False
+
+    # Global maximum
+    if price > MAX_REASONABLE_ODDS:
+        return False
+
+    # Market-specific maximum (unknown market falls back to outright max 30000)
+    if bet_type:
+        canonical = _MAX_ODDS_ALIASES.get(bet_type, bet_type)
+        max_odds = MAX_REASONABLE_ODDS_BY_TYPE.get(canonical, MAX_REASONABLE_ODDS_BY_TYPE["outright"])
+        if price > max_odds:
+            return False
+
     return True
 
 
 def is_reasonable_odds(price: int, bet_type: str = "outright") -> bool:
     """Check if odds are within reasonable range for the bet type."""
-    from src.value import MAX_REASONABLE_ODDS
-    max_price = MAX_REASONABLE_ODDS.get(bet_type, 30000)
-    return abs(price) <= max_price
+    return is_valid_odds(price, bet_type=bet_type)
 
 
 def american_to_decimal(price: int) -> float:
@@ -177,6 +198,11 @@ _DG_MODEL_BOOKS = {"DG-CH", "DG-Base"}
 def _get_preferred_book() -> str:
     """Get preferred book at call time so .env is loaded first."""
     return os.environ.get("PREFERRED_BOOK", "bet365")
+
+
+def get_preferred_book() -> str:
+    """Public accessor for the book we filter to (e.g. bet365)."""
+    return _get_preferred_book()
 
 
 def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
@@ -261,4 +287,9 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
         print(f"  ⚠ Filtered {filtered_count} odds entries with unreasonable values (>{MAX_REASONABLE_ODDS})")
 
     # Remove players that have no real sportsbook odds
-    return {k: v for k, v in by_player.items() if v["best_price"] is not None}
+    out = {k: v for k, v in by_player.items() if v["best_price"] is not None}
+    # Only return players available at the preferred book (so we only output bettable lines there)
+    preferred_only = os.environ.get("PREFERRED_BOOK_ONLY", "true").lower() in ("1", "true", "yes")
+    if preferred_only and preferred_book:
+        out = {k: v for k, v in out.items() if v.get("preferred_price") is not None}
+    return out

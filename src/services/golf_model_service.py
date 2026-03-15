@@ -53,6 +53,11 @@ class GolfModelService:
             "warnings": [],
         }
 
+        # Resolve output_dir to project output so app can read card regardless of cwd
+        if not os.path.isabs(output_dir):
+            _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            output_dir = os.path.join(_project_root, output_dir)
+
         # Step 1: Detect current event if not specified
         event_info = None
         if not tournament_name:
@@ -157,7 +162,18 @@ class GolfModelService:
         if value_count_after < value_count_before:
             print(f"    → {value_count_after} value bets after diversification (was {value_count_before})")
 
-        # Step 10b: Run quality check before logging anything
+        # Step 10b: Matchups and 3-ball (live focus: plus-ROI areas)
+        matchup_bets = self._fetch_matchup_value_bets(composite, tid)
+        result["matchup_bets"] = matchup_bets
+        if matchup_bets:
+            print(f"    → {len(matchup_bets)} matchup value plays")
+        threeball_bets = self._fetch_3ball_value_bets(composite, tid)
+        if threeball_bets:
+            value_bets.setdefault("3ball", []).extend(threeball_bets)
+            print(f"    → {len(threeball_bets)} 3-ball value plays")
+        result["value_bets"] = value_bets
+
+        # Step 10c: Run quality check before logging anything
         from src.value import compute_run_quality
 
         run_quality = compute_run_quality(value_bets)
@@ -187,7 +203,8 @@ class GolfModelService:
         card_path = self._generate_card(
             tournament_name, course_name, composite,
             value_bets, output_dir,
-            ai_pre_analysis, ai_decisions
+            ai_pre_analysis, ai_decisions,
+            matchup_bets=matchup_bets,
         )
         result["card_filepath"] = card_path
 
@@ -380,6 +397,56 @@ class GolfModelService:
             value_bets[bt] = vb
         return value_bets
 
+    def _fetch_matchup_value_bets(self, composite, tid) -> list:
+        """Fetch tournament and round matchup odds and return value bets (live focus).
+        Only includes matchups that have odds at the preferred book (e.g. bet365)."""
+        try:
+            from src.datagolf import fetch_matchup_odds
+            from src.matchup_value import find_matchup_value_bets
+            from src.odds import get_preferred_book
+            from src import config
+
+            ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
+            required_book = get_preferred_book()
+            aggregated = []
+            for market_key, label in [("tournament_matchups", "72-hole"), ("round_matchups", "round")]:
+                try:
+                    odds = fetch_matchup_odds(market=market_key, tour=self.tour)
+                    if not odds:
+                        continue
+                    bets = find_matchup_value_bets(
+                        composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
+                        required_book=required_book,
+                    )
+                    for b in bets:
+                        b["market_type"] = market_key
+                    aggregated.extend(bets)
+                except Exception as e:
+                    logger.warning("Matchup fetch %s: %s", label, e)
+            return sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
+        except Exception as e:
+            logger.warning("Matchup value bets failed: %s", e)
+            return []
+
+    def _fetch_3ball_value_bets(self, composite, tid) -> list:
+        """Fetch 3-ball odds and return value bets (live focus; runs regardless of feature flag).
+        Only includes groups where the preferred book (e.g. bet365) has odds for all three players."""
+        try:
+            from src.datagolf import fetch_matchup_odds
+            from src.value import find_3ball_value_bets
+            from src.odds import get_preferred_book
+
+            odds = fetch_matchup_odds(market="3_balls", tour=self.tour)
+            if not odds:
+                return []
+            return find_3ball_value_bets(
+                composite, odds, tournament_id=tid, enable_for_live=True,
+                required_book=get_preferred_book(),
+            )
+        except Exception as e:
+            logger.warning("3-ball value bets failed: %s", e)
+            return []
+
     def _run_ai_betting_decisions(self, tid, value_bets, pre_analysis,
                                    composite, tournament_name, course_name) -> dict | None:
         """Get AI betting portfolio decisions."""
@@ -471,7 +538,8 @@ class GolfModelService:
             logger.warning(f"Prediction logging error: {e}")
 
     def _generate_card(self, tournament_name, course_name, composite,
-                        value_bets, output_dir, ai_pre_analysis, ai_decisions) -> str | None:
+                        value_bets, output_dir, ai_pre_analysis, ai_decisions,
+                        matchup_bets: list = None) -> str | None:
         """Generate markdown betting card."""
         try:
             from src.card import generate_card
@@ -483,6 +551,7 @@ class GolfModelService:
                 output_dir=output_dir,
                 ai_pre_analysis=ai_pre_analysis,
                 ai_decisions=ai_decisions,
+                matchup_bets=matchup_bets or [],
             )
         except Exception as e:
             logger.warning(f"Card generation error: {e}")

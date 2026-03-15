@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -376,12 +377,43 @@ def optimizer_loop(interval_hours: float = 4.0):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Thread 6: Autoresearch Loop Runner
+# ═══════════════════════════════════════════════════════════════════
+
+def autoresearch_loop(interval_hours: float = 6.0):
+    """Runs a bounded keep/discard loop at a fixed interval."""
+    script = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts",
+        "run_autoresearch_loop.py",
+    )
+    while not _shutdown.is_set():
+        try:
+            logger.info("[AUTORESEARCH] Running bounded loop...")
+            proc = subprocess.run(
+                [sys.executable, script, "--iterations", "5", "--seed", str(int(time.time()) % 100000)],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=600,
+            )
+            if proc.returncode == 0:
+                logger.info("[AUTORESEARCH] Completed loop: %s", proc.stdout.strip())
+            else:
+                logger.error("[AUTORESEARCH] Loop failed: %s", (proc.stdout or proc.stderr).strip())
+        except Exception as e:
+            logger.error("[AUTORESEARCH] Error: %s", e)
+
+        _shutdown.wait(interval_hours * 3600)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Daemon Entry Point
 # ═══════════════════════════════════════════════════════════════════
 
 def start_agent(config: dict = None):
     """
-    Start the autonomous research agent with all 5 threads.
+    Start the autonomous research agent with all 6 threads.
 
     config keys:
         data_interval: hours between data refreshes (default 6)
@@ -389,6 +421,7 @@ def start_agent(config: dict = None):
         runner_interval: hours between experiment runs (default 2)
         outlier_interval: hours between outlier analyses (default 8)
         optimizer_interval: hours between optimization runs (default 4)
+        autoresearch_interval: hours between bounded autoresearch loops (default 6)
     """
     if config is None:
         config = {}
@@ -442,6 +475,12 @@ def start_agent(config: dict = None):
             target=optimizer_loop,
             args=(config.get("optimizer_interval", 4.0),),
             name="Optimizer",
+            daemon=True,
+        ),
+        threading.Thread(
+            target=autoresearch_loop,
+            args=(config.get("autoresearch_interval", 6.0),),
+            name="Autoresearch",
             daemon=True,
         ),
     ]

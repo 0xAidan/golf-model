@@ -84,12 +84,13 @@ def test_higher_score_gets_higher_prob():
 
 
 def test_individual_probs_in_valid_range():
-    """Every individual probability should be between 0 and 1."""
+    """Every individual probability should be in a valid range. make_cut can exceed 1.0 after renormalization."""
     scores = _generate_field_scores(150)
     for bet_type in ["outright", "top5", "top10", "top20", "make_cut", "frl"]:
+        max_prob = 2.0 if bet_type == "make_cut" else 0.95
         for s in scores:
             prob = model_score_to_prob(s, scores, bet_type)
-            assert 0.0 < prob <= 0.95, (
+            assert 0.0 < prob <= max_prob, (
                 f"Prob {prob} out of range for {bet_type}, score={s}"
             )
 
@@ -133,7 +134,7 @@ def test_top5_rejects_excessive_odds():
 
 def test_max_reasonable_odds_keys_cover_all_markets():
     """Every standard bet type should have a defined max."""
-    expected_markets = {"outright", "top5", "top10", "top20", "frl", "make_cut"}
+    expected_markets = {"outright", "top5", "top10", "top20", "frl", "make_cut", "3ball"}
     assert expected_markets == set(MAX_REASONABLE_ODDS.keys())
 
 

@@ -129,12 +129,14 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
 # ═══════════════════════════════════════════════════════════════════
 
 def log_predictions_for_tournament(tournament_id: int,
-                                   value_bets_by_type: dict) -> int:
+                                   value_bets_by_type: dict,
+                                   odds_timing: str = "unknown") -> int:
     """
     Log all predictions (model prob, DG prob, market prob, outcome)
     to the prediction_log table for calibration analysis.
 
     value_bets_by_type: {bet_type: [value_bet_dicts]}
+    odds_timing: 'pre_tournament', 'in_play', or 'unknown'
     """
     # Get results for outcome
     conn = db.get_conn()
@@ -185,10 +187,58 @@ def log_predictions_for_tournament(tournament_id: int,
                 "actual_outcome": actual,
                 "odds_decimal": odds_decimal,
                 "profit": profit,
+                "odds_timing": odds_timing,
             })
 
     if predictions:
         db.log_predictions(predictions)
+
+    # Dynamic blend: record per-source Brier for this tournament (when flag on)
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("dynamic_blend"):
+            from src.dynamic_blend import record_tournament_brier, _brier_score
+            brier_data = {}
+            for bt, bets in value_bets_by_type.items():
+                dg_probs, model_probs, blended_probs, outcomes = [], [], [], []
+                dg_used, model_used = None, None
+                for bet in bets:
+                    pk = bet.get("player_key")
+                    r = result_map.get(pk)
+                    actual = 0
+                    if r:
+                        outcome = determine_outcome(
+                            bt, r.get("finish_position"), r.get("finish_text"),
+                            r.get("made_cut", 0), all_results_list,
+                        )
+                        actual = outcome["hit"]
+                    dg_p = bet.get("dg_only_prob")
+                    model_p = bet.get("model_only_prob")
+                    blend_p = bet.get("blended_prob") or bet.get("model_prob")
+                    if dg_p is not None or model_p is not None or blend_p is not None:
+                        dg_probs.append(dg_p if dg_p is not None else 0.0)
+                        model_probs.append(model_p if model_p is not None else 0.0)
+                        blended_probs.append(blend_p if blend_p is not None else 0.0)
+                        outcomes.append(1 if actual else 0)
+                        if dg_used is None:
+                            dg_used = bet.get("blend_dg_used")
+                            model_used = bet.get("blend_model_used")
+                if not outcomes:
+                    continue
+                dg_w = dg_used if dg_used is not None else 0.70
+                model_w = model_used if model_used is not None else 0.30
+                brier_data[bt] = {
+                    "brier_dg": _brier_score(dg_probs, outcomes),
+                    "brier_model": _brier_score(model_probs, outcomes),
+                    "brier_blended": _brier_score(blended_probs, outcomes),
+                    "n_predictions": len(outcomes),
+                    "dg_weight": dg_w,
+                    "model_weight": model_w,
+                }
+            if brier_data:
+                record_tournament_brier(tournament_id, brier_data)
+    except Exception as e:
+        logger.warning("Dynamic blend Brier recording failed: %s", e)
 
     return len(predictions)
 
@@ -482,6 +532,24 @@ def post_tournament_learn(tournament_id: int,
         n = log_predictions_for_tournament(tournament_id, value_bets_by_type)
         summary["steps"]["predictions_logged"] = n
 
+    # 3c. Aggregate market performance for adaptation system
+    try:
+        from src.adaptation import aggregate_market_performance_for_tournament
+        market_perf = aggregate_market_performance_for_tournament(tournament_id)
+        summary["steps"]["market_performance"] = market_perf
+    except Exception as e:
+        logger.warning("Market performance aggregation failed: %s", e)
+        summary["steps"]["market_performance"] = {"error": str(e)}
+
+    # 3d. Evaluate AI adjustments
+    try:
+        from src.adaptation import evaluate_ai_adjustments
+        ai_eval = evaluate_ai_adjustments(tournament_id)
+        summary["steps"]["ai_adjustment_eval"] = ai_eval
+    except Exception as e:
+        logger.warning("AI adjustment evaluation failed: %s", e)
+        summary["steps"]["ai_adjustment_eval"] = {"error": str(e)}
+
     # 4. Update course-specific weights
     if course_num and course_name:
         course_result = update_course_weights(tournament_id, course_num, course_name)
@@ -502,5 +570,127 @@ def post_tournament_learn(tournament_id: int,
         "brier_score": cal.get("brier_score"),
         "roi": cal.get("roi"),
     }
+
+    # 7. Update bankroll (if kelly_sizing enabled and scoring completed)
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("kelly_sizing") or is_enabled("kelly_stakes"):
+            from src.kelly import update_bankroll_after_tournament
+            # Sum profit from scored picks
+            scored = score_result or {}
+            total_profit = scored.get("total_profit", 0.0)
+            if total_profit != 0:
+                update_bankroll_after_tournament(
+                    profit_units=total_profit,
+                    date=datetime.now().strftime("%Y-%m-%d"),
+                    notes=f"Tournament {tournament_id}",
+                )
+                summary["steps"]["bankroll_updated"] = {"profit": total_profit}
+    except Exception as e:
+        logger.warning("Bankroll update failed: %s", e)
+        summary["steps"]["bankroll_updated"] = {"error": str(e)}
+
+    # 8. CLV tracking (record closing line value for each bet)
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("clv_tracking"):
+            from src.clv import record_clv
+            from src.datagolf import fetch_closing_odds
+            closing = fetch_closing_odds()
+            conn = db.get_conn()
+            picks = conn.execute(
+                "SELECT player_key, bet_type, market_odds FROM picks WHERE tournament_id = ?",
+                (tournament_id,),
+            ).fetchall()
+            conn.close()
+            clv_count = 0
+            for pick in picks:
+                pk = pick["player_key"]
+                bt = pick["bet_type"]
+                odds_str = pick["market_odds"]
+                try:
+                    odds_taken = float(odds_str) if odds_str else None
+                except (ValueError, TypeError):
+                    odds_taken = None
+                if odds_taken is None:
+                    continue
+                # Convert American to decimal if needed
+                if odds_taken > 100 or odds_taken < -100:
+                    if odds_taken > 0:
+                        odds_taken = 1.0 + odds_taken / 100.0
+                    else:
+                        odds_taken = 1.0 + 100.0 / abs(odds_taken)
+                closing_player = closing.get(pk, {})
+                closing_dec = closing_player.get(bt)
+                if closing_dec:
+                    result_conn = db.get_conn()
+                    res = result_conn.execute(
+                        "SELECT finish_position FROM results WHERE tournament_id = ? AND player_key = ?",
+                        (tournament_id, pk),
+                    ).fetchone()
+                    result_conn.close()
+                    outcome = None
+                    if res and res["finish_position"]:
+                        if bt == "outright":
+                            outcome = 1 if res["finish_position"] == 1 else 0
+                        elif bt == "top5":
+                            outcome = 1 if res["finish_position"] <= 5 else 0
+                        elif bt == "top10":
+                            outcome = 1 if res["finish_position"] <= 10 else 0
+                        elif bt == "top20":
+                            outcome = 1 if res["finish_position"] <= 20 else 0
+                    record_clv(tournament_id, pk, bt, odds_taken, closing_dec, outcome)
+                    clv_count += 1
+            summary["steps"]["clv_recorded"] = clv_count
+    except Exception as e:
+        logger.warning("CLV recording failed: %s", e)
+        summary["steps"]["clv_recorded"] = {"error": str(e)}
+
+    # 9. Refit Platt sigmoid for matchups (if 100+ matchup outcomes available)
+    try:
+        from src.feature_flags import is_enabled
+        if is_enabled("platt_scaling") or True:  # always track, even if not using for live
+            conn = db.get_conn()
+            matchup_outcomes = conn.execute(
+                """SELECT p.model_prob, p.actual_outcome
+                   FROM prediction_log p
+                   WHERE p.bet_type = 'matchup'
+                     AND p.actual_outcome IS NOT NULL
+                     AND p.model_prob IS NOT NULL"""
+            ).fetchall()
+            conn.close()
+            n = len(matchup_outcomes)
+            if n >= 100:
+                try:
+                    import numpy as np
+                    from sklearn.linear_model import LogisticRegression
+                    X = np.array([[r["model_prob"]] for r in matchup_outcomes])
+                    y = np.array([r["actual_outcome"] for r in matchup_outcomes])
+                    lr = LogisticRegression(C=1.0, solver="lbfgs")
+                    lr.fit(X, y)
+                    new_a = float(lr.coef_[0][0])
+                    new_b = float(lr.intercept_[0])
+                    brier = float(np.mean((X.flatten() - y) ** 2))
+                    conn = db.get_conn()
+                    conn.execute(
+                        """INSERT INTO matchup_calibration (a_param, b_param, n_samples, brier_score)
+                           VALUES (?, ?, ?, ?)""",
+                        (new_a, new_b, n, brier),
+                    )
+                    conn.commit()
+                    conn.close()
+                    summary["steps"]["matchup_calibration"] = {
+                        "a": round(new_a, 4), "b": round(new_b, 4),
+                        "n": n, "brier": round(brier, 4),
+                    }
+                    logger.info("Platt refit: A=%.4f, B=%.4f (n=%d, brier=%.4f)", new_a, new_b, n, brier)
+                except ImportError:
+                    logger.warning("sklearn not available for Platt refit; skipping")
+                    summary["steps"]["matchup_calibration"] = {"skipped": "sklearn not installed"}
+            else:
+                summary["steps"]["matchup_calibration"] = {"n_samples": n, "status": "need 100+"}
+    except Exception as e:
+        logger.warning("Matchup calibration refit failed: %s", e)
+        summary["steps"]["matchup_calibration"] = {"error": str(e)}
 
     return summary

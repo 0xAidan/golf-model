@@ -6,53 +6,19 @@ but reads exclusively from PIT (point-in-time) tables. This ensures
 the backtester validates the SAME model structure that runs live,
 using only data that would have been available before each event.
 
-Key differences from live models:
-- No DG decomposition, DG skill, or sim probabilities (external data)
-- Ranks computed from PIT SG values within each event's field
-- Course-specific data from pit_course_stats table
+Shared with live: helpers and weights from src.models and src.config.
 """
 
 import logging
 from src import db
+from src import config
+from src.models.course_fit import _rank_to_score, _rounds_confidence
+from src.models.form import _sample_size_confidence
 
 logger = logging.getLogger("pit_models")
 
 # Windows aligned with live model discovery
 WINDOWS = [8, 12, 16, 20, 24, 50]
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  Shared Helpers
-# ═══════════════════════════════════════════════════════════════════
-
-def _rank_to_score(rank: float | None, field_size: int) -> float:
-    """Convert a rank (1 = best) to a 0-100 score. Rank 1 -> 100, last -> 0."""
-    if rank is None or field_size <= 1:
-        return 50.0
-    rank = max(1, min(rank, field_size))
-    return 100.0 * (1.0 - (rank - 1) / (field_size - 1))
-
-
-def _rounds_confidence(rounds_played: int, max_rounds: float = 30.0) -> float:
-    """
-    Trust factor for course history.
-    More rounds at the course = higher confidence.
-    Returns 0.3 (min) to 1.0 (max at 30+ rounds).
-    """
-    if rounds_played is None or rounds_played <= 0:
-        return 0.3
-    return min(1.0, 0.3 + 0.7 * (rounds_played / max_rounds))
-
-
-def _sample_size_confidence(rounds_used: int, threshold: int = 8) -> float:
-    """
-    Bayesian-style shrinkage factor based on available sample.
-    At threshold rounds or more, full confidence (1.0).
-    Below threshold, proportionally shrink toward neutral.
-    """
-    if rounds_used is None or rounds_used <= 0:
-        return 0.0
-    return min(1.0, rounds_used / threshold)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -170,18 +136,24 @@ def compute_pit_form(event_id: str, year: int) -> dict:
                 break
 
         if best_stats:
-            # Rank each SG category within the field for this window
-            # Use raw values since we only have sg_total_rank pre-computed
-            # For multi-SG, compute inline ranks for each category
+            # Rank each SG category within the field for this window (weights from config)
             best_w = recent_windows[0] if recent_windows else baseline_windows[0]
             if best_w in by_window and pk in by_window[best_w]:
                 sg_scores = _compute_multi_sg_scores(by_window[best_w], pk, field_sizes[best_w])
+                # Apply putt shrinkage (same as live model)
+                putt_raw = sg_scores["putt"]
+                sg_scores["putt"] = 50.0 + config.PUTT_SHRINKAGE_FACTOR * (putt_raw - 50.0)
+                w_tot = config.DEFAULT_WEIGHTS.get("form_sg_tot", 0.22)
+                w_app = config.DEFAULT_WEIGHTS.get("form_sg_app", 0.28)
+                w_ott = config.DEFAULT_WEIGHTS.get("form_sg_ott", 0.30)
+                w_putt = config.DEFAULT_WEIGHTS.get("form_sg_putt", 0.10)
+                w_arg = config.DEFAULT_WEIGHTS.get("form_sg_arg", 0.10)
                 multi_sg = (
-                    0.40 * sg_scores["tot"]
-                    + 0.25 * sg_scores["app"]
-                    + 0.15 * sg_scores["ott"]
-                    + 0.10 * sg_scores["putt"]
-                    + 0.10 * sg_scores["arg"]
+                    w_tot * sg_scores["tot"]
+                    + w_app * sg_scores["app"]
+                    + w_ott * sg_scores["ott"]
+                    + w_putt * sg_scores["putt"]
+                    + w_arg * sg_scores["arg"]
                 )
             else:
                 multi_sg = 50.0
@@ -294,25 +266,28 @@ def compute_pit_course_fit(event_id: str, year: int) -> dict:
     finish_vals.sort(key=lambda x: x[1])  # lower is better
     finish_ranks = {pk: rank for rank, (pk, _) in enumerate(finish_vals, start=1)}
 
-    # Weights: SG:TOT 35%, SG:APP 20%, SG:OTT 15%, SG:Putt 10%, SG:ARG 5%, Finish 15%
-    w_sg_tot = 0.35
-    w_sg_app = 0.20
-    w_sg_ott = 0.15
-    w_sg_putt = 0.10
-    w_sg_arg = 0.05
-    w_finish = 0.15
+    # Weights from config (aligned with live course_fit); finish uses course_par_eff share
+    w_sg_tot = config.DEFAULT_WEIGHTS.get("course_sg_tot", 0.22)
+    w_sg_app = config.DEFAULT_WEIGHTS.get("course_sg_app", 0.28)
+    w_sg_ott = config.DEFAULT_WEIGHTS.get("course_sg_ott", 0.30)
+    w_sg_putt = config.DEFAULT_WEIGHTS.get("course_sg_putt", 0.10)
+    w_sg_arg = 0.10  # course has par_eff; PIT uses arg for remainder
+    w_finish = config.DEFAULT_WEIGHTS.get("course_par_eff", 0.10)
 
     results = {}
     for pk, data in player_data.items():
         components = {}
 
-        # SG rank scores
+        # SG rank scores (putt shrinkage applied below)
         for cat, weight_name in [("sg_total", "sg_tot"), ("sg_app", "sg_app"),
                                   ("sg_ott", "sg_ott"), ("sg_putt", "sg_putt"),
                                   ("sg_arg", "sg_arg")]:
             rank = cat_ranks.get(cat, {}).get(pk)
             fs = len(cat_ranks.get(cat, {}))
-            components[weight_name] = _rank_to_score(rank, fs) if rank else 50.0
+            raw = _rank_to_score(rank, fs) if rank else 50.0
+            if weight_name == "sg_putt":
+                raw = 50.0 + config.PUTT_SHRINKAGE_FACTOR * (raw - 50.0)
+            components[weight_name] = raw
 
         # Finish position score
         finish_rank = finish_ranks.get(pk)

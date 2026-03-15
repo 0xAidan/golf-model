@@ -1,0 +1,243 @@
+{
+  "scope": "global",
+  "generated_at": "2026-03-09T20:30:47.481158",
+  "current_live": {
+    "name": "opt_0217_1",
+    "source": "live",
+    "record_id": null
+  },
+  "winner": {
+    "proposal_id": 304,
+    "name": "Neighbor search 1",
+    "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+    "blended_score": -3.1787,
+    "summary_metrics": {
+      "events_evaluated": 94,
+      "max_drawdown_pct": 71.07,
+      "total_bets": 10375,
+      "unweighted_calibration_error": 0.1812,
+      "unweighted_clv_avg": 0.1388,
+      "unweighted_roi_pct": -5.8777,
+      "weighted_calibration_error": 0.1842,
+      "weighted_clv_avg": 0.1422,
+      "weighted_roi_pct": -9.4497
+    },
+    "guardrail_results": {
+      "passed": true,
+      "reasons": [],
+      "verdict": "promising"
+    }
+  },
+  "top_candidates": [
+    {
+      "proposal_id": 304,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.1787,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.07,
+        "total_bets": 10375,
+        "unweighted_calibration_error": 0.1812,
+        "unweighted_clv_avg": 0.1388,
+        "unweighted_roi_pct": -5.8777,
+        "weighted_calibration_error": 0.1842,
+        "weighted_clv_avg": 0.1422,
+        "weighted_roi_pct": -9.4497
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 301,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.1787,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.07,
+        "total_bets": 10375,
+        "unweighted_calibration_error": 0.1812,
+        "unweighted_clv_avg": 0.1388,
+        "unweighted_roi_pct": -5.8777,
+        "weighted_calibration_error": 0.1842,
+        "weighted_clv_avg": 0.1422,
+        "weighted_roi_pct": -9.4497
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 313,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.5375,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.07,
+        "total_bets": 10446,
+        "unweighted_calibration_error": 0.1812,
+        "unweighted_clv_avg": 0.1378,
+        "unweighted_roi_pct": -6.0713,
+        "weighted_calibration_error": 0.1842,
+        "weighted_clv_avg": 0.141,
+        "weighted_roi_pct": -9.6885
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 345,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 343,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 342,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 341,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 339,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 338,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    },
+    {
+      "proposal_id": 337,
+      "strategy_name": "opt_0217_1_neighbor_0_neighbor_0_neighbor_0_neighbor_0_neighbor_1_neighbor_0_neighbor_2_neighbor_0",
+      "blended_score": -3.7267,
+      "summary_metrics": {
+        "events_evaluated": 94,
+        "max_drawdown_pct": 71.16,
+        "total_bets": 10506,
+        "unweighted_calibration_error": 0.1806,
+        "unweighted_clv_avg": 0.137,
+        "unweighted_roi_pct": -6.2248,
+        "weighted_calibration_error": 0.1833,
+        "weighted_clv_avg": 0.1403,
+        "weighted_roi_pct": -9.8077
+      },
+      "guardrail_results": {
+        "passed": true,
+        "reasons": [],
+        "verdict": "promising"
+      }
+    }
+  ]
+}

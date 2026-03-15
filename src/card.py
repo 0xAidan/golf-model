@@ -6,10 +6,23 @@ Bet types: Outright, Top 5, Top 10, Top 20, Matchups, 72-hole groups.
 No DFS.
 """
 
+import logging
 import os
 from datetime import datetime
 
-from src.matchups import find_best_matchups, group_by_confidence
+from src import config
+from src.feature_flags import is_enabled
+
+logger = logging.getLogger("card")
+
+
+def _american_to_decimal(american: int) -> float:
+    """Convert American odds to decimal for stake calculation."""
+    if not american:
+        return 1.0
+    if american > 0:
+        return 1.0 + american / 100.0
+    return 1.0 + 100.0 / abs(american)
 
 
 def _fmt_odds(price: int) -> str:
@@ -26,6 +39,58 @@ def _fmt_prob(prob: float) -> str:
         return f"{prob:.2%}"
     else:
         return f"{prob:.3%}"
+
+
+def _top_bets_for_summary(value_bets: dict, matchup_bets: list[dict] | None) -> list[dict]:
+    """Collect top 3 bets: prioritize matchups (live focus), then placement/3-ball."""
+    placement_candidates = []
+    for bet_type, bets in (value_bets or {}).items():
+        for b in bets:
+            if not b.get("is_value") or b.get("suspicious") or b.get("ev_capped"):
+                continue
+            ev = b.get("ev", 0) or 0
+            ev_pct = b.get("ev_pct", "0%")
+            if isinstance(ev_pct, (int, float)):
+                ev_pct = f"{ev_pct:.1f}%"
+            odds_str = _fmt_odds(b.get("best_odds", 0))
+            stake = None
+            if is_enabled("kelly_sizing") or is_enabled("kelly_stakes"):
+                try:
+                    from src.kelly import units_for_bet
+                    dec = _american_to_decimal(b.get("best_odds", 0))
+                    stake = units_for_bet(b.get("model_prob", 0.5), dec)
+                except Exception:
+                    pass
+            pick = b.get("player_display", "")
+            if bet_type == "3ball" and b.get("opponents"):
+                pick = f"{pick} (3-ball vs {b['opponents']})"
+            placement_candidates.append({
+                "ev": ev, "pick": pick, "market": bet_type,
+                "odds": odds_str, "ev_pct": ev_pct, "tier": "—", "stake": stake,
+            })
+    matchup_candidates = []
+    if matchup_bets:
+        for b in matchup_bets:
+            ev = b.get("ev", 0) or 0
+            ev_pct = b.get("ev_pct", "")
+            if isinstance(ev_pct, (int, float)):
+                ev_pct = f"{ev_pct:.1f}%"
+            odds_str = f"+{b.get('odds', 0)}" if (b.get("odds") or 0) > 0 else str(b.get("odds", 0))
+            pick = f"{b.get('pick', '')} vs {b.get('opponent', '')}"
+            matchup_candidates.append({
+                "ev": ev, "pick": pick, "market": "matchup",
+                "odds": odds_str, "ev_pct": ev_pct, "tier": b.get("tier", "LEAN"), "stake": None,
+            })
+    placement_candidates.sort(key=lambda x: x["ev"], reverse=True)
+    matchup_candidates.sort(key=lambda x: x["ev"], reverse=True)
+    # Live focus: up to 2 matchups in top 3, then fill with placement/3-ball
+    top3 = []
+    top3.extend(matchup_candidates[:2])
+    for c in placement_candidates:
+        if len(top3) >= 3:
+            break
+        top3.append(c)
+    return top3[:3]
 
 
 def _reason(r: dict) -> str:
@@ -53,7 +118,9 @@ def generate_card(tournament_name: str,
                   value_bets: dict = None,
                   output_dir: str = "output",
                   ai_pre_analysis: dict = None,
-                  ai_decisions: dict = None) -> str:
+                  ai_decisions: dict = None,
+                  matchup_bets: list[dict] = None,
+                  strategy_meta: dict | None = None) -> str:
     """
     Generate a markdown betting card.
 
@@ -62,6 +129,7 @@ def generate_card(tournament_name: str,
                 each value is a list from value.find_value_bets()
     ai_pre_analysis: AI pre-tournament analysis (optional)
     ai_decisions: AI betting decisions (optional)
+    matchup_bets: list of matchup value bets from matchup_value module (optional)
 
     Returns the file path of the generated card.
     """
@@ -72,14 +140,76 @@ def generate_card(tournament_name: str,
     lines.append(f"# {tournament_name} — Betting Card")
     lines.append(f"**Course:** {course_name}")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    if strategy_meta:
+        src = strategy_meta.get("strategy_source", "default")
+        name = strategy_meta.get("strategy_name", "default")
+        rid = strategy_meta.get("strategy_record_id")
+        id_suffix = f" (id {rid})" if rid else ""
+        lines.append(f"**Baseline Strategy:** {name}{id_suffix} via `{src}`")
     if ai_pre_analysis:
-        lines.append(f"**AI Analysis:** Enabled ({ai_pre_analysis.get('confidence', 0):.0%} confidence)")
+        conf = ai_pre_analysis.get('confidence', 0)
+        lines.append(f"**AI Analysis:** Enabled ({conf:.0%} confidence)")
+        factors = ai_pre_analysis.get('confidence_factors', {})
+        explanation = ai_pre_analysis.get('confidence_explanation', '')
+        if factors:
+            factor_strs = [f"{k.replace('_', ' ').title()}: {v:.0%}" for k, v in factors.items()]
+            lines.append(f"*Confidence breakdown: {', '.join(factor_strs)}*")
+        if explanation:
+            lines.append(f"*{explanation}*")
     lines.append("")
 
-    # ── Weekly Strategy Summary ────────────────────────────────
-    _write_weekly_strategy(lines, value_bets)
+    # ── Section 1: Exec Summary (always visible) ─────────────────
+    lines.append("## 3 Best Bets")
+    lines.append("")
 
-    # ── 1. Model Rankings (Top 20) ─────────────────────────────
+    if strategy_meta:
+        lines.append("## Baseline Provenance")
+        lines.append("")
+        runtime = strategy_meta.get("runtime_settings", {})
+        blend = runtime.get("blend_weights", {})
+        lines.append(
+            f"- Strategy source: `{strategy_meta.get('strategy_source', 'default')}`"
+        )
+        lines.append(
+            f"- Blend: course {blend.get('course_fit', 0):.0%}, "
+            f"form {blend.get('form', 0):.0%}, "
+            f"momentum {blend.get('momentum', 0):.0%}"
+        )
+        if runtime.get("ev_threshold") is not None:
+            lines.append(f"- EV threshold: {runtime['ev_threshold']:.0%}")
+        lines.append("")
+    best_three = _top_bets_for_summary(value_bets, matchup_bets)
+    if best_three:
+        show_stake = is_enabled("kelly_sizing") or is_enabled("kelly_stakes")
+        header = "| Pick | Market | Odds | EV% | Tier |"
+        if show_stake:
+            header += " Stake |"
+        lines.append(header)
+        lines.append("|------|--------|------|-----|------|" + ("--------|" if show_stake else ""))
+        for row in best_three:
+            stake_str = ""
+            if show_stake:
+                s = row.get("stake")
+                stake_str = f" {s:.2f}u |" if s is not None else " — |"
+            lines.append(
+                f"| **{row['pick']}** | {row['market']} | {row['odds']} | {row['ev_pct']} | {row.get('tier', '—')} |" + stake_str
+            )
+    else:
+        lines.append("*No value bets above threshold this week.*")
+    lines.append("")
+
+    # ── Sections 2+ (collapsible) ─────────────────────────────
+    lines.append("<details>")
+    lines.append("<summary>Weekly Strategy & Adaptation</summary>")
+    lines.append("")
+    _write_weekly_strategy(lines, value_bets)
+    _write_adaptation_status(lines)
+    lines.append("</details>")
+    lines.append("")
+
+    lines.append("<details>")
+    lines.append("<summary>Model Rankings (Top 20)</summary>")
+    lines.append("")
     lines.append("## Model Rankings (Top 20)")
     lines.append("")
     lines.append("| Rank | Player | Composite | Course Fit | Form | Momentum | Trend |")
@@ -93,58 +223,80 @@ def generate_card(tournament_name: str,
             f"| {r['course_fit']:.1f} | {r['form']:.1f} | {r['momentum']:.1f} | {trend_symbol} |"
         )
     lines.append("")
-
-    # ── 2. CORE: Matchup Edges (strongest signal) ──────────────
-    lines.append("## Core Picks: Matchup Edges")
-    lines.append("")
-    lines.append("*Matchups are the model's strongest signal (12-3-1, +8.01u over last 2 events).*")
+    lines.append("</details>")
     lines.append("")
 
-    matchup_course_profile = None
-    matchups = find_best_matchups(composite_results, course_profile=matchup_course_profile)
-    grouped = group_by_confidence(matchups)
+    lines.append("<details>")
+    lines.append("<summary>Matchup Value Bets (Primary)</summary>")
+    lines.append("")
+    _write_matchup_value_bets(lines, matchup_bets)
+    lines.append("</details>")
+    lines.append("")
 
-    for tier_name, tier_label in [("strong", "STRONG"), ("moderate", "MODERATE"), ("lean", "LEAN")]:
-        tier_matchups = grouped.get(tier_name, [])
-        if tier_matchups:
-            lines.append(f"**{tier_label} Confidence:**")
-            lines.append("")
-            for m in tier_matchups:
-                lines.append(
-                    f"- **{m['pick']}** over {m['opponent']} — "
-                    f"edge: {m['edge_score']:.2f} ({m['reason']})"
-                )
-            lines.append("")
-
-    if not matchups:
-        lines.append("*No matchups above minimum edge threshold.*")
+    lines.append("<details>")
+    lines.append("<summary>3-Ball Markets</summary>")
+    lines.append("")
+    lines.append("## 3-Ball")
+    lines.append("")
+    three_ball = value_bets.get("3ball", [])
+    three_ball_value = [b for b in three_ball if b.get("is_value")]
+    if three_ball_value:
+        _write_value_section(lines, three_ball_value, top_n=10)
+    else:
+        lines.append("*No 3-ball value plays this week.*")
         lines.append("")
+    lines.append("</details>")
+    lines.append("")
 
-    # ── 3. VALUE: Top 10 / Top 20 Placements ──────────────────
+    lines.append("<details>")
+    lines.append("<summary>Value Picks: Placement Markets (Secondary)</summary>")
+    lines.append("")
     lines.append("## Value Picks: Placement Markets")
     lines.append("")
 
+    top15_vb = value_bets.get("top15", [])
     top10_vb = value_bets.get("top10", [])
     top20_vb = value_bets.get("top20", [])
-
-    lines.append("### Top 10 Finish")
-    lines.append("")
-    if top10_vb:
-        _write_value_section(lines, top10_vb, top_n=6)
-    else:
-        lines.append("*No odds data available for Top 10.*")
-        lines.append("")
+    top5_vb = value_bets.get("top5", [])
 
     lines.append("### Top 20 Finish")
     lines.append("")
     if top20_vb:
-        _write_value_section(lines, top20_vb, top_n=8)
+        _write_value_section(lines, [b for b in top20_vb if b.get("is_value")], top_n=8)
     else:
         lines.append("*No odds data available for Top 20.*")
         lines.append("")
 
-    # ── 4. SPECULATIVE: Outright / Top 5 / FRL ────────────────
-    lines.append("## Speculative Picks: Outright / Top 5")
+    lines.append("### Top 15 Finish")
+    lines.append("")
+    if top15_vb:
+        _write_value_section(lines, [b for b in top15_vb if b.get("is_value")], top_n=6)
+    else:
+        lines.append("*No odds data available for Top 15.*")
+        lines.append("")
+
+    lines.append("### Top 10 Finish")
+    lines.append("")
+    if top10_vb:
+        _write_value_section(lines, [b for b in top10_vb if b.get("is_value")], top_n=6)
+    else:
+        lines.append("*No odds data available for Top 10.*")
+        lines.append("")
+
+    lines.append("### Top 5 Finish")
+    lines.append("")
+    if top5_vb:
+        _write_value_section(lines, [b for b in top5_vb if b.get("is_value")], top_n=5)
+    else:
+        lines.append("*No odds data available for Top 5.*")
+    lines.append("")
+    lines.append("</details>")
+    lines.append("")
+
+    lines.append("<details>")
+    lines.append("<summary>Speculative: Outrights</summary>")
+    lines.append("")
+    lines.append("## Speculative Picks: Outright")
     lines.append("")
     lines.append("*High variance markets. Positive EV threshold raised to 5% to filter noise.*")
     lines.append("")
@@ -161,17 +313,13 @@ def generate_card(tournament_name: str,
             lines.append(f"- **{r['player_display']}** — {_reason(r)}")
         lines.append("")
 
-    lines.append("### Top 5 Finish")
+    lines.append("</details>")
     lines.append("")
-    top5_vb = value_bets.get("top5", [])
-    if top5_vb:
-        _write_value_section(lines, top5_vb, top_n=5)
-    else:
-        lines.append("*No odds data available for Top 5.*")
-        lines.append("")
 
-    # ── 5. AI Analysis (narrative only) ───────────────────────
     if ai_pre_analysis:
+        lines.append("<details>")
+        lines.append("<summary>AI Course Analysis</summary>")
+        lines.append("")
         lines.append("## AI Course Analysis")
         lines.append("")
 
@@ -210,8 +358,12 @@ def generate_card(tournament_name: str,
                 sign = "+" if adj > 0 else ""
                 lines.append(f"| {p['player']} | {sign}{adj:.1f} | {p['reason']} |")
             lines.append("")
+        lines.append("</details>")
+        lines.append("")
 
-    # ── 6. Fades ──────────────────────────────────────────────
+    lines.append("<details>")
+    lines.append("<summary>Fades (Avoid)</summary>")
+    lines.append("")
     lines.append("## Fades (Avoid)")
     lines.append("")
     lines.append("Players likely overpriced or in poor form:")
@@ -220,21 +372,40 @@ def generate_card(tournament_name: str,
         if r.get("momentum_direction") == "cold" or r["composite"] < 40:
             lines.append(f"- **{r['player_display']}** — composite {r['composite']:.1f}, {_reason(r)}")
     lines.append("")
+    lines.append("</details>")
+    lines.append("")
 
-    # ── 7. Data Quality & Methodology ─────────────────────────
+    lines.append("<details>")
+    lines.append("<summary>Data Quality & Methodology</summary>")
+    lines.append("")
     _write_data_quality(lines, value_bets, composite_results)
+    lines.append("</details>")
+    lines.append("")
 
     # ── Footer ────────────────────────────────────────────────
     lines.append("---")
     ai_tag = " AI-adjusted." if ai_pre_analysis else ""
-    lines.append(f"*Model v3.0: {len(composite_results)} players scored. "
-                 f"Course data: {'Yes' if any(r.get('course_rounds', 0) > 0 for r in composite_results) else 'No'}."
-                 f"{ai_tag} Weights: 45% course fit / 45% form / 10% momentum."
-                 f" DG blend: market-specific (80-90% DG).*")
+    runtime = (strategy_meta or {}).get("runtime_settings", {})
+    blend = runtime.get("blend_weights", {})
+    lines.append(
+        f"*Model v{config.MODEL_VERSION}: {len(composite_results)} players scored. "
+        f"Course data: {'Yes' if any(r.get('course_rounds', 0) > 0 for r in composite_results) else 'No'}."
+        f"{ai_tag} Weights: {blend.get('course_fit', 0.45):.0%} course fit / "
+        f"{blend.get('form', 0.45):.0%} form / {blend.get('momentum', 0.10):.0%} momentum."
+        f" DG blend: 95% DG / 5% model.*"
+    )
 
-    # Write to file
     os.makedirs(output_dir, exist_ok=True)
     safe_name = tournament_name.lower().replace(" ", "_").replace("'", "")
+
+    try:
+        from src.output_manager import archive_previous
+        archived = archive_previous(output_dir, safe_name, file_type="card")
+        if archived:
+            logger.info("Archived %d previous card(s) for %s", archived, safe_name)
+    except Exception as e:
+        logger.warning("Could not archive previous cards: %s", e)
+
     filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
     filepath = os.path.join(output_dir, filename)
 
@@ -361,50 +532,61 @@ def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
         lines.append("")
 
 
-def _suggest_matchups(composite_results: list[dict], min_gap: float = 3.0) -> list[dict]:
-    """
-    DEPRECATED: Use src.matchups.find_best_matchups() instead.
+def _write_adaptation_status(lines: list):
+    """Add market adaptation state table to the card."""
+    try:
+        from src.adaptation import get_adaptation_state
 
-    Simple matchup finder using only composite gap. Kept as fallback.
-    """
-    matchups = []
-    n = len(composite_results)
+        markets = ["outright", "top5", "top10", "top20", "matchup"]
+        rows = []
+        for market in markets:
+            state = get_adaptation_state(market)
+            ev_thr = state.get("ev_threshold")
+            ev_str = f"{ev_thr:.0%}" if ev_thr is not None else "suppressed"
+            stake = state.get("stake_multiplier", 1.0)
+            bets = state.get("total_bets", 0)
+            rows.append(
+                f"| {market} | {state['state']} | {ev_str} | {stake}u | {bets} |"
+            )
 
-    for i in range(n):
-        for j in range(i + 1, min(i + 30, n)):
-            a = composite_results[i]
-            b = composite_results[j]
-            gap = a["composite"] - b["composite"]
-            if gap < min_gap:
-                continue
+        lines.append("## Market Adaptation Status")
+        lines.append("")
+        lines.append("| Market | State | EV Threshold | Stake | Bets Tracked |")
+        lines.append("|--------|-------|-------------|-------|--------------|")
+        for row in rows:
+            lines.append(row)
+        lines.append("")
+    except Exception as e:
+        logger.warning("Adaptation status unavailable: %s", e)
 
-            # Build a reason for the edge
-            reasons = []
-            if a["course_fit"] - b["course_fit"] > 5:
-                reasons.append(f"course fit +{a['course_fit'] - b['course_fit']:.0f}")
-            if a["form"] - b["form"] > 5:
-                reasons.append(f"form +{a['form'] - b['form']:.0f}")
-            if a.get("momentum_direction") == "hot" and b.get("momentum_direction") in ("cold", "cooling"):
-                reasons.append("momentum advantage")
 
-            matchups.append({
-                "pick": a["player_display"],
-                "pick_key": a["player_key"],
-                "opponent": b["player_display"],
-                "opponent_key": b["player_key"],
-                "edge": gap,
-                "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
-            })
+def _write_matchup_value_bets(lines: list, matchup_bets: list[dict] | None):
+    """Add matchup value bets section (real sportsbook odds)."""
+    if not matchup_bets:
+        lines.append("## Matchup Value Bets (Real Odds)")
+        lines.append("")
+        lines.append("*No matchup value bets available this week.*")
+        lines.append("")
+        return
 
-    # Sort by edge, take best
-    matchups.sort(key=lambda x: x["edge"], reverse=True)
+    lines.append("## Matchup Value Bets (Real Odds)")
+    lines.append("")
+    lines.append("*Only matchups with actual sportsbook odds shown.*")
+    lines.append("")
+    lines.append("| Pick | vs | Market | Odds | Model Win% | EV | Tier | Book | Why |")
+    lines.append("|------|-----|--------|------|------------|-----|------|------|-----|")
 
-    # Deduplicate: each player only appears once as "pick"
-    seen = set()
-    deduped = []
-    for m in matchups:
-        if m["pick_key"] not in seen and m["opponent_key"] not in seen:
-            deduped.append(m)
-            seen.add(m["pick_key"])
-            seen.add(m["opponent_key"])
-    return deduped
+    for bet in matchup_bets:
+        odds = bet.get("odds", 0)
+        odds_str = f"+{odds}" if odds > 0 else str(odds)
+        model_pct = f"{bet.get('model_win_prob', 0):.1%}"
+        ev_pct = bet.get("ev_pct", "")
+        tier = bet.get("tier", "LEAN")
+        book = bet.get("book", "—")
+        market_type = bet.get("market_type", "tournament_matchups").replace("_", " ")
+        reason = bet.get("reason", "composite edge")
+        lines.append(
+            f"| **{bet['pick']}** | {bet['opponent']} | {market_type} "
+            f"| {odds_str} | {model_pct} | {ev_pct} | {tier} | {book} | {reason} |"
+        )
+    lines.append("")

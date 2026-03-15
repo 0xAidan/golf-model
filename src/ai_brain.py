@@ -19,18 +19,70 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from src import db
 from src.player_normalizer import display_name
 
 logger = logging.getLogger("ai_brain")
+_ENV_BOOTSTRAPPED = False
+
+
+def _bootstrap_env_from_dotenv() -> None:
+    """
+    Load .env values without requiring python-dotenv.
+
+    This keeps AI features working in environments where dependency install
+    is minimal but a project .env file already exists.
+    """
+    global _ENV_BOOTSTRAPPED
+    if _ENV_BOOTSTRAPPED:
+        return
+    _ENV_BOOTSTRAPPED = True
+
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as exc:
+        logger.warning("Failed to parse .env for AI bootstrap: %s", exc)
+
+
+def _has_real_key(value: str | None) -> bool:
+    if not value:
+        return False
+    lowered = value.strip().lower()
+    if not lowered:
+        return False
+    placeholders = {
+        "your_openai_key_here",
+        "your_anthropic_key_here",
+        "your_google_key_here",
+        "your_datagolf_key_here",
+    }
+    return lowered not in placeholders
 
 # ═══════════════════════════════════════════════════════════════════
 #  Provider Abstraction
 # ═══════════════════════════════════════════════════════════════════
 
 def _get_provider() -> str:
+    _bootstrap_env_from_dotenv()
     return os.environ.get("AI_BRAIN_PROVIDER", "openai").lower()
 
 
@@ -482,9 +534,42 @@ Analyze this field and course. Identify:
 4. Players to fade (overrated by the model this week)
 5. Your overall confidence in the model's output for this event (0-1)
 
-Keep adjustments small: -5 to +5 points on the 0-100 composite scale."""
+Keep adjustments small: -3 to +3 points on the 0-100 composite scale."""
 
     result = _call_ai(SYSTEM_PROMPT, user_prompt, PRE_ANALYSIS_SCHEMA)
+
+    # Calculate confidence from concrete factors instead of using AI guess
+    from src.confidence import calculate_model_confidence, get_field_strength
+
+    # Gather confidence factors
+    has_profile = course_profile is not None
+
+    # Estimate DG coverage from composite_results
+    dg_coverage = sum(1 for r in composite_results if r.get("dg_prob")) / max(len(composite_results), 1)
+    if dg_coverage == 0:
+        # If no dg_prob in results, assume we have it from sync (typical case)
+        dg_coverage = 0.95
+
+    # Course history years (estimate from profile or default)
+    history_years = 3  # Default estimate
+
+    field_strength = get_field_strength(composite_results)
+
+    # For pre-analysis, use optimistic defaults for odds quality
+    # (will be updated after value calculation in the full pipeline)
+    confidence_result = calculate_model_confidence(
+        has_course_profile=has_profile,
+        dg_data_coverage=dg_coverage,
+        course_history_years=history_years,
+        field_strength=field_strength,
+        odds_quality_score=0.85,
+        suspicious_bet_pct=0.05,
+    )
+
+    # Override AI's subjective confidence with calculated confidence
+    result["confidence"] = confidence_result["confidence"]
+    result["confidence_factors"] = confidence_result["factors"]
+    result["confidence_explanation"] = confidence_result["explanation"]
 
     # Log decision
     db.store_ai_decision(
@@ -795,11 +880,13 @@ def apply_ai_adjustments(composite_results: list[dict],
     if not adjustments:
         return composite_results
 
-    # Apply adjustments, clamped to [-5.0, +5.0]
+    from src import config
+    cap = config.AI_ADJUSTMENT_CAP
+    # Apply adjustments, clamped to +/- cap (default +/-3)
     for r in composite_results:
         adj = adjustments.get(r["player_key"], 0)
         if adj:
-            clamped = max(-5.0, min(5.0, adj))
+            clamped = max(-cap, min(cap, adj))
             if clamped != adj:
                 import logging
                 logging.getLogger("ai_brain").warning(
@@ -819,13 +906,14 @@ def apply_ai_adjustments(composite_results: list[dict],
 
 def is_ai_available() -> bool:
     """Check if an AI provider is configured and available."""
+    _bootstrap_env_from_dotenv()
     provider = _get_provider()
     if provider == "openai":
-        return bool(os.environ.get("OPENAI_API_KEY"))
+        return _has_real_key(os.environ.get("OPENAI_API_KEY"))
     elif provider == "anthropic":
-        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+        return _has_real_key(os.environ.get("ANTHROPIC_API_KEY"))
     elif provider == "gemini":
-        return bool(os.environ.get("GOOGLE_API_KEY"))
+        return _has_real_key(os.environ.get("GOOGLE_API_KEY"))
     return False
 
 
@@ -851,11 +939,22 @@ def call_ai(prompt: str, system_prompt: str = None,
 
 
 def get_ai_status() -> dict:
-    """Return status of AI brain configuration."""
+    """Return status of AI brain configuration and hit rate (watches/fades)."""
     provider = _get_provider()
     available = is_ai_available()
     memory_count = len(db.get_ai_memories(limit=9999))
     topics = db.get_all_ai_memory_topics()
+
+    # Hit rate: watches (positive adj) and fades (negative adj), correct = was_helpful=1
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT adjustment_value, was_helpful FROM ai_adjustments WHERE was_helpful IS NOT NULL"
+    ).fetchall()
+    conn.close()
+    watches_ok = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] > 0 and r["was_helpful"] == 1)
+    watches_total = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] > 0)
+    fades_ok = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] < 0 and r["was_helpful"] == 1)
+    fades_total = sum(1 for r in rows if r["adjustment_value"] and r["adjustment_value"] < 0)
 
     return {
         "provider": provider,
@@ -867,4 +966,6 @@ def get_ai_status() -> dict:
         ),
         "memory_count": memory_count,
         "memory_topics": topics,
+        "watches_hit_rate": (watches_ok, watches_total),
+        "fades_hit_rate": (fades_ok, fades_total),
     }

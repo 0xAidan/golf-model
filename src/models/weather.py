@@ -20,17 +20,16 @@ import requests
 from typing import Optional
 
 from src import db
+from src import config
 
 logger = logging.getLogger("weather")
 
-# Thresholds for "meaningful" weather
-WIND_THRESHOLD_KMH = 15.0
-RAIN_THRESHOLD_MM = 2.0
-COLD_THRESHOLD_C = 10.0
-
-# Maximum adjustment magnitude (points on 0-100 composite scale)
-MAX_WAVE_ADJUSTMENT = 3.0
-MAX_RESILIENCE_ADJUSTMENT = 5.0
+# Thresholds and magnitudes from config (single source of truth)
+WIND_THRESHOLD_KMH = config.WIND_THRESHOLD_KMH
+RAIN_THRESHOLD_MM = 2.0  # kept here; not yet in config
+COLD_THRESHOLD_C = config.COLD_THRESHOLD_C
+MAX_WAVE_ADJUSTMENT = config.MAX_WAVE_ADJUSTMENT
+MAX_RESILIENCE_ADJUSTMENT = config.MAX_RESILIENCE_ADJUSTMENT
 
 
 def fetch_forecast(latitude: float, longitude: float,
@@ -425,12 +424,12 @@ def _safe_diff(group_a: list, group_b: list, min_samples: int = 5) -> Optional[f
 def _conditions_rating(avg_wind, max_gust, total_precip, avg_temp) -> float:
     """Rate conditions severity: 0 = perfect, 100 = brutal."""
     rating = 0.0
-    if avg_wind and avg_wind > 15:
-        rating += min(40, (avg_wind - 15) * 3)
+    if avg_wind and avg_wind > config.WIND_THRESHOLD_KMH:
+        rating += min(40, (avg_wind - config.WIND_THRESHOLD_KMH) * config.CONDITIONS_RATING_WIND_FACTOR)
     if max_gust and max_gust > 40:
-        rating += min(20, (max_gust - 40) * 2)
+        rating += min(20, (max_gust - 40) * config.CONDITIONS_RATING_GUST_FACTOR)
     if total_precip and total_precip > 0:
-        rating += min(30, total_precip * 10)
-    if avg_temp and avg_temp < 10:
-        rating += min(10, (10 - avg_temp) * 2)
+        rating += min(30, total_precip * config.CONDITIONS_RATING_PRECIP_FACTOR)
+    if avg_temp and avg_temp < config.COLD_THRESHOLD_C:
+        rating += min(10, (config.COLD_THRESHOLD_C - avg_temp) * config.CONDITIONS_RATING_COLD_FACTOR)
     return min(100, rating)

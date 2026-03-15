@@ -1,0 +1,282 @@
+{
+  "_meta": {
+    "source": "Historical course correlations from PGA Tour data",
+    "last_updated": "2026-02-23",
+    "notes": "Courses grouped by similar characteristics: grass type, climate, scoring difficulty, skill emphasis"
+  },
+  "pga_national_champion": {
+    "display_name": "PGA National (Champion)",
+    "correlated": [
+      "Waialae CC",
+      "The Concession Golf Club",
+      "Innisbrook Resort (Copperhead)",
+      "TPC Sawgrass",
+      "Colonial CC",
+      "TPC Twin Cities",
+      "Pete Dye Stadium Course",
+      "Sea Island GC (Seaside)",
+      "Dunes Golf & Beach Club"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "difficult",
+      "scoring": "easy"
+    }
+  },
+  "tpc_scottsdale": {
+    "display_name": "TPC Scottsdale (Stadium)",
+    "correlated": [
+      "La Quinta CC",
+      "PGA West (Stadium)",
+      "TPC Summerlin",
+      "Silverado Resort (North)",
+      "Sedgefield CC"
+    ],
+    "characteristics": {
+      "grass": "bermuda_overseed",
+      "climate": "desert",
+      "sg_ott_emphasis": "average",
+      "sg_app_emphasis": "difficult",
+      "scoring": "easy"
+    }
+  },
+  "pebble_beach_golf_links": {
+    "display_name": "Pebble Beach Golf Links",
+    "correlated": [
+      "Spyglass Hill",
+      "Harbour Town Golf Links",
+      "Sea Island GC (Seaside)",
+      "Waialae CC",
+      "Colonial CC",
+      "Riviera CC"
+    ],
+    "characteristics": {
+      "grass": "poa",
+      "climate": "coastal",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "very_difficult",
+      "scoring": "easy"
+    }
+  },
+  "riviera_cc": {
+    "display_name": "Riviera Country Club",
+    "correlated": [
+      "Pebble Beach Golf Links",
+      "Torrey Pines (South)",
+      "Muirfield Village",
+      "Bay Hill Club",
+      "TPC Sawgrass"
+    ],
+    "characteristics": {
+      "grass": "kikuyu_poa",
+      "climate": "coastal",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "very_difficult",
+      "scoring": "difficult"
+    }
+  },
+  "torrey_pines_south": {
+    "display_name": "Torrey Pines (South)",
+    "correlated": [
+      "Riviera CC",
+      "Pebble Beach Golf Links",
+      "Bethpage Black",
+      "Winged Foot"
+    ],
+    "characteristics": {
+      "grass": "kikuyu_poa",
+      "climate": "coastal",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "difficult",
+      "scoring": "difficult"
+    }
+  },
+  "bay_hill_club": {
+    "display_name": "Bay Hill Club & Lodge",
+    "correlated": [
+      "TPC Sawgrass",
+      "Muirfield Village",
+      "Quail Hollow Club",
+      "East Lake Golf Club"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "average",
+      "sg_app_emphasis": "difficult",
+      "scoring": "average"
+    }
+  },
+  "tpc_sawgrass": {
+    "display_name": "TPC Sawgrass (Stadium)",
+    "correlated": [
+      "Bay Hill Club",
+      "PGA National (Champion)",
+      "Innisbrook Resort (Copperhead)",
+      "Harbour Town Golf Links"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "very_difficult",
+      "scoring": "difficult"
+    }
+  },
+  "harbour_town_golf_links": {
+    "display_name": "Harbour Town Golf Links",
+    "correlated": [
+      "Pebble Beach Golf Links",
+      "Sea Island GC (Seaside)",
+      "Waialae CC",
+      "Colonial CC"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "coastal",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "average",
+      "scoring": "easy"
+    }
+  },
+  "augusta_national": {
+    "display_name": "Augusta National Golf Club",
+    "correlated": [
+      "Muirfield Village",
+      "East Lake Golf Club",
+      "Quail Hollow Club"
+    ],
+    "characteristics": {
+      "grass": "bentgrass",
+      "climate": "southeast",
+      "sg_ott_emphasis": "average",
+      "sg_app_emphasis": "very_difficult",
+      "scoring": "difficult"
+    }
+  },
+  "muirfield_village": {
+    "display_name": "Muirfield Village Golf Club",
+    "correlated": [
+      "Augusta National",
+      "East Lake Golf Club",
+      "Quail Hollow Club",
+      "Bay Hill Club"
+    ],
+    "characteristics": {
+      "grass": "bentgrass",
+      "climate": "midwest",
+      "sg_ott_emphasis": "average",
+      "sg_app_emphasis": "difficult",
+      "scoring": "average"
+    }
+  },
+  "waialae_cc": {
+    "display_name": "Waialae Country Club",
+    "correlated": [
+      "Sea Island GC (Seaside)",
+      "Harbour Town Golf Links",
+      "Colonial CC",
+      "PGA National (Champion)"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "tropical",
+      "sg_ott_emphasis": "easy",
+      "sg_app_emphasis": "average",
+      "scoring": "easy"
+    }
+  },
+  "colonial_cc": {
+    "display_name": "Colonial Country Club",
+    "correlated": [
+      "Harbour Town Golf Links",
+      "Waialae CC",
+      "Sea Island GC (Seaside)",
+      "Sedgefield CC"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "south",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "average",
+      "scoring": "easy"
+    }
+  },
+  "east_lake_golf_club": {
+    "display_name": "East Lake Golf Club",
+    "correlated": [
+      "Augusta National",
+      "Muirfield Village",
+      "Quail Hollow Club"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "average",
+      "sg_app_emphasis": "difficult",
+      "scoring": "average"
+    }
+  },
+  "quail_hollow_club": {
+    "display_name": "Quail Hollow Club",
+    "correlated": [
+      "East Lake Golf Club",
+      "Muirfield Village",
+      "Bay Hill Club"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "average",
+      "sg_app_emphasis": "difficult",
+      "scoring": "difficult"
+    }
+  },
+  "tpc_summerlin": {
+    "display_name": "TPC Summerlin",
+    "correlated": [
+      "TPC Scottsdale",
+      "La Quinta CC",
+      "Silverado Resort (North)"
+    ],
+    "characteristics": {
+      "grass": "bermuda_overseed",
+      "climate": "desert",
+      "sg_ott_emphasis": "easy",
+      "sg_app_emphasis": "average",
+      "scoring": "easy"
+    }
+  },
+  "sedgefield_cc": {
+    "display_name": "Sedgefield Country Club",
+    "correlated": [
+      "Colonial CC",
+      "Harbour Town Golf Links",
+      "Sea Island GC (Seaside)"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "easy",
+      "sg_app_emphasis": "average",
+      "scoring": "easy"
+    }
+  },
+  "innisbrook_copperhead": {
+    "display_name": "Innisbrook Resort (Copperhead)",
+    "correlated": [
+      "TPC Sawgrass",
+      "PGA National (Champion)",
+      "Bay Hill Club"
+    ],
+    "characteristics": {
+      "grass": "bermuda",
+      "climate": "southeast",
+      "sg_ott_emphasis": "difficult",
+      "sg_app_emphasis": "difficult",
+      "scoring": "difficult"
+    }
+  }
+}

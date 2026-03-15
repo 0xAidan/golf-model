@@ -42,9 +42,71 @@ from src.card import generate_card
 from src.player_normalizer import normalize_name
 
 
+def _run_calibration_dashboard():
+    """Print calibration dashboard: Brier, wins/losses by market, CLV, blend trajectory."""
+    from src.learning import compute_calibration
+    from src.db import get_conn, get_calibration_data
+
+    print("\n" + "=" * 60)
+    print("  CALIBRATION DASHBOARD")
+    print("=" * 60)
+
+    cal = compute_calibration()
+    if cal.get("status") == "no_data":
+        print("\nNo prediction data yet. Run tournaments and log results first.")
+        return
+
+    brier = cal.get("brier_score")
+    roi_info = cal.get("roi") or {}
+    print(f"\nBrier score: {brier:.4f}" if brier is not None else "\nBrier: N/A")
+    if roi_info.get("total_bets"):
+        print(f"ROI: {roi_info.get('roi_pct', 0):.1f}% ({roi_info['total_bets']} bets)")
+
+    # Wins/losses by market (from calibration data)
+    data = get_calibration_data()
+    by_market = {}
+    for d in data or []:
+        bt = d.get("bet_type", "unknown")
+        if bt not in by_market:
+            by_market[bt] = {"wins": 0, "losses": 0}
+        if d.get("actual_outcome") == 1:
+            by_market[bt]["wins"] += 1
+        else:
+            by_market[bt]["losses"] += 1
+    if by_market:
+        print("\nWins / Losses by market:")
+        for bt, counts in sorted(by_market.items()):
+            w, l = counts["wins"], counts["losses"]
+            print(f"  {bt}: {w}W / {l}L")
+
+    # CLV summary
+    try:
+        from src.clv import compute_clv_summary
+        clv = compute_clv_summary()
+        print(f"\nCLV: n={clv['n_bets']}, avg CLV%={clv.get('avg_clv_pct')}, significant={clv.get('significant', False)}")
+    except Exception as e:
+        print(f"\nCLV: unavailable ({e})")
+
+    # Blend trajectory (last 5 per bet_type)
+    try:
+        conn = get_conn()
+        rows = conn.execute(
+            """SELECT bet_type, dg_weight, model_weight, brier_blended, created_at
+               FROM blend_history ORDER BY id DESC LIMIT 30"""
+        ).fetchall()
+        conn.close()
+        if rows:
+            print("\nBlend history (recent):")
+            for r in rows[:10]:
+                print(f"  {r['bet_type']}: dg={r['dg_weight']:.2f} model={r['model_weight']:.2f} brier={r['brier_blended']}")
+    except Exception as e:
+        print(f"\nBlend history: unavailable ({e})")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Golf Betting Model — Analyze & Generate Card")
-    parser.add_argument("--tournament", "-t", required=True, help="Tournament name (e.g. 'WM Phoenix Open')")
+    parser.add_argument("--tournament", "-t", required=False, help="Tournament name (e.g. 'WM Phoenix Open')")
     parser.add_argument("--course", "-c", default=None, help="Course name (e.g. 'TPC Scottsdale')")
     parser.add_argument("--folder", "-f", default="data/csvs", help="Folder with Betsperts CSV files")
     parser.add_argument("--odds", "-o", default=None, help="Path to manual odds JSON file")
@@ -62,7 +124,17 @@ def main():
                         help="Run AI brain pre-tournament analysis and betting decisions")
     parser.add_argument("--service", action="store_true",
                         help="Use the unified GolfModelService pipeline (recommended)")
+    parser.add_argument("--calibration", action="store_true",
+                        help="Show calibration dashboard (Brier, CLV, wins/losses by market)")
     args = parser.parse_args()
+
+    # Calibration dashboard only (no tournament needed)
+    if args.calibration:
+        _run_calibration_dashboard()
+        return
+
+    if not args.tournament:
+        parser.error("--tournament is required unless using --calibration")
 
     # If --service flag, delegate to GolfModelService
     if args.service or (args.sync and not args.folder):
