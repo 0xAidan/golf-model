@@ -529,6 +529,14 @@ def find_value_bets(composite_results: list[dict],
             better_price_str = f"+{best_available_price}" if best_available_price > 0 else str(best_available_price)
             better_odds_note = f"{better_price_str} @ {best_available_book}"
 
+        # Hard gate: phantom EV filter -- >100% EV is miscalibration, not edge
+        if ev > config.PHANTOM_EV_THRESHOLD:
+            logger.warning(
+                "Phantom EV filtered: %s %s ev=%.1f%% (model_prob=%.4f vs market_prob=%.4f)",
+                pdisp, bet_type, ev * 100, model_prob, market_prob,
+            )
+            continue
+
         # Cap EV at a credible maximum — anything higher is data error
         if ev > MAX_CREDIBLE_EV:
             ev = MAX_CREDIBLE_EV
@@ -536,9 +544,12 @@ def find_value_bets(composite_results: list[dict],
         else:
             ev_capped = False
 
+        # Soft gate: model_prob > 2x market_prob -> speculative
+        prob_ratio = model_prob / max(market_prob, 0.0001)
+        speculative = prob_ratio > config.MODEL_MARKET_DISCREPANCY_THRESHOLD
+
         # Flag if model prob is wildly different from market prob
         # (>10x difference suggests one side has bad data)
-        prob_ratio = model_prob / max(market_prob, 0.0001)
         suspicious = prob_ratio > 10.0 or prob_ratio < 0.1
 
         value_bets.append({
@@ -563,7 +574,8 @@ def find_value_bets(composite_results: list[dict],
             "ev": round(ev, 4),
             "ev_pct": f"{ev * 100:.1f}%",
             "ev_capped": ev_capped,
-            "is_value": ev >= ev_threshold and not ev_capped,
+            "is_value": ev >= ev_threshold and not ev_capped and not speculative,
+            "speculative": speculative,
             "needs_review": ev > 1.0,
             "suspicious": suspicious,
             "prob_source": prob_source,

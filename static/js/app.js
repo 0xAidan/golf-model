@@ -193,10 +193,12 @@ async function runPrediction() {
   if (downloadBtn) downloadBtn.style.display = 'none';
 
   try {
+    const modeSelect = document.getElementById('predictionMode');
+    const selectedMode = modeSelect ? modeSelect.value : 'full';
     const resp = await fetch('/api/simple/upcoming-prediction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tour: 'pga' }),
+      body: JSON.stringify({ tour: 'pga', mode: selectedMode }),
     });
     const data = await resp.json();
     if (data.error || (data.errors && data.errors.length)) {
@@ -258,6 +260,47 @@ function downloadCard() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
+}
+
+async function gradeLastEvent() {
+  const btn = document.getElementById('gradeLastEventBtn');
+  const resultEl = document.getElementById('gradeResult');
+  if (!btn || !resultEl) return;
+
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Grading last event…';
+  resultEl.className = 'result';
+
+  try {
+    const resp = await fetch('/api/grade-tournament', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (data.error) {
+      resultEl.textContent = 'Error: ' + data.error;
+      resultEl.classList.add('status', 'error');
+      return;
+    }
+    const scoring = data.steps && data.steps.scoring ? data.steps.scoring : {};
+    const profit = scoring.total_profit || 0;
+    const profitStr = profit >= 0 ? '+' + profit.toFixed(2) : profit.toFixed(2);
+    resultEl.textContent =
+      'Graded: ' + (data.event_id || '—') +
+      ' | Picks: ' + (scoring.total_picks || 0) +
+      ' | W/L: ' + (scoring.wins || 0) + '/' + (scoring.losses || 0) +
+      ' | P/L: ' + profitStr + 'u';
+    resultEl.classList.add('status', 'success');
+  } catch (err) {
+    resultEl.textContent = 'Grading failed: ' + err.message;
+    resultEl.classList.add('status', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
 }
 
 async function runAutoresearch() {
@@ -470,45 +513,57 @@ async function loadAutoresearchRuns() {
     const data = await resp.json();
     const runs = data.runs || [];
     APP_STATE.recentRuns = runs;
-    renderPromotionQueue(runs);
     if (!runs.length) {
-      runsEl.style.display = 'block';
-      runsEl.className = 'result status info recent-runs-feed';
-      runsEl.textContent = 'Recent runs: none yet.';
+      runsEl.innerHTML = '<div class="status info">Recent runs: none yet.</div>';
       return;
     }
-    runsEl.style.display = 'block';
-    runsEl.className = 'result run-feed recent-runs-feed';
+    const badge = document.getElementById('runCountBadge');
+    if (badge) badge.textContent = runs.length;
     let html = '';
     for (const r of runs) {
       const when = formatTime(r.created_at);
       const name = escapeHtml(r.display_title || r.candidate_name || 'Unnamed');
-      const whatTested = escapeHtml((r.what_tested || r.hypothesis || 'No test description.').slice(0, 220));
-      const summary = escapeHtml((r.summary_reason || 'No summary available.').slice(0, 220));
-      const nextHint = escapeHtml((r.next_attempt_hint || 'Continue from strongest factor.').slice(0, 160));
+      const whatTested = escapeHtml((r.what_tested || r.hypothesis || '').slice(0, 140));
+      const summary = escapeHtml((r.summary_reason || '').slice(0, 180));
+      const nextHint = escapeHtml((r.next_attempt_hint || '').slice(0, 120));
       const verdictClass = r.is_positive_test ? 'positive' : (r.decision === 'blocked_by_guardrails' ? 'blocked' : 'neutral');
       const roiDelta = formatPctDelta(computeRunRoiDelta(r));
       const confidence = computeCandidateConfidence(r);
+      const sm = r.summary_metrics || {};
+      const bsm = r.baseline_summary_metrics || {};
+      const roi = sm.weighted_roi_pct != null ? sm.weighted_roi_pct.toFixed(2) + '%' : '—';
+      const baseRoi = bsm.weighted_roi_pct != null ? bsm.weighted_roi_pct.toFixed(2) + '%' : '—';
+      const clv = sm.weighted_clv_avg != null ? sm.weighted_clv_avg.toFixed(4) : '—';
+      const baseClv = bsm.weighted_clv_avg != null ? bsm.weighted_clv_avg.toFixed(4) : '—';
+      const bets = sm.total_bets || '—';
       html +=
-        '<article class="run-item">' +
+        '<article class="run-item run-item-expandable" tabindex="0" aria-label="Click to expand details">' +
         '<div class="run-item-head"><h4>' + name + '</h4>' +
-        '<span class="run-verdict ' + verdictClass + '">' + escapeHtml(r.decision || 'unknown') + '</span></div>' +
-        '<div class="run-item-meta">' + escapeHtml(when) + '</div>' +
+        '<span class="run-verdict ' + verdictClass + '">' + escapeHtml(r.decision || '—') + '</span></div>' +
         '<div class="run-metrics">' +
-        '<span class="metric-pill">ROI delta: ' + escapeHtml(roiDelta) + '</span>' +
-        '<span class="metric-pill">Confidence: ' + confidence + '%</span>' +
+        '<span class="metric-pill">ROI Δ ' + escapeHtml(roiDelta) + '</span>' +
+        '<span class="metric-pill">' + confidence + '% conf</span>' +
+        '<span class="run-item-meta">' + escapeHtml(when) + '</span>' +
         '</div>' +
         '<div class="confidence-wrap"><div class="confidence-track"><div class="confidence-fill" style="width:' + confidence + '%"></div></div></div>' +
-        '<div class="run-item-text"><strong>Tested:</strong> ' + whatTested + '</div>' +
-        '<div class="run-item-text"><strong>Result:</strong> ' + summary + '</div>' +
-        '<div class="run-item-text"><strong>Next:</strong> ' + nextHint + '</div>' +
+        '<div class="run-detail" hidden>' +
+        (whatTested ? '<div class="run-item-text"><strong>Tested:</strong> ' + whatTested + '</div>' : '') +
+        (summary ? '<div class="run-item-text"><strong>Result:</strong> ' + summary + '</div>' : '') +
+        (nextHint ? '<div class="run-item-text"><strong>Next:</strong> ' + nextHint + '</div>' : '') +
+        '<div class="run-detail-metrics">' +
+        '<span>ROI: ' + roi + ' vs ' + baseRoi + '</span>' +
+        '<span>CLV: ' + clv + ' vs ' + baseClv + '</span>' +
+        '<span>Bets: ' + bets + '</span>' +
+        '</div>' +
+        '</div>' +
         '</article>';
     }
     runsEl.innerHTML = html;
+    if (APP_STATE.recentCandidates) {
+      updateStatsBar(APP_STATE.recentCandidates, runs);
+    }
   } catch (err) {
-    runsEl.style.display = 'block';
-    runsEl.className = 'result status error recent-runs-feed';
-    runsEl.textContent = 'Failed to load recent runs: ' + err.message;
+    runsEl.innerHTML = '<div class="status error">Failed to load recent runs: ' + err.message + '</div>';
   }
 }
 
@@ -517,76 +572,56 @@ async function loadBestCandidates() {
   if (!container) return;
 
   try {
-    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=25');
+    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=10');
     if (!resp.ok) {
       const errData = await resp.json().catch(function () { return {}; });
       throw new Error(errData.error || 'Server error (' + resp.status + ')');
     }
     const data = await resp.json();
     const candidates = data.candidates || [];
+    APP_STATE.recentCandidates = candidates;
+    const badge = document.getElementById('candidateCountBadge');
+    if (badge) badge.textContent = candidates.length;
     if (!candidates.length) {
       container.innerHTML =
         '<div class="status info">No evaluated candidates yet. Run autoresearch first.</div>';
+      updateStatsBar([], APP_STATE.recentRuns || []);
       return;
     }
+    updateStatsBar(candidates, APP_STATE.recentRuns || []);
     let html = '';
     for (const c of candidates) {
-      const roi =
-        c.summary_metrics && c.summary_metrics.weighted_roi_pct != null
-          ? c.summary_metrics.weighted_roi_pct.toFixed(1) + '%'
-          : '—';
-      const baseRoi =
-        c.baseline_summary_metrics && c.baseline_summary_metrics.weighted_roi_pct != null
-          ? c.baseline_summary_metrics.weighted_roi_pct.toFixed(1) + '%'
-          : '—';
-      const clv =
-        c.summary_metrics && c.summary_metrics.weighted_clv_avg != null
-          ? c.summary_metrics.weighted_clv_avg.toFixed(3)
-          : '—';
-      const confidence = Math.max(10, Math.min(98, Math.round(50 + (toFiniteNumber(c.roi_delta) || 0) * 2)));
-      const passed = c.guardrail_results && c.guardrail_results.passed ? 'Yes' : 'No';
-      const tldr = escapeHtml((c.strategy_tldr || '').slice(0, 280));
-      const whatTested = escapeHtml((c.what_tested || c.hypothesis || 'No test description.').slice(0, 220));
-      const summaryReason = escapeHtml((c.summary_reason || 'No summary available.').slice(0, 200));
-      const nextAttempt = escapeHtml((c.next_attempt_hint || 'Keep iterating around strongest improvements.').slice(0, 160));
+      const sm = c.summary_metrics || {};
+      const bsm = c.baseline_summary_metrics || {};
+      const roi = sm.weighted_roi_pct != null ? sm.weighted_roi_pct.toFixed(2) + '%' : '—';
+      const baseRoi = bsm.weighted_roi_pct != null ? bsm.weighted_roi_pct.toFixed(2) + '%' : '—';
+      const roiDelta = (sm.weighted_roi_pct != null && bsm.weighted_roi_pct != null)
+        ? formatPctDelta(sm.weighted_roi_pct - bsm.weighted_roi_pct)
+        : '—';
+      const clv = sm.weighted_clv_avg != null ? sm.weighted_clv_avg.toFixed(4) : '—';
+      const passed = c.guardrail_results && c.guardrail_results.passed;
+      const passedLabel = passed ? '✓ pass' : '✗ fail';
+      const passedClass = passed ? 'val-positive' : 'val-negative';
+      const hypothesis = escapeHtml((c.what_tested || c.hypothesis || '').slice(0, 100));
       const reportPath = c.artifact_content_path || c.artifact_markdown_path;
       const reportLink = reportPath
-        ? '<a href="#" class="report-link link-secondary" data-path="' +
-          escapeHtml(reportPath) +
-          '" data-action="report">View report</a>'
+        ? ' · <a href="#" class="report-link link-secondary" data-path="' +
+          escapeHtml(reportPath) + '" data-action="report">report</a>'
         : '';
       html +=
-        '<article class="candidate-item" draggable="true" data-player="' + escapeHtml(c.name || c.candidate_name || 'candidate') + '" data-id="' +
-        escapeHtml(String(c.id)) +
-        '">' +
-        '<h3 class="candidate-name">' +
-        escapeHtml(c.name || 'Unnamed') +
-        '</h3>' +
-        '<div class="tldr">' +
-        tldr +
-        (tldr.length >= 280 ? '…' : '') +
-        '</div>' +
-        '<div class="run-item-text"><strong>Tested:</strong> ' + whatTested + '</div>' +
-        '<div class="run-item-text"><strong>Result:</strong> ' + summaryReason + '</div>' +
-        '<div class="run-item-text"><strong>Next:</strong> ' + nextAttempt + '</div>' +
-        '<div class="metrics">ROI: ' +
-        roi +
-        ' (base ' + baseRoi + ')' +
-        ' · CLV: ' +
-        clv +
-        ' · Guardrails: ' +
-        passed +
-        ' ' +
+        '<article class="candidate-item" data-id="' + escapeHtml(String(c.id)) + '">' +
+        '<h3 class="candidate-name">' + escapeHtml(c.name || 'Unnamed') + '</h3>' +
+        (hypothesis ? '<div class="run-item-text">' + hypothesis + '</div>' : '') +
+        '<div class="metrics">ROI ' + roi + ' <span style="opacity:.5">vs</span> ' + baseRoi +
+        ' · Δ ' + roiDelta +
+        ' · CLV ' + clv +
+        ' · <span class="' + passedClass + '">' + passedLabel + '</span>' +
         reportLink +
         '</div>' +
-        '<div class="confidence-wrap"><div class="confidence-track"><div class="confidence-fill" style="width:' + confidence + '%"></div></div></div>' +
         '<div class="candidate-actions">' +
         '<button type="button" class="btn btn-promote btn-sm" data-action="promote" data-id="' +
-        escapeHtml(String(c.id)) +
-        '">Promote to live</button>' +
-        '<span id="promoteMsg' +
-        escapeHtml(String(c.id)) +
-        '" class="promote-msg"></span>' +
+        escapeHtml(String(c.id)) + '">Promote</button>' +
+        '<span id="promoteMsg' + escapeHtml(String(c.id)) + '" class="promote-msg"></span>' +
         '</div></article>';
     }
     container.innerHTML = html;
@@ -624,6 +659,57 @@ function renderPromotionQueue(runs) {
       '</article>';
   }
   queueEl.innerHTML = html;
+}
+
+function _findBaseline(candidates, runs) {
+  for (var i = 0; i < candidates.length; i++) {
+    var b = candidates[i].baseline_summary_metrics || {};
+    if (b.weighted_roi_pct != null) return b;
+  }
+  for (var j = 0; j < (runs || []).length; j++) {
+    var br = runs[j].baseline_summary_metrics || {};
+    if (br.weighted_roi_pct != null) return br;
+  }
+  return {};
+}
+
+function updateStatsBar(candidates, runs) {
+  const setVal = function (id, text, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'ar-stat-value' + (cls ? ' ' + cls : '');
+  };
+  if (!candidates.length && !(runs || []).length) {
+    setVal('statBaselineRoi', '—'); setVal('statBestRoi', '—');
+    setVal('statBaselineClv', '—'); setVal('statBestClv', '—');
+    setVal('statTotalProposals', '—'); setVal('statPromotable', '0');
+    return;
+  }
+  var bsm = _findBaseline(candidates, runs);
+  var bestCandidate = candidates.length ? candidates[0] : null;
+  var sm = bestCandidate ? (bestCandidate.summary_metrics || {}) : {};
+  var baseRoi = bsm.weighted_roi_pct;
+  var bestRoi = sm.weighted_roi_pct;
+  setVal('statBaselineRoi', baseRoi != null ? baseRoi.toFixed(2) + '%' : '—', baseRoi != null ? (baseRoi > 0 ? 'val-positive' : 'val-negative') : '');
+  setVal('statBestRoi', bestRoi != null ? bestRoi.toFixed(2) + '%' : '—', (bestRoi != null && baseRoi != null && bestRoi > baseRoi) ? 'val-positive' : '');
+  setVal('statBaselineClv', bsm.weighted_clv_avg != null ? bsm.weighted_clv_avg.toFixed(4) : '—');
+  setVal('statBestClv', sm.weighted_clv_avg != null ? sm.weighted_clv_avg.toFixed(4) : '—');
+  setVal('statTotalProposals', String(candidates.length));
+  var promotable = candidates.filter(function (c) {
+    var cb = c.baseline_summary_metrics || {};
+    return c.guardrail_results && c.guardrail_results.passed &&
+      c.summary_metrics && c.summary_metrics.weighted_roi_pct != null &&
+      cb.weighted_roi_pct != null &&
+      c.summary_metrics.weighted_roi_pct > cb.weighted_roi_pct;
+  });
+  setVal('statPromotable', String(promotable.length), promotable.length > 0 ? 'val-positive' : '');
+  var note = document.getElementById('promotionQueueNote');
+  if (note) {
+    note.textContent = promotable.length > 0
+      ? promotable.length + ' ready to promote'
+      : '';
+  }
 }
 
 async function viewReport(path) {
@@ -753,8 +839,18 @@ function initCommandMenu() {
     if (!button) return;
     const cmd = button.getAttribute('data-command');
     if (cmd === 'prediction') runPrediction();
+    if (cmd === 'matchups-only') {
+      var modeSelect = document.getElementById('predictionMode');
+      if (modeSelect) modeSelect.value = 'matchups-only';
+      runPrediction();
+    }
+    if (cmd === 'grade-event') gradeLastEvent();
     if (cmd === 'run-once') runAutoresearch();
     if (cmd === 'start-engine') startAutoresearchEngine();
+    if (cmd === 'view-grading') {
+      var gradingTab = document.getElementById('tab-btn-grading');
+      if (gradingTab) gradingTab.click();
+    }
     if (cmd === 'reset-state') resetAutoresearchState();
     close();
   });
@@ -812,6 +908,16 @@ function initWorkspaceOverlay() {
 }
 
 document.addEventListener('click', function (e) {
+  const expandable = e.target.closest('.run-item-expandable');
+  if (expandable && !e.target.closest('button, a, .candidate-actions')) {
+    const detail = expandable.querySelector('.run-detail');
+    if (detail) {
+      const isOpen = !detail.hidden;
+      detail.hidden = isOpen;
+      expandable.classList.toggle('is-expanded', !isOpen);
+    }
+    return;
+  }
   const reportLink = e.target.closest('.report-link');
   if (reportLink) {
     e.preventDefault();
@@ -856,7 +962,11 @@ document.addEventListener('DOMContentLoaded', function () {
   const stopAutoresearchBtn = document.getElementById('stopAutoresearchBtn');
   const resetAutoresearchBtn = document.getElementById('resetAutoresearchBtn');
   const downloadCardBtn = document.getElementById('downloadCardBtn');
+  const gradeLastEventBtn = document.getElementById('gradeLastEventBtn');
   if (runPredictionBtn) runPredictionBtn.addEventListener('click', runPrediction);
+  if (gradeLastEventBtn) gradeLastEventBtn.addEventListener('click', gradeLastEvent);
+  var gradeLastEventBtnTab = document.getElementById('gradeLastEventBtnTab');
+  if (gradeLastEventBtnTab) gradeLastEventBtnTab.addEventListener('click', gradeLastEvent);
   if (runAutoresearchBtn) runAutoresearchBtn.addEventListener('click', runAutoresearch);
   if (startAutoresearchBtn) startAutoresearchBtn.addEventListener('click', startAutoresearchEngine);
   if (stopAutoresearchBtn) stopAutoresearchBtn.addEventListener('click', stopAutoresearchEngine);

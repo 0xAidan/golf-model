@@ -11,6 +11,12 @@ import re
 import requests
 from typing import Optional
 
+from src.odds_utils import (
+    american_to_implied_prob,
+    american_to_decimal,
+    is_valid_odds as _is_valid_odds_impl,
+)
+
 
 # ── The Odds API ────────────────────────────────────────────────────
 
@@ -76,16 +82,6 @@ def fetch_odds_api(market: str = "outrights") -> list[dict]:
         return []
 
 
-def american_to_implied_prob(price: int) -> float:
-    """Convert American odds to implied probability. Returns 0 for invalid price."""
-    if price > 0:
-        return 100.0 / (price + 100.0)
-    elif price < 0:
-        return abs(price) / (abs(price) + 100.0)
-    # price == 0 is invalid in American odds
-    return 0.0
-
-
 # ── Odds validation ──────────────────────────────────────────────
 # Market-specific max odds from config (single source of truth with value.py)
 from src import config as _config
@@ -99,54 +95,13 @@ MIN_REASONABLE_IMPLIED_PROB = 0.002
 
 
 def is_valid_odds(price: int, bet_type: str = None) -> bool:
-    """
-    Check if American odds value is within reasonable bounds.
-
-    Args:
-        price: The American odds value to check
-        bet_type: Optional bet type for market-specific limits
-
-    Returns:
-        True if odds are valid, False if likely corrupted
-    """
-    if price is None:
-        return False
-    try:
-        price = int(price)
-    except (ValueError, TypeError):
-        return False
-    if price == 0:
-        return False
-    if price < -10000:
-        return False
-
-    # Global maximum
-    if price > MAX_REASONABLE_ODDS:
-        return False
-
-    # Market-specific maximum (unknown market falls back to outright max 30000)
-    if bet_type:
-        canonical = _MAX_ODDS_ALIASES.get(bet_type, bet_type)
-        max_odds = MAX_REASONABLE_ODDS_BY_TYPE.get(canonical, MAX_REASONABLE_ODDS_BY_TYPE["outright"])
-        if price > max_odds:
-            return False
-
-    return True
+    """Delegate to odds_utils canonical implementation."""
+    return _is_valid_odds_impl(price, bet_type)
 
 
 def is_reasonable_odds(price: int, bet_type: str = "outright") -> bool:
     """Check if odds are within reasonable range for the bet type."""
     return is_valid_odds(price, bet_type=bet_type)
-
-
-def american_to_decimal(price: int) -> float:
-    """Convert American odds to decimal odds. Returns 1.0 for invalid price == 0."""
-    if price > 0:
-        return 1.0 + price / 100.0
-    elif price < 0:
-        return 1.0 + 100.0 / abs(price)
-    # price == 0 is invalid -- return 1.0 (even money) as safe fallback
-    return 1.0
 
 
 # ── Manual odds entry ───────────────────────────────────────────────

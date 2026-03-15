@@ -14,7 +14,9 @@ import shutil
 import glob
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "golf.db")
+from src import db
+
+DB_PATH = db.DB_PATH
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
 
 

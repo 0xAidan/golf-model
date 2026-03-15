@@ -84,17 +84,26 @@ def _relative_output_path(path: str) -> str:
     return f"output/{rel}" if rel != "." else "output"
 
 
-def _extract_roi_metrics_from_dossier_file(artifact_markdown_path: str | None) -> tuple[float | None, float | None]:
-    """Best-effort extraction of candidate and baseline ROI from markdown dossier."""
+def _read_dossier_content(artifact_markdown_path: str | None) -> str | None:
     if not artifact_markdown_path:
-        return (None, None)
+        return None
     try:
         path = Path(artifact_markdown_path)
         if not path.is_absolute():
             path = Path(os.path.dirname(__file__)) / artifact_markdown_path
         if not path.exists():
-            return (None, None)
-        content = path.read_text(encoding="utf-8")
+            return None
+        return path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+
+def _extract_roi_metrics_from_dossier_file(artifact_markdown_path: str | None) -> tuple[float | None, float | None]:
+    """Best-effort extraction of candidate and baseline ROI from markdown dossier."""
+    content = _read_dossier_content(artifact_markdown_path)
+    if not content:
+        return (None, None)
+    try:
         candidate_match = re.search(r"-\s+Weighted ROI:\s*([-\d.]+)", content)
         baseline_match = re.search(r"-\s+Baseline Weighted ROI:\s*([-\d.]+)", content)
         candidate_roi = float(candidate_match.group(1)) if candidate_match else None
@@ -102,6 +111,28 @@ def _extract_roi_metrics_from_dossier_file(artifact_markdown_path: str | None) -
         return (candidate_roi, baseline_roi)
     except Exception:
         return (None, None)
+
+
+def _extract_baseline_summary_from_dossier(artifact_markdown_path: str | None) -> dict:
+    """Extract full baseline metrics dict from dossier markdown."""
+    content = _read_dossier_content(artifact_markdown_path)
+    if not content:
+        return {}
+    result = {}
+    patterns = {
+        "weighted_roi_pct": r"-\s+Baseline Weighted ROI:\s*([-\d.]+)",
+        "unweighted_roi_pct": r"-\s+Baseline Unweighted ROI:\s*([-\d.]+)",
+        "weighted_clv_avg": r"-\s+Baseline Weighted CLV:\s*([-\d.]+)",
+        "weighted_calibration_error": r"-\s+Baseline Weighted Calibration Error:\s*([-\d.]+)",
+    }
+    for key, pattern in patterns.items():
+        m = re.search(pattern, content)
+        if m:
+            try:
+                result[key] = float(m.group(1))
+            except ValueError:
+                pass
+    return result
 
 
 def _safe_output_path(relative_path: str) -> str | None:
@@ -432,11 +463,15 @@ async def run_upcoming_prediction(request: Request):
             key: value for key, value in vars(live_strategy).items() if not key.startswith("_")
         },
     )
+    mode = payload.get("mode", "full")
+    if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
+        mode = "full"
     result = service.run_analysis(
         tournament_name=payload.get("tournament"),
         course_name=payload.get("course"),
         enable_ai=payload.get("enable_ai", True),
         enable_backfill=payload.get("enable_backfill", True),
+        mode=mode,
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]
@@ -457,6 +492,37 @@ async def run_upcoming_prediction(request: Request):
     result["model_lane"] = "live_weekly_model"
     result["live_model_name"] = live_strategy.name
     return result
+
+
+@app.post("/api/grade-tournament")
+async def grade_tournament_endpoint(request: Request):
+    """Grade a completed tournament using DG results and run learning pipeline."""
+    payload = await request.json()
+
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from scripts.grade_tournament import grade_tournament, find_latest_completed_event
+
+    event_id = payload.get("event_id")
+    event_name = payload.get("event_name")
+    year = payload.get("year")
+
+    if not event_id:
+        info = find_latest_completed_event()
+        if info:
+            event_id = info["event_id"]
+            year = year or info["year"]
+            event_name = event_name or info.get("event_name")
+        else:
+            return {"error": "Could not determine latest event and no event_id provided"}
+
+    if not year:
+        from datetime import datetime as _dt
+        year = _dt.now().year
+
+    report = grade_tournament(event_id, year, event_name=event_name)
+    return report
 
 
 @app.post("/api/simple/backtest")
@@ -727,12 +793,14 @@ async def run_research_cycle_api(request: Request):
     from backtester.research_cycle import run_research_cycle
 
     payload = await request.json()
-    return run_research_cycle(
+    kwargs = dict(
         max_candidates=payload.get("max_candidates", 5),
-        years=payload.get("years"),
         scope=payload.get("scope", "global"),
         source="manual",
     )
+    if payload.get("years") is not None:
+        kwargs["years"] = payload["years"]
+    return run_research_cycle(**kwargs)
 
 
 @app.post("/api/research/proposals/{proposal_id}/approve")
@@ -1158,10 +1226,7 @@ async def get_autoresearch_status():
 @app.post("/api/autoresearch/start")
 async def start_autoresearch_runtime(request: Request):
     """Start the looping autoresearch runtime."""
-    try:
-        return await start_optimizer_runtime(request)
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+    return await start_optimizer_runtime(request)
 
 
 @app.post("/api/autoresearch/stop")
@@ -1184,12 +1249,14 @@ async def run_autoresearch_once(request: Request):
     try:
         from backtester.research_cycle import run_research_cycle
         payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
-        result = run_research_cycle(
-            years=payload.get("years"),
+        kwargs = dict(
             max_candidates=int(payload.get("max_candidates", 3)),
             scope=payload.get("scope", "global"),
             source="manual_autoresearch",
         )
+        if payload.get("years") is not None:
+            kwargs["years"] = payload["years"]
+        result = run_research_cycle(**kwargs)
         return {
             "state": "completed",
             "decision": "kept" if result.get("winner") else "discarded",
@@ -1265,14 +1332,21 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
             baseline_summary = guardrails.get("baseline_summary_metrics", {}) or {}
             candidate_roi = summary_metrics.get("weighted_roi_pct")
             baseline_roi = baseline_summary.get("weighted_roi_pct")
-            if candidate_roi is None or baseline_roi is None:
-                dossier_candidate_roi, dossier_baseline_roi = _extract_roi_metrics_from_dossier_file(row["artifact_markdown_path"])
-                if candidate_roi is None and dossier_candidate_roi is not None:
-                    summary_metrics["weighted_roi_pct"] = dossier_candidate_roi
-                    candidate_roi = dossier_candidate_roi
-                if baseline_roi is None and dossier_baseline_roi is not None:
-                    baseline_summary["weighted_roi_pct"] = dossier_baseline_roi
-                    baseline_roi = dossier_baseline_roi
+            if candidate_roi is None or baseline_roi is None or not baseline_summary.get("weighted_clv_avg"):
+                dossier_baseline = _extract_baseline_summary_from_dossier(row["artifact_markdown_path"])
+                if dossier_baseline:
+                    dossier_candidate_roi, _ = _extract_roi_metrics_from_dossier_file(row["artifact_markdown_path"])
+                    if candidate_roi is None and dossier_candidate_roi is not None:
+                        summary_metrics["weighted_roi_pct"] = dossier_candidate_roi
+                        candidate_roi = dossier_candidate_roi
+                    if not baseline_summary.get("weighted_roi_pct") and dossier_baseline.get("weighted_roi_pct"):
+                        baseline_summary["weighted_roi_pct"] = dossier_baseline["weighted_roi_pct"]
+                        baseline_roi = dossier_baseline["weighted_roi_pct"]
+                    if not baseline_summary.get("weighted_clv_avg") and dossier_baseline.get("weighted_clv_avg"):
+                        baseline_summary["weighted_clv_avg"] = dossier_baseline["weighted_clv_avg"]
+                    for k, v in dossier_baseline.items():
+                        if k not in baseline_summary:
+                            baseline_summary[k] = v
             roi_delta = None
             if candidate_roi is not None and baseline_roi is not None:
                 try:
@@ -1367,6 +1441,9 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
                 continue
             art_path = row["artifact_markdown_path"]
             content_path = (_relative_output_path(art_path) if art_path and (art_path.startswith("/") or (len(art_path) > 1 and art_path[1] == ":")) else art_path) if art_path else None
+            baseline_summary = guardrails.get("baseline_summary_metrics", {}) or {}
+            if not baseline_summary.get("weighted_roi_pct"):
+                baseline_summary = _extract_baseline_summary_from_dossier(art_path) or baseline_summary
             candidates.append({
                 "id": row["id"],
                 "name": theory.get("title") or row["name"],
@@ -1377,7 +1454,7 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
                 "next_attempt_hint": guardrails.get("next_attempt_hint"),
                 "is_positive_test": bool(guardrails.get("is_positive_test", False)),
                 "summary_metrics": summary,
-                "baseline_summary_metrics": guardrails.get("baseline_summary_metrics", {}),
+                "baseline_summary_metrics": baseline_summary,
                 "guardrail_results": guardrails,
                 "blended_score": score,
                 "artifact_markdown_path": art_path,

@@ -433,6 +433,18 @@ def generate_neighbor_strategies(base: StrategyConfig,
         if random.random() < 0.15:
             cfg.stat_window = random.choice(WINDOWS)
 
+        # Matchup-specific parameters
+        if random.random() < 0.5:
+            cfg.platt_a = round(max(-0.10, min(-0.01, cfg.platt_a + random.uniform(-0.02, 0.02))), 4)
+        if random.random() < 0.4:
+            cfg.platt_b = round(max(-0.5, min(0.5, cfg.platt_b + random.uniform(-0.1, 0.1))), 3)
+        if random.random() < 0.4:
+            cfg.min_composite_gap = round(max(3.0, min(15.0, cfg.min_composite_gap + random.uniform(-2.0, 2.0))), 1)
+        if random.random() < 0.5:
+            cfg.matchup_ev_threshold = round(max(0.03, min(0.15, cfg.matchup_ev_threshold + random.uniform(-0.02, 0.02))), 3)
+        if random.random() < 0.3:
+            cfg.max_win_prob_cap = round(max(0.70, min(0.90, cfg.max_win_prob_cap + random.uniform(-0.05, 0.05))), 2)
+
         cfg.name = f"{base.name}_neighbor_{len(neighbors)}"
         neighbors.append(cfg)
 

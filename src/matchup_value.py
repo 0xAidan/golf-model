@@ -164,6 +164,15 @@ def find_matchup_value_bets(composite_results: list[dict],
 
     composite_lookup = {r["player_key"]: r for r in composite_results}
 
+    dg_pairings = {}
+    try:
+        from src.datagolf import fetch_dg_matchup_all_pairings
+        dg_pairings = fetch_dg_matchup_all_pairings()
+        if dg_pairings:
+            logger.info("Loaded %d DG matchup pairings for blending", len(dg_pairings))
+    except Exception as e:
+        logger.warning("DG matchup pairings unavailable (using model-only): %s", e)
+
     value_bets = []
 
     for matchup in matchup_odds:
@@ -214,7 +223,25 @@ def find_matchup_value_bets(composite_results: list[dict],
         # Model win probability via Platt-style sigmoid: P(win) = 1/(1+exp(A*gap+B))
         gap = abs(composite_gap)
         A, B = _get_platt_params()
-        model_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+        platt_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+
+        # Blend with DG's own matchup model probability if available
+        model_win_prob = platt_win_prob
+        if dg_pairings:
+            dg_pair = dg_pairings.get((pick_data["player_key"], opp_data["player_key"]))
+            if not dg_pair:
+                dg_pair_rev = dg_pairings.get((opp_data["player_key"], pick_data["player_key"]))
+                if dg_pair_rev:
+                    dg_pair = {"p1_win_prob": dg_pair_rev["p2_win_prob"], "p2_win_prob": dg_pair_rev["p1_win_prob"]}
+            if dg_pair:
+                dg_prob = dg_pair["p1_win_prob"]
+                model_win_prob = (
+                    config.DG_MATCHUP_BLEND_WEIGHT * dg_prob
+                    + config.MODEL_MATCHUP_BLEND_WEIGHT * platt_win_prob
+                )
+                if config.REQUIRE_DG_MODEL_AGREEMENT:
+                    if (dg_prob > 0.5) != (platt_win_prob > 0.5):
+                        continue
 
         ev = (model_win_prob / implied_prob) - 1.0
 
@@ -268,6 +295,18 @@ def find_matchup_value_bets(composite_results: list[dict],
         })
 
     value_bets.sort(key=lambda x: x["ev"], reverse=True)
-    # Cap at MATCHUP_CAP
-    value_bets = value_bets[: config.MATCHUP_CAP]
+
+    # Per-player exposure cap: limit how many matchup bets feature the same player (WD protection)
+    max_exposure = getattr(config, "MATCHUP_MAX_PLAYER_EXPOSURE", 3)
+    player_counts: dict[str, int] = {}
+    capped: list[dict] = []
+    for bet in value_bets:
+        pk = bet["pick_key"]
+        ok = bet["opponent_key"]
+        if player_counts.get(pk, 0) >= max_exposure or player_counts.get(ok, 0) >= max_exposure:
+            continue
+        player_counts[pk] = player_counts.get(pk, 0) + 1
+        player_counts[ok] = player_counts.get(ok, 0) + 1
+        capped.append(bet)
+    value_bets = capped[: config.MATCHUP_CAP]
     return value_bets

@@ -34,11 +34,19 @@ MARKET_EV_THRESHOLDS: dict[str, float] = {
 
 # Maximum total value bets per card (across all markets)
 # v4.0 had no cap — 23 bets on Cognizant Classic. Quality over quantity.
-MAX_TOTAL_VALUE_BETS = 10
+MAX_TOTAL_VALUE_BETS = 5
 MAX_TOTAL_VALUE_BETS_WEAK_FIELD = 6
 
 # Maximum credible EV; above this indicates bad data, not real edge
 MAX_CREDIBLE_EV = 2.0
+
+# Best Bets: matchup-focused card. Placements only used as fallback.
+MAX_CREDIBLE_PLACEMENT_EV = 0.50  # Cap displayed placement EV at 50%
+BEST_BETS_MATCHUP_ONLY = True     # Top 3 bets drawn from matchups first
+
+# Phantom EV: hard gate for placement bets with impossibly high EV
+PHANTOM_EV_THRESHOLD = 1.0        # >100% EV excluded entirely
+MODEL_MARKET_DISCREPANCY_THRESHOLD = 2.0  # model_prob > 2x market_prob -> speculative
 
 # Minimum market implied probability to trust odds
 MIN_MARKET_PROB = 0.005
@@ -104,10 +112,19 @@ MATCHUP_PLATT_B = 0.0
 MATCHUP_SIGMOID_DIVISOR = 20.0   # legacy; use PLATT_A/B
 MATCHUP_EV_THRESHOLD = float(os.environ.get("MATCHUP_EV_THRESHOLD", "0.05"))  # 5% min EV for matchups (live focus)
 MATCHUP_CAP = 20                 # max matchups to output (live: more matchup options)
+MATCHUP_MAX_PLAYER_EXPOSURE = 3  # max times one player can appear across all matchup bets (WD protection)
 MATCHUP_TIER_STRONG_EV_PCT = 15.0   # EV >= 15% -> STRONG
 MATCHUP_TIER_GOOD_EV_PCT = 8.0      # EV >= 8% -> GOOD; else LEAN
 MATCHUP_TIER_STRONG_GAP = 8.0
 MATCHUP_TIER_GOOD_GAP = 5.0
+
+# DG matchup probability blending (live pipeline)
+DG_MATCHUP_BLEND_WEIGHT = 0.80
+MODEL_MATCHUP_BLEND_WEIGHT = 0.20
+REQUIRE_DG_MODEL_AGREEMENT = True
+
+# AI adjustment validation
+AI_ADJUSTMENT_MIN_HIT_RATE = 0.55
 
 # ---------------------------------------------------------------------------
 # Default weights (from db.py)

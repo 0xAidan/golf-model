@@ -851,14 +851,45 @@ Review this tournament's results against your predictions and decisions.
 #  Utilities
 # ═══════════════════════════════════════════════════════════════════
 
+def _check_ai_adjustment_hit_rate() -> float | None:
+    """Check historical AI adjustment accuracy. Returns hit rate or None if insufficient data."""
+    try:
+        from src import db
+        conn = db.get_conn()
+        rows = conn.execute("""
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as hits
+            FROM ai_adjustment_log
+            WHERE correct IS NOT NULL
+        """).fetchone()
+        conn.close()
+        total = rows[0] if rows else 0
+        if total < 10:
+            return None
+        return rows[1] / total if total > 0 else None
+    except Exception:
+        return None
+
+
 def apply_ai_adjustments(composite_results: list[dict],
                          pre_analysis: dict) -> list[dict]:
     """
     Apply the AI's pre-tournament player adjustments to composite scores.
 
+    Auto-disables if historical hit rate is below threshold.
     Modifies scores in-place and re-sorts.
     """
     if not pre_analysis:
+        return composite_results
+
+    from src import config
+    hit_rate = _check_ai_adjustment_hit_rate()
+    if hit_rate is not None and hit_rate < config.AI_ADJUSTMENT_MIN_HIT_RATE:
+        import logging
+        logging.getLogger("ai_brain").warning(
+            "AI adjustments auto-disabled: hit rate %.1f%% < %.1f%% threshold (%d+ events)",
+            hit_rate * 100, config.AI_ADJUSTMENT_MIN_HIT_RATE * 100, 10,
+        )
         return composite_results
 
     # Build adjustment map

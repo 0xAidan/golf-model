@@ -13,9 +13,8 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
 from src.datagolf import _call_api
+from src.db import DB_PATH
 from src.player_normalizer import normalize_name
-
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'golf.db')
 
 def fetch_live_leaderboard():
     lb = _call_api('preds/in-play', {'tour': 'pga'})

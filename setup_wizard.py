@@ -214,8 +214,12 @@ def _validate():
     else:
         checks.append(("  .env file exists", False))
 
-    # Check DB
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "golf.db")
+    # Check DB (may live in ~/.golf-model when project is in a synced folder)
+    try:
+        from src import db as _db
+        db_path = _db.DB_PATH
+    except Exception:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "golf.db")
     if os.path.exists(db_path):
         size_mb = os.path.getsize(db_path) / (1024 * 1024)
         checks.append((f"  Database exists ({size_mb:.1f} MB)", True))

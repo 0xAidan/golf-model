@@ -42,32 +42,7 @@ def _fmt_prob(prob: float) -> str:
 
 
 def _top_bets_for_summary(value_bets: dict, matchup_bets: list[dict] | None) -> list[dict]:
-    """Collect top 3 bets: prioritize matchups (live focus), then placement/3-ball."""
-    placement_candidates = []
-    for bet_type, bets in (value_bets or {}).items():
-        for b in bets:
-            if not b.get("is_value") or b.get("suspicious") or b.get("ev_capped"):
-                continue
-            ev = b.get("ev", 0) or 0
-            ev_pct = b.get("ev_pct", "0%")
-            if isinstance(ev_pct, (int, float)):
-                ev_pct = f"{ev_pct:.1f}%"
-            odds_str = _fmt_odds(b.get("best_odds", 0))
-            stake = None
-            if is_enabled("kelly_sizing") or is_enabled("kelly_stakes"):
-                try:
-                    from src.kelly import units_for_bet
-                    dec = _american_to_decimal(b.get("best_odds", 0))
-                    stake = units_for_bet(b.get("model_prob", 0.5), dec)
-                except Exception:
-                    pass
-            pick = b.get("player_display", "")
-            if bet_type == "3ball" and b.get("opponents"):
-                pick = f"{pick} (3-ball vs {b['opponents']})"
-            placement_candidates.append({
-                "ev": ev, "pick": pick, "market": bet_type,
-                "odds": odds_str, "ev_pct": ev_pct, "tier": "—", "stake": stake,
-            })
+    """Collect top 3 bets: matchups first (proven edge), placements only as fallback."""
     matchup_candidates = []
     if matchup_bets:
         for b in matchup_bets:
@@ -81,15 +56,45 @@ def _top_bets_for_summary(value_bets: dict, matchup_bets: list[dict] | None) -> 
                 "ev": ev, "pick": pick, "market": "matchup",
                 "odds": odds_str, "ev_pct": ev_pct, "tier": b.get("tier", "LEAN"), "stake": None,
             })
-    placement_candidates.sort(key=lambda x: x["ev"], reverse=True)
     matchup_candidates.sort(key=lambda x: x["ev"], reverse=True)
-    # Live focus: up to 2 matchups in top 3, then fill with placement/3-ball
-    top3 = []
-    top3.extend(matchup_candidates[:2])
-    for c in placement_candidates:
-        if len(top3) >= 3:
-            break
-        top3.append(c)
+
+    top3 = list(matchup_candidates[:3])
+
+    if len(top3) < 3:
+        placement_candidates = []
+        max_ev = config.MAX_CREDIBLE_PLACEMENT_EV
+        for bet_type, bets in (value_bets or {}).items():
+            for b in bets:
+                if not b.get("is_value") or b.get("suspicious") or b.get("ev_capped"):
+                    continue
+                ev = b.get("ev", 0) or 0
+                if ev > max_ev:
+                    continue
+                ev_pct = b.get("ev_pct", "0%")
+                if isinstance(ev_pct, (int, float)):
+                    ev_pct = f"{ev_pct:.1f}%"
+                odds_str = _fmt_odds(b.get("best_odds", 0))
+                stake = None
+                if is_enabled("kelly_sizing") or is_enabled("kelly_stakes"):
+                    try:
+                        from src.kelly import units_for_bet
+                        dec = _american_to_decimal(b.get("best_odds", 0))
+                        stake = units_for_bet(b.get("model_prob", 0.5), dec)
+                    except Exception:
+                        pass
+                pick = b.get("player_display", "")
+                if bet_type == "3ball" and b.get("opponents"):
+                    pick = f"{pick} (3-ball vs {b['opponents']})"
+                placement_candidates.append({
+                    "ev": ev, "pick": f"{pick} (informational)", "market": bet_type,
+                    "odds": odds_str, "ev_pct": ev_pct, "tier": "—", "stake": stake,
+                })
+        placement_candidates.sort(key=lambda x: x["ev"], reverse=True)
+        for c in placement_candidates:
+            if len(top3) >= 3:
+                break
+            top3.append(c)
+
     return top3[:3]
 
 
@@ -120,7 +125,8 @@ def generate_card(tournament_name: str,
                   ai_pre_analysis: dict = None,
                   ai_decisions: dict = None,
                   matchup_bets: list[dict] = None,
-                  strategy_meta: dict | None = None) -> str:
+                  strategy_meta: dict | None = None,
+                  mode: str = "full") -> str:
     """
     Generate a markdown betting card.
 
@@ -135,6 +141,13 @@ def generate_card(tournament_name: str,
     """
     if value_bets is None:
         value_bets = {}
+
+    show_placements = mode in ("full", "placements-only")
+    show_matchups = mode in ("full", "matchups-only", "round-matchups")
+    show_3ball = mode in ("full", "matchups-only")
+
+    if mode == "round-matchups" and matchup_bets:
+        matchup_bets = [b for b in matchup_bets if b.get("market_type") == "round_matchups"]
 
     lines = []
     lines.append(f"# {tournament_name} — Betting Card")
@@ -226,95 +239,102 @@ def generate_card(tournament_name: str,
     lines.append("</details>")
     lines.append("")
 
-    lines.append("<details>")
-    lines.append("<summary>Matchup Value Bets (Primary)</summary>")
-    lines.append("")
-    _write_matchup_value_bets(lines, matchup_bets)
-    lines.append("</details>")
-    lines.append("")
-
-    lines.append("<details>")
-    lines.append("<summary>3-Ball Markets</summary>")
-    lines.append("")
-    lines.append("## 3-Ball")
-    lines.append("")
-    three_ball = value_bets.get("3ball", [])
-    three_ball_value = [b for b in three_ball if b.get("is_value")]
-    if three_ball_value:
-        _write_value_section(lines, three_ball_value, top_n=10)
-    else:
-        lines.append("*No 3-ball value plays this week.*")
+    if show_matchups:
+        lines.append("<details>")
+        lines.append("<summary>Matchup Value Bets (Primary)</summary>")
         lines.append("")
-    lines.append("</details>")
-    lines.append("")
-
-    lines.append("<details>")
-    lines.append("<summary>Value Picks: Placement Markets (Secondary)</summary>")
-    lines.append("")
-    lines.append("## Value Picks: Placement Markets")
-    lines.append("")
-
-    top15_vb = value_bets.get("top15", [])
-    top10_vb = value_bets.get("top10", [])
-    top20_vb = value_bets.get("top20", [])
-    top5_vb = value_bets.get("top5", [])
-
-    lines.append("### Top 20 Finish")
-    lines.append("")
-    if top20_vb:
-        _write_value_section(lines, [b for b in top20_vb if b.get("is_value")], top_n=8)
-    else:
-        lines.append("*No odds data available for Top 20.*")
+        _write_matchup_value_bets(lines, matchup_bets)
+        lines.append("</details>")
         lines.append("")
 
-    lines.append("### Top 15 Finish")
-    lines.append("")
-    if top15_vb:
-        _write_value_section(lines, [b for b in top15_vb if b.get("is_value")], top_n=6)
-    else:
-        lines.append("*No odds data available for Top 15.*")
+    if show_3ball:
+        lines.append("<details>")
+        lines.append("<summary>3-Ball Markets</summary>")
+        lines.append("")
+        lines.append("## 3-Ball")
+        lines.append("")
+        three_ball = value_bets.get("3ball", [])
+        three_ball_value = [b for b in three_ball if b.get("is_value")]
+        if three_ball_value:
+            _write_value_section(lines, three_ball_value, top_n=10)
+        else:
+            lines.append("*No 3-ball value plays this week.*")
+            lines.append("")
+        lines.append("</details>")
         lines.append("")
 
-    lines.append("### Top 10 Finish")
-    lines.append("")
-    if top10_vb:
-        _write_value_section(lines, [b for b in top10_vb if b.get("is_value")], top_n=6)
-    else:
-        lines.append("*No odds data available for Top 10.*")
+    if not show_placements:
+        lines.append("*Placement markets omitted (mode: " + mode + ")*")
         lines.append("")
 
-    lines.append("### Top 5 Finish")
-    lines.append("")
-    if top5_vb:
-        _write_value_section(lines, [b for b in top5_vb if b.get("is_value")], top_n=5)
-    else:
-        lines.append("*No odds data available for Top 5.*")
-    lines.append("")
-    lines.append("</details>")
-    lines.append("")
-
-    lines.append("<details>")
-    lines.append("<summary>Speculative: Outrights</summary>")
-    lines.append("")
-    lines.append("## Speculative Picks: Outright")
-    lines.append("")
-    lines.append("*High variance markets. Positive EV threshold raised to 5% to filter noise.*")
-    lines.append("")
-
-    lines.append("### Outright Winner")
-    lines.append("")
-    outright_vb = value_bets.get("outright", [])
-    if outright_vb:
-        _write_value_section(lines, outright_vb, top_n=5)
-    else:
-        lines.append("*No odds data available. Top 5 by model:*")
+    if show_placements:
+        lines.append("<details>")
+        lines.append("<summary>Value Picks: Placement Markets (Secondary)</summary>")
         lines.append("")
-        for r in composite_results[:5]:
-            lines.append(f"- **{r['player_display']}** — {_reason(r)}")
+        lines.append("## Value Picks: Placement Markets")
         lines.append("")
 
-    lines.append("</details>")
-    lines.append("")
+        top15_vb = value_bets.get("top15", [])
+        top10_vb = value_bets.get("top10", [])
+        top20_vb = value_bets.get("top20", [])
+        top5_vb = value_bets.get("top5", [])
+
+        lines.append("### Top 20 Finish")
+        lines.append("")
+        if top20_vb:
+            _write_value_section(lines, [b for b in top20_vb if b.get("is_value")], top_n=8)
+        else:
+            lines.append("*No odds data available for Top 20.*")
+            lines.append("")
+
+        lines.append("### Top 15 Finish")
+        lines.append("")
+        if top15_vb:
+            _write_value_section(lines, [b for b in top15_vb if b.get("is_value")], top_n=6)
+        else:
+            lines.append("*No odds data available for Top 15.*")
+            lines.append("")
+
+        lines.append("### Top 10 Finish")
+        lines.append("")
+        if top10_vb:
+            _write_value_section(lines, [b for b in top10_vb if b.get("is_value")], top_n=6)
+        else:
+            lines.append("*No odds data available for Top 10.*")
+            lines.append("")
+
+        lines.append("### Top 5 Finish")
+        lines.append("")
+        if top5_vb:
+            _write_value_section(lines, [b for b in top5_vb if b.get("is_value")], top_n=5)
+        else:
+            lines.append("*No odds data available for Top 5.*")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+        lines.append("<details>")
+        lines.append("<summary>Speculative: Outrights</summary>")
+        lines.append("")
+        lines.append("## Speculative Picks: Outright")
+        lines.append("")
+        lines.append("*High variance markets. Positive EV threshold raised to 5% to filter noise.*")
+        lines.append("")
+
+        lines.append("### Outright Winner")
+        lines.append("")
+        outright_vb = value_bets.get("outright", [])
+        if outright_vb:
+            _write_value_section(lines, outright_vb, top_n=5)
+        else:
+            lines.append("*No odds data available. Top 5 by model:*")
+            lines.append("")
+            for r in composite_results[:5]:
+                lines.append(f"- **{r['player_display']}** — {_reason(r)}")
+            lines.append("")
+
+        lines.append("</details>")
+        lines.append("")
 
     if ai_pre_analysis:
         lines.append("<details>")
@@ -561,7 +581,7 @@ def _write_adaptation_status(lines: list):
 
 
 def _write_matchup_value_bets(lines: list, matchup_bets: list[dict] | None):
-    """Add matchup value bets section (real sportsbook odds)."""
+    """Add matchup value bets section, split by tournament vs round matchups."""
     if not matchup_bets:
         lines.append("## Matchup Value Bets (Real Odds)")
         lines.append("")
@@ -569,24 +589,46 @@ def _write_matchup_value_bets(lines: list, matchup_bets: list[dict] | None):
         lines.append("")
         return
 
-    lines.append("## Matchup Value Bets (Real Odds)")
-    lines.append("")
-    lines.append("*Only matchups with actual sportsbook odds shown.*")
-    lines.append("")
-    lines.append("| Pick | vs | Market | Odds | Model Win% | EV | Tier | Book | Why |")
-    lines.append("|------|-----|--------|------|------------|-----|------|------|-----|")
+    tournament_matchups = [b for b in matchup_bets if b.get("market_type") == "tournament_matchups"]
+    round_matchups = [b for b in matchup_bets if b.get("market_type") == "round_matchups"]
+    other_matchups = [b for b in matchup_bets if b.get("market_type") not in ("tournament_matchups", "round_matchups")]
 
-    for bet in matchup_bets:
-        odds = bet.get("odds", 0)
-        odds_str = f"+{odds}" if odds > 0 else str(odds)
-        model_pct = f"{bet.get('model_win_prob', 0):.1%}"
-        ev_pct = bet.get("ev_pct", "")
-        tier = bet.get("tier", "LEAN")
-        book = bet.get("book", "—")
-        market_type = bet.get("market_type", "tournament_matchups").replace("_", " ")
-        reason = bet.get("reason", "composite edge")
-        lines.append(
-            f"| **{bet['pick']}** | {bet['opponent']} | {market_type} "
-            f"| {odds_str} | {model_pct} | {ev_pct} | {tier} | {book} | {reason} |"
-        )
-    lines.append("")
+    def _write_matchup_table(bets: list[dict]):
+        lines.append("| Pick | vs | Odds | Model Win% | EV | Tier | Book | Why |")
+        lines.append("|------|-----|------|------------|-----|------|------|-----|")
+        for bet in bets:
+            odds = bet.get("odds", 0)
+            odds_str = f"+{odds}" if odds > 0 else str(odds)
+            model_pct = f"{bet.get('model_win_prob', 0):.1%}"
+            ev_pct = bet.get("ev_pct", "")
+            tier = bet.get("tier", "LEAN")
+            book = bet.get("book", "—")
+            reason = bet.get("reason", "composite edge")
+            lines.append(
+                f"| **{bet['pick']}** | {bet['opponent']} "
+                f"| {odds_str} | {model_pct} | {ev_pct} | {tier} | {book} | {reason} |"
+            )
+        lines.append("")
+
+    if tournament_matchups:
+        lines.append("## Tournament Matchups (72-hole)")
+        lines.append("")
+        _write_matchup_table(tournament_matchups)
+
+    if round_matchups:
+        lines.append("## Round Matchups (per-round)")
+        lines.append("")
+        lines.append("*Shorter variance window — settle after each round.*")
+        lines.append("")
+        _write_matchup_table(round_matchups)
+
+    if other_matchups:
+        lines.append("## Other Matchups")
+        lines.append("")
+        _write_matchup_table(other_matchups)
+
+    if not tournament_matchups and not round_matchups and not other_matchups:
+        lines.append("## Matchup Value Bets")
+        lines.append("")
+        lines.append("*No matchup value bets available this week.*")
+        lines.append("")
