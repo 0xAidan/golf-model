@@ -225,6 +225,8 @@ class GolfModelService:
             self._log_predictions(tid, value_bets)
         elif value_bets and not picks_allowed:
             logger.warning("Skipping prediction logging — run quality check failed")
+        if matchup_bets and picks_allowed:
+            self._log_matchup_predictions(tid, matchup_bets)
 
         # Step 13: Generate card
         print("  Generating betting card...")
@@ -457,7 +459,7 @@ class GolfModelService:
                         continue
                     bets = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
-                        required_book=required_book,
+                        required_book=required_book, market_type=market_key,
                     )
                     for b in bets:
                         b["market_type"] = market_key
@@ -577,6 +579,14 @@ class GolfModelService:
             log_predictions_for_tournament(tid, value_bets)
         except Exception as e:
             logger.warning(f"Prediction logging error: {e}")
+
+    def _log_matchup_predictions(self, tid, matchup_bets):
+        """Log matchup predictions for calibration tracking."""
+        try:
+            from src.learning import log_matchup_predictions_for_tournament
+            log_matchup_predictions_for_tournament(tid, matchup_bets)
+        except Exception as e:
+            logger.warning(f"Matchup prediction logging error: {e}")
 
     def _generate_card(self, tournament_name, course_name, composite,
                         value_bets, output_dir, ai_pre_analysis, ai_decisions,
