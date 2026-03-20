@@ -10,7 +10,7 @@
 
 | Finding | Severity |
 |--------|----------|
-| **Placement calibration is never applied** — curve is updated post-tournament but `value.py` never uses `get_calibration_correction()` for EV | **High** |
+| **Placement calibration** — curve updated post-tournament; **implemented Mar 2026:** `value.find_value_bets()` now applies `get_calibration_correction()` for EV | ~~High~~ **Done** |
 | **Placement “value” underperforms; matchups outperform** — card grading shows placement Best Bets 0–3 repeatedly; matchup-heavy cards ~10–4, +46% ROI | **High** |
 | **Model is 95% DG / 5% composite** — we add little edge on placements; DG is already efficient there | **Medium** |
 | **Research cycle is slow** — 3 cycles × 3 candidates, holdout gates, walk-forward = many events before a strategy can promote | **Medium** |
@@ -26,13 +26,11 @@
 
 - **Intended design (from `docs/plans/2026-02-23-adaptive-roi-model-v4.md`):**  
   *“In find_value_bets, after computing model_prob, if calibration has 50+ samples for that bucket, multiply model_prob by get_calibration_correction(model_prob). Use corrected prob for EV.”*
-- **Current behavior:**  
-  - `learning.post_tournament_learn()` → `update_calibration_curve()` → `calibration_curve` table is updated.  
-  - `calibration.get_calibration_correction(probability)` exists and is tested.  
-  - **`value.find_value_bets()` never calls `get_calibration_correction()`.**  
+- **Previous behavior:** `value.find_value_bets()` did not call `get_calibration_correction()`; EV used uncorrected probs.
+- **Implemented (Mar 2026):** In `value.find_value_bets()`, after `model_prob` is set we compute `corrected_prob = model_prob * get_calibration_correction(model_prob)` (clamped to [0.001, 0.999]). EV and the `is_value` gate use `corrected_prob` (after dead-heat discounts). Each value bet dict includes `calibration_applied: bool`. `model_prob` remains for transparency.
 - **Effect:** Placement probabilities are not corrected by our empirical hit rates, so EV and “value” flags are based on uncorrected probs. We’re leaving the main feedback lever unused.
 
-**Recommendation:** In `find_value_bets()`, after computing `model_prob` (and before blending with DG if desired), apply calibration when the bucket has ≥50 samples:
+**Recommendation (implemented above):** In `find_value_bets()`, after computing `model_prob`, apply calibration when the bucket has ≥50 samples:
 
 - `corrected_prob = model_prob * get_calibration_correction(model_prob)` (or apply to the blended prob if that’s the one used for EV).
 - Use the corrected probability for EV and for the `is_value` gate. Optionally keep `model_prob` in the card for transparency and add a `calibration_corrected` flag or field.
@@ -166,7 +164,7 @@ Missing piece: **nothing in this pipeline feeds “corrected probability” back
 |------|--------|--------|
 | Pipeline flow | Logical | No change needed |
 | Post-tournament learning | Logical | No change needed |
-| Calibration curve | Updated but unused in value | **Apply in find_value_bets** |
+| Calibration curve | Applied in find_value_bets (Mar 2026) | Done |
 | Placement vs matchup | Matchups outperform | Lean into matchups; treat placement as secondary until calibrated |
 | EV thresholds | High by design | Keep; optionally test lower for matchups only |
 | Research cycle | Slow by design | Optional tuning if you need faster strategy discovery |

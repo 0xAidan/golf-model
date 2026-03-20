@@ -36,7 +36,7 @@ def _fmt_prob(prob: float) -> str:
 
 def _top_bets_for_summary(value_bets: dict, matchup_bets: list[dict] | None) -> list[dict]:
     """Collect top N matchup plays: tournament matchups first, then round matchups. No placements."""
-    max_bets = config.BEST_BETS_COUNT
+    max_bets = getattr(config, "BEST_BETS_COUNT", 5)
 
     tournament_candidates = []
     round_candidates = []
@@ -167,7 +167,7 @@ def generate_card(tournament_name: str,
         pass
 
     # ── Section 1: Exec Summary (always visible) ─────────────────
-    lines.append(f"## Top {config.BEST_BETS_COUNT} Matchup Plays")
+    lines.append(f"## Top {getattr(config, 'BEST_BETS_COUNT', 5)} Matchup Plays")
     lines.append("")
 
     if strategy_meta:
@@ -277,12 +277,14 @@ def generate_card(tournament_name: str,
         top10_vb = value_bets.get("top10", [])
         top20_vb = value_bets.get("top20", [])
         top5_vb = value_bets.get("top5", [])
+        ev_floor = getattr(config, "PLACEMENT_CARD_EV_FLOOR", 0.15)
+        placement_max = getattr(config, "PLACEMENT_CARD_MAX", 3)
 
         lines.append("### Top 20 Finish")
         lines.append("")
         if top20_vb:
-            qualified = [b for b in top20_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= config.PLACEMENT_CARD_EV_FLOOR]
-            _write_value_section(lines, qualified, top_n=config.PLACEMENT_CARD_MAX)
+            qualified = [b for b in top20_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= ev_floor]
+            _write_value_section(lines, qualified, top_n=placement_max)
         else:
             lines.append("*No odds data available for Top 20.*")
             lines.append("")
@@ -290,8 +292,8 @@ def generate_card(tournament_name: str,
         lines.append("### Top 15 Finish")
         lines.append("")
         if top15_vb:
-            qualified = [b for b in top15_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= config.PLACEMENT_CARD_EV_FLOOR]
-            _write_value_section(lines, qualified, top_n=config.PLACEMENT_CARD_MAX)
+            qualified = [b for b in top15_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= ev_floor]
+            _write_value_section(lines, qualified, top_n=placement_max)
         else:
             lines.append("*No odds data available for Top 15.*")
             lines.append("")
@@ -299,8 +301,8 @@ def generate_card(tournament_name: str,
         lines.append("### Top 10 Finish")
         lines.append("")
         if top10_vb:
-            qualified = [b for b in top10_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= config.PLACEMENT_CARD_EV_FLOOR]
-            _write_value_section(lines, qualified, top_n=config.PLACEMENT_CARD_MAX)
+            qualified = [b for b in top10_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= ev_floor]
+            _write_value_section(lines, qualified, top_n=placement_max)
         else:
             lines.append("*No odds data available for Top 10.*")
             lines.append("")
@@ -308,8 +310,8 @@ def generate_card(tournament_name: str,
         lines.append("### Top 5 Finish")
         lines.append("")
         if top5_vb:
-            qualified = [b for b in top5_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= config.PLACEMENT_CARD_EV_FLOOR]
-            _write_value_section(lines, qualified, top_n=config.PLACEMENT_CARD_MAX)
+            qualified = [b for b in top5_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= ev_floor]
+            _write_value_section(lines, qualified, top_n=placement_max)
         else:
             lines.append("*No odds data available for Top 5.*")
         lines.append("")
@@ -317,16 +319,16 @@ def generate_card(tournament_name: str,
         lines.append("")
 
         outright_vb = value_bets.get("outright", [])
-        outright_value = [b for b in outright_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= config.PLACEMENT_CARD_EV_FLOOR]
+        outright_value = [b for b in outright_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= ev_floor]
         if outright_value:
             lines.append("<details>")
             lines.append("<summary>Outright Value (High-Confidence Only)</summary>")
             lines.append("")
             lines.append("## Outright Value")
             lines.append("")
-            lines.append(f"*Only showing outrights with EV >= {config.PLACEMENT_CARD_EV_FLOOR:.0%}.*")
+            lines.append(f"*Only showing outrights with EV >= {ev_floor:.0%}.*")
             lines.append("")
-            _write_value_section(lines, outright_value, top_n=config.PLACEMENT_CARD_MAX)
+            _write_value_section(lines, outright_value, top_n=placement_max)
             lines.append("</details>")
             lines.append("")
 

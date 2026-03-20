@@ -11,6 +11,7 @@ def test_generate_candidate_theories_prefers_openai(monkeypatch):
     from backtester.strategy import StrategyConfig
     from backtester.theory_engine import generate_candidate_theories
 
+    monkeypatch.setattr("backtester.theory_engine.get_settings", lambda: {"use_theory_engine_llm": True})
     monkeypatch.setattr("backtester.theory_engine.is_ai_available", lambda: True)
     monkeypatch.setattr(
         "backtester.theory_engine.call_ai",
@@ -61,12 +62,14 @@ def test_generate_candidate_theories_falls_back_to_local_neighbors(monkeypatch):
 
     theories = generate_candidate_theories(
         StrategyConfig(name="baseline", min_ev=0.05),
-        max_candidates=2,
+        max_candidates=6,
         scope="global",
         years=[2024, 2025],
     )
 
-    assert len(theories) == 2
-    assert theories[0]["source_type"] == "fallback_neighbor"
-    assert theories[0]["strategy"].min_ev == 0.06
+    assert len(theories) == 6
+    assert theories[0]["source_type"] == "fallback_directed"
+    neighbor_theories = [t for t in theories if t["source_type"] == "fallback_neighbor"]
+    assert neighbor_theories
+    assert neighbor_theories[0]["strategy"].min_ev == 0.06
     assert theories[0]["why_it_may_work"]

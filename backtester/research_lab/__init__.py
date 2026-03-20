@@ -18,6 +18,7 @@ from backtester.research_lab.mo_study import (
     study_summary,
 )
 from backtester.research_lab.param_space import strategy_from_optuna_trial
+from backtester.research_lab.cycle_config import CYCLE_CONFIG_PATH, load_cycle_config
 
 __all__ = [
     "CHECKPOINT_SCRIPT_EVALUATOR_VERSION",
@@ -34,4 +35,6 @@ __all__ = [
     "run_mo_study",
     "study_summary",
     "strategy_from_optuna_trial",
+    "CYCLE_CONFIG_PATH",
+    "load_cycle_config",
 ]

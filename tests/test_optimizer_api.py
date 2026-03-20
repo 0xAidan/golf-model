@@ -97,15 +97,84 @@ def test_optimizer_start_stop_and_status_endpoints(monkeypatch):
     assert stop_response.json()["optimizer"]["running"] is False
 
 
+def test_autoresearch_study_endpoint(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.create_or_load_study",
+        lambda study_name, storage_path=None: object(),
+    )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.study_summary",
+        lambda study: {
+            "study_name": "mock",
+            "n_trials": 2,
+            "n_pareto": 1,
+            "pareto_trials": [{"number": 0, "values": [1, 2, 3, 4], "params": {}, "user_attrs": {}}],
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/autoresearch/study?study_name=mock")
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["summary"]["n_pareto"] == 1
+
+
+def test_autoresearch_optuna_run_endpoint(monkeypatch):
+    import app as app_module
+    from backtester.strategy import StrategyConfig
+
+    class FakeStudy:
+        study_name = "cli_study"
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "backtester.model_registry.get_research_champion",
+        lambda scope: StrategyConfig(name="baseline"),
+    )
+    monkeypatch.setattr("backtester.model_registry.get_live_weekly_model", lambda scope: None)
+    monkeypatch.setattr(
+        "backtester.experiments.get_active_strategy",
+        lambda scope: StrategyConfig(name="baseline"),
+    )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.run_mo_study",
+        lambda **kwargs: FakeStudy(),
+    )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.study_summary",
+        lambda study: {
+            "study_name": study.study_name,
+            "n_trials": 0,
+            "n_pareto": 0,
+            "pareto_trials": [],
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/api/autoresearch/optuna/run",
+        json={"n_trials": 2, "study_name": "cli_study", "years": [2024, 2025]},
+    )
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["summary"]["study_name"] == "cli_study"
+
+
 def test_autoresearch_batch_endpoint(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr(
-        "backtester.research_cycle.run_research_cycle",
+        "backtester.autoresearch_engine.run_cycle",
         lambda **kwargs: {
             "cycle_key": "cycle",
             "winner": {"strategy_name": "candidate_a", "blended_score": 3.2},
             "promotion_decision": "kept_current_research_champion",
+            "evaluation_mode": "weighted_walk_forward",
         },
     )
 
