@@ -379,12 +379,19 @@ def optimizer_loop(interval_hours: float = 4.0):
 
 def autoresearch_loop(interval_hours: float = 6.0):
     """Runs a bounded keep/discard loop at a fixed interval."""
-    from backtester.research_cycle import run_research_cycle
+    from backtester.autoresearch_engine import run_cycle as run_autoresearch_cycle
 
     while not _shutdown.is_set():
         try:
+            from backtester.optimizer_runtime import get_optimizer_status
+
+            if get_optimizer_status().get("running"):
+                logger.info("[AUTORESEARCH] Skipping research_agent cycle: dashboard autoresearch engine is running.")
+                _shutdown.wait(min(300.0, interval_hours * 3600))
+                continue
+
             logger.info("[AUTORESEARCH] Running bounded loop...")
-            result = run_research_cycle(
+            result = run_autoresearch_cycle(
                 max_candidates=5,
                 scope="global",
                 source="research_agent",

@@ -243,6 +243,42 @@ def log_predictions_for_tournament(tournament_id: int,
     return len(predictions)
 
 
+def log_matchup_predictions_for_tournament(tournament_id: int,
+                                           matchup_bets: list[dict],
+                                           odds_timing: str = "pre_tournament") -> int:
+    """Log matchup predictions to prediction_log for calibration tracking.
+
+    Uses existing prediction_log schema. player_key is stored as "pick_key|opponent_key"
+    so each matchup is unique. actual_outcome and profit are filled later by scoring.
+    """
+    if not matchup_bets:
+        return 0
+
+    predictions = []
+    for bet in matchup_bets:
+        pick_key = bet.get("pick_key", "")
+        opponent_key = bet.get("opponent_key", "")
+        matchup_key = f"{pick_key}|{opponent_key}"
+        odds_decimal = parse_odds_to_decimal(str(bet.get("odds", "")))
+        predictions.append({
+            "tournament_id": tournament_id,
+            "player_key": matchup_key,
+            "bet_type": "matchup",
+            "model_prob": bet.get("model_win_prob"),
+            "dg_prob": None,
+            "market_implied_prob": bet.get("implied_prob"),
+            "actual_outcome": None,
+            "odds_decimal": odds_decimal,
+            "profit": None,
+            "odds_timing": odds_timing,
+        })
+
+    if predictions:
+        db.log_predictions(predictions)
+    logger.info("Logged %d matchup predictions for tournament %d", len(predictions), tournament_id)
+    return len(predictions)
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Calibration Analysis
 # ═══════════════════════════════════════════════════════════════════
@@ -456,22 +492,43 @@ def update_prediction_outcomes(tournament_id: int) -> int:
     for pred in predictions:
         pk = pred["player_key"]
         bt = pred["bet_type"]
-        r = result_map.get(pk)
 
         actual = 0
         fraction = 0.0
         is_push = False
-        if r:
+
+        if bt == "matchup" and "|" in pk:
+            pick_key, opponent_key = pk.split("|", 1)
+            r_pick = result_map.get(pick_key)
+            r_opp = result_map.get(opponent_key)
+            pick_pos = r_pick.get("finish_position") if r_pick else None
+            pick_text = r_pick.get("finish_text") if r_pick else None
+            pick_made_cut = r_pick.get("made_cut", 0) if r_pick else 0
+            opp_pos = r_opp.get("finish_position") if r_opp else None
             outcome = determine_outcome(
-                bt,
-                r.get("finish_position"),
-                r.get("finish_text"),
-                r.get("made_cut", 0),
+                "matchup",
+                pick_pos,
+                pick_text,
+                pick_made_cut,
                 all_results_list,
+                opponent_finish=opp_pos,
             )
             actual = outcome["hit"]
             fraction = outcome["fraction"]
             is_push = outcome["is_push"]
+        else:
+            r = result_map.get(pk)
+            if r:
+                outcome = determine_outcome(
+                    bt,
+                    r.get("finish_position"),
+                    r.get("finish_text"),
+                    r.get("made_cut", 0),
+                    all_results_list,
+                )
+                actual = outcome["hit"]
+                fraction = outcome["fraction"]
+                is_push = outcome["is_push"]
 
         odds_dec = pred["odds_decimal"]
         profit = None

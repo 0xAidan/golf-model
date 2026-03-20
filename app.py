@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import re
+import asyncio
 import shutil
 import tempfile
 from datetime import datetime
@@ -24,7 +25,7 @@ try:
 except ImportError:
     pass  # python-dotenv not installed; keys must be in environment
 
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
@@ -457,15 +458,14 @@ async def run_upcoming_prediction(request: Request):
     from src.db import ensure_initialized
     ensure_initialized()
 
-    from backtester.model_registry import get_live_weekly_model
     from src.services.golf_model_service import GolfModelService
+    from src.strategy_resolution import build_pipeline_strategy_config, resolve_runtime_strategy
 
-    live_strategy = get_live_weekly_model("global")
+    strategy, strategy_meta = resolve_runtime_strategy("global")
+    pipeline_cfg = build_pipeline_strategy_config(strategy)
     service = GolfModelService(
         tour=payload.get("tour", "pga"),
-        strategy_config={
-            key: value for key, value in vars(live_strategy).items() if not key.startswith("_")
-        },
+        strategy_config=pipeline_cfg,
     )
     mode = payload.get("mode", "full")
     if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
@@ -476,6 +476,7 @@ async def run_upcoming_prediction(request: Request):
         enable_ai=payload.get("enable_ai", True),
         enable_backfill=payload.get("enable_backfill", True),
         mode=mode,
+        strategy_source="config",
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]
@@ -493,8 +494,10 @@ async def run_upcoming_prediction(request: Request):
                 result["card_content"] = None
         else:
             result["card_content"] = None
-    result["model_lane"] = "live_weekly_model"
-    result["live_model_name"] = live_strategy.name
+    src = strategy_meta.get("strategy_source", "default")
+    result["model_lane"] = src
+    result["strategy_meta"] = strategy_meta
+    result["live_model_name"] = strategy.name or pipeline_cfg.get("name", "strategy")
     return result
 
 
@@ -790,11 +793,15 @@ async def start_optimizer_runtime(request: Request):
     from backtester.optimizer_runtime import start_continuous_optimizer
 
     payload = await request.json()
+    mc = payload.get("max_candidates")
     status = start_continuous_optimizer(
         scope=payload.get("scope", "global"),
         interval_seconds=float(payload.get("interval_seconds", 300)),
-        max_candidates=int(payload.get("max_candidates", 3)),
+        max_candidates=int(mc) if mc is not None else None,
         years=payload.get("years"),
+        engine_mode=payload.get("engine_mode"),
+        optuna_study_name=payload.get("optuna_study_name"),
+        optuna_trials_per_cycle=payload.get("optuna_trials_per_cycle"),
     )
     return {"ok": True, "optimizer": status}
 
@@ -809,6 +816,85 @@ async def stop_optimizer_runtime():
 
     status = stop_continuous_optimizer()
     return {"ok": True, "optimizer": status}
+
+
+@app.get("/api/autoresearch/settings")
+async def get_autoresearch_settings():
+    """Return UI-persisted autoresearch settings (e.g. guardrail_mode: strict | loose)."""
+    from src.autoresearch_settings import get_settings
+    return get_settings()
+
+
+@app.patch("/api/autoresearch/settings")
+async def patch_autoresearch_settings(request: Request):
+    """Update autoresearch settings (guardrail_mode, engine_mode, use_theory_engine_llm, optuna_*)."""
+    from src.autoresearch_settings import set_settings
+    try:
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        body = {}
+    updated = set_settings(body)
+    return updated
+
+
+@app.get("/api/autoresearch/study")
+async def get_autoresearch_study(study_name: str | None = Query(None)):
+    """Load persisted Optuna study and return Pareto summary (read-only)."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from src.autoresearch_settings import get_settings
+    from backtester.research_lab.mo_study import create_or_load_study, study_dashboard_metrics, study_summary
+
+    settings = get_settings()
+    name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
+    try:
+        study = create_or_load_study(name)
+        return {
+            "ok": True,
+            "study_name": name,
+            "summary": study_summary(study),
+            "dashboard": study_dashboard_metrics(study),
+        }
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+
+
+@app.post("/api/autoresearch/optuna/run")
+async def post_autoresearch_optuna_run(request: Request):
+    """Run N Optuna MO trials in a worker thread (can take minutes)."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.experiments import get_active_strategy
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_mo_study, study_summary
+    from src.autoresearch_settings import get_settings
+
+    try:
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        body = {}
+    n_trials = max(1, min(50, int(body.get("n_trials", 5))))
+    years = body.get("years")
+    if years is None:
+        years = [2024, 2025]
+    scope = body.get("scope", "global")
+    settings = get_settings()
+    study_name = (body.get("study_name") or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
+
+    def _run_block():
+        baseline = get_research_champion(scope) or get_live_weekly_model(scope) or get_active_strategy(scope)
+        spec = WalkForwardBenchmarkSpec(years=years)
+        study = run_mo_study(
+            n_trials=n_trials,
+            baseline=baseline,
+            benchmark_spec=spec,
+            study_name=study_name,
+        )
+        return study_summary(study)
+
+    summary = await asyncio.to_thread(_run_block)
+    return {"ok": True, "study_name": study_name, "summary": summary}
 
 
 @app.get("/api/autoresearch/status")
@@ -852,6 +938,12 @@ async def get_autoresearch_status():
             "keep_rate": status.get("keep_rate", 0.0),
             "crash_rate": status.get("crash_rate", 0.0),
             "guardrail_fail_rate": status.get("guardrail_fail_rate", 0.0),
+            "at_start_baseline_roi": status.get("at_start_baseline_roi"),
+            "at_start_baseline_clv": status.get("at_start_baseline_clv"),
+            "engine_mode": status.get("engine_mode", "research_cycle"),
+            "optuna_study_name": status.get("optuna_study_name"),
+            "optuna_trials_per_cycle": status.get("optuna_trials_per_cycle"),
+            "max_candidates": status.get("max_candidates"),
         }
     }
 
@@ -880,7 +972,7 @@ async def run_autoresearch_once(request: Request):
     from src.db import ensure_initialized
     ensure_initialized()
     try:
-        from backtester.research_cycle import run_research_cycle
+        from backtester.autoresearch_engine import run_cycle as run_autoresearch_cycle
         payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
         kwargs = dict(
             max_candidates=int(payload.get("max_candidates", 3)),
@@ -889,10 +981,16 @@ async def run_autoresearch_once(request: Request):
         )
         if payload.get("years") is not None:
             kwargs["years"] = payload["years"]
-        result = run_research_cycle(**kwargs)
+        result = run_autoresearch_cycle(**kwargs)
+        pd = result.get("promotion_decision") or ""
+        champion_updated = bool(result.get("research_champion_updated"))
+        cycle_ok = champion_updated or pd in (
+            "updated_research_champion",
+            "updated_iteration_baseline",
+        )
         return {
             "state": "completed",
-            "decision": "kept" if result.get("winner") else "discarded",
+            "decision": "kept" if cycle_ok else ("discarded" if result.get("proposals_evaluated") else "no_op"),
             **result,
         }
     except Exception as exc:
@@ -904,7 +1002,7 @@ async def run_autoresearch_batch(request: Request):
     """Run N bounded autoresearch cycles and return aggregated result."""
     from src.db import ensure_initialized
     ensure_initialized()
-    from backtester.research_cycle import run_research_cycle
+    from backtester.autoresearch_engine import run_cycle as run_autoresearch_cycle
 
     payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
     scope = payload.get("scope", "global")
@@ -914,7 +1012,7 @@ async def run_autoresearch_batch(request: Request):
     runs = []
     for idx in range(cycles):
         runs.append(
-            run_research_cycle(
+            run_autoresearch_cycle(
                 years=years,
                 max_candidates=max_candidates,
                 scope=scope,
@@ -987,10 +1085,21 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 except Exception:
                     roi_delta = None
             status = row["status"]
-            kept = status in {"approved", "converted"}
             blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
-            blocked_by_guardrails = bool(blocked_reason) or guardrails.get("verdict") == "blocked_by_guardrails"
-            decision = "blocked_by_guardrails" if blocked_by_guardrails else ("kept" if kept else "discarded")
+            gr_passed = bool(guardrails.get("passed", False))
+            blocked_by_guardrails = not gr_passed
+            status_approved = status in {"approved", "converted"}
+            promotable = bool(guardrails.get("is_positive_test")) or (
+                roi_delta is not None and roi_delta > 0
+            )
+            # Previously only approved/converted → "kept", so passing evaluated runs looked like failures.
+            kept = status_approved or (gr_passed and promotable)
+            if blocked_by_guardrails:
+                decision = "blocked_by_guardrails"
+            elif kept:
+                decision = "kept"
+            else:
+                decision = "discarded"
             runs.append(
                 {
                     "id": row["id"],

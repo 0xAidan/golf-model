@@ -13,6 +13,7 @@ from typing import Optional
 
 from src import db
 from src.player_normalizer import normalize_name, display_name
+from src.strategy_resolution import build_pipeline_strategy_config
 
 logger = logging.getLogger("golf_model_service")
 
@@ -39,7 +40,7 @@ class GolfModelService:
         include_weather: bool = False,
         include_post_review: bool = False,
         include_methodology: bool = False,
-        strategy_source: str = "config",
+        strategy_source: str = "registry",
     ) -> dict:
         """
         Run the complete prediction pipeline.
@@ -115,12 +116,12 @@ class GolfModelService:
         print("  Loading course profile...")
         profile = self._load_course_profile(course_name, sync_result.get("decompositions_raw"))
 
-        # Step 7a: Resolve strategy from model registry if requested
+        # Step 7a: Resolve strategy from model registry (same chain as run_predictions CLI)
         if strategy_source == "registry":
             resolved = self._resolve_strategy()
             if resolved:
                 strategy, meta = resolved
-                self.strategy_config = self._map_strategy_to_config(strategy)
+                self.strategy_config = build_pipeline_strategy_config(strategy)
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
 
@@ -225,6 +226,8 @@ class GolfModelService:
             self._log_predictions(tid, value_bets)
         elif value_bets and not picks_allowed:
             logger.warning("Skipping prediction logging — run quality check failed")
+        if matchup_bets and picks_allowed:
+            self._log_matchup_predictions(tid, matchup_bets)
 
         # Step 13: Generate card
         print("  Generating betting card...")
@@ -368,19 +371,23 @@ class GolfModelService:
         return None
 
     def _get_weights(self, course_num: int = None) -> dict:
-        """Get model weights, optionally blended with course-specific weights."""
+        """Merge DB/course weights with resolved strategy blend (matches run_predictions)."""
+        base = db.get_weights_for_course(course_num)
         if self.strategy_config and "weights" in self.strategy_config:
-            return self.strategy_config["weights"]
-        return db.get_weights_for_course(course_num)
+            merged = dict(base)
+            merged.update(self.strategy_config["weights"])
+            return merged
+        return base
 
     def _run_composite(self, tournament_id: int, weights: dict,
                         course_name: str = None) -> list[dict]:
-        """Run the composite model."""
+        """Run the composite model; weights already include strategy blend from _get_weights."""
         from src.models.composite import compute_composite
         return compute_composite(
-            tournament_id, weights,
+            tournament_id,
+            weights,
             course_name=course_name,
-            strategy_config=self.strategy_config,
+            strategy_config=None,
         )
 
     def _is_ai_available(self) -> bool:
@@ -420,10 +427,18 @@ class GolfModelService:
 
     def _compute_value_bets(self, composite, all_odds_by_market, tid) -> dict:
         """Compute value bets for each market."""
+        from src.confidence import get_field_strength
         from src.odds import get_best_odds
         from src.value import find_value_bets
 
+        ev_threshold = None
+        allowed = None
+        if self.strategy_config:
+            ev_threshold = self.strategy_config.get("ev_threshold")
+            allowed = self.strategy_config.get("allowed_markets")
+
         value_bets = {}
+        _fstr = get_field_strength(composite)
         for market_key, odds_list in all_odds_by_market.items():
             if not odds_list:
                 continue
@@ -434,7 +449,16 @@ class GolfModelService:
                 bt = "frl"
             else:
                 bt = market_key.replace("top_", "top")
-            vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid)
+            if allowed is not None and bt not in allowed:
+                continue
+            vb = find_value_bets(
+                composite,
+                best,
+                bet_type=bt,
+                tournament_id=tid,
+                field_strength=_fstr,
+                ev_threshold=ev_threshold,
+            )
             value_bets[bt] = vb
         return value_bets
 
@@ -447,7 +471,11 @@ class GolfModelService:
             from src.odds import get_preferred_book
             from src import config
 
-            ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
+            ev_threshold = self.strategy_config.get("matchup_ev_threshold") if self.strategy_config else None
+            if ev_threshold is None:
+                ev_threshold = self.strategy_config.get("ev_threshold") if self.strategy_config else None
+            if ev_threshold is None:
+                ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
             required_book = get_preferred_book()
             aggregated = []
             for market_key, label in [("tournament_matchups", "72-hole"), ("round_matchups", "round")]:
@@ -457,7 +485,7 @@ class GolfModelService:
                         continue
                     bets = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
-                        required_book=required_book,
+                        required_book=required_book, market_type=market_key,
                     )
                     for b in bets:
                         b["market_type"] = market_key
@@ -578,6 +606,14 @@ class GolfModelService:
         except Exception as e:
             logger.warning(f"Prediction logging error: {e}")
 
+    def _log_matchup_predictions(self, tid, matchup_bets):
+        """Log matchup predictions for calibration tracking."""
+        try:
+            from src.learning import log_matchup_predictions_for_tournament
+            log_matchup_predictions_for_tournament(tid, matchup_bets)
+        except Exception as e:
+            logger.warning(f"Matchup prediction logging error: {e}")
+
     def _generate_card(self, tournament_name, course_name, composite,
                         value_bets, output_dir, ai_pre_analysis, ai_decisions,
                         matchup_bets: list = None, mode: str = "full") -> str | None:
@@ -625,50 +661,15 @@ class GolfModelService:
             pass  # Non-critical
 
     def _resolve_strategy(self) -> tuple | None:
-        """Resolve strategy from model registry with fallback chain."""
+        """Resolve strategy using shared registry chain (live -> research -> active -> default)."""
         try:
-            from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
-            from backtester.experiments import get_active_strategy
-            from backtester.strategy import StrategyConfig
+            from src.strategy_resolution import resolve_runtime_strategy
 
-            for source, fetch in [
-                ("live", lambda: get_live_weekly_model_record("global")),
-                ("research_champion", lambda: get_research_champion_record("global")),
-            ]:
-                record = fetch()
-                if record and record.get("strategy_config_json"):
-                    try:
-                        strategy = StrategyConfig.from_json(record["strategy_config_json"])
-                        return strategy, {"strategy_source": source, "strategy_name": strategy.name or source}
-                    except Exception:
-                        logger.warning("Failed to parse %s strategy config", source, exc_info=True)
-
-            active = get_active_strategy("global")
-            if active:
-                return active, {"strategy_source": "active_strategy", "strategy_name": active.name or "active"}
-
-            return StrategyConfig(name="default"), {"strategy_source": "default", "strategy_name": "default"}
+            strategy, meta = resolve_runtime_strategy("global")
+            return strategy, meta
         except Exception:
             logger.warning("Strategy resolution failed, using defaults", exc_info=True)
             return None
-
-    def _map_strategy_to_config(self, strategy) -> dict:
-        """Map a StrategyConfig dataclass to a dict for pipeline consumption."""
-        market_map = {
-            "win": "outright", "top_5": "top5", "top_10": "top10",
-            "top_20": "top20", "frl": "frl", "make_cut": "make_cut",
-        }
-        allowed_markets = {market_map.get(m, m) for m in (strategy.markets or [])}
-        return {
-            "weights": {
-                "course_fit": float(strategy.w_sub_course_fit),
-                "form": float(strategy.w_sub_form),
-                "momentum": float(strategy.w_sub_momentum),
-            },
-            "ev_threshold": float(strategy.min_ev),
-            "kelly_fraction": float(strategy.kelly_fraction),
-            "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
-        }
 
     def _compute_weather(self, tournament_id: int, course_name: str) -> dict | None:
         """Fetch forecast and compute weather adjustments."""

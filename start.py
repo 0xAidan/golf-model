@@ -12,6 +12,7 @@ One script to rule them all. Usage:
     python start.py backtest         # Run a backtest simulation
     python start.py setup            # Run first-time setup wizard
     python start.py status           # Show system status
+    python start.py autoresearch-optuna   # Optuna MO walk-forward (see scripts/run_autoresearch_optuna.py)
 """
 
 import os
@@ -572,6 +573,31 @@ def cmd_autoresearch(args):
     print(proc.stdout.strip() or proc.stderr.strip())
 
 
+def cmd_autoresearch_optuna(args):
+    """Delegate to scripts/run_autoresearch_optuna.py (Optuna MO + walk-forward)."""
+    import subprocess
+
+    script = os.path.join(ROOT, "scripts", "run_autoresearch_optuna.py")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            script,
+            "--n-trials",
+            str(max(1, int(args.n_trials))),
+            "--years",
+            args.years,
+            "--study-name",
+            args.study_name,
+            "--scope",
+            args.scope,
+            "--n-jobs",
+            str(max(1, int(args.n_jobs))),
+        ],
+        cwd=ROOT,
+    )
+    raise SystemExit(proc.returncode)
+
+
 def interactive_menu():
     """Show an interactive menu for users who just run 'python start.py'."""
     print()
@@ -722,6 +748,13 @@ def main():
     p_ar.add_argument("--seed", type=int, default=42)
     p_ar.add_argument("--timeout-seconds", type=int, default=120)
 
+    p_ao = subparsers.add_parser("autoresearch-optuna", help="Run Optuna multi-objective walk-forward study")
+    p_ao.add_argument("--n-trials", type=int, default=10)
+    p_ao.add_argument("--years", default="2024,2025", help="Comma-separated benchmark years")
+    p_ao.add_argument("--study-name", dest="study_name", default="golf_mo_default")
+    p_ao.add_argument("--scope", default="global")
+    p_ao.add_argument("--n-jobs", type=int, default=1)
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -758,6 +791,8 @@ def main():
         cmd_autoresearch_batch(args)
     elif args.command == "autoresearch":
         cmd_autoresearch(args)
+    elif args.command == "autoresearch-optuna":
+        cmd_autoresearch_optuna(args)
 
 
 if __name__ == "__main__":

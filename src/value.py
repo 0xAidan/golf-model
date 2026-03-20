@@ -21,6 +21,7 @@ from src.odds import american_to_implied_prob, american_to_decimal, is_valid_odd
 from src.player_normalizer import normalize_name
 from src import db
 from src import config
+from src.calibration import get_calibration_correction
 
 logger = logging.getLogger(__name__)
 
@@ -491,15 +492,23 @@ def find_value_bets(composite_results: list[dict],
             model_prob = softmax_prob
             prob_source = "softmax"
 
+        # Empirical calibration: correct probability using historical hit rates by bucket.
+        # get_calibration_correction returns 1.0 when bucket has < 50 samples (no change).
+        correction = get_calibration_correction(model_prob)
+        corrected_prob = model_prob * correction
+        corrected_prob = max(0.001, min(0.999, corrected_prob))
+        calibration_applied = abs(correction - 1.0) > 1e-6
+
         market_prob = odds_entry["implied_prob"]
-        # Placement markets: apply dead heat discount to prob before EV (conservative)
-        prob_for_ev = model_prob
+        # Placement markets: apply dead heat discount to prob before EV (conservative).
+        # Use calibration-corrected prob for EV so value reflects empirical accuracy.
+        prob_for_ev = corrected_prob
         if bet_type == "top5":
-            prob_for_ev = model_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP5)
+            prob_for_ev = corrected_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP5)
         elif bet_type == "top10":
-            prob_for_ev = model_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP10)
+            prob_for_ev = corrected_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP10)
         elif bet_type == "top20":
-            prob_for_ev = model_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP20)
+            prob_for_ev = corrected_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP20)
         ev = compute_ev(prob_for_ev, odds_entry["best_price"])
 
         # Comparison logging: dg_only, model_only, blended (for isolation when changing blend/model)
@@ -581,6 +590,7 @@ def find_value_bets(composite_results: list[dict],
             "stake_multiplier": adaptation["stake_multiplier"] if adaptation else 1.0,
             "blend_dg_used": DG_BLEND_WEIGHT,
             "blend_model_used": MODEL_BLEND_WEIGHT,
+            "calibration_applied": calibration_applied,
         })
 
     # Sort by EV descending

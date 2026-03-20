@@ -10,7 +10,7 @@ def test_autoresearch_batch_runs_multiple_cycles(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr(
-        "backtester.research_cycle.run_research_cycle",
+        "backtester.autoresearch_engine.run_cycle",
         lambda **kwargs: {"cycle_key": "x", "winner": {"blended_score": 1.0, "strategy_name": "candidate"}},
     )
 
