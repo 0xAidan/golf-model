@@ -843,13 +843,18 @@ async def get_autoresearch_study(study_name: str | None = Query(None)):
     from src.db import ensure_initialized
     ensure_initialized()
     from src.autoresearch_settings import get_settings
-    from backtester.research_lab.mo_study import create_or_load_study, study_summary
+    from backtester.research_lab.mo_study import create_or_load_study, study_dashboard_metrics, study_summary
 
     settings = get_settings()
     name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
     try:
         study = create_or_load_study(name)
-        return {"ok": True, "study_name": name, "summary": study_summary(study)}
+        return {
+            "ok": True,
+            "study_name": name,
+            "summary": study_summary(study),
+            "dashboard": study_dashboard_metrics(study),
+        }
     except Exception as exc:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
 

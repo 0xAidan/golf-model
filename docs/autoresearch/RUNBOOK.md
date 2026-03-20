@@ -17,7 +17,7 @@ Do **not** run **`workers/research_agent.py` autoresearch loop** at the same tim
 
 - **UI:** Autoresearch tab → **Run once** (calls `POST /api/autoresearch/run-once`) — always the bounded **research** cycle, not Optuna.
 - **Start engine:** `POST /api/autoresearch/start` (same as optimizer start) with optional `engine_mode` (`research_cycle` | `optuna`), `optuna_study_name`, `optuna_trials_per_cycle`, `max_candidates`.
-- **Pareto read-only:** `GET /api/autoresearch/study?study_name=...` loads SQLite study summary.
+- **Pareto read-only:** `GET /api/autoresearch/study?study_name=...` loads SQLite study summary plus `dashboard` aggregates (max ROI/CLV over completed trials, Pareto “promotable” count). The Autoresearch stats bar uses these when **Engine = Optuna MO** so it does not mix in the research-proposal list (which is ranked by blended score, not raw ROI).
 - **API (research once):** `{"scope": "global", "max_candidates": 3, "years": [2024, 2025]}`.
 - **Response:** Includes `data_health` (row counts, warnings), `guardrail_mode` (strict/loose from UI or env), `promotion_decision`, `winner`.
 

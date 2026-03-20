@@ -69,3 +69,11 @@ def test_run_mo_study_with_mock_eval(tmp_path):
     assert summ["n_trials"] == 4
     assert summ["n_pareto"] >= 1
     assert len(summ["pareto_trials"]) == summ["n_pareto"]
+
+    from backtester.research_lab.mo_study import study_dashboard_metrics
+
+    dash = study_dashboard_metrics(study)
+    assert dash["n_complete_trials"] == 4
+    assert dash["trial_max_roi_pct"] == 2.5
+    assert dash["trial_max_clv"] == 0.1
+    assert dash["pareto_promotable_count"] >= 1

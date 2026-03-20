@@ -109,3 +109,50 @@ def study_summary(study: optuna.Study) -> dict[str, Any]:
             for t in best
         ],
     }
+
+
+def study_dashboard_metrics(study: optuna.Study) -> dict[str, Any]:
+    """
+    Aggregate metrics for the dashboard when engine_mode is Optuna MO.
+
+    The top blended-score candidate from research_proposals is not the same as the
+    multi-objective study; use max ROI/CLV over completed trials for honest summaries.
+    """
+    complete = [t for t in study.trials if t.state == TrialState.COMPLETE and t.values]
+    trial_max_roi: float | None = None
+    trial_max_clv: float | None = None
+    for t in complete:
+        vals = t.values or []
+        if len(vals) < 2:
+            continue
+        r, c = float(vals[0]), float(vals[1])
+        trial_max_roi = r if trial_max_roi is None else max(trial_max_roi, r)
+        trial_max_clv = c if trial_max_clv is None else max(trial_max_clv, c)
+
+    try:
+        pareto_trials = study.best_trials
+    except Exception:
+        pareto_trials = []
+
+    pareto_max_roi: float | None = None
+    pareto_max_clv: float | None = None
+    pareto_promotable = 0
+    for t in pareto_trials:
+        vals = t.values or []
+        if len(vals) >= 2:
+            r, c = float(vals[0]), float(vals[1])
+            pareto_max_roi = r if pareto_max_roi is None else max(pareto_max_roi, r)
+            pareto_max_clv = c if pareto_max_clv is None else max(pareto_max_clv, c)
+        ua = dict(t.user_attrs)
+        if ua.get("feasible") and ua.get("guardrail_passed"):
+            pareto_promotable += 1
+
+    return {
+        "n_complete_trials": len(complete),
+        "trial_max_roi_pct": trial_max_roi,
+        "trial_max_clv": trial_max_clv,
+        "pareto_max_roi_pct": pareto_max_roi,
+        "pareto_max_clv": pareto_max_clv,
+        "pareto_promotable_count": pareto_promotable,
+        "n_pareto": len(pareto_trials),
+    }
