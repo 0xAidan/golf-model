@@ -12,11 +12,14 @@ def test_optimizer_runtime_can_start_and_stop(monkeypatch):
 
     calls = {"count": 0}
 
-    def fake_run_research_cycle(**kwargs):
+    def fake_run_autoresearch_cycle(**kwargs):
         calls["count"] += 1
         return {"cycle_key": f"cycle-{calls['count']}", "winner": None}
 
-    monkeypatch.setattr("backtester.optimizer_runtime.run_research_cycle", fake_run_research_cycle)
+    monkeypatch.setattr(
+        "backtester.optimizer_runtime.run_autoresearch_cycle",
+        fake_run_autoresearch_cycle,
+    )
 
     optimizer_runtime.stop_continuous_optimizer()
     started = optimizer_runtime.start_continuous_optimizer(

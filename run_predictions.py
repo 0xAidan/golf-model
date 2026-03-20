@@ -71,95 +71,13 @@ from src.ai_brain import (
     apply_ai_adjustments,
     get_ai_status,
 )
-from backtester.experiments import get_active_strategy
-from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
 from backtester.strategy import StrategyConfig
+from src.strategy_resolution import map_strategy_to_runtime_settings, resolve_runtime_strategy
 
 
 logger = logging.getLogger(__name__)
 
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "false").lower() == "true"
-
-
-def _strategy_from_record(record: dict | None) -> StrategyConfig | None:
-    """Parse a model-registry record into StrategyConfig."""
-    if not record:
-        return None
-    strategy_json = record.get("strategy_config_json")
-    if not strategy_json:
-        return None
-    try:
-        return StrategyConfig.from_json(strategy_json)
-    except Exception:
-        logger.warning("Failed to parse strategy config JSON, skipping", exc_info=True)
-        return None
-
-
-def _resolve_runtime_strategy(scope: str = "global") -> tuple[StrategyConfig, dict]:
-    """
-    Resolve strategy with explicit fallback:
-    live_model_registry -> research_champion -> active_strategy -> defaults.
-    """
-    live_record = get_live_weekly_model_record(scope)
-    live_strategy = _strategy_from_record(live_record)
-    if live_strategy:
-        return live_strategy, {
-            "strategy_source": "live",
-            "strategy_record_id": live_record.get("id"),
-            "strategy_name": live_strategy.name or "live_weekly_model",
-        }
-
-    research_record = get_research_champion_record(scope)
-    research_strategy = _strategy_from_record(research_record)
-    if research_strategy:
-        return research_strategy, {
-            "strategy_source": "research_champion",
-            "strategy_record_id": research_record.get("id"),
-            "strategy_name": research_strategy.name or "research_champion",
-        }
-
-    active_strategy = get_active_strategy(scope)
-    if active_strategy:
-        return active_strategy, {
-            "strategy_source": "active_strategy",
-            "strategy_record_id": None,
-            "strategy_name": active_strategy.name or "active_strategy",
-        }
-
-    default_strategy = StrategyConfig(name="default")
-    return default_strategy, {
-        "strategy_source": "default",
-        "strategy_record_id": None,
-        "strategy_name": "default",
-    }
-
-
-def _map_strategy_to_runtime_settings(strategy: StrategyConfig) -> dict:
-    """Map StrategyConfig fields to live pipeline settings."""
-    allowed_markets = set()
-    market_map = {
-        "win": "outright",
-        "top_5": "top5",
-        "top_10": "top10",
-        "top_20": "top20",
-        "frl": "frl",
-        "make_cut": "make_cut",
-    }
-    for market in (strategy.markets or []):
-        mapped = market_map.get(market)
-        if mapped:
-            allowed_markets.add(mapped)
-
-    return {
-        "blend_weights": {
-            "course_fit": float(strategy.w_sub_course_fit),
-            "form": float(strategy.w_sub_form),
-            "momentum": float(strategy.w_sub_momentum),
-        },
-        "ev_threshold": float(strategy.min_ev),
-        "kelly_fraction": float(strategy.kelly_fraction),
-        "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
-    }
 
 
 def _run_data_integrity_gates(tournament_id: int, field_size: int,
@@ -540,8 +458,8 @@ def main():
         print(f"  Mode: {pipeline_mode}")
 
     pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
-    strategy_cfg, strategy_meta = _resolve_runtime_strategy("global")
-    runtime_settings = _map_strategy_to_runtime_settings(strategy_cfg)
+    strategy_cfg, strategy_meta = resolve_runtime_strategy("global")
+    runtime_settings = map_strategy_to_runtime_settings(strategy_cfg)
 
     # ── Check API keys ────────────────────────────────────────
     dg_key = os.environ.get("DATAGOLF_API_KEY")
