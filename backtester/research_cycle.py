@@ -8,13 +8,21 @@ import subprocess
 from datetime import datetime, timezone
 from typing import Any
 
+from backtester.autoresearch_data_health import validate_autoresearch_data_health
 from backtester.experiments import get_active_strategy
-from backtester.model_registry import get_live_weekly_model, get_research_champion, set_research_champion
-from backtester.proposals import create_proposal, get_proposal, list_proposals, update_proposal_evaluation
+from backtester.model_registry import (
+    get_live_weekly_model,
+    get_research_champion,
+    get_research_champion_record,
+    set_research_champion,
+)
+from backtester.proposals import approve_proposal, create_proposal, get_proposal, list_proposals, update_proposal_evaluation
 from backtester.research_dossier import write_research_dossier
+from backtester.research_lab.canonical import EVAL_CONTRACT_VERSION_WALK_FORWARD, evaluation_from_walk_forward_dict
 from backtester.strategy import StrategyConfig
 from backtester.theory_engine import generate_candidate_theories
 from backtester.weighted_walkforward import compute_blended_score, evaluate_weighted_walkforward
+from src.autoresearch_settings import get_guardrail_mode
 
 FIELD_LABELS: dict[str, str] = {
     "w_sg_total": "SG total",
@@ -217,6 +225,7 @@ PIT_EVALUATION_YEARS = [2024, 2025]
 
 
 def _should_promote_research_champion(candidate_ranking: dict[str, Any]) -> bool:
+    """True if candidate passes full bar for approval and live promotion."""
     summary = candidate_ranking["summary_metrics"]
     baseline_summary = candidate_ranking["baseline_summary_metrics"]
     guardrails = candidate_ranking["guardrail_results"]
@@ -232,6 +241,120 @@ def _should_promote_research_champion(candidate_ranking: dict[str, Any]) -> bool
     return True
 
 
+def _should_use_as_iteration_baseline(candidate_ranking: dict[str, Any]) -> bool:
+    """True if we should set this candidate as research champion so the next cycle iterates from it."""
+    summary = candidate_ranking["summary_metrics"]
+    baseline_summary = candidate_ranking["baseline_summary_metrics"]
+    guardrails = candidate_ranking["guardrail_results"]
+    if not guardrails.get("passed", False):
+        return False
+    candidate_roi = summary.get("weighted_roi_pct")
+    baseline_roi = baseline_summary.get("weighted_roi_pct")
+    if candidate_roi is None or baseline_roi is None:
+        return False
+    return float(candidate_roi) > float(baseline_roi)
+
+
+def get_current_baseline_metrics(scope: str = "global") -> dict[str, Any]:
+    """
+    Return current baseline ROI and CLV for the dashboard / engine "since start" snapshot.
+    Uses the latest evaluated proposal's baseline_summary_metrics (same notion as dashboard).
+    Returns dict with weighted_roi_pct and weighted_clv_avg; values are None if no data.
+    """
+    from src import db
+
+    conn = db.get_conn()
+    row = conn.execute(
+        """
+        SELECT guardrail_results_json
+        FROM research_proposals
+        WHERE scope = ?
+          AND status IN ('evaluated', 'approved', 'converted')
+          AND guardrail_results_json IS NOT NULL
+        ORDER BY COALESCE(evaluated_at, created_at) DESC, id DESC
+        LIMIT 1
+        """,
+        (scope,),
+    ).fetchone()
+    conn.close()
+    if not row or not row["guardrail_results_json"]:
+        return {"weighted_roi_pct": None, "weighted_clv_avg": None}
+    try:
+        guardrails = json.loads(row["guardrail_results_json"])
+        baseline = guardrails.get("baseline_summary_metrics") or {}
+        return {
+            "weighted_roi_pct": baseline.get("weighted_roi_pct"),
+            "weighted_clv_avg": baseline.get("weighted_clv_avg"),
+        }
+    except (json.JSONDecodeError, TypeError):
+        return {"weighted_roi_pct": None, "weighted_clv_avg": None}
+
+
+def _get_global_best_proposal_for_iteration(
+    scope: str,
+    current_champion_roi: float | None,
+    pool_limit: int = 200,
+) -> dict[str, Any] | None:
+    """
+    Return the single best evaluated proposal (by ROI) that passes guardrails and
+    beats current_champion_roi, so the cycle can set it as research champion.
+    Uses same pool and sort as dashboard best-candidates (recently evaluated first, then by ROI).
+    """
+    from src import db
+
+    conn = db.get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, name, strategy_config_json, theory_metadata_json,
+               summary_metrics_json, guardrail_results_json
+        FROM research_proposals
+        WHERE scope = ?
+          AND status IN ('evaluated', 'approved', 'converted')
+          AND summary_metrics_json IS NOT NULL
+          AND guardrail_results_json IS NOT NULL
+        ORDER BY COALESCE(evaluated_at, created_at) DESC, id DESC
+        LIMIT ?
+        """,
+        (scope, pool_limit),
+    ).fetchall()
+    conn.close()
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            summary = json.loads(row["summary_metrics_json"] or "{}")
+            guardrails = json.loads(row["guardrail_results_json"] or "{}")
+            if not guardrails.get("passed", False):
+                continue
+            roi = summary.get("weighted_roi_pct")
+            if roi is None:
+                continue
+            if current_champion_roi is not None and float(roi) <= float(current_champion_roi):
+                continue
+            candidates.append({
+                "id": row["id"],
+                "name": row["name"],
+                "strategy_config_json": row["strategy_config_json"],
+                "theory_metadata_json": row["theory_metadata_json"],
+                "summary_metrics": summary,
+                "guardrail_results": guardrails,
+            })
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    if not candidates:
+        return None
+    # Best by ROI (then CLV for tiebreak)
+    candidates.sort(
+        key=lambda c: (
+            c["summary_metrics"].get("weighted_roi_pct", -999),
+            c["summary_metrics"].get("weighted_clv_avg", -999),
+        ),
+        reverse=True,
+    )
+    return candidates[0]
+
+
 def run_research_cycle(
     *,
     max_candidates: int = 5,
@@ -241,6 +364,7 @@ def run_research_cycle(
     output_dir: str | None = None,
     seed: int = 42,
 ) -> dict[str, Any]:
+    data_health = validate_autoresearch_data_health(years=years)
     baseline_strategy = get_research_champion(scope) or get_live_weekly_model(scope) or get_active_strategy(scope)
     candidate_theories = generate_candidate_theories(
         baseline_strategy,
@@ -336,15 +460,27 @@ def run_research_cycle(
                     enriched_guardrails.get("passed", False)
                     and evaluation["summary_metrics"].get("weighted_roi_pct", 0.0) > 0
                 ),
+                "canonical_evaluation": evaluation_from_walk_forward_dict(evaluation).to_dict(),
             }
         )
 
     proposals = [get_proposal(proposal_id) for proposal_id in evaluated_ids]
-    candidate_rankings.sort(key=lambda item: item["blended_score"], reverse=True)
+    # Rank by best ROI first (highest weighted_roi_pct), then CLV, then blended_score.
+    # Winner = strategy we iterate from; should be the one with best ROI that beats baseline.
+    candidate_rankings.sort(
+        key=lambda item: (
+            item["summary_metrics"].get("weighted_roi_pct", -999),
+            item["summary_metrics"].get("weighted_clv_avg", -999),
+            item["blended_score"],
+        ),
+        reverse=True,
+    )
     winner = candidate_rankings[0] if candidate_rankings else None
     research_champion_updated = False
     promotion_decision = "no_candidates"
-    if winner and _should_promote_research_champion(winner):
+    # Always iterate from the best: set research champion to winner whenever they beat baseline
+    # (guardrails passed, ROI > baseline) so the next cycle generates candidates from it.
+    if winner and _should_use_as_iteration_baseline(winner):
         winning_proposal = get_proposal(winner["proposal_id"])
         strategy = StrategyConfig.from_json(winning_proposal["strategy_config_json"])
         theory_metadata = json.loads(winning_proposal.get("theory_metadata_json") or "{}")
@@ -357,9 +493,47 @@ def run_research_cycle(
             notes=f"Auto-promoted from optimizer cycle {cycle_key}",
         )
         research_champion_updated = True
-        promotion_decision = "updated_research_champion"
+        if _should_promote_research_champion(winner):
+            approve_proposal(
+                winner["proposal_id"],
+                reviewer="autoresearch_cycle",
+                notes=f"Auto-approved: promoted as research champion from cycle {cycle_key}",
+            )
+            promotion_decision = "updated_research_champion"
+        else:
+            promotion_decision = "updated_iteration_baseline"
     elif winner:
         promotion_decision = "kept_current_research_champion"
+
+    # Promote the global best to iteration baseline so we iterate from the true top candidate,
+    # not only from this cycle's winner. Stops "same 3" / going in circles when the best
+    # proposal is from an earlier cycle.
+    current_champion_roi: float | None = None
+    if winner and research_champion_updated:
+        current_champion_roi = winner["summary_metrics"].get("weighted_roi_pct")
+    elif candidate_rankings:
+        current_champion_roi = candidate_rankings[0]["baseline_summary_metrics"].get("weighted_roi_pct")
+    if current_champion_roi is not None:
+        current_champion_roi = float(current_champion_roi)
+    champion_record = get_research_champion_record(scope)
+    current_champion_proposal_id = (champion_record.get("proposal_id") if champion_record else None) or None
+
+    global_best = _get_global_best_proposal_for_iteration(scope, current_champion_roi)
+    if global_best and global_best["id"] != current_champion_proposal_id:
+        strategy = StrategyConfig.from_json(global_best["strategy_config_json"])
+        theory_metadata = json.loads(global_best.get("theory_metadata_json") or "{}")
+        set_research_champion(
+            strategy,
+            scope=scope,
+            source="autoresearch_global_best",
+            proposal_id=global_best["id"],
+            theory_metadata=theory_metadata,
+            notes="Auto-promoted as global best by ROI for next iteration",
+        )
+        research_champion_updated = True
+        if promotion_decision == "kept_current_research_champion":
+            promotion_decision = "updated_iteration_baseline"
+
     return {
         "cycle_key": cycle_key,
         "proposals_created": len(candidate_theories),
@@ -371,4 +545,7 @@ def run_research_cycle(
         "research_champion_updated": research_champion_updated,
         "promotion_decision": promotion_decision,
         "ready_for_live_review": bool(winner and winner.get("ready_for_live_review")),
+        "data_health": data_health,
+        "guardrail_mode": get_guardrail_mode(),
+        "eval_contract_version_walk_forward": EVAL_CONTRACT_VERSION_WALK_FORWARD,
     }

@@ -430,20 +430,40 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 
 ## 9. Autoresearch System
 
-The backtester includes an autonomous research system that proposes, tests, and promotes strategy changes:
+**Target v2 design (full spec):** [`docs/autoresearch/SPEC_V2.md`](autoresearch/SPEC_V2.md) — canonical evaluator, Optuna Pareto search, Karpathy-style ledger/program, API consolidation; implementation may still match v1 below until migrated.
 
-- **Theory engine** (`backtester/theory_engine.py`): Generates candidate theories (weight changes, threshold adjustments, etc.)
-- **Proposals** (`backtester/proposals.py`): CRUD for strategy proposals (create → evaluate → approve/reject). DB tables: `research_proposals`, `proposal_reviews`.
-- **Experiments** (`backtester/experiments.py`): Experiment tracking & strategy promotion pipeline. Manages lifecycle: create → run → evaluate (significance testing) → promote. DB tables: `experiments`, `active_strategy`.
-- **Research cycle** (`backtester/research_cycle.py`): Orchestrates proposal → backtest → evaluation → dossier. Exposes `get_current_baseline_metrics(scope)` for the dashboard "since engine start" snapshot.
-- **Weighted walk-forward** (`backtester/weighted_walkforward.py`): Recency-weighted evaluation (recent events count more); `evaluate_guardrails` uses config (or env) for min_bets, max_clv_regression, etc.
-- **Model registry** (`backtester/model_registry.py`): Tracks live model vs research champion; promotes when evidence is sufficient. DB tables: `research_model_registry`, `live_model_registry`.
-- **Research dossier** (`backtester/research_dossier.py`): Writes human-readable evaluation reports
-- **Config:** `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json`
+### Single strategy resolution (production)
+
+All prediction entry points use **`src/strategy_resolution.resolve_runtime_strategy(scope)`**: **live weekly model → research champion → active_strategy (experiments) → default** `StrategyConfig`. **`build_pipeline_strategy_config(strategy)`** maps `w_sub_*` weights and EV/markets for `GolfModelService` (aligned with `run_predictions.py` and PIT replay).
+
+- **CLI:** `run_predictions.py` imports resolution from `src/strategy_resolution.py`.
+- **Web:** `/api/simple/upcoming-prediction` resolves once, passes `strategy_source="config"` with the built pipeline dict (no double-resolve).
+- **GolfModelService:** Default `strategy_source` is **`registry`** so `/api/run-service` matches CLI unless callers pass `strategy_source="config"` with an explicit pipeline dict.
+
+### Two evaluation modes (do not confuse)
+
+| Mode | Entry | What it measures |
+|------|--------|------------------|
+| **Primary (dashboard/API)** | `backtester/autoresearch_engine.run_cycle` → `run_research_cycle` | Weighted walk-forward over `load_historical_events`, `replay_event`, proposals in DB. Returns `evaluation_mode`, `data_health`, `guardrail_mode`. |
+| **Holdout / contract (CLI)** | `scripts/run_autoresearch_eval.py`, `run_autoresearch_loop.py`, `run_autoresearch_holdout.py` | Immutable checkpoint replay + `docs/autoresearch/pilot_contract.json`. Does **not** update `research_proposals` unless wired separately. |
+
+Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
+
+### Components
+
+- **Theory engine** (`backtester/theory_engine.py`): OpenAI theories with dedup; fallback **directed** `w_sub_*` tilts + **neighbor** search (`fallback_directed`, `fallback_neighbor`).
+- **Proposals** (`backtester/proposals.py`): CRUD for strategy proposals. DB: `research_proposals`, `proposal_reviews`.
+- **Experiments** (`backtester/experiments.py`): `experiments` table, `active_strategy`, `promote_strategy` (separate lane from research champion).
+- **Canonical evaluation (v2 prep)** (`backtester/research_lab/canonical.py`): `evaluate_walk_forward_benchmark`, `evaluate_checkpoint_pilot`, `EvaluationResult` (objective vector, `feasible`, `to_dict`); used by `run_research_cycle` (`canonical_evaluation` on each candidate) and `scripts/run_autoresearch_eval.py`.
+- **Research cycle** (`backtester/research_cycle.py`): Orchestrates proposal → `evaluate_weighted_walkforward` → dossier; includes **`validate_autoresearch_data_health`** preflight in the returned payload.
+- **Data health** (`backtester/autoresearch_data_health.py`): Event/PIT/odds row counts and warnings before trusting metrics.
+- **Weighted walk-forward** (`backtester/weighted_walkforward.py`): `evaluate_guardrails` uses `get_autoresearch_guardrail_params()` (UI `data/autoresearch_settings.json` or env).
+- **Model registry** (`backtester/model_registry.py`): `research_model_registry`, `live_model_registry`; promote research → live via API gates.
+- **Research dossier** (`backtester/research_dossier.py`): Markdown artifacts under `output/research/`.
+- **Config files:** `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json`
 - **Contracts:** `docs/autoresearch/pilot_contract.json`, `docs/autoresearch/evaluation_contract.md`
-- **Runner scripts:** `scripts/run_autoresearch_loop.py`, `scripts/run_autoresearch_eval.py`, `scripts/run_autoresearch_holdout.py`
-- **Workers:** `workers/research_agent.py` — 6-thread daemon: (1) data collector, (2) hypothesis generator, (3) experiment runner, (4) outlier analyst, (5) optimizer (Bayesian neighborhood search), (6) autoresearch loop runner.
-- **Dashboard:** Autoresearch tab shows Baseline/Best ROI and CLV, Proposals, Promotable count. **Since engine start** block (when the engine is started) shows at-start ROI/CLV, current best ROI/CLV, and change (delta) so you can see improvement over the session. At-start snapshot is stored in optimizer runtime state when the engine starts; no DB persistence.
+- **Workers:** `workers/research_agent.py` — autoresearch loop calls `autoresearch_engine.run_cycle`.
+- **Dashboard:** Autoresearch tab; **since engine start** snapshot in optimizer runtime state when the daemon starts.
 
 ---
 
@@ -483,6 +503,9 @@ The backtester includes an autonomous research system that proposes, tests, and 
 | Experiment tracking / promotion | `backtester/experiments.py` |
 | Research cycle / proposals | `backtester/research_cycle.py`, `backtester/proposals.py` |
 | Autoresearch config | `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json` |
+| Strategy resolution (CLI/web parity) | `src/strategy_resolution.py` |
+| Autoresearch facade + health | `backtester/autoresearch_engine.py`, `backtester/autoresearch_data_health.py` |
+| Operator runbook | `docs/autoresearch/RUNBOOK.md` |
 | Course profiles | `data/courses/*.json`; extraction via `course.py` or `src/course_profile.py` |
 | Rolling stats computation | `src/rolling_stats.py` |
 | CI | `.github/workflows/ci.yml` |
