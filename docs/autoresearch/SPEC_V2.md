@@ -292,8 +292,8 @@ or create **`research_trials_v2`** with foreign key optional to proposals for hu
 
 ## 13. Rollout plan
 
-1. **Canonical eval + tests (no UI)** — **in progress (phase 1 landed):** `backtester/research_lab/canonical.py` provides `EvaluationResult`, `evaluate_walk_forward_benchmark`, `evaluate_checkpoint_pilot`, `evaluation_from_walk_forward_dict`, objective vector, `feasible` flag. `scripts/run_autoresearch_eval.py` delegates to canonical. `run_research_cycle` attaches `canonical_evaluation` + `eval_contract_version_walk_forward` to API payload. Tests: `tests/test_canonical_evaluation.py`.
-2. Add Optuna study + CLI `research-run` pointing to v2.
+1. **Canonical eval + tests (no UI)** — **done:** `backtester/research_lab/canonical.py` provides `EvaluationResult`, `evaluate_walk_forward_benchmark`, `evaluate_checkpoint_pilot`, `evaluation_from_walk_forward_dict`, objective vector, `feasible` flag. `scripts/run_autoresearch_eval.py` delegates to canonical. `run_research_cycle` attaches `canonical_evaluation` + `eval_contract_version_walk_forward` to API payload. Tests: `tests/test_canonical_evaluation.py`.
+2. **Optuna MO study + CLI** — **done:** `backtester/research_lab/mo_study.py`, `param_space.py`, `scripts/run_autoresearch_optuna.py`, `optuna` in `requirements.txt`. Persisted SQLite under `output/research/optuna/studies.db`. Dashboard Pareto UI still **todo**.
 3. Wire dashboard read-only Pareto view.
 4. Disable v1 `theory_engine` default; feature flag if needed.
 5. Remove dead `cycle_config` references or implement loading.
@@ -328,3 +328,4 @@ or create **`research_trials_v2`** with foreign key optional to proposals for hu
 |------|--------|
 | 2026-03-20 | Initial full spec from v2 plan + repo audit + external research |
 | 2026-03-20 | Phase 1: canonical module + research_cycle / eval script wiring (see §13) |
+| 2026-03-20 | Phase 2: Optuna MO study (`mo_study`, `param_space`, `run_autoresearch_optuna.py`) |

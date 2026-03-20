@@ -455,6 +455,7 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 - **Proposals** (`backtester/proposals.py`): CRUD for strategy proposals. DB: `research_proposals`, `proposal_reviews`.
 - **Experiments** (`backtester/experiments.py`): `experiments` table, `active_strategy`, `promote_strategy` (separate lane from research champion).
 - **Canonical evaluation (v2 prep)** (`backtester/research_lab/canonical.py`): `evaluate_walk_forward_benchmark`, `evaluate_checkpoint_pilot`, `EvaluationResult` (objective vector, `feasible`, `to_dict`); used by `run_research_cycle` (`canonical_evaluation` on each candidate) and `scripts/run_autoresearch_eval.py`.
+- **Multi-objective Optuna study** (`backtester/research_lab/mo_study.py`, `param_space.py`): NSGA-II / default MO sampler over softmax `w_sub_*` + `min_ev` / `kelly_fraction` / `softmax_temp` / `max_implied_prob`; storage `output/research/optuna/studies.db` (gitignored). CLI: `python scripts/run_autoresearch_optuna.py --n-trials 10 --years 2024,2025`.
 - **Research cycle** (`backtester/research_cycle.py`): Orchestrates proposal → `evaluate_weighted_walkforward` → dossier; includes **`validate_autoresearch_data_health`** preflight in the returned payload.
 - **Data health** (`backtester/autoresearch_data_health.py`): Event/PIT/odds row counts and warnings before trusting metrics.
 - **Weighted walk-forward** (`backtester/weighted_walkforward.py`): `evaluate_guardrails` uses `get_autoresearch_guardrail_params()` (UI `data/autoresearch_settings.json` or env).
