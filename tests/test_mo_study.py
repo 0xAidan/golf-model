@@ -77,3 +77,46 @@ def test_run_mo_study_with_mock_eval(tmp_path):
     assert dash["trial_max_roi_pct"] == 2.5
     assert dash["trial_max_clv"] == 0.1
     assert dash["pareto_promotable_count"] >= 1
+
+
+def test_run_scalar_study_with_mock_eval(tmp_path):
+    from backtester.research_lab.canonical import EvaluationResult, WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_scalar_study, study_scalar_dashboard_metrics, study_scalar_summary
+    from backtester.strategy import StrategyConfig
+
+    def fake_eval(candidate, baseline, spec):
+        return EvaluationResult(
+            mode="walk_forward",
+            eval_contract_version=2,
+            summary_metrics={
+                "weighted_roi_pct": 3.0,
+                "weighted_clv_avg": 0.11,
+                "weighted_calibration_error": 0.02,
+                "max_drawdown_pct": 3.0,
+                "total_bets": 100,
+            },
+            baseline_summary_metrics={},
+            guardrail_results={"passed": True, "reasons": [], "verdict": "promising"},
+            blended_score=6.0,
+            objective_vector=(3.0, 0.11, -0.02, -3.0),
+            feasible=True,
+        )
+
+    base = StrategyConfig(name="b")
+    spec = WalkForwardBenchmarkSpec(years=[2024])
+    db_path = tmp_path / "opt_scalar.db"
+    study = run_scalar_study(
+        n_trials=3,
+        baseline=base,
+        benchmark_spec=spec,
+        study_name="unit_test_scalar",
+        scalar_metric="blended_score",
+        storage_path=db_path,
+        evaluate_fn=fake_eval,
+    )
+    summ = study_scalar_summary(study)
+    assert summ["study_kind"] == "scalar"
+    assert summ["best_value"] == 6.0
+    dash = study_scalar_dashboard_metrics(study)
+    assert dash["study_kind"] == "scalar"
+    assert dash["n_complete_trials"] == 3

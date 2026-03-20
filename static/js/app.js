@@ -55,9 +55,14 @@ let autoresearchPollTimer = null;
 function isOptunaEngineMode() {
   const st = APP_STATE.autoresearchStatus || {};
   const cfg = APP_STATE.autoresearchSettings || {};
-  if (st.engine_mode === 'optuna') return true;
-  if (cfg.engine_mode === 'optuna') return true;
-  return false;
+  const em = st.engine_mode || cfg.engine_mode;
+  return em === 'optuna' || em === 'optuna_scalar';
+}
+
+function getAutoresearchEngineMode() {
+  const st = APP_STATE.autoresearchStatus || {};
+  const cfg = APP_STATE.autoresearchSettings || {};
+  return st.engine_mode || cfg.engine_mode || 'research_cycle';
 }
 
 async function fetchOptunaStudyDashboard() {
@@ -71,14 +76,28 @@ async function fetchOptunaStudyDashboard() {
     return;
   }
   const status = APP_STATE.autoresearchStatus || {};
-  const studyInput = document.getElementById('optunaStudyNameInput');
-  const name = (
-    status.optuna_study_name ||
-    (APP_STATE.autoresearchSettings && APP_STATE.autoresearchSettings.optuna_study_name) ||
-    (studyInput && studyInput.value.trim()) ||
-    ''
-  ).trim();
-  const q = name ? '?study_name=' + encodeURIComponent(name) : '';
+  const em = getAutoresearchEngineMode();
+  const studyKind = em === 'optuna_scalar' ? 'scalar' : 'mo';
+  const moInp = document.getElementById('optunaStudyNameInput');
+  const scInp = document.getElementById('optunaScalarStudyNameInput');
+  const name =
+    studyKind === 'scalar'
+      ? (
+          status.optuna_scalar_study_name ||
+          (APP_STATE.autoresearchSettings && APP_STATE.autoresearchSettings.optuna_scalar_study_name) ||
+          (scInp && scInp.value.trim()) ||
+          ''
+        ).trim()
+      : (
+          status.optuna_study_name ||
+          (APP_STATE.autoresearchSettings && APP_STATE.autoresearchSettings.optuna_study_name) ||
+          (moInp && moInp.value.trim()) ||
+          ''
+        ).trim();
+  const q =
+    '?study_kind=' +
+    encodeURIComponent(studyKind) +
+    (name ? '&study_name=' + encodeURIComponent(name) : '');
   try {
     const resp = await fetch('/api/autoresearch/study' + q);
     const data = await resp.json();
@@ -87,7 +106,9 @@ async function fetchOptunaStudyDashboard() {
     if (note) {
       note.style.display = 'block';
       note.textContent =
-        'Optuna MO: Best ROI / Best CLV are the maximum observed across completed walk-forward trials in this study (multi-objective exploration, not the ranked research-proposal list).';
+        studyKind === 'scalar'
+          ? 'Optuna scalar: optimizes one objective (blended score or ROI per settings). Best ROI/CLV are maxima seen across trials in this study.'
+          : 'Optuna MO: Best ROI / Best CLV are the maximum observed across completed walk-forward trials in this study (multi-objective exploration, not the ranked research-proposal list).';
     }
   } catch (err) {
     APP_STATE.optunaDashboard = null;
@@ -416,9 +437,13 @@ async function startAutoresearchEngine() {
   try {
     const engineModeEl = document.getElementById('engineModeSelect');
     const studyInp = document.getElementById('optunaStudyNameInput');
+    const scalarInp = document.getElementById('optunaScalarStudyNameInput');
+    const scalarObj = document.getElementById('scalarObjectiveSelect');
     const nTrialsEl = document.getElementById('optunaNTrialsInput');
     const engineMode = engineModeEl ? engineModeEl.value : 'research_cycle';
     const studyName = studyInp && studyInp.value.trim() ? studyInp.value.trim() : undefined;
+    const scalarStudyName = scalarInp && scalarInp.value.trim() ? scalarInp.value.trim() : undefined;
+    const scalarObjective = scalarObj ? scalarObj.value : undefined;
     const ot = nTrialsEl
       ? Math.max(1, Math.min(50, parseInt(nTrialsEl.value || '3', 10)))
       : 3;
@@ -431,6 +456,8 @@ async function startAutoresearchEngine() {
         max_candidates: 5,
         engine_mode: engineMode,
         optuna_study_name: studyName,
+        optuna_scalar_study_name: scalarStudyName,
+        scalar_objective: scalarObjective,
         optuna_trials_per_cycle: ot,
       }),
     });
@@ -441,10 +468,13 @@ async function startAutoresearchEngine() {
     const data = await resp.json();
     const running = data && data.optimizer && data.optimizer.running;
     const startedOptuna = engineMode === 'optuna';
+    const startedScalar = engineMode === 'optuna_scalar';
     resultEl.textContent = running
-      ? (startedOptuna
-        ? 'Autoresearch engine started. Optuna MO runs every 5 minutes (' + ot + ' trial(s) per cycle).'
-        : 'Autoresearch engine started. Running every 5 minutes with 5 candidates per cycle.')
+      ? (startedScalar
+        ? 'Autoresearch engine started. Optuna scalar runs every 5 minutes (' + ot + ' trial(s) per cycle).'
+        : startedOptuna
+          ? 'Autoresearch engine started. Optuna MO runs every 5 minutes (' + ot + ' trial(s) per cycle).'
+          : 'Autoresearch engine started. Running every 5 minutes with 5 candidates per cycle.')
       : 'Start request returned, but engine is not running.';
     resultEl.className = running ? 'result status success' : 'result status error';
     await loadAutoresearchStatus();
@@ -597,12 +627,20 @@ async function loadAutoresearchSettings() {
     }
     const engineSel = document.getElementById('engineModeSelect');
     if (engineSel && data.engine_mode) {
-      engineSel.value = data.engine_mode === 'optuna' ? 'optuna' : 'research_cycle';
+      const em = data.engine_mode;
+      engineSel.value =
+        em === 'optuna' ? 'optuna' : em === 'optuna_scalar' ? 'optuna_scalar' : 'research_cycle';
     }
     const llmCb = document.getElementById('useTheoryLlmCheckbox');
     if (llmCb) llmCb.checked = !!data.use_theory_engine_llm;
     const studyInp = document.getElementById('optunaStudyNameInput');
     if (studyInp && data.optuna_study_name) studyInp.value = data.optuna_study_name;
+    const scalarInp = document.getElementById('optunaScalarStudyNameInput');
+    if (scalarInp && data.optuna_scalar_study_name) scalarInp.value = data.optuna_scalar_study_name;
+    const scalarObj = document.getElementById('scalarObjectiveSelect');
+    if (scalarObj && data.scalar_objective) {
+      scalarObj.value = data.scalar_objective === 'weighted_roi_pct' ? 'weighted_roi_pct' : 'blended_score';
+    }
     const nTrials = document.getElementById('optunaNTrialsInput');
     if (nTrials && data.optuna_trials_per_cycle != null) {
       nTrials.value = String(Math.max(1, Math.min(50, parseInt(data.optuna_trials_per_cycle, 10) || 3)));
@@ -659,17 +697,80 @@ function handleOptunaStudyBlur() {
   }).catch(function () {});
 }
 
+function handleScalarStudyBlur() {
+  const inp = document.getElementById('optunaScalarStudyNameInput');
+  if (!inp || !inp.value.trim()) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optuna_scalar_study_name: inp.value.trim().slice(0, 120) }),
+  }).catch(function () {});
+}
+
+function handleScalarObjectiveChange() {
+  const sel = document.getElementById('scalarObjectiveSelect');
+  if (!sel) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scalar_objective: sel.value }),
+  }).catch(function () {});
+}
+
 async function loadAutoresearchPareto() {
   const container = document.getElementById('optunaParetoContainer');
   const studyInput = document.getElementById('optunaStudyNameInput');
+  const scalarInput = document.getElementById('optunaScalarStudyNameInput');
   if (!container) return;
-  const name = studyInput && studyInput.value.trim() ? studyInput.value.trim() : '';
-  const q = name ? '?study_name=' + encodeURIComponent(name) : '';
+  const em = getAutoresearchEngineMode();
+  const studyKind = em === 'optuna_scalar' ? 'scalar' : 'mo';
+  const name =
+    studyKind === 'scalar'
+      ? (scalarInput && scalarInput.value.trim() ? scalarInput.value.trim() : '')
+      : (studyInput && studyInput.value.trim() ? studyInput.value.trim() : '');
+  const q =
+    '?study_kind=' +
+    encodeURIComponent(studyKind) +
+    (name ? '&study_name=' + encodeURIComponent(name) : '');
   try {
     const resp = await fetch('/api/autoresearch/study' + q);
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error || 'Failed to load study');
     const summ = data.summary || {};
+    if (studyKind === 'scalar') {
+      const bt = summ.best_trial;
+      const bv = summ.best_value;
+      if (summ.n_trials == null || summ.n_trials === 0) {
+        container.innerHTML =
+          '<div class="status info">No scalar trials yet. Run trials below or CLI with <code>study_kind=scalar</code>.</div>';
+        await fetchOptunaStudyDashboard();
+        return;
+      }
+      const detail = bt
+        ? '<table class="ar-pareto-table"><thead><tr><th>Trial</th><th>Objective</th><th>ROI</th><th>Promotable</th></tr></thead><tbody><tr><td>' +
+          escapeHtml(String(bt.number)) +
+          '</td><td>' +
+          escapeHtml(String(bt.value != null ? Number(bt.value).toFixed(4) : '—')) +
+          '</td><td>' +
+          escapeHtml(String((bt.user_attrs && bt.user_attrs.weighted_roi_pct != null) ? Number(bt.user_attrs.weighted_roi_pct).toFixed(2) : '—')) +
+          '</td><td>' +
+          escapeHtml(
+            bt.user_attrs && bt.user_attrs.feasible && bt.user_attrs.guardrail_passed ? 'yes' : 'no'
+          ) +
+          '</td></tr></tbody></table>'
+        : '';
+      container.innerHTML =
+        '<div class="status info">Scalar study: best objective = ' +
+        escapeHtml(bv != null ? String(Number(bv).toFixed(4)) : '—') +
+        '</div>' +
+        detail;
+      await fetchOptunaStudyDashboard();
+      if (APP_STATE.recentCandidates) {
+        updateStatsBar(APP_STATE.recentCandidates, APP_STATE.recentRuns || []);
+      }
+      updateSinceStartSection();
+      return;
+    }
     const rows = summ.pareto_trials || [];
     if (!rows.length) {
       container.innerHTML =
@@ -718,20 +819,32 @@ async function runOptunaTrialsFromDashboard() {
   const nEl = document.getElementById('optunaNTrialsInput');
   const container = document.getElementById('optunaParetoContainer');
   const studyInput = document.getElementById('optunaStudyNameInput');
+  const scalarInput = document.getElementById('optunaScalarStudyNameInput');
+  const scalarObj = document.getElementById('scalarObjectiveSelect');
   if (!container) return;
   const n = Math.max(1, Math.min(50, parseInt((nEl && nEl.value) || '5', 10)));
-  const studyName = studyInput && studyInput.value.trim() ? studyInput.value.trim() : '';
+  const em = getAutoresearchEngineMode();
+  const studyKind = em === 'optuna_scalar' ? 'scalar' : 'mo';
+  const studyName =
+    studyKind === 'scalar'
+      ? (scalarInput && scalarInput.value.trim() ? scalarInput.value.trim() : '')
+      : (studyInput && studyInput.value.trim() ? studyInput.value.trim() : '');
+  const payload = {
+    n_trials: n,
+    years: [2024, 2025],
+    study_kind: studyKind,
+    study_name: studyName || undefined,
+  };
+  if (studyKind === 'scalar' && scalarObj) {
+    payload.scalar_objective = scalarObj.value;
+  }
   container.innerHTML =
     '<div class="status info">Running ' + n + ' trial(s) — walk-forward replay; may take several minutes.</div>';
   try {
     const resp = await fetch('/api/autoresearch/optuna/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        n_trials: n,
-        years: [2024, 2025],
-        study_name: studyName || undefined,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Request failed');
@@ -955,10 +1068,11 @@ function updateStatsBar(candidates, runs) {
   const bestClvLabel = document.getElementById('statBestClvLabel');
   const propLabel = document.getElementById('statTotalProposalsLabel');
   const promoLabel = document.getElementById('statPromotableLabel');
+  const sk = od && od.study_kind;
   if (bestRoiLabel) bestRoiLabel.textContent = useOptuna ? 'Best ROI (study max)' : 'Best ROI';
   if (bestClvLabel) bestClvLabel.textContent = useOptuna ? 'Best CLV (study max)' : 'Best CLV';
   if (propLabel) propLabel.textContent = useOptuna ? 'Trials' : 'Proposals';
-  if (promoLabel) promoLabel.textContent = useOptuna ? 'Pareto OK' : 'Promotable';
+  if (promoLabel) promoLabel.textContent = useOptuna ? (sk === 'scalar' ? 'Best OK' : 'Pareto OK') : 'Promotable';
 
   if (!candidates.length && !(runs || []).length && !useOptuna) {
     setVal('statBaselineRoi', '—'); setVal('statBestRoi', '—');
@@ -993,7 +1107,12 @@ function updateStatsBar(candidates, runs) {
     setVal('statPromotable', String(paretoOk), paretoOk > 0 ? 'val-positive' : '');
     var note = document.getElementById('promotionQueueNote');
     if (note) {
-      note.textContent = paretoOk > 0 ? paretoOk + ' on Pareto pass feasibility + guardrails' : '';
+      note.textContent =
+        paretoOk > 0
+          ? (sk === 'scalar'
+            ? paretoOk + ' best trial passes feasibility + guardrails'
+            : paretoOk + ' on Pareto pass feasibility + guardrails')
+          : '';
     }
     updateSinceStartSection();
     return;
@@ -1337,6 +1456,10 @@ document.addEventListener('DOMContentLoaded', function () {
   if (useTheoryLlmCheckbox) useTheoryLlmCheckbox.addEventListener('change', handleTheoryLlmChange);
   const optunaStudyNameInput = document.getElementById('optunaStudyNameInput');
   if (optunaStudyNameInput) optunaStudyNameInput.addEventListener('blur', handleOptunaStudyBlur);
+  const optunaScalarStudyNameInput = document.getElementById('optunaScalarStudyNameInput');
+  if (optunaScalarStudyNameInput) optunaScalarStudyNameInput.addEventListener('blur', handleScalarStudyBlur);
+  const scalarObjectiveSelect = document.getElementById('scalarObjectiveSelect');
+  if (scalarObjectiveSelect) scalarObjectiveSelect.addEventListener('change', handleScalarObjectiveChange);
   const loadParetoBtn = document.getElementById('loadParetoBtn');
   if (loadParetoBtn) loadParetoBtn.addEventListener('click', loadAutoresearchPareto);
   const runOptunaTrialsBtn = document.getElementById('runOptunaTrialsBtn');

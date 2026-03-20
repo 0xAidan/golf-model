@@ -801,6 +801,8 @@ async def start_optimizer_runtime(request: Request):
         years=payload.get("years"),
         engine_mode=payload.get("engine_mode"),
         optuna_study_name=payload.get("optuna_study_name"),
+        optuna_scalar_study_name=payload.get("optuna_scalar_study_name"),
+        scalar_objective=payload.get("scalar_objective"),
         optuna_trials_per_cycle=payload.get("optuna_trials_per_cycle"),
     )
     return {"ok": True, "optimizer": status}
@@ -838,20 +840,44 @@ async def patch_autoresearch_settings(request: Request):
 
 
 @app.get("/api/autoresearch/study")
-async def get_autoresearch_study(study_name: str | None = Query(None)):
-    """Load persisted Optuna study and return Pareto summary (read-only)."""
+async def get_autoresearch_study(
+    study_name: str | None = Query(None),
+    study_kind: str | None = Query("mo"),
+):
+    """Load persisted Optuna study and return Pareto or scalar summary (read-only)."""
     from src.db import ensure_initialized
     ensure_initialized()
     from src.autoresearch_settings import get_settings
-    from backtester.research_lab.mo_study import create_or_load_study, study_dashboard_metrics, study_summary
+    from backtester.research_lab.mo_study import (
+        create_or_load_scalar_study,
+        create_or_load_study,
+        study_dashboard_metrics,
+        study_scalar_dashboard_metrics,
+        study_scalar_summary,
+        study_summary,
+    )
 
     settings = get_settings()
-    name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
+    kind = (study_kind or "mo").strip().lower()
+    if kind == "scalar":
+        name = (study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+    else:
+        name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
     try:
+        if kind == "scalar":
+            study = create_or_load_scalar_study(name)
+            return {
+                "ok": True,
+                "study_name": name,
+                "study_kind": "scalar",
+                "summary": study_scalar_summary(study),
+                "dashboard": study_scalar_dashboard_metrics(study),
+            }
         study = create_or_load_study(name)
         return {
             "ok": True,
             "study_name": name,
+            "study_kind": "mo",
             "summary": study_summary(study),
             "dashboard": study_dashboard_metrics(study),
         }
@@ -861,13 +887,13 @@ async def get_autoresearch_study(study_name: str | None = Query(None)):
 
 @app.post("/api/autoresearch/optuna/run")
 async def post_autoresearch_optuna_run(request: Request):
-    """Run N Optuna MO trials in a worker thread (can take minutes)."""
+    """Run N Optuna MO or scalar trials in a worker thread (can take minutes)."""
     from src.db import ensure_initialized
     ensure_initialized()
     from backtester.experiments import get_active_strategy
     from backtester.model_registry import get_live_weekly_model, get_research_champion
     from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
-    from backtester.research_lab.mo_study import run_mo_study, study_summary
+    from backtester.research_lab.mo_study import run_mo_study, run_scalar_study, study_scalar_summary, study_summary
     from src.autoresearch_settings import get_settings
 
     try:
@@ -880,6 +906,28 @@ async def post_autoresearch_optuna_run(request: Request):
         years = [2024, 2025]
     scope = body.get("scope", "global")
     settings = get_settings()
+    study_kind = (body.get("study_kind") or "mo").strip().lower()
+    if study_kind == "scalar":
+        study_name = (body.get("study_name") or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        so = (body.get("scalar_objective") or settings.get("scalar_objective") or "blended_score").strip().lower()
+        if so not in ("blended_score", "weighted_roi_pct"):
+            so = "blended_score"
+
+        def _run_scalar():
+            baseline = get_research_champion(scope) or get_live_weekly_model(scope) or get_active_strategy(scope)
+            spec = WalkForwardBenchmarkSpec(years=years)
+            study = run_scalar_study(
+                n_trials=n_trials,
+                baseline=baseline,
+                benchmark_spec=spec,
+                study_name=study_name,
+                scalar_metric=so,
+            )
+            return study_scalar_summary(study)
+
+        summary = await asyncio.to_thread(_run_scalar)
+        return {"ok": True, "study_name": study_name, "study_kind": "scalar", "summary": summary}
+
     study_name = (body.get("study_name") or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
 
     def _run_block():
@@ -894,7 +942,7 @@ async def post_autoresearch_optuna_run(request: Request):
         return study_summary(study)
 
     summary = await asyncio.to_thread(_run_block)
-    return {"ok": True, "study_name": study_name, "summary": summary}
+    return {"ok": True, "study_name": study_name, "study_kind": "mo", "summary": summary}
 
 
 @app.get("/api/autoresearch/status")
@@ -942,6 +990,8 @@ async def get_autoresearch_status():
             "at_start_baseline_clv": status.get("at_start_baseline_clv"),
             "engine_mode": status.get("engine_mode", "research_cycle"),
             "optuna_study_name": status.get("optuna_study_name"),
+            "optuna_scalar_study_name": status.get("optuna_scalar_study_name"),
+            "scalar_objective": status.get("scalar_objective"),
             "optuna_trials_per_cycle": status.get("optuna_trials_per_cycle"),
             "max_candidates": status.get("max_candidates"),
         }

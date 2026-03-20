@@ -17,13 +17,15 @@ DEFAULT_GUARDRAIL_MODE = "strict"
 VALID_GUARDRAIL_MODES = ("strict", "loose")
 
 DEFAULT_ENGINE_MODE = "research_cycle"
-VALID_ENGINE_MODES = ("research_cycle", "optuna")
+VALID_ENGINE_MODES = ("research_cycle", "optuna", "optuna_scalar")
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "guardrail_mode": DEFAULT_GUARDRAIL_MODE,
     "engine_mode": DEFAULT_ENGINE_MODE,
     "use_theory_engine_llm": False,
     "optuna_study_name": "golf_mo_dashboard",
+    "optuna_scalar_study_name": "golf_scalar_dashboard",
+    "scalar_objective": "blended_score",
     "optuna_trials_per_cycle": 3,
 }
 
@@ -40,6 +42,11 @@ def _merge_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     em = (raw.get("engine_mode") or DEFAULT_ENGINE_MODE).strip().lower()
     if em in VALID_ENGINE_MODES:
         out["engine_mode"] = em
+    if raw.get("optuna_scalar_study_name"):
+        out["optuna_scalar_study_name"] = str(raw["optuna_scalar_study_name"]).strip()[:120] or DEFAULT_SETTINGS["optuna_scalar_study_name"]
+    so = (raw.get("scalar_objective") or "").strip().lower()
+    if so in ("blended_score", "weighted_roi_pct"):
+        out["scalar_objective"] = so
     if "use_theory_engine_llm" in raw:
         out["use_theory_engine_llm"] = bool(raw["use_theory_engine_llm"])
     if raw.get("optuna_study_name"):
@@ -90,6 +97,12 @@ def set_settings(updates: dict[str, Any]) -> dict[str, Any]:
         if em not in VALID_ENGINE_MODES:
             em = DEFAULT_ENGINE_MODE
         current["engine_mode"] = em
+    if "optuna_scalar_study_name" in updates and updates["optuna_scalar_study_name"]:
+        current["optuna_scalar_study_name"] = str(updates["optuna_scalar_study_name"]).strip()[:120]
+    if "scalar_objective" in updates and updates["scalar_objective"]:
+        so = str(updates["scalar_objective"]).strip().lower()
+        if so in ("blended_score", "weighted_roi_pct"):
+            current["scalar_objective"] = so
     if "use_theory_engine_llm" in updates:
         current["use_theory_engine_llm"] = bool(updates["use_theory_engine_llm"])
     if "optuna_study_name" in updates and updates["optuna_study_name"]:

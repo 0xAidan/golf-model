@@ -574,27 +574,28 @@ def cmd_autoresearch(args):
 
 
 def cmd_autoresearch_optuna(args):
-    """Delegate to scripts/run_autoresearch_optuna.py (Optuna MO + walk-forward)."""
+    """Delegate to scripts/run_autoresearch_optuna.py (Optuna MO or scalar + walk-forward)."""
     import subprocess
 
     script = os.path.join(ROOT, "scripts", "run_autoresearch_optuna.py")
-    proc = subprocess.run(
-        [
-            sys.executable,
-            script,
-            "--n-trials",
-            str(max(1, int(args.n_trials))),
-            "--years",
-            args.years,
-            "--study-name",
-            args.study_name,
-            "--scope",
-            args.scope,
-            "--n-jobs",
-            str(max(1, int(args.n_jobs))),
-        ],
-        cwd=ROOT,
-    )
+    cmd = [
+        sys.executable,
+        script,
+        "--n-trials",
+        str(max(1, int(args.n_trials))),
+        "--years",
+        args.years,
+        "--study-name",
+        args.study_name,
+        "--scope",
+        args.scope,
+        "--n-jobs",
+        str(max(1, int(args.n_jobs))),
+    ]
+    if getattr(args, "scalar", False):
+        cmd.append("--scalar")
+        cmd.extend(["--scalar-metric", getattr(args, "scalar_metric", "blended_score")])
+    proc = subprocess.run(cmd, cwd=ROOT)
     raise SystemExit(proc.returncode)
 
 
@@ -748,12 +749,19 @@ def main():
     p_ar.add_argument("--seed", type=int, default=42)
     p_ar.add_argument("--timeout-seconds", type=int, default=120)
 
-    p_ao = subparsers.add_parser("autoresearch-optuna", help="Run Optuna multi-objective walk-forward study")
+    p_ao = subparsers.add_parser("autoresearch-optuna", help="Run Optuna MO or scalar walk-forward study")
     p_ao.add_argument("--n-trials", type=int, default=10)
     p_ao.add_argument("--years", default="2024,2025", help="Comma-separated benchmark years")
     p_ao.add_argument("--study-name", dest="study_name", default="golf_mo_default")
     p_ao.add_argument("--scope", default="global")
     p_ao.add_argument("--n-jobs", type=int, default=1)
+    p_ao.add_argument("--scalar", action="store_true", help="Single-objective (blended_score or ROI)")
+    p_ao.add_argument(
+        "--scalar-metric",
+        default="blended_score",
+        choices=("blended_score", "weighted_roi_pct"),
+        help="When --scalar is set",
+    )
 
     args = parser.parse_args()
 

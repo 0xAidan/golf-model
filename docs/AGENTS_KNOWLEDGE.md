@@ -277,6 +277,7 @@ All orchestration goes through `src.services.golf_model_service.GolfModelService
 | `EV_THRESHOLD` | No | `0.08` | Override default EV threshold |
 | `MATCHUP_EV_THRESHOLD` | No | `0.05` | Override matchup EV threshold |
 | `AUTORESEARCH_GUARDRAIL_MODE` | No | *(empty)* | Env override for guardrail mode. Prefer setting **Guardrail mode** in the dashboard (Autoresearch tab); stored in `data/autoresearch_settings.json`. Set here to override UI for scripts. |
+| `AUTORESEARCH_MAX_TRIAL_SECONDS` | No | `3600` | Wall-clock cap per walk-forward trial inside Optuna (thread timeout). Lower on laptops. |
 | `AUTORESEARCH_GUARDRAIL_MIN_BETS` | No | `30` | Min bets required for a candidate to pass guardrails (ignored when `AUTORESEARCH_GUARDRAIL_MODE=loose`) |
 | `AUTORESEARCH_GUARDRAIL_MAX_CLV_REGRESSION` | No | `0.02` | Max allowed CLV drop vs baseline (ignored when mode=loose) |
 | `AUTORESEARCH_GUARDRAIL_MAX_CALIBRATION_REGRESSION` | No | `0.03` | Max allowed calibration error increase vs baseline (ignored when mode=loose) |
@@ -430,7 +431,7 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 
 ## 9. Autoresearch System
 
-**Target v2 design (full spec):** [`docs/autoresearch/SPEC_V2.md`](autoresearch/SPEC_V2.md) — canonical evaluator, Optuna Pareto search, Karpathy-style ledger/program, API consolidation; implementation may still match v1 below until migrated.
+**Target v2 design (full spec):** [`docs/autoresearch/SPEC_V2.md`](autoresearch/SPEC_V2.md) — canonical evaluator, Optuna (MO + scalar), append-only **`output/research/ledger.jsonl`**, human program [`docs/research/research_program.md`](../research/research_program.md), [`docs/research/KARPATHY_AGENT_RUNBOOK.md`](../research/KARPATHY_AGENT_RUNBOOK.md) for LLM-driven workflows.
 
 ### Single strategy resolution (production)
 
@@ -455,7 +456,7 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 - **Proposals** (`backtester/proposals.py`): CRUD for strategy proposals. DB: `research_proposals`, `proposal_reviews`.
 - **Experiments** (`backtester/experiments.py`): `experiments` table, `active_strategy`, `promote_strategy` (separate lane from research champion).
 - **Canonical evaluation (v2 prep)** (`backtester/research_lab/canonical.py`): `evaluate_walk_forward_benchmark`, `evaluate_checkpoint_pilot`, `EvaluationResult` (objective vector, `feasible`, `to_dict`); used by `run_research_cycle` (`canonical_evaluation` on each candidate) and `scripts/run_autoresearch_eval.py`.
-- **Multi-objective Optuna study** (`backtester/research_lab/mo_study.py`, `param_space.py`): NSGA-II / default MO sampler over softmax `w_sub_*` + `min_ev` / `kelly_fraction` / `softmax_temp` / `max_implied_prob`; storage `output/research/optuna/studies.db` (gitignored). CLI: `python scripts/run_autoresearch_optuna.py --n-trials 10 --years 2024,2025`.
+- **Optuna studies** (`backtester/research_lab/mo_study.py`, `param_space.py`): **MO** (Pareto) and **scalar** (single objective: `blended_score` or `weighted_roi_pct`); storage `output/research/optuna/studies.db`. Trial rows append to **`output/research/ledger.jsonl`**. CLI MO: `python scripts/run_autoresearch_optuna.py --n-trials 10`; CLI scalar: `... --scalar --scalar-metric blended_score`. Engine modes: `research_cycle` | `optuna` | `optuna_scalar` (`data/autoresearch_settings.json`).
 - **Research cycle** (`backtester/research_cycle.py`): Orchestrates proposal → `evaluate_weighted_walkforward` → dossier; includes **`validate_autoresearch_data_health`** preflight in the returned payload.
 - **Data health** (`backtester/autoresearch_data_health.py`): Event/PIT/odds row counts and warnings before trusting metrics.
 - **Weighted walk-forward** (`backtester/weighted_walkforward.py`): `evaluate_guardrails` uses `get_autoresearch_guardrail_params()` (UI `data/autoresearch_settings.json` or env).

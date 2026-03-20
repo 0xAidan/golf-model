@@ -68,13 +68,21 @@
         </div>
         <div class="ar-controls ar-controls-row2">
           <label for="engineModeSelect" class="ar-guardrail-label">Engine</label>
-          <select id="engineModeSelect" class="btn btn-secondary btn-sm ar-guardrail-select" aria-label="Autoresearch engine: research cycle or Optuna">
+          <select id="engineModeSelect" class="btn btn-secondary btn-sm ar-guardrail-select" aria-label="Autoresearch engine: research cycle, Optuna MO, or Optuna scalar">
             <option value="research_cycle">Research cycle</option>
             <option value="optuna">Optuna MO</option>
+            <option value="optuna_scalar">Optuna scalar</option>
           </select>
           <label class="ar-checkbox-label"><input type="checkbox" id="useTheoryLlmCheckbox" /> LLM theories</label>
-          <label for="optunaStudyNameInput" class="ar-guardrail-label">Study</label>
-          <input type="text" id="optunaStudyNameInput" class="ar-study-name-input" placeholder="golf_mo_dashboard" autocomplete="off" aria-label="Optuna study name" />
+          <label for="optunaStudyNameInput" class="ar-guardrail-label">MO study</label>
+          <input type="text" id="optunaStudyNameInput" class="ar-study-name-input" placeholder="golf_mo_dashboard" autocomplete="off" aria-label="Optuna multi-objective study name" />
+          <label for="optunaScalarStudyNameInput" class="ar-guardrail-label">Scalar study</label>
+          <input type="text" id="optunaScalarStudyNameInput" class="ar-study-name-input" placeholder="golf_scalar_dashboard" autocomplete="off" aria-label="Optuna scalar study name" />
+          <label for="scalarObjectiveSelect" class="ar-guardrail-label">Scalar target</label>
+          <select id="scalarObjectiveSelect" class="btn btn-secondary btn-sm ar-guardrail-select" aria-label="Scalar objective for Optuna scalar engine">
+            <option value="blended_score">blended_score</option>
+            <option value="weighted_roi_pct">weighted_roi_pct</option>
+          </select>
         </div>
         <div id="autoresearchEngineStatus" class="ar-status-badge">Engine: idle</div>
       </div>

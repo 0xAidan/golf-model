@@ -26,6 +26,8 @@ _state: dict[str, Any] = {
     "years": None,
     "engine_mode": "research_cycle",
     "optuna_study_name": "golf_mo_dashboard",
+    "optuna_scalar_study_name": "golf_scalar_dashboard",
+    "scalar_objective": "blended_score",
     "optuna_trials_per_cycle": 3,
     "run_count": 0,
     "last_cycle_key": None,
@@ -111,6 +113,50 @@ def _run_optuna_cycle(
     }
 
 
+def _run_optuna_scalar_cycle(
+    scope: str,
+    years: list[int] | None,
+    trials: int,
+    study_name: str,
+    scalar_objective: str,
+) -> dict[str, Any]:
+    from backtester.experiments import get_active_strategy
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_scalar_study, study_scalar_summary
+
+    baseline = get_research_champion(scope) or get_live_weekly_model(scope) or get_active_strategy(scope)
+    spec = WalkForwardBenchmarkSpec(years=years)
+    so = scalar_objective if scalar_objective in ("blended_score", "weighted_roi_pct") else "blended_score"
+    study = run_scalar_study(
+        n_trials=trials,
+        baseline=baseline,
+        benchmark_spec=spec,
+        study_name=study_name,
+        scalar_metric=so,
+    )
+    summ = study_scalar_summary(study)
+    best = summ.get("best_trial") or {}
+    ua = best.get("user_attrs") or {}
+    kept = bool(ua.get("feasible") and ua.get("guardrail_passed"))
+    cycle_key = f"optuna_scalar:{study_name}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    return {
+        "cycle_key": cycle_key,
+        "evaluation_mode": "optuna_scalar",
+        "optuna_scalar_summary": summ,
+        "scalar_objective": so,
+        "winner": None,
+        "top_candidates": [],
+        "research_champion_updated": False,
+        "promotion_decision": "optuna_scalar_cycle",
+        "data_health": None,
+        "guardrail_mode": None,
+        "eval_contract_version_walk_forward": None,
+        "_optuna_kept": kept,
+        "_optuna_any_guardrail_pass": kept,
+    }
+
+
 def _run_loop(
     scope: str,
     interval_seconds: float,
@@ -118,6 +164,8 @@ def _run_loop(
     years: list[int] | None,
     engine_mode: str,
     optuna_study_name: str,
+    optuna_scalar_study_name: str,
+    scalar_objective: str,
     optuna_trials_per_cycle: int,
 ) -> None:
     if years is None:
@@ -146,6 +194,14 @@ def _run_loop(
                             optuna_trials_per_cycle,
                             optuna_study_name,
                         )
+                    elif engine_mode == "optuna_scalar":
+                        result = _run_optuna_scalar_cycle(
+                            scope,
+                            years,
+                            optuna_trials_per_cycle,
+                            optuna_scalar_study_name,
+                            scalar_objective,
+                        )
                     else:
                         result = run_autoresearch_cycle(
                             scope=scope,
@@ -171,7 +227,7 @@ def _run_loop(
                 _state["last_result"] = result
                 _state["last_run_finished_at"] = cycle_finished.isoformat()
                 _state["crash_rate"] = 0.0
-                if engine_mode == "optuna":
+                if engine_mode in ("optuna", "optuna_scalar"):
                     if result.get("_optuna_kept"):
                         _state["cycles_kept"] += 1
                     if result.get("_optuna_any_guardrail_pass"):
@@ -218,6 +274,8 @@ def start_continuous_optimizer(
     years: list[int] | None = None,
     engine_mode: str | None = None,
     optuna_study_name: str | None = None,
+    optuna_scalar_study_name: str | None = None,
+    scalar_objective: str | None = None,
     optuna_trials_per_cycle: int | None = None,
 ) -> dict[str, Any]:
     global _thread
@@ -229,9 +287,13 @@ def start_continuous_optimizer(
     if max_candidates is None:
         max_candidates = int(cc.get("max_candidates_per_cycle") or 5)
     em = (engine_mode or settings.get("engine_mode") or "research_cycle").strip().lower()
-    if em not in ("research_cycle", "optuna"):
+    if em not in ("research_cycle", "optuna", "optuna_scalar"):
         em = "research_cycle"
     sn = (optuna_study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
+    sns = (optuna_scalar_study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+    sobj = (scalar_objective or settings.get("scalar_objective") or "blended_score").strip().lower()
+    if sobj not in ("blended_score", "weighted_roi_pct"):
+        sobj = "blended_score"
     try:
         ot = int(optuna_trials_per_cycle if optuna_trials_per_cycle is not None else settings.get("optuna_trials_per_cycle") or 3)
     except (TypeError, ValueError):
@@ -254,6 +316,8 @@ def start_continuous_optimizer(
                 "years": years,
                 "engine_mode": em,
                 "optuna_study_name": sn,
+                "optuna_scalar_study_name": sns,
+                "scalar_objective": sobj,
                 "optuna_trials_per_cycle": ot,
                 "last_error": None,
                 "at_start_baseline_roi": baseline.get("weighted_roi_pct"),
@@ -265,6 +329,17 @@ def start_continuous_optimizer(
                 "guardrail_fail_rate": 0.0,
             }
         )
+    try:
+        from backtester.research_lab.study_state import touch_heartbeat
+
+        active = sns if em == "optuna_scalar" else sn
+        touch_heartbeat(
+            engine_running=True,
+            engine_mode=em,
+            active_study_name=active,
+        )
+    except Exception:
+        pass
     _emit(
         "engine starting"
         f" mode={em}"
@@ -276,7 +351,7 @@ def start_continuous_optimizer(
     )
     _thread = threading.Thread(
         target=_run_loop,
-        args=(scope, interval_seconds, max_candidates, years, em, sn, ot),
+        args=(scope, interval_seconds, max_candidates, years, em, sn, sns, sobj, ot),
         daemon=True,
         name="continuous-optimizer",
     )
@@ -293,6 +368,13 @@ def stop_continuous_optimizer() -> dict[str, Any]:
     _thread = None
     with _state_lock:
         _state["running"] = False
+        em_stop = _state.get("engine_mode") or "research_cycle"
+    try:
+        from backtester.research_lab.study_state import touch_heartbeat
+
+        touch_heartbeat(engine_running=False, engine_mode=em_stop)
+    except Exception:
+        pass
     return get_optimizer_status()
 
 

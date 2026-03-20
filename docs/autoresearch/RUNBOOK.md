@@ -6,8 +6,12 @@
 2. **`DATAGOLF_API_KEY`** for live runs; OpenAI optional for theory generation (falls back to directed + neighbor search).
 3. Understand **evaluation paths**:
    - **Research-cycle engine (default):** Dashboard “Start Engine” / `POST /api/autoresearch/start` with `engine_mode: "research_cycle"` → `backtester/autoresearch_engine.run_cycle` → weighted walk-forward + `replay_event` → **`research_proposals`** and optional **research champion** update.
-   - **Optuna engine:** Same start endpoint with `engine_mode: "optuna"` (or **Autoresearch** tab → Engine = Optuna MO) → multi-objective trials via `backtester/research_lab/mo_study.py`, storage under `output/research/optuna/studies.db`. **Manual trials:** `POST /api/autoresearch/optuna/run` or CLI `python start.py autoresearch-optuna` / `python scripts/run_autoresearch_optuna.py`.
+   - **Optuna MO:** `engine_mode: "optuna"` → multi-objective Pareto trials via `backtester/research_lab/mo_study.py`, storage `output/research/optuna/studies.db`. **Exploration:** tradeoffs between ROI, CLV, calibration, drawdown — not a single “ROI only” optimizer unless you add a selection policy in `docs/research/research_program.md`.
+   - **Optuna scalar:** `engine_mode: "optuna_scalar"` → single-objective (`blended_score` or `weighted_roi_pct` per settings). Uses a **different** `study_name` than MO (default `golf_scalar_dashboard` vs `golf_mo_dashboard`). CLI: `python scripts/run_autoresearch_optuna.py --scalar --scalar-metric blended_score --study-name golf_scalar_dashboard`.
    - **CLI contract eval (audit):** `scripts/run_autoresearch_eval.py` + **`docs/autoresearch/pilot_contract.json`** — immutable checkpoints for holdout/audit; not the same JSON as the live dashboard cycle unless you align contracts manually.
+4. **Ledger:** Every Optuna trial appends to **`output/research/ledger.jsonl`** (append-only). CLI loop (`scripts/run_autoresearch_loop.py`) dual-writes the legacy filename. **State:** `output/research/study_state.json` (heartbeat when the daemon starts/stops).
+5. **Trial budget:** `AUTORESEARCH_MAX_TRIAL_SECONDS` (default `3600`) caps wall time per walk-forward evaluation.
+6. **Local Mac:** No GPU required. Keep the repo off iCloud/Dropbox for SQLite stability; use fewer trials / shorter years if runs are slow.
 
 ## Mutex: dashboard engine vs research worker
 
@@ -16,8 +20,8 @@ Do **not** run **`workers/research_agent.py` autoresearch loop** at the same tim
 ## Running a cycle
 
 - **UI:** Autoresearch tab → **Run once** (calls `POST /api/autoresearch/run-once`) — always the bounded **research** cycle, not Optuna.
-- **Start engine:** `POST /api/autoresearch/start` (same as optimizer start) with optional `engine_mode` (`research_cycle` | `optuna`), `optuna_study_name`, `optuna_trials_per_cycle`, `max_candidates`.
-- **Pareto read-only:** `GET /api/autoresearch/study?study_name=...` loads SQLite study summary plus `dashboard` aggregates (max ROI/CLV over completed trials, Pareto “promotable” count). The Autoresearch stats bar uses these when **Engine = Optuna MO** so it does not mix in the research-proposal list (which is ranked by blended score, not raw ROI).
+- **Start engine:** `POST /api/autoresearch/start` with optional `engine_mode` (`research_cycle` | `optuna` | `optuna_scalar`), `optuna_study_name`, `optuna_scalar_study_name`, `scalar_objective`, `optuna_trials_per_cycle`, `max_candidates`.
+- **Study read-only:** `GET /api/autoresearch/study?study_kind=mo|scalar&study_name=...` loads MO Pareto or scalar best-trial summary plus `dashboard` aggregates. The stats bar uses these for **Optuna MO** and **Optuna scalar** so it does not mix in the research-proposal list (ranked by blended score).
 - **API (research once):** `{"scope": "global", "max_candidates": 3, "years": [2024, 2025]}`.
 - **Response:** Includes `data_health` (row counts, warnings), `guardrail_mode` (strict/loose from UI or env), `promotion_decision`, `winner`.
 
@@ -46,4 +50,6 @@ See `.cursor/rules/project-charter.mdc` for bootstrap phases and go-live gates b
 
 - `docs/AGENTS_KNOWLEDGE.md` section 9  
 - `docs/autoresearch/evaluation_contract.md`  
-- `program.md` (control-plane notes for CLI loop scripts)
+- `docs/research/research_program.md` — control plane (human program)
+- `docs/research/KARPATHY_AGENT_RUNBOOK.md` — LLM/agent workflow
+- `program.md` — pointer to the above

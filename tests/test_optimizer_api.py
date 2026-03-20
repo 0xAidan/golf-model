@@ -114,6 +114,10 @@ def test_autoresearch_study_endpoint(monkeypatch):
             "pareto_trials": [{"number": 0, "values": [1, 2, 3, 4], "params": {}, "user_attrs": {}}],
         },
     )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.study_dashboard_metrics",
+        lambda study: {"study_kind": "mo", "n_trials": 2},
+    )
 
     client = TestClient(app_module.app)
     response = client.get("/api/autoresearch/study?study_name=mock")

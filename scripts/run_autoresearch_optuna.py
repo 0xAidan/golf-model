@@ -17,13 +17,30 @@ def main() -> int:
     from backtester.experiments import get_active_strategy
     from backtester.model_registry import get_live_weekly_model, get_research_champion
     from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
-    from backtester.research_lab.mo_study import run_mo_study, study_summary
+    from backtester.research_lab.mo_study import (
+        run_mo_study,
+        run_scalar_study,
+        study_scalar_summary,
+        study_summary,
+    )
     from src.db import ensure_initialized
 
-    parser = argparse.ArgumentParser(description="Multi-objective autoresearch (Optuna + walk-forward)")
+    parser = argparse.ArgumentParser(description="Multi-objective or scalar Optuna autoresearch (walk-forward)")
     parser.add_argument("--n-trials", type=int, default=10, help="Number of Optuna trials")
     parser.add_argument("--years", type=str, default="2024,2025", help="Comma-separated benchmark years")
     parser.add_argument("--study-name", type=str, default="golf_mo_default", help="Optuna study name (persisted)")
+    parser.add_argument(
+        "--scalar",
+        action="store_true",
+        help="Single-objective study (maximize blended_score or weighted_roi_pct)",
+    )
+    parser.add_argument(
+        "--scalar-metric",
+        type=str,
+        default="blended_score",
+        choices=("blended_score", "weighted_roi_pct"),
+        help="Objective when --scalar is set",
+    )
     parser.add_argument("--scope", type=str, default="global", help="Model registry scope for baseline")
     parser.add_argument("--n-jobs", type=int, default=1, help="Parallel trials (default 1 for SQLite safety)")
     args = parser.parse_args()
@@ -32,14 +49,25 @@ def main() -> int:
     years = [int(x.strip()) for x in args.years.split(",") if x.strip()]
     baseline = get_research_champion(args.scope) or get_live_weekly_model(args.scope) or get_active_strategy(args.scope)
     spec = WalkForwardBenchmarkSpec(years=years, min_train_events=2, test_window_size=1)
-    study = run_mo_study(
-        n_trials=args.n_trials,
-        baseline=baseline,
-        benchmark_spec=spec,
-        study_name=args.study_name,
-        n_jobs=args.n_jobs,
-    )
-    print(json.dumps(study_summary(study), indent=2, default=str))
+    if args.scalar:
+        study = run_scalar_study(
+            n_trials=args.n_trials,
+            baseline=baseline,
+            benchmark_spec=spec,
+            study_name=args.study_name,
+            scalar_metric=args.scalar_metric,
+            n_jobs=args.n_jobs,
+        )
+        print(json.dumps(study_scalar_summary(study), indent=2, default=str))
+    else:
+        study = run_mo_study(
+            n_trials=args.n_trials,
+            baseline=baseline,
+            benchmark_spec=spec,
+            study_name=args.study_name,
+            n_jobs=args.n_jobs,
+        )
+        print(json.dumps(study_summary(study), indent=2, default=str))
     return 0
 
 
