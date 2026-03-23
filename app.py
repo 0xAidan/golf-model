@@ -13,7 +13,7 @@ import re
 import asyncio
 import shutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -531,6 +531,56 @@ def _simple_autoresearch_payload(status: dict) -> dict:
             if attempt
         ],
     }
+
+
+def _write_json_file(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+
+
+def _fetch_table_rows(conn, table_name: str) -> list[dict]:
+    rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+    return [dict(row) for row in rows]
+
+
+def _table_has_column(conn, table_name: str, column_name: str) -> bool:
+    cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(col[1] == column_name for col in cols)
+
+
+def _archive_active_research_files(output_dir: Path, archive_root: Path) -> list[str]:
+    research_dir = output_dir / "research"
+    archived_files: list[str] = []
+    if not research_dir.exists():
+        return archived_files
+    files_root = archive_root / "files"
+    files_root.mkdir(parents=True, exist_ok=True)
+    for child in list(research_dir.iterdir()):
+        if child.name == "archive":
+            continue
+        destination = files_root / child.name
+        if child.is_dir():
+            shutil.move(str(child), str(destination))
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(child), str(destination))
+        archived_files.append(_relative_output_path(str(child)))
+    (research_dir / "optuna").mkdir(parents=True, exist_ok=True)
+    return archived_files
+
+
+def _archive_autoresearch_settings_file(archive_root: Path) -> str | None:
+    import src.autoresearch_settings as settings_module
+
+    settings_path = Path(settings_module._SETTINGS_FILE)
+    if not settings_path.exists():
+        settings_module.invalidate_cache()
+        return None
+    destination = archive_root / "settings" / settings_path.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(settings_path), str(destination))
+    settings_module.invalidate_cache()
+    return str(destination)
 
 
 @app.post("/api/simple/autoresearch/start")
@@ -1462,24 +1512,75 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
 
 @app.post("/api/autoresearch/reset")
 async def reset_autoresearch_state():
-    """Reset research champion and mark old proposals as legacy for a fresh start."""
-    from src.db import ensure_initialized, get_conn
+    """Archive old research data and clear the active autoresearch lane for a fresh start."""
+    from src.db import ensure_initialized
+    from backtester.optimizer_runtime import reset_optimizer_state
+    from backtester.model_registry import get_live_weekly_model_record, set_live_weekly_model
+    from src.strategy_resolution import resolve_runtime_strategy
+
     ensure_initialized()
     try:
+        effective_strategy, strategy_meta = resolve_runtime_strategy("global")
+        prediction_lane_preserved = False
+        if strategy_meta.get("strategy_source") == "research_champion" and not get_live_weekly_model_record("global"):
+            set_live_weekly_model(
+                effective_strategy,
+                scope="global",
+                promoted_by="reset",
+                action="reset_preserve_current_prediction_lane",
+                notes="Preserved the current prediction strategy before clearing old autoresearch history.",
+            )
+            prediction_lane_preserved = True
+
         conn = get_conn()
-        # Mark old research champion entries as legacy
-        conn.execute("UPDATE research_model_registry SET scope = 'legacy_' || scope WHERE scope NOT LIKE 'legacy_%'")
-        # Mark old proposals evaluated under flawed scope
-        conn.execute("""
-            UPDATE research_proposals 
-            SET status = 'legacy' 
-            WHERE status = 'evaluated' 
-            AND id <= (SELECT COALESCE(MAX(id), 0) FROM research_proposals)
-        """)
+        output_dir = Path(_output_dir_absolute())
+        research_dir = output_dir / "research"
+        archive_root = research_dir / "archive" / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        archive_root.mkdir(parents=True, exist_ok=False)
+
+        archived_tables = {
+            "research_proposals": _fetch_table_rows(conn, "research_proposals"),
+            "proposal_reviews": _fetch_table_rows(conn, "proposal_reviews"),
+            "research_model_registry": _fetch_table_rows(conn, "research_model_registry"),
+        }
+        for table_name, rows in archived_tables.items():
+            _write_json_file(archive_root / "db" / f"{table_name}.json", rows)
+
+        archived_files = _archive_active_research_files(output_dir, archive_root)
+        archived_settings_path = _archive_autoresearch_settings_file(archive_root)
+
+        if _table_has_column(conn, "live_model_registry", "source_research_registry_id"):
+            conn.execute("UPDATE live_model_registry SET source_research_registry_id = NULL WHERE source_research_registry_id IS NOT NULL")
+        conn.execute("DELETE FROM research_model_registry")
+        conn.execute("DELETE FROM proposal_reviews")
+        conn.execute("DELETE FROM research_proposals")
         conn.commit()
         conn.close()
-        return {"ok": True, "message": "Research state reset. Old proposals marked as legacy. Next cycle will establish new baseline."}
+
+        reset_optimizer_state()
+
+        archive_manifest = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "archive_dir": str(archive_root),
+            "db_counts": {table_name: len(rows) for table_name, rows in archived_tables.items()},
+            "archived_files": archived_files,
+            "archived_settings": bool(archived_settings_path),
+            "active_prediction_lane_preserved": True,
+            "prediction_lane_snapshot_created": prediction_lane_preserved,
+        }
+        _write_json_file(archive_root / "archive_manifest.json", archive_manifest)
+        return {
+            "ok": True,
+            "archive_dir": _relative_output_path(str(archive_root)),
+            "message": "Old research was archived and the active autoresearch process was reset.",
+            "archived_counts": archive_manifest["db_counts"],
+        }
     except Exception as exc:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
 

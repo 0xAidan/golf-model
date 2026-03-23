@@ -18,30 +18,37 @@ _logger = logging.getLogger("autoresearch.runtime")
 _state_lock = threading.Lock()
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
-_state: dict[str, Any] = {
-    "running": False,
-    "scope": "global",
-    "interval_seconds": 300,
-    "max_candidates": 5,
-    "years": None,
-    "engine_mode": "research_cycle",
-    "optuna_study_name": "golf_mo_dashboard",
-    "optuna_scalar_study_name": "golf_scalar_dashboard",
-    "scalar_objective": "blended_score",
-    "optuna_trials_per_cycle": 3,
-    "run_count": 0,
-    "last_cycle_key": None,
-    "last_run_started_at": None,
-    "last_run_finished_at": None,
-    "last_error": None,
-    "keep_rate": 0.0,
-    "crash_rate": 0.0,
-    "guardrail_fail_rate": 0.0,
-    "cycles_kept": 0,
-    "cycles_guardrail_pass": 0,
-    "at_start_baseline_roi": None,
-    "at_start_baseline_clv": None,
-}
+
+
+def _default_state() -> dict[str, Any]:
+    return {
+        "running": False,
+        "scope": "global",
+        "interval_seconds": 300,
+        "max_candidates": 5,
+        "years": None,
+        "engine_mode": "optuna_scalar",
+        "optuna_study_name": "golf_mo_dashboard",
+        "optuna_scalar_study_name": "golf_scalar_simple",
+        "scalar_objective": "weighted_roi_pct",
+        "optuna_trials_per_cycle": 3,
+        "run_count": 0,
+        "last_cycle_key": None,
+        "last_run_started_at": None,
+        "last_run_finished_at": None,
+        "last_result": None,
+        "last_error": None,
+        "keep_rate": 0.0,
+        "crash_rate": 0.0,
+        "guardrail_fail_rate": 0.0,
+        "cycles_kept": 0,
+        "cycles_guardrail_pass": 0,
+        "at_start_baseline_roi": None,
+        "at_start_baseline_clv": None,
+    }
+
+
+_state: dict[str, Any] = _default_state()
 
 
 def _emit(message: str) -> None:
@@ -403,4 +410,17 @@ def record_manual_autoresearch_result(
         _state["last_result"] = result
         _state["last_error"] = None
         _state["last_run_finished_at"] = finished_at
+    return get_optimizer_status()
+
+
+def reset_optimizer_state() -> dict[str, Any]:
+    """Stop any running loop and clear in-memory optimizer/autoresearch status."""
+    global _thread
+    _stop_event.set()
+    if _thread and _thread.is_alive():
+        _thread.join(timeout=2.0)
+    _thread = None
+    with _state_lock:
+        _state.clear()
+        _state.update(_default_state())
     return get_optimizer_status()

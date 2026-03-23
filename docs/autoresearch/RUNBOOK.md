@@ -41,6 +41,22 @@ If `data_health.ok` is false, fix backfill/PIT before trusting ROI/CLV numbers.
 - Configured via **`get_autoresearch_guardrail_params()`** in `src/config.py`, overridden by **`data/autoresearch_settings.json`** (`guardrail_mode`: strict | loose) or env `AUTORESEARCH_GUARDRAIL_*`.
 - Typical failure reasons: `insufficient_sample`, `clv_regression`, `calibration_regression`, `drawdown_regression`. See `next_attempt_hint` on evaluated proposals.
 
+## Reset / archive
+
+- `POST /api/autoresearch/reset` now performs an **archive-first reset** instead of trying to mark rows `legacy`.
+- Archive location: **`output/research/archive/<timestamp>/`**
+- What gets archived out of the active research lane:
+  - DB rows from `research_proposals`, `proposal_reviews`, and `research_model_registry`
+  - `output/research/` artifacts including ledger/state files and Optuna storage
+  - `data/autoresearch_settings.json`
+- What stays active:
+  - the current live prediction lane (`live_model_registry`)
+  - experiments / `active_strategy`
+- Safety behavior:
+  - archive files are written before active research rows are cleared
+  - optimizer/runtime state is reset so Simple Mode and Lab Mode come back empty
+  - if the current predictions are being driven by the research champion and there is no live model row yet, reset first snapshots that strategy into the live lane so prediction behavior stays the same
+
 ## Promotion to production
 
 1. **Research champion** updates automatically when a candidate passes iteration rules (`run_research_cycle`); full auto-approval requires higher bet counts.

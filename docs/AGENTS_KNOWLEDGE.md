@@ -437,6 +437,8 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 
 **Persisted defaults:** `src/autoresearch_settings.DEFAULT_SETTINGS` now boots the advanced settings layer to `engine_mode="optuna_scalar"`, `scalar_objective="weighted_roi_pct"`, `optuna_scalar_study_name="golf_scalar_simple"`, and `optuna_trials_per_cycle=3`.
 
+**Reset behavior:** `POST /api/autoresearch/reset` is now an **archive-first** reset. It exports old `research_proposals`, `proposal_reviews`, and `research_model_registry` rows plus active `output/research/` artifacts and `data/autoresearch_settings.json` into `output/research/archive/<timestamp>/`, then clears the active research lane and resets optimizer runtime state. `live_model_registry` and the live prediction lane stay active. If predictions were currently resolving from the research champion and there is no live row yet, reset snapshots that strategy into the live lane first so prediction behavior stays unchanged.
+
 **Predictions / `GolfModelService`:** `include_methodology` defaults to **true** — each run should emit a `*_methodology_*.md` next to the card unless the caller passes `include_methodology=False` (e.g. fast tests).
 
 **Target v2 design (full spec):** [`docs/autoresearch/SPEC_V2.md`](autoresearch/SPEC_V2.md) — canonical evaluator, Optuna (MO + scalar), append-only **`output/research/ledger.jsonl`**, human program [`docs/research/research_program.md`](../research/research_program.md), [`docs/research/KARPATHY_AGENT_RUNBOOK.md`](../research/KARPATHY_AGENT_RUNBOOK.md) for LLM-driven workflows.
