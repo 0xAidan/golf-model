@@ -406,6 +406,31 @@ def test_simple_autoresearch_control_flow_uses_scalar_defaults(monkeypatch):
     assert stop_response.json()["is_running"] is False
 
 
+def test_simple_autoresearch_status_cycle_in_progress(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(
+        "backtester.optimizer_runtime.get_optimizer_status",
+        lambda: {
+            "running": True,
+            "last_run_started_at": "2026-03-23T20:00:00+00:00",
+            "last_run_finished_at": "2026-03-23T19:30:00+00:00",
+            "last_error": None,
+            "scalar_objective": "weighted_roi_pct",
+            "last_result": {},
+        },
+    )
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/simple/autoresearch/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cycle_in_progress"] is True
+    assert "walk-forward" in body["headline"].lower()
+
+
 def test_simple_autoresearch_run_once_returns_plain_best_improvement(monkeypatch):
     import app as app_module
     from backtester.strategy import StrategyConfig

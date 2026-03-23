@@ -472,6 +472,19 @@ def _simple_autoresearch_state(status: dict) -> str:
     return "idle"
 
 
+def _simple_cycle_in_progress(status: dict) -> bool:
+    """True while a walk-forward / Optuna batch is actively running (started_at > last finished)."""
+    if not status.get("running"):
+        return False
+    started = status.get("last_run_started_at")
+    if not started:
+        return False
+    finished = status.get("last_run_finished_at")
+    if not finished:
+        return True
+    return str(started) > str(finished)
+
+
 def _simple_scalar_trial_summary(trial: dict | None) -> dict | None:
     if not trial:
         return None
@@ -513,21 +526,27 @@ def _simple_autoresearch_payload(status: dict) -> dict:
     scalar_summary = last_result.get("optuna_scalar_summary") or {}
     best_trial = scalar_summary.get("best_promotable_trial") or scalar_summary.get("best_trial")
     recent_trials = scalar_summary.get("recent_trials") or []
+    cycle_in_progress = _simple_cycle_in_progress(status)
+    if status.get("running"):
+        headline = (
+            "Running a walk-forward tuning batch (each trial can take several minutes)…"
+            if cycle_in_progress
+            else "Between batches — next run is scheduled on the timer."
+        )
+    else:
+        headline = "Edge tuner is idle."
     return {
         "mode": "simple_scalar",
         "report_only": True,
         "scope": status.get("scope", SIMPLE_AUTORESEARCH_SCOPE),
         "state": state,
         "is_running": bool(status.get("running")),
+        "cycle_in_progress": cycle_in_progress,
         "objective": status.get("scalar_objective") or SIMPLE_AUTORESEARCH_OBJECTIVE,
         "study_name": status.get("optuna_scalar_study_name") or SIMPLE_AUTORESEARCH_STUDY_NAME,
         "interval_seconds": status.get("interval_seconds") or SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
         "goal": "Testing small matchup-strategy tweaks against the current baseline.",
-        "headline": (
-            "Edge tuner is running in the background."
-            if status.get("running")
-            else "Edge tuner is idle."
-        ),
+        "headline": headline,
         "last_run_started_at": status.get("last_run_started_at"),
         "last_run_finished_at": status.get("last_run_finished_at"),
         "error": status.get("last_error"),

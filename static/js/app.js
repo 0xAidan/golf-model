@@ -506,7 +506,12 @@ function updateSimpleAutoresearchUi(data) {
   if (headline) headline.textContent = data.headline || 'Edge tuner is idle.';
   if (objective) objective.textContent = 'Objective: ' + (data.objective || 'weighted_roi_pct');
   if (lastRun) {
-    lastRun.textContent = 'Last run: ' + (data.last_run_finished_at ? formatTime(data.last_run_finished_at) : 'Never');
+    if (data.cycle_in_progress && data.last_run_started_at) {
+      lastRun.textContent = 'Current batch started: ' + formatTime(data.last_run_started_at);
+    } else {
+      lastRun.textContent =
+        'Last completed: ' + (data.last_run_finished_at ? formatTime(data.last_run_finished_at) : 'Never');
+    }
   }
   if (error) {
     error.textContent = data.error ? 'Error: ' + data.error : 'No errors.';

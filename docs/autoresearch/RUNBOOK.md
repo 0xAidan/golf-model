@@ -16,6 +16,12 @@
 6. **Trial budget:** `AUTORESEARCH_MAX_TRIAL_SECONDS` (default `3600`) caps wall time per walk-forward evaluation.
 7. **Local Mac:** No GPU required. Keep the repo off iCloud/Dropbox for SQLite stability; use fewer trials / shorter years if runs are slow.
 
+## Terminal output & port 8000
+
+- The Edge Tuner runs **in the same process** as `python app.py`. Progress prints only in the **terminal where that process is attached**. If you start a second `app.py` and see **`[Errno 48] address already in use`**, another server is already bound to port **8000** — your browser may be talking to that older process. Find it with `lsof -nP -iTCP:8000 | grep LISTEN` (macOS), stop that PID, then start one clean `python app.py`.
+- You should see **`[AUTORESEARCH] cycle starting`** / **`cycle finished`** around each batch, and **`[AUTORESEARCH] optuna_scalar trial=…`** as each Optuna trial completes. Long gaps are normal while walk-forward backtests run.
+- **Blocked** in the Simple Mode list means a trial finished but **did not pass guardrails** — that is expected exploration, not a crash.
+
 ## Mutex: dashboard engine vs research worker
 
 Do **not** run **`workers/research_agent.py` autoresearch loop** at the same time as the dashboard autoresearch engine: the worker **skips** its cycle when the optimizer reports `running`, but you should still avoid starting both intentionally — one driver is enough.

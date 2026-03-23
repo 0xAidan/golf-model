@@ -261,6 +261,21 @@ def run_mo_study(
     return study
 
 
+def _log_scalar_trial_terminal(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:
+    """Print progress to stdout so the dashboard process shows activity between cycle start/end."""
+    parts = [
+        "[AUTORESEARCH]",
+        "optuna_scalar",
+        f"trial={trial.number}",
+        f"state={trial.state.name}",
+    ]
+    if trial.value is not None:
+        parts.append(f"value={float(trial.value):.6f}")
+    line = " ".join(parts)
+    print(line, flush=True)
+    _logger.info("%s", line)
+
+
 def run_scalar_study(
     *,
     n_trials: int,
@@ -280,6 +295,15 @@ def run_scalar_study(
         scalar_metric=scalar_metric,
     )
     study = create_or_load_scalar_study(effective_study_name, storage_path=storage_path)
+    print(
+        f"[AUTORESEARCH] optuna_scalar batch starting study={study.study_name} n_trials={n_trials}",
+        flush=True,
+    )
+    _logger.info(
+        "optuna_scalar batch starting study=%s n_trials=%s",
+        study.study_name,
+        n_trials,
+    )
     objective = make_scalar_objective(
         baseline=baseline,
         benchmark_spec=benchmark_spec,
@@ -288,7 +312,13 @@ def run_scalar_study(
         evaluate_fn=evaluate_fn,
         max_trial_seconds=max_trial_seconds,
     )
-    study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=False)
+    study.optimize(
+        objective,
+        n_trials=n_trials,
+        n_jobs=n_jobs,
+        show_progress_bar=False,
+        callbacks=[_log_scalar_trial_terminal],
+    )
     return study
 
 
