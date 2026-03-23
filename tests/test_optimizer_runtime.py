@@ -27,6 +27,7 @@ def test_optimizer_runtime_can_start_and_stop(monkeypatch):
         interval_seconds=0.05,
         max_candidates=1,
         years=[2025],
+        engine_mode="research_cycle",
     )
     time.sleep(0.12)
     status_while_running = optimizer_runtime.get_optimizer_status()
@@ -39,3 +40,34 @@ def test_optimizer_runtime_can_start_and_stop(monkeypatch):
     assert calls["count"] >= 1
     assert stopped["running"] is False
     assert status_after_stop["running"] is False
+
+
+def test_optimizer_runtime_can_record_manual_scalar_result():
+    from backtester import optimizer_runtime
+
+    optimizer_runtime.stop_continuous_optimizer()
+    optimizer_runtime.record_manual_autoresearch_result(
+        {
+            "evaluation_mode": "optuna_scalar",
+            "optuna_scalar_summary": {
+                "best_value": 4.4,
+                "best_promotable_trial": {
+                    "number": 2,
+                    "value": 4.4,
+                    "user_attrs": {"feasible": True, "guardrail_passed": True},
+                },
+                "recent_trials": [],
+            },
+        },
+        scope="global",
+        engine_mode="optuna_scalar",
+        scalar_objective="weighted_roi_pct",
+        optuna_scalar_study_name="golf_scalar_simple",
+    )
+    status = optimizer_runtime.get_optimizer_status()
+
+    assert status["engine_mode"] == "optuna_scalar"
+    assert status["scalar_objective"] == "weighted_roi_pct"
+    assert status["optuna_scalar_study_name"] == "golf_scalar_simple"
+    assert status["last_result"]["evaluation_mode"] == "optuna_scalar"
+    assert status["last_run_finished_at"] is not None

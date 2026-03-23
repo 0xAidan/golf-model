@@ -1230,6 +1230,239 @@ body {
 
 .ar-section-head h2 { margin-bottom: 0; }
 
+.ar-shell {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ar-shell-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, rgba(63, 185, 80, 0.12), rgba(63, 185, 80, 0.02) 45%),
+    var(--surface);
+}
+
+.ar-kicker {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.ar-shell-lead {
+  max-width: 42rem;
+  margin-bottom: 0;
+}
+
+.ar-mode-tabs {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(10, 14, 20, 0.45);
+}
+
+.ar-mode-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.ar-mode-tab:hover {
+  color: var(--text);
+}
+
+.ar-mode-tab.is-active {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.ar-mode-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ar-mode-panel {
+  padding: 22px 24px 24px;
+}
+
+.ar-simple-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.ar-simple-copy h3 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+}
+
+.ar-simple-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ar-simple-overview,
+.ar-simple-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ar-simple-overview {
+  margin-bottom: 14px;
+}
+
+.ar-simple-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 55%), var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  min-height: 160px;
+}
+
+.ar-simple-label {
+  display: inline-flex;
+  margin-bottom: 10px;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.ar-simple-body {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.ar-simple-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.ar-simple-meta-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ar-simple-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(125, 133, 144, 0.16);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ar-simple-badge.is-running {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.ar-simple-badge.is-error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+.ar-simple-badge.is-ready {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.ar-simple-empty {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.ar-simple-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ar-simple-number {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--success-text);
+}
+
+.ar-simple-detail {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.ar-simple-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ar-simple-list-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-elevated);
+}
+
+.ar-simple-list-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.ar-lab-note {
+  margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .ar-shell-head,
+  .ar-simple-hero {
+    flex-direction: column;
+  }
+
+  .ar-simple-actions {
+    justify-content: flex-start;
+  }
+
+  .ar-simple-overview,
+  .ar-simple-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Badge counter */
 .badge {
   display: inline-flex;

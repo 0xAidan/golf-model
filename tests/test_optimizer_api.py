@@ -127,6 +127,64 @@ def test_autoresearch_study_endpoint(monkeypatch):
     assert payload["summary"]["n_pareto"] == 1
 
 
+def test_autoresearch_scalar_study_endpoint_uses_resolved_study_name(monkeypatch):
+    import app as app_module
+
+    captured = {}
+
+    def _fake_create_scalar_study(study_name, storage_path=None):
+        captured["study_name"] = study_name
+        return object()
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "src.autoresearch_settings.get_settings",
+        lambda: {
+            "optuna_scalar_study_name": "golf_scalar_dashboard",
+            "scalar_objective": "weighted_roi_pct",
+        },
+    )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.create_or_load_scalar_study",
+        _fake_create_scalar_study,
+    )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.study_scalar_summary",
+        lambda study: {"study_kind": "scalar", "study_name": captured["study_name"], "n_trials": 0},
+    )
+    monkeypatch.setattr(
+        "backtester.research_lab.mo_study.study_scalar_dashboard_metrics",
+        lambda study: {"study_kind": "scalar", "n_complete_trials": 0},
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/autoresearch/study?study_kind=scalar")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert captured["study_name"].startswith("golf_scalar_dashboard")
+    assert captured["study_name"] != "golf_scalar_dashboard"
+
+
+def test_autoresearch_settings_default_to_simple_scalar_workflow(monkeypatch, tmp_path):
+    import app as app_module
+    import src.autoresearch_settings as settings_module
+
+    settings_module.invalidate_cache()
+    monkeypatch.setattr(settings_module, "_SETTINGS_DIR", tmp_path)
+    monkeypatch.setattr(settings_module, "_SETTINGS_FILE", tmp_path / "autoresearch_settings.json")
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/autoresearch/settings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["engine_mode"] == "optuna_scalar"
+    assert payload["scalar_objective"] == "weighted_roi_pct"
+    assert payload["optuna_scalar_study_name"] == "golf_scalar_simple"
+
+
 def test_autoresearch_optuna_run_endpoint(monkeypatch):
     import app as app_module
     from backtester.strategy import StrategyConfig

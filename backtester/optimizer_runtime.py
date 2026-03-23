@@ -381,3 +381,26 @@ def stop_continuous_optimizer() -> dict[str, Any]:
 def get_optimizer_status() -> dict[str, Any]:
     with _state_lock:
         return dict(_state)
+
+
+def record_manual_autoresearch_result(
+    result: dict[str, Any],
+    *,
+    scope: str = "global",
+    engine_mode: str = "optuna_scalar",
+    scalar_objective: str | None = None,
+    optuna_scalar_study_name: str | None = None,
+) -> dict[str, Any]:
+    """Persist the latest manual/simple-mode result so status polling can reflect it."""
+    finished_at = datetime.now(timezone.utc).isoformat()
+    with _state_lock:
+        _state["scope"] = scope
+        _state["engine_mode"] = engine_mode
+        if scalar_objective:
+            _state["scalar_objective"] = scalar_objective
+        if optuna_scalar_study_name:
+            _state["optuna_scalar_study_name"] = optuna_scalar_study_name
+        _state["last_result"] = result
+        _state["last_error"] = None
+        _state["last_run_finished_at"] = finished_at
+    return get_optimizer_status()

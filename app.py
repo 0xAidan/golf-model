@@ -62,6 +62,11 @@ CSV_DIR = os.path.join(os.path.dirname(__file__), "data", "csvs")
 os.makedirs(CSV_DIR, exist_ok=True)
 SIMPLE_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output", "backtests")
 os.makedirs(SIMPLE_OUTPUT_DIR, exist_ok=True)
+SIMPLE_AUTORESEARCH_SCOPE = "global"
+SIMPLE_AUTORESEARCH_INTERVAL_SECONDS = 300
+SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE = 3
+SIMPLE_AUTORESEARCH_OBJECTIVE = "weighted_roi_pct"
+SIMPLE_AUTORESEARCH_STUDY_NAME = "golf_scalar_simple"
 
 
 def _latest_output_file(*, subdir: str = "", suffix: str = ".md") -> str | None:
@@ -448,6 +453,172 @@ def _write_simple_backtest_report(strategy, baseline_strategy, years, evaluation
             f"{recommendation}\n"
         )
     return {"path": path, "verdict": verdict}
+
+
+def _simple_autoresearch_state(status: dict) -> str:
+    if status.get("running"):
+        return "running"
+    if status.get("last_error"):
+        return "error"
+    if status.get("last_run_finished_at"):
+        return "completed"
+    return "idle"
+
+
+def _simple_scalar_trial_summary(trial: dict | None) -> dict | None:
+    if not trial:
+        return None
+    user_attrs = trial.get("user_attrs") or {}
+    return {
+        "trial_number": trial.get("number"),
+        "metric_name": SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "metric_value": trial.get("value"),
+        "roi_pct": user_attrs.get("weighted_roi_pct"),
+        "clv_avg": user_attrs.get("weighted_clv_avg"),
+        "blended_score": user_attrs.get("blended_score"),
+        "guardrails_passed": bool(user_attrs.get("guardrail_passed")),
+        "feasible": bool(user_attrs.get("feasible")),
+    }
+
+
+def _simple_recent_scalar_attempts(study, limit: int = 3) -> list[dict]:
+    attempts = []
+    complete_trials = [
+        trial for trial in getattr(study, "trials", [])
+        if trial.state.name == "COMPLETE" and trial.value is not None
+    ]
+    for trial in sorted(complete_trials, key=lambda item: item.number, reverse=True)[:limit]:
+        attempts.append(
+            _simple_scalar_trial_summary(
+                {
+                    "number": trial.number,
+                    "value": trial.value,
+                    "user_attrs": dict(trial.user_attrs),
+                }
+            )
+        )
+    return [attempt for attempt in attempts if attempt]
+
+
+def _simple_autoresearch_payload(status: dict) -> dict:
+    state = _simple_autoresearch_state(status)
+    last_result = status.get("last_result") or {}
+    scalar_summary = last_result.get("optuna_scalar_summary") or {}
+    best_trial = scalar_summary.get("best_promotable_trial") or scalar_summary.get("best_trial")
+    recent_trials = scalar_summary.get("recent_trials") or []
+    return {
+        "mode": "simple_scalar",
+        "report_only": True,
+        "scope": status.get("scope", SIMPLE_AUTORESEARCH_SCOPE),
+        "state": state,
+        "is_running": bool(status.get("running")),
+        "objective": status.get("scalar_objective") or SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "study_name": status.get("optuna_scalar_study_name") or SIMPLE_AUTORESEARCH_STUDY_NAME,
+        "interval_seconds": status.get("interval_seconds") or SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
+        "goal": "Testing small matchup-strategy tweaks against the current baseline.",
+        "headline": (
+            "Edge tuner is running in the background."
+            if status.get("running")
+            else "Edge tuner is idle."
+        ),
+        "last_run_started_at": status.get("last_run_started_at"),
+        "last_run_finished_at": status.get("last_run_finished_at"),
+        "error": status.get("last_error"),
+        "best_improvement": _simple_scalar_trial_summary(best_trial),
+        "recent_attempts": [
+            attempt
+            for attempt in (_simple_scalar_trial_summary(trial) for trial in recent_trials)
+            if attempt
+        ],
+    }
+
+
+@app.post("/api/simple/autoresearch/start")
+async def simple_autoresearch_start():
+    """Start the simple scalar autoresearch loop with safe defaults."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import start_continuous_optimizer
+
+    status = start_continuous_optimizer(
+        scope=SIMPLE_AUTORESEARCH_SCOPE,
+        interval_seconds=SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
+        engine_mode="optuna_scalar",
+        optuna_scalar_study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+        scalar_objective=SIMPLE_AUTORESEARCH_OBJECTIVE,
+        optuna_trials_per_cycle=SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE,
+    )
+    return _simple_autoresearch_payload(status)
+
+
+@app.get("/api/simple/autoresearch/status")
+async def simple_autoresearch_status():
+    """Return plain-language status for the simple scalar autoresearch loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import get_optimizer_status
+
+    return _simple_autoresearch_payload(get_optimizer_status())
+
+
+@app.post("/api/simple/autoresearch/stop")
+async def simple_autoresearch_stop():
+    """Stop the simple scalar autoresearch loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import stop_continuous_optimizer
+
+    return _simple_autoresearch_payload(stop_continuous_optimizer())
+
+
+@app.post("/api/simple/autoresearch/run-once")
+async def simple_autoresearch_run_once():
+    """Run one bounded simple scalar autoresearch batch and summarize the result."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.experiments import get_active_strategy
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.optimizer_runtime import record_manual_autoresearch_result
+    from backtester.research_cycle import PIT_EVALUATION_YEARS
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_scalar_study, study_scalar_summary
+
+    baseline = (
+        get_research_champion(SIMPLE_AUTORESEARCH_SCOPE)
+        or get_live_weekly_model(SIMPLE_AUTORESEARCH_SCOPE)
+        or get_active_strategy(SIMPLE_AUTORESEARCH_SCOPE)
+    )
+    benchmark_spec = WalkForwardBenchmarkSpec(years=PIT_EVALUATION_YEARS)
+    study = run_scalar_study(
+        n_trials=SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE,
+        baseline=baseline,
+        benchmark_spec=benchmark_spec,
+        study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+        scalar_metric=SIMPLE_AUTORESEARCH_OBJECTIVE,
+    )
+    summary = study_scalar_summary(study)
+    best_trial = summary.get("best_promotable_trial") or summary.get("best_trial")
+    record_manual_autoresearch_result(
+        {
+            "evaluation_mode": "optuna_scalar",
+            "scalar_objective": SIMPLE_AUTORESEARCH_OBJECTIVE,
+            "optuna_scalar_summary": summary,
+        },
+        scope=SIMPLE_AUTORESEARCH_SCOPE,
+        engine_mode="optuna_scalar",
+        scalar_objective=SIMPLE_AUTORESEARCH_OBJECTIVE,
+        optuna_scalar_study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+    )
+    return {
+        "status": "complete",
+        "mode": "simple_scalar",
+        "report_only": True,
+        "objective": SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "goal": "Testing small matchup-strategy tweaks against the current baseline.",
+        "study_name": summary.get("study_name"),
+        "best_improvement": _simple_scalar_trial_summary(best_trial),
+        "recent_attempts": _simple_recent_scalar_attempts(study),
+    }
 
 
 @app.post("/api/simple/upcoming-prediction")
@@ -848,9 +1019,12 @@ async def get_autoresearch_study(
     from src.db import ensure_initialized
     ensure_initialized()
     from src.autoresearch_settings import get_settings
+    from backtester.research_cycle import PIT_EVALUATION_YEARS
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
     from backtester.research_lab.mo_study import (
         create_or_load_scalar_study,
         create_or_load_study,
+        resolve_scalar_study_name,
         study_dashboard_metrics,
         study_scalar_dashboard_metrics,
         study_scalar_summary,
@@ -860,7 +1034,15 @@ async def get_autoresearch_study(
     settings = get_settings()
     kind = (study_kind or "mo").strip().lower()
     if kind == "scalar":
-        name = (study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        scalar_objective = (settings.get("scalar_objective") or "blended_score").strip().lower()
+        if scalar_objective not in ("blended_score", "weighted_roi_pct"):
+            scalar_objective = "blended_score"
+        base_name = (study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        name = resolve_scalar_study_name(
+            base_name,
+            benchmark_spec=WalkForwardBenchmarkSpec(years=PIT_EVALUATION_YEARS),
+            scalar_metric=scalar_objective,
+        )
     else:
         name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
     try:
@@ -965,8 +1147,20 @@ async def get_autoresearch_status():
     else:
         state = "idle"
     last_result = status.get("last_result") or {}
+    evaluation_mode = last_result.get("evaluation_mode")
     winner = last_result.get("winner") or {}
     winner_score = winner.get("blended_score")
+    guardrail_failures = 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1
+    if evaluation_mode == "optuna_scalar":
+        scalar_summary = last_result.get("optuna_scalar_summary") or {}
+        best_promotable_trial = scalar_summary.get("best_promotable_trial") or {}
+        best_trial = scalar_summary.get("best_trial") or {}
+        if best_promotable_trial:
+            winner_score = scalar_summary.get("best_promotable_value")
+            guardrail_failures = 0
+        elif best_trial:
+            winner_score = scalar_summary.get("best_value")
+            guardrail_failures = 0 if (best_trial.get("user_attrs") or {}).get("guardrail_passed") else 1
     return {
         "status": {
             "state": state,
@@ -981,7 +1175,7 @@ async def get_autoresearch_status():
             "best_metric": winner_score,
             "baseline_metric": None,
             "delta_metric": None,
-            "guardrail_failures": 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1,
+            "guardrail_failures": guardrail_failures,
             "last_updated_at": status.get("last_run_finished_at") or status.get("last_run_started_at"),
             "keep_rate": status.get("keep_rate", 0.0),
             "crash_rate": status.get("crash_rate", 0.0),

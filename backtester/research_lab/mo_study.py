@@ -31,6 +31,23 @@ def default_storage_path() -> Path:
     return DEFAULT_OPTUNA_DIR / "studies.db"
 
 
+def _compose_study_name(base_name: str, suffix: str) -> str:
+    clean_base = (base_name or "study").strip() or "study"
+    remaining = max(1, 120 - len(suffix) - 2)
+    return f"{clean_base[:remaining]}__{suffix}"
+
+
+def resolve_scalar_study_name(
+    study_name: str,
+    *,
+    benchmark_spec: WalkForwardBenchmarkSpec,
+    scalar_metric: Literal["blended_score", "weighted_roi_pct"] = "blended_score",
+) -> str:
+    bench_hash = benchmark_spec_hash(benchmark_spec)[:8]
+    suffix = f"{scalar_metric}_{bench_hash}"
+    return _compose_study_name(study_name, suffix)
+
+
 def make_objective(
     *,
     baseline: StrategyConfig,
@@ -257,7 +274,12 @@ def run_scalar_study(
     max_trial_seconds: float | None = None,
 ) -> optuna.Study:
     """Maximize one scalar (default: blended_score). Uses separate Optuna study name from MO."""
-    study = create_or_load_scalar_study(study_name, storage_path=storage_path)
+    effective_study_name = resolve_scalar_study_name(
+        study_name,
+        benchmark_spec=benchmark_spec,
+        scalar_metric=scalar_metric,
+    )
+    study = create_or_load_scalar_study(effective_study_name, storage_path=storage_path)
     objective = make_scalar_objective(
         baseline=baseline,
         benchmark_spec=benchmark_spec,
@@ -297,12 +319,30 @@ def study_scalar_summary(study: optuna.Study) -> dict[str, Any]:
     complete = [t for t in study.trials if t.state == TrialState.COMPLETE and t.value is not None]
     best_trial = None
     best_value = None
+    promotable_trials = [
+        t for t in complete
+        if t.user_attrs.get("feasible") and t.user_attrs.get("guardrail_passed")
+    ]
+    best_promotable_trial = None
+    best_promotable_value = None
     if complete:
         try:
             best_trial = study.best_trial
             best_value = study.best_value
         except ValueError:
             pass
+    if promotable_trials:
+        best_promotable_trial = max(promotable_trials, key=lambda trial: float(trial.value or float("-inf")))
+        best_promotable_value = best_promotable_trial.value
+    recent_trials = [
+        {
+            "number": trial.number,
+            "value": trial.value,
+            "params": trial.params,
+            "user_attrs": dict(trial.user_attrs),
+        }
+        for trial in sorted(complete, key=lambda item: item.number, reverse=True)[:3]
+    ]
     return {
         "study_name": study.study_name,
         "study_kind": "scalar",
@@ -318,6 +358,18 @@ def study_scalar_summary(study: optuna.Study) -> dict[str, Any]:
             if best_trial
             else None
         ),
+        "best_promotable_value": best_promotable_value,
+        "best_promotable_trial": (
+            {
+                "number": best_promotable_trial.number,
+                "value": best_promotable_trial.value,
+                "params": best_promotable_trial.params,
+                "user_attrs": dict(best_promotable_trial.user_attrs),
+            }
+            if best_promotable_trial
+            else None
+        ),
+        "recent_trials": recent_trials,
     }
 
 
@@ -375,6 +427,7 @@ def study_scalar_dashboard_metrics(study: optuna.Study) -> dict[str, Any]:
     best_roi: float | None = None
     best_blended: float | None = None
     best_clv: float | None = None
+    promotable_trials = []
     for t in complete:
         ua = dict(t.user_attrs)
         r = ua.get("weighted_roi_pct")
@@ -389,23 +442,24 @@ def study_scalar_dashboard_metrics(study: optuna.Study) -> dict[str, Any]:
         if b is not None:
             bf = float(b)
             best_blended = bf if best_blended is None else max(best_blended, bf)
+        if ua.get("feasible") and ua.get("guardrail_passed"):
+            promotable_trials.append(t)
     best_value = None
-    promotable = 0
+    best_promotable_value = None
     if complete:
         try:
             best_value = study.best_value
-            bt = study.best_trial
-            ua = dict(bt.user_attrs)
-            if ua.get("feasible") and ua.get("guardrail_passed"):
-                promotable = 1
         except ValueError:
             pass
+    if promotable_trials:
+        best_promotable_value = max(float(t.value or float("-inf")) for t in promotable_trials)
     return {
         "study_kind": "scalar",
         "n_complete_trials": len(complete),
         "best_value": best_value,
+        "best_promotable_value": best_promotable_value,
         "trial_max_roi_pct": best_roi,
         "trial_max_clv": best_clv,
         "best_blended_score": best_blended,
-        "pareto_promotable_count": promotable,
+        "pareto_promotable_count": len(promotable_trials),
     }

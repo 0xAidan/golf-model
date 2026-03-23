@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+import optuna
 from optuna.trial import FixedTrial, TrialState
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -120,3 +121,83 @@ def test_run_scalar_study_with_mock_eval(tmp_path):
     dash = study_scalar_dashboard_metrics(study)
     assert dash["study_kind"] == "scalar"
     assert dash["n_complete_trials"] == 3
+
+
+def test_resolve_scalar_study_name_varies_by_metric_and_benchmark():
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import resolve_scalar_study_name
+
+    study_name = "golf_scalar_dashboard"
+    spec_2024 = WalkForwardBenchmarkSpec(years=[2024])
+    spec_2025 = WalkForwardBenchmarkSpec(years=[2025])
+
+    roi_name = resolve_scalar_study_name(
+        study_name,
+        benchmark_spec=spec_2024,
+        scalar_metric="weighted_roi_pct",
+    )
+    blended_name = resolve_scalar_study_name(
+        study_name,
+        benchmark_spec=spec_2024,
+        scalar_metric="blended_score",
+    )
+    next_year_name = resolve_scalar_study_name(
+        study_name,
+        benchmark_spec=spec_2025,
+        scalar_metric="weighted_roi_pct",
+    )
+
+    assert roi_name != blended_name
+    assert roi_name != next_year_name
+    assert roi_name.startswith(study_name)
+
+
+def test_scalar_summary_distinguishes_best_overall_from_promotable_trial():
+    from backtester.research_lab.mo_study import (
+        study_scalar_dashboard_metrics,
+        study_scalar_summary,
+    )
+
+    study = optuna.create_study(direction="maximize")
+    study.add_trial(
+        optuna.trial.create_trial(
+            params={},
+            distributions={},
+            value=12.0,
+            user_attrs={
+                "feasible": False,
+                "guardrail_passed": False,
+                "weighted_roi_pct": 12.0,
+                "weighted_clv_avg": 0.08,
+                "blended_score": 12.0,
+            },
+            state=TrialState.COMPLETE,
+        )
+    )
+    study.add_trial(
+        optuna.trial.create_trial(
+            params={},
+            distributions={},
+            value=8.5,
+            user_attrs={
+                "feasible": True,
+                "guardrail_passed": True,
+                "weighted_roi_pct": 8.5,
+                "weighted_clv_avg": 0.06,
+                "blended_score": 8.5,
+            },
+            state=TrialState.COMPLETE,
+        )
+    )
+
+    summary = study_scalar_summary(study)
+    assert summary["best_value"] == 12.0
+    assert summary["best_trial"]["number"] == 0
+    assert summary["best_promotable_value"] == 8.5
+    assert summary["best_promotable_trial"]["number"] == 1
+    assert [trial["number"] for trial in summary["recent_trials"]] == [1, 0]
+
+    dashboard = study_scalar_dashboard_metrics(study)
+    assert dashboard["best_value"] == 12.0
+    assert dashboard["best_promotable_value"] == 8.5
+    assert dashboard["pareto_promotable_count"] == 1
