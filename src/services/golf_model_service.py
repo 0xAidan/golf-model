@@ -39,7 +39,7 @@ class GolfModelService:
         mode: str = "full",
         include_weather: bool = False,
         include_post_review: bool = False,
-        include_methodology: bool = False,
+        include_methodology: bool = True,
         strategy_source: str = "registry",
     ) -> dict:
         """
@@ -128,6 +128,7 @@ class GolfModelService:
         # Step 8: Run composite model
         print("  Running composite model...")
         weights = self._get_weights(course_num)
+        result["pipeline_weights"] = weights
         composite = self._run_composite(tid, weights, course_name)
         result["composite_results"] = composite
 
@@ -240,12 +241,21 @@ class GolfModelService:
         )
         result["card_filepath"] = card_path
 
-        # Step 13a: Generate methodology document (optional)
+        # Step 13a: Generate methodology document (companion to card; default on)
         if include_methodology and card_path:
-            meth_path = self._generate_methodology(
-                tournament_name, course_name, composite, value_bets,
-                output_dir, ai_pre_analysis, matchup_bets, profile,
+            meth_ctx = self._build_methodology_ctx(
+                tournament_name=tournament_name,
+                course_name=course_name,
+                tid=tid,
+                composite=composite,
+                value_bets=value_bets,
+                profile=profile,
+                ai_pre_analysis=ai_pre_analysis,
+                matchup_bets=matchup_bets,
+                weights=weights,
+                result=result,
             )
+            meth_path = self._generate_methodology(meth_ctx, output_dir)
             result["methodology_filepath"] = meth_path
 
         # Step 14: Post-tournament review for prior events (optional)
@@ -614,6 +624,44 @@ class GolfModelService:
         except Exception as e:
             logger.warning(f"Matchup prediction logging error: {e}")
 
+    def _build_methodology_ctx(
+        self,
+        *,
+        tournament_name: str,
+        course_name: str | None,
+        tid: int,
+        composite: list,
+        value_bets: dict,
+        profile,
+        ai_pre_analysis,
+        matchup_bets: list | None,
+        weights: dict,
+        result: dict,
+    ) -> dict:
+        """Context dict for src.methodology.generate_methodology (same shape as run_predictions)."""
+        from src import config as src_config
+
+        meta = result.get("strategy_meta") or {}
+        return {
+            "tournament_name": tournament_name,
+            "course_name": course_name or "Unknown",
+            "event_id": str(tid),
+            "composite_results": composite,
+            "value_bets": value_bets or {},
+            "weights": weights or {"course_fit": 0.45, "form": 0.45, "momentum": 0.10},
+            "profile": profile,
+            "ai_pre_analysis": ai_pre_analysis,
+            "matchup_bets": matchup_bets or [],
+            "metric_counts": result.get("metric_counts") or {},
+            "rounds_by_year": result.get("rounds_by_year") or {},
+            "total_rounds": result.get("total_rounds"),
+            "model_version": getattr(src_config, "MODEL_VERSION", "4.2"),
+            "strategy": {
+                "runtime_settings": meta.get("runtime_settings")
+                or {"blend_weights": weights or {}},
+            },
+        }
+
     def _generate_card(self, tournament_name, course_name, composite,
                         value_bets, output_dir, ai_pre_analysis, ai_decisions,
                         matchup_bets: list = None, mode: str = "full") -> str | None:
@@ -682,20 +730,12 @@ class GolfModelService:
             logger.warning("Weather adjustments failed (non-fatal)", exc_info=True)
         return None
 
-    def _generate_methodology(self, tournament_name, course_name, composite,
-                               value_bets, output_dir, ai_pre_analysis,
-                               matchup_bets, course_profile) -> str | None:
+    def _generate_methodology(self, ctx: dict, output_dir: str) -> str | None:
         """Generate methodology document alongside the betting card."""
         try:
             from src.methodology import generate_methodology
-            return generate_methodology(
-                tournament_name, course_name or "Unknown",
-                composite, value_bets,
-                output_dir=output_dir,
-                ai_pre_analysis=ai_pre_analysis,
-                matchup_bets=matchup_bets or [],
-                course_profile=course_profile,
-            )
+
+            return generate_methodology(ctx, output_dir=output_dir)
         except Exception:
             logger.warning("Methodology generation failed (non-fatal)", exc_info=True)
             return None

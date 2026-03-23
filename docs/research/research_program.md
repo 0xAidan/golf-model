@@ -20,9 +20,15 @@ This document is the **human-edited contract** for autoresearch in this reposito
 2. **Optuna MO** — multi-objective Pareto search (ROI, CLV, calibration, drawdown); **exploration**, not a single “improve ROI” guarantee.
 3. **Optuna scalar** — single objective (`blended_score` or `weighted_roi_pct`); closest automated analogue to a **one-number** improvement loop (see Karpathy runbook).
 
-## Promotion
+## Default operator mode: report-only
 
-- Search output is **not** live promotion. Research champion / live registry gates from the project charter still apply.
+- **`AUTORESEARCH_AUTO_APPLY`** is **unset/false by default.** The **research cycle** still creates and evaluates proposals, but it **does not** call `set_research_champion` or `approve_proposal` unless you set `AUTORESEARCH_AUTO_APPLY=1` in the environment.
+- Review walk-forward results, **`output/research/ledger.jsonl`** (Optuna), and merge changes into **`autoresearch/strategy_config.json`** when satisfied. See [`docs/research/EDGE_TUNER_REPORT.md`](EDGE_TUNER_REPORT.md).
+- Optuna trials never promote to live by themselves; live promotion remains explicit.
+
+## Promotion (when auto-apply is on or manual)
+
+- Search output is **not** live promotion by default. Research champion / live registry gates from the project charter still apply.
 - Prefer **holdout** scripts before promoting (`run_autoresearch_holdout` / policy in model registry).
 
 ## Ledger
@@ -38,7 +44,12 @@ This document is the **human-edited contract** for autoresearch in this reposito
 
 - No GPU required. Keep `data/` and `output/` off iCloud/Dropbox. Prefer sequential Optuna (`n_jobs=1`).
 
+## Objective alignment (matchup edge)
+
+- Production workflow prioritizes **matchup-first, high-EV** cards (see grading notes in `docs/card_grading_report.md`). Edge search should prefer objectives and dashboards that reflect **that** success, not only abstract blended-score leaderboards.
+
 ## Related
 
 - Operator steps: `docs/autoresearch/RUNBOOK.md`
 - Agent-driven workflow: `docs/research/KARPATHY_AGENT_RUNBOOK.md`
+- Edge tuner report schema: `docs/research/EDGE_TUNER_REPORT.md`

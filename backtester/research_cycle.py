@@ -22,6 +22,7 @@ from backtester.research_lab.canonical import EVAL_CONTRACT_VERSION_WALK_FORWARD
 from backtester.strategy import StrategyConfig
 from backtester.theory_engine import generate_candidate_theories
 from backtester.weighted_walkforward import compute_blended_score, evaluate_weighted_walkforward
+from src.autoresearch_env import autoresearch_auto_apply_enabled
 from src.autoresearch_settings import get_guardrail_mode
 
 FIELD_LABELS: dict[str, str] = {
@@ -478,30 +479,36 @@ def run_research_cycle(
     winner = candidate_rankings[0] if candidate_rankings else None
     research_champion_updated = False
     promotion_decision = "no_candidates"
+    auto_apply = autoresearch_auto_apply_enabled()
+
     # Always iterate from the best: set research champion to winner whenever they beat baseline
     # (guardrails passed, ROI > baseline) so the next cycle generates candidates from it.
+    # When AUTORESEARCH_AUTO_APPLY is unset/false (default), skip registry writes — report-only.
     if winner and _should_use_as_iteration_baseline(winner):
         winning_proposal = get_proposal(winner["proposal_id"])
         strategy = StrategyConfig.from_json(winning_proposal["strategy_config_json"])
         theory_metadata = json.loads(winning_proposal.get("theory_metadata_json") or "{}")
-        set_research_champion(
-            strategy,
-            scope=scope,
-            source=winner.get("source_type", source),
-            proposal_id=winner["proposal_id"],
-            theory_metadata=theory_metadata,
-            notes=f"Auto-promoted from optimizer cycle {cycle_key}",
-        )
-        research_champion_updated = True
-        if _should_promote_research_champion(winner):
-            approve_proposal(
-                winner["proposal_id"],
-                reviewer="autoresearch_cycle",
-                notes=f"Auto-approved: promoted as research champion from cycle {cycle_key}",
+        if auto_apply:
+            set_research_champion(
+                strategy,
+                scope=scope,
+                source=winner.get("source_type", source),
+                proposal_id=winner["proposal_id"],
+                theory_metadata=theory_metadata,
+                notes=f"Auto-promoted from optimizer cycle {cycle_key}",
             )
-            promotion_decision = "updated_research_champion"
+            research_champion_updated = True
+            if _should_promote_research_champion(winner):
+                approve_proposal(
+                    winner["proposal_id"],
+                    reviewer="autoresearch_cycle",
+                    notes=f"Auto-approved: promoted as research champion from cycle {cycle_key}",
+                )
+                promotion_decision = "updated_research_champion"
+            else:
+                promotion_decision = "updated_iteration_baseline"
         else:
-            promotion_decision = "updated_iteration_baseline"
+            promotion_decision = "report_only"
     elif winner:
         promotion_decision = "kept_current_research_champion"
 
@@ -522,17 +529,20 @@ def run_research_cycle(
     if global_best and global_best["id"] != current_champion_proposal_id:
         strategy = StrategyConfig.from_json(global_best["strategy_config_json"])
         theory_metadata = json.loads(global_best.get("theory_metadata_json") or "{}")
-        set_research_champion(
-            strategy,
-            scope=scope,
-            source="autoresearch_global_best",
-            proposal_id=global_best["id"],
-            theory_metadata=theory_metadata,
-            notes="Auto-promoted as global best by ROI for next iteration",
-        )
-        research_champion_updated = True
-        if promotion_decision == "kept_current_research_champion":
-            promotion_decision = "updated_iteration_baseline"
+        if auto_apply:
+            set_research_champion(
+                strategy,
+                scope=scope,
+                source="autoresearch_global_best",
+                proposal_id=global_best["id"],
+                theory_metadata=theory_metadata,
+                notes="Auto-promoted as global best by ROI for next iteration",
+            )
+            research_champion_updated = True
+            if promotion_decision == "kept_current_research_champion":
+                promotion_decision = "updated_iteration_baseline"
+        elif promotion_decision == "kept_current_research_champion":
+            promotion_decision = "report_only"
 
     return {
         "cycle_key": cycle_key,
@@ -544,6 +554,7 @@ def run_research_cycle(
         "theory_engine_mode": theory_engine_mode,
         "research_champion_updated": research_champion_updated,
         "promotion_decision": promotion_decision,
+        "autoresearch_auto_apply": auto_apply,
         "ready_for_live_review": bool(winner and winner.get("ready_for_live_review")),
         "data_health": data_health,
         "guardrail_mode": get_guardrail_mode(),

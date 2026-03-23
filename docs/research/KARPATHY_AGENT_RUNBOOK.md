@@ -12,6 +12,12 @@
 | `results.tsv` / logs | `output/research/ledger.jsonl` |
 | Fixed 5-minute runs | `AUTORESEARCH_MAX_TRIAL_SECONDS` per trial |
 
+## Report-only default (research cycle)
+
+By default, **`AUTORESEARCH_AUTO_APPLY` is off**: walk-forward runs produce **evaluated proposals** and optional Optuna ledger rows, but **do not** write the winning strategy to the research champion registry. Operators merge into `autoresearch/strategy_config.json` after review. Set **`AUTORESEARCH_AUTO_APPLY=1`** only if you want the previous auto-update behavior. See `docs/research/EDGE_TUNER_REPORT.md`.
+
+**Predictions pipeline:** Each `GolfModelService.run_analysis` run generates a **methodology** markdown next to the card (`include_methodology` defaults to **true**) so every card has an audit trail for grading.
+
 ## Setup
 
 1. Ensure `data/golf.db` and PIT/odds prerequisites (see `docs/autoresearch/RUNBOOK.md`).

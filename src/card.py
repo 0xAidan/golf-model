@@ -462,7 +462,7 @@ def _write_weekly_strategy(lines: list, value_bets: dict):
 
 
 def _write_data_quality(lines: list, value_bets: dict, composite_results: list):
-    """Add a data quality section if there are any concerns."""
+    """Add data quality flags plus pointer to full methodology doc (never leave section empty)."""
     warnings = []
 
     # Check if we have odds data at all
@@ -485,11 +485,23 @@ def _write_data_quality(lines: list, value_bets: dict, composite_results: list):
         if top_player["composite"] < 60:
             warnings.append("Top composite score is unusually low — check data freshness")
 
+    lines.append("## Methodology & audit trail")
+    lines.append("")
+    lines.append(
+        "A **companion methodology** markdown is generated on each full pipeline run "
+        "(same date stamp as this card, filename `*_methodology_YYYYMMDD.md` in `output/`). "
+        "It documents weights, DG blend, value-bet logic, and data sources for grading."
+    )
+    lines.append("")
+
     if warnings:
-        lines.append("## Data Quality Flags")
+        lines.append("### Flags this run")
         lines.append("")
         for w in warnings:
             lines.append(f"- {w}")
+        lines.append("")
+    else:
+        lines.append("*No automated data-quality flags for this run.*")
         lines.append("")
 
 

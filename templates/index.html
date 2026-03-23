@@ -53,6 +53,11 @@
     <!-- ═══════ AUTORESEARCH TAB ═══════ -->
     <div id="tab-autoresearch" role="tabpanel" aria-labelledby="tab-btn-autoresearch" class="tab-panel" hidden>
 
+      <p class="subtle" role="note" style="margin-bottom: 12px;">
+        <strong>Report-only default:</strong> the research-cycle engine evaluates proposals but does <strong>not</strong> change your research champion unless the server has <code>AUTORESEARCH_AUTO_APPLY=1</code>.
+        Review results, then merge into <code>autoresearch/strategy_config.json</code> yourself. Optuna trials log to <code>output/research/ledger.jsonl</code>. Advanced: change engine below.
+      </p>
+
       <!-- Engine control strip -->
       <div class="ar-control-strip">
         <div class="ar-controls">

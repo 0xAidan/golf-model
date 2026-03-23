@@ -431,6 +431,10 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 
 ## 9. Autoresearch System
 
+**Default behavior:** **`AUTORESEARCH_AUTO_APPLY` is off.** Research cycle **does not** auto-call `set_research_champion` / `approve_proposal` unless that env var is set to `1`. Do **not** suggest auto-applying Optuna or walk-forward winners to live or registry without explicit operator approval; point to [`docs/research/EDGE_TUNER_REPORT.md`](../research/EDGE_TUNER_REPORT.md) and manual merge into `autoresearch/strategy_config.json`.
+
+**Predictions / `GolfModelService`:** `include_methodology` defaults to **true** — each run should emit a `*_methodology_*.md` next to the card unless the caller passes `include_methodology=False` (e.g. fast tests).
+
 **Target v2 design (full spec):** [`docs/autoresearch/SPEC_V2.md`](autoresearch/SPEC_V2.md) — canonical evaluator, Optuna (MO + scalar), append-only **`output/research/ledger.jsonl`**, human program [`docs/research/research_program.md`](../research/research_program.md), [`docs/research/KARPATHY_AGENT_RUNBOOK.md`](../research/KARPATHY_AGENT_RUNBOOK.md) for LLM-driven workflows.
 
 ### Single strategy resolution (production)
