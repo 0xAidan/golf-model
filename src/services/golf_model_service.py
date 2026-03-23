@@ -190,9 +190,7 @@ class GolfModelService:
         # Step 10b: Matchups and 3-ball (live focus: plus-ROI areas)
         matchup_bets = []
         if mode in ("full", "matchups-only", "round-matchups"):
-            matchup_bets = self._fetch_matchup_value_bets(composite, tid)
-            if mode == "round-matchups":
-                matchup_bets = [b for b in matchup_bets if b.get("market_type") == "round_matchups"]
+            matchup_bets = self._fetch_matchup_value_bets(composite, tid, mode=mode)
             if matchup_bets:
                 print(f"    → {len(matchup_bets)} matchup value plays")
         result["matchup_bets"] = matchup_bets
@@ -472,9 +470,12 @@ class GolfModelService:
             value_bets[bt] = vb
         return value_bets
 
-    def _fetch_matchup_value_bets(self, composite, tid) -> list:
-        """Fetch tournament and round matchup odds and return value bets (live focus).
-        Only includes matchups that have odds at the preferred book (e.g. bet365)."""
+    def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> list:
+        """Fetch matchup value bets at the preferred book only.
+
+        **full** and **matchups-only**: 72-hole (tournament) matchups only — same product bet365
+        and other books actually list. **round-matchups**: per-round H2H only (often missing on-app).
+        """
         try:
             from src.datagolf import fetch_matchup_odds
             from src.matchup_value import find_matchup_value_bets
@@ -487,8 +488,12 @@ class GolfModelService:
             if ev_threshold is None:
                 ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
             required_book = get_preferred_book()
+            if mode == "round-matchups":
+                markets = [("round_matchups", "round")]
+            else:
+                markets = [("tournament_matchups", "72-hole")]
             aggregated = []
-            for market_key, label in [("tournament_matchups", "72-hole"), ("round_matchups", "round")]:
+            for market_key, label in markets:
                 try:
                     odds = fetch_matchup_odds(market=market_key, tour=self.tour)
                     if not odds:

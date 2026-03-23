@@ -1042,10 +1042,9 @@ def main():
     if pipeline_mode in ("full", "matchups-only", "round-matchups"):
         try:
             from src.matchup_value import find_matchup_value_bets
-            matchup_markets = [
-                ("tournament_matchups", "72-hole / tournament matchups"),
-                ("round_matchups", "round matchups"),
-            ]
+            # Default + full + matchups-only: tournament (72-hole) only — books reliably post these.
+            # Round H2H is opt-in (round-matchups) — DG often lists lines that disappear on-app.
+            matchup_markets = [("tournament_matchups", "72-hole / tournament matchups")]
             if pipeline_mode == "round-matchups":
                 matchup_markets = [("round_matchups", "round matchups")]
             aggregated = []
@@ -1060,6 +1059,7 @@ def main():
                     tournament_id=tid,
                     ev_threshold=runtime_settings["ev_threshold"],
                     required_book=get_preferred_book(),
+                    market_type=market_key,
                 )
                 for bet in market_bets:
                     bet["market_type"] = market_key

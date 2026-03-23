@@ -235,7 +235,7 @@ golf-model/
 | Intent | Command | Notes |
 |--------|---------|-------|
 | Full prediction pipeline | `python run_predictions.py` | Primary entry. Auto-detects current DG event, runs full pipeline. Uses GolfModelService. |
-| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Tabs: predictions, cards, grading, registry, autoresearch, calibration. 2916 lines. |
+| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Tabs: predictions, cards, grading, registry, autoresearch, calibration. **Prediction default / full card:** 72-hole (tournament) matchups only at preferred book; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
 | First-time setup | `python setup_wizard.py` | Backfills data, initializes DB. Run once. |
 | Unified launcher | `python start.py` | Interactive menu routing to pipeline, backtester, etc. |
 | CLI analysis | `python analyze.py --tournament "Name" --course "Name" --sync` | Own pipeline by default. Add `--service` to use GolfModelService. `--ai` for AI. `--calibration` for dashboard. |
