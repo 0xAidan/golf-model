@@ -43,6 +43,9 @@ MAX_CREDIBLE_EV = 2.0
 # Best Bets: matchup-focused card. Placements only used as fallback.
 MAX_CREDIBLE_PLACEMENT_EV = 0.50  # Cap displayed placement EV at 50%
 BEST_BETS_MATCHUP_ONLY = True     # Top 3 bets drawn from matchups first
+BEST_BETS_COUNT = 5                   # Number of top matchup plays shown in card header
+PLACEMENT_CARD_EV_FLOOR = 0.15        # Only show placements on card when EV >= 15%
+PLACEMENT_CARD_MAX = 3                # Max placement bets shown on card
 
 # Phantom EV: hard gate for placement bets with impossibly high EV
 PHANTOM_EV_THRESHOLD = 1.0        # >100% EV excluded entirely
@@ -113,6 +116,7 @@ MATCHUP_SIGMOID_DIVISOR = 20.0   # legacy; use PLATT_A/B
 MATCHUP_EV_THRESHOLD = float(os.environ.get("MATCHUP_EV_THRESHOLD", "0.05"))  # 5% min EV for matchups (live focus)
 MATCHUP_CAP = 20                 # max matchups to output (live: more matchup options)
 MATCHUP_MAX_PLAYER_EXPOSURE = 3  # max times one player can appear across all matchup bets (WD protection)
+MATCHUP_TOURNAMENT_MAX_PLAYER_EXPOSURE = 2  # Tighter cap for 72-hole matchups (WD protection)
 MATCHUP_TIER_STRONG_EV_PCT = 15.0   # EV >= 15% -> STRONG
 MATCHUP_TIER_GOOD_EV_PCT = 8.0      # EV >= 8% -> GOOD; else LEAN
 MATCHUP_TIER_STRONG_GAP = 8.0
@@ -216,6 +220,35 @@ PROBABILITY_SUM_TOLERANCE = 0.05   # outright probs sum in [0.95, 1.05]
 # Mid-tournament odds are in-play prices, not pre-tournament — comparing them
 # to static DG sim probabilities produces meaningless EV calculations.
 ALLOW_MID_TOURNAMENT_RUN = False
+
+# ---------------------------------------------------------------------------
+# Autoresearch guardrails (backtester/weighted_walkforward.evaluate_guardrails)
+# Set AUTORESEARCH_GUARDRAIL_MODE=loose for exploratory runs; default is strict.
+# ---------------------------------------------------------------------------
+AUTORESEARCH_GUARDRAIL_MIN_BETS = int(os.environ.get("AUTORESEARCH_GUARDRAIL_MIN_BETS", "30"))
+AUTORESEARCH_GUARDRAIL_MAX_CLV_REGRESSION = float(os.environ.get("AUTORESEARCH_GUARDRAIL_MAX_CLV_REGRESSION", "0.02"))
+AUTORESEARCH_GUARDRAIL_MAX_CALIBRATION_REGRESSION = float(os.environ.get("AUTORESEARCH_GUARDRAIL_MAX_CALIBRATION_REGRESSION", "0.03"))
+AUTORESEARCH_GUARDRAIL_MAX_DRAWDOWN_REGRESSION = float(os.environ.get("AUTORESEARCH_GUARDRAIL_MAX_DRAWDOWN_REGRESSION", "10.0"))
+def get_autoresearch_guardrail_params() -> dict[str, Any]:
+    """Return effective guardrail params. Mode: env AUTORESEARCH_GUARDRAIL_MODE > UI setting (data/autoresearch_settings.json) > strict."""
+    from src.autoresearch_settings import get_guardrail_mode
+
+    env_mode = (os.environ.get("AUTORESEARCH_GUARDRAIL_MODE", "") or "").strip().lower()
+    mode = env_mode if env_mode in ("strict", "loose") else get_guardrail_mode()
+    if mode == "loose":
+        return {
+            "min_bets": 15,
+            "max_clv_regression": 0.05,
+            "max_calibration_regression": 0.06,
+            "max_drawdown_regression": 20.0,
+        }
+    return {
+        "min_bets": AUTORESEARCH_GUARDRAIL_MIN_BETS,
+        "max_clv_regression": AUTORESEARCH_GUARDRAIL_MAX_CLV_REGRESSION,
+        "max_calibration_regression": AUTORESEARCH_GUARDRAIL_MAX_CALIBRATION_REGRESSION,
+        "max_drawdown_regression": AUTORESEARCH_GUARDRAIL_MAX_DRAWDOWN_REGRESSION,
+    }
+
 
 # ---------------------------------------------------------------------------
 # API / pipeline timing

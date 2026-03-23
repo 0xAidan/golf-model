@@ -8,6 +8,7 @@ import json
 import random
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +26,6 @@ from backtester.autoresearch_config import (  # noqa: E402
     strategy_hash,
 )
 
-LEDGER_PATH = ROOT / "output" / "research" / "autoresearch_runs.jsonl"
 EVAL_SCRIPT = ROOT / "scripts" / "run_autoresearch_eval.py"
 EVALUATOR_VERSION = 1
 
@@ -84,9 +84,14 @@ def _run_eval(timeout_seconds: int = 120) -> dict[str, Any]:
 
 
 def _write_ledger_row(row: dict[str, Any]) -> None:
-    LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with LEDGER_PATH.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, sort_keys=True) + "\n")
+    """Append to unified ledger.jsonl (and legacy autoresearch_runs.jsonl for cli_loop)."""
+    from backtester.research_lab.ledger import append_ledger_row
+
+    out = dict(row)
+    out["source"] = "cli_loop"
+    if "ts" not in out and "timestamp" in out:
+        out["ts"] = out.pop("timestamp")
+    append_ledger_row(out)
 
 
 def _load_strategy() -> dict[str, Any]:
@@ -153,6 +158,7 @@ def run_loop(iterations: int, seed: int, timeout_seconds: int) -> dict[str, Any]
         failure_reason = None
         metric = None
         guardrail_verdict = "fail"
+        t0 = time.perf_counter()
         try:
             evaluated = _run_eval(timeout_seconds=timeout_seconds)
             metric = float(evaluated["autoresearch_metric"])
@@ -171,8 +177,10 @@ def run_loop(iterations: int, seed: int, timeout_seconds: int) -> dict[str, Any]
             failure_reason = str(exc)
             _save_strategy(current)
             decision = "error"
+        duration_ms = int((time.perf_counter() - t0) * 1000)
 
         row = {
+            "trial_id": run_id,
             "run_id": run_id,
             "timestamp": _now_iso(),
             "git_commit": _git_commit(),
@@ -181,10 +189,16 @@ def run_loop(iterations: int, seed: int, timeout_seconds: int) -> dict[str, Any]
             "evaluator_version": EVALUATOR_VERSION,
             "checkpoint_set_id": pilot_contract["checkpoint_set_id"],
             "metric": metric,
+            "scalar_metric": metric,
+            "scalar_metric_name": "checkpoint_autoresearch_metric",
             "guardrail_verdict": guardrail_verdict,
             "decision": decision,
             "seed": seed,
             "failure_reason": failure_reason,
+            "duration_ms": duration_ms,
+            "error": failure_reason,
+            "feasible": metric is not None,
+            "guardrail_passed": guardrail_verdict == "pass" if metric is not None else False,
         }
         _write_ledger_row(row)
 

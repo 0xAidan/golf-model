@@ -7,6 +7,7 @@ from statistics import mean
 from typing import Any, Callable
 
 from backtester.strategy import SimulationResult, StrategyConfig, replay_event
+from src import config as src_config
 from src import db
 
 
@@ -128,11 +129,20 @@ def evaluate_guardrails(
     candidate_summary: dict[str, Any],
     baseline_summary: dict[str, Any],
     *,
-    min_bets: int = 30,
-    max_clv_regression: float = 0.02,
-    max_calibration_regression: float = 0.03,
-    max_drawdown_regression: float = 10.0,
+    min_bets: int | None = None,
+    max_clv_regression: float | None = None,
+    max_calibration_regression: float | None = None,
+    max_drawdown_regression: float | None = None,
 ) -> dict[str, Any]:
+    params = src_config.get_autoresearch_guardrail_params()
+    min_bets = min_bets if min_bets is not None else params["min_bets"]
+    max_clv_regression = max_clv_regression if max_clv_regression is not None else params["max_clv_regression"]
+    max_calibration_regression = (
+        max_calibration_regression if max_calibration_regression is not None else params["max_calibration_regression"]
+    )
+    max_drawdown_regression = (
+        max_drawdown_regression if max_drawdown_regression is not None else params["max_drawdown_regression"]
+    )
     reasons: list[str] = []
 
     if candidate_summary.get("total_bets", 0) < min_bets:

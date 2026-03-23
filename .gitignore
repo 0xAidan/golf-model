@@ -4,6 +4,7 @@ __pycache__/
 data/golf.db
 data/csvs/*.csv
 data/course_images/
+data/autoresearch_settings.json
 output/*.md
 output/archive/
 output/research/

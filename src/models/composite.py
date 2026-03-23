@@ -46,19 +46,38 @@ def compute_composite(tournament_id: int, weights: dict = None,
     if weights is None:
         weights = db.get_active_weights()
 
-    # If a strategy_config is provided, merge its weights into the weights dict
+    # Strategy weights: prefer PIT sub-model triple (same as run_predictions + replay_event).
     if strategy_config:
-        w_total = strategy_config.get("w_sg_total", 0) + strategy_config.get("w_sg_app", 0) + \
-                  strategy_config.get("w_sg_ott", 0) + strategy_config.get("w_sg_arg", 0) + \
-                  strategy_config.get("w_sg_putt", 0)
-        w_form = strategy_config.get("w_form", 0.15)
-        w_course = strategy_config.get("w_course_fit", 0.15)
-        total = w_total + w_form + w_course
-        if total > 0:
-            weights = dict(weights)
-            weights["course_fit"] = w_course / total
-            weights["form"] = (w_total + w_form) / total
-            weights["momentum"] = 0.0
+        weights = dict(weights)
+        if all(
+            k in strategy_config
+            for k in ("w_sub_course_fit", "w_sub_form", "w_sub_momentum")
+        ):
+            weights["course_fit"] = float(strategy_config["w_sub_course_fit"])
+            weights["form"] = float(strategy_config["w_sub_form"])
+            weights["momentum"] = float(strategy_config["w_sub_momentum"])
+        elif isinstance(strategy_config.get("weights"), dict):
+            w = strategy_config["weights"]
+            if all(k in w for k in ("course_fit", "form", "momentum")):
+                weights["course_fit"] = float(w["course_fit"])
+                weights["form"] = float(w["form"])
+                weights["momentum"] = float(w["momentum"])
+        else:
+            # Legacy: SG-style decomposition (research backtests / old callers)
+            w_total = (
+                strategy_config.get("w_sg_total", 0)
+                + strategy_config.get("w_sg_app", 0)
+                + strategy_config.get("w_sg_ott", 0)
+                + strategy_config.get("w_sg_arg", 0)
+                + strategy_config.get("w_sg_putt", 0)
+            )
+            w_form = strategy_config.get("w_form", 0.15)
+            w_course = strategy_config.get("w_course_fit", 0.15)
+            total = w_total + w_form + w_course
+            if total > 0:
+                weights["course_fit"] = w_course / total
+                weights["form"] = (w_total + w_form) / total
+                weights["momentum"] = 0.0
 
     # Compute each sub-model
     course_scores = compute_course_fit(tournament_id, weights, course_name=course_name)
