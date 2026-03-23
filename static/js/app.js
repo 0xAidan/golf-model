@@ -42,22 +42,91 @@ function formatTime(value) {
 
 const APP_STATE = {
   recentRuns: [],
+  recentCandidates: [],
+  autoresearchStatus: null,
+  autoresearchSettings: null,
+  optunaDashboard: null,
   runRoiCache: new Map(),
   watchlist: new Set(),
 };
 
 let autoresearchPollTimer = null;
 
+function isOptunaEngineMode() {
+  const st = APP_STATE.autoresearchStatus || {};
+  const cfg = APP_STATE.autoresearchSettings || {};
+  const em = st.engine_mode || cfg.engine_mode;
+  return em === 'optuna' || em === 'optuna_scalar';
+}
+
+function getAutoresearchEngineMode() {
+  const st = APP_STATE.autoresearchStatus || {};
+  const cfg = APP_STATE.autoresearchSettings || {};
+  return st.engine_mode || cfg.engine_mode || 'research_cycle';
+}
+
+async function fetchOptunaStudyDashboard() {
+  const note = document.getElementById('arOptunaStatsNote');
+  if (!isOptunaEngineMode()) {
+    APP_STATE.optunaDashboard = null;
+    if (note) {
+      note.style.display = 'none';
+      note.textContent = '';
+    }
+    return;
+  }
+  const status = APP_STATE.autoresearchStatus || {};
+  const em = getAutoresearchEngineMode();
+  const studyKind = em === 'optuna_scalar' ? 'scalar' : 'mo';
+  const moInp = document.getElementById('optunaStudyNameInput');
+  const scInp = document.getElementById('optunaScalarStudyNameInput');
+  const name =
+    studyKind === 'scalar'
+      ? (
+          status.optuna_scalar_study_name ||
+          (APP_STATE.autoresearchSettings && APP_STATE.autoresearchSettings.optuna_scalar_study_name) ||
+          (scInp && scInp.value.trim()) ||
+          ''
+        ).trim()
+      : (
+          status.optuna_study_name ||
+          (APP_STATE.autoresearchSettings && APP_STATE.autoresearchSettings.optuna_study_name) ||
+          (moInp && moInp.value.trim()) ||
+          ''
+        ).trim();
+  const q =
+    '?study_kind=' +
+    encodeURIComponent(studyKind) +
+    (name ? '&study_name=' + encodeURIComponent(name) : '');
+  try {
+    const resp = await fetch('/api/autoresearch/study' + q);
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'study load failed');
+    APP_STATE.optunaDashboard = data.dashboard || null;
+    if (note) {
+      note.style.display = 'block';
+      note.textContent =
+        studyKind === 'scalar'
+          ? 'Optuna scalar: optimizes one objective (blended score or ROI per settings). Best ROI/CLV are maxima seen across trials in this study.'
+          : 'Optuna MO: Best ROI / Best CLV are the maximum observed across completed walk-forward trials in this study (multi-objective exploration, not the ranked research-proposal list).';
+    }
+  } catch (err) {
+    APP_STATE.optunaDashboard = null;
+    if (note) {
+      note.style.display = 'block';
+      note.textContent = 'Could not load Optuna study metrics: ' + err.message;
+    }
+  }
+}
+
 function setAutoresearchPollingInterval(ms) {
   if (autoresearchPollTimer) {
     window.clearInterval(autoresearchPollTimer);
   }
   autoresearchPollTimer = window.setInterval(async function () {
-    await Promise.all([
-      loadAutoresearchStatus(),
-      loadAutoresearchRuns(),
-      loadBestCandidates(),
-    ]);
+    await loadAutoresearchStatus();
+    await loadAutoresearchRuns();
+    await loadBestCandidates();
   }, ms);
 }
 
@@ -128,6 +197,9 @@ function initMainTabs() {
       if (targetPanel) {
         targetPanel.classList.add('is-active');
         targetPanel.hidden = false;
+        if (targetId === 'tab-autoresearch') {
+          loadAutoresearchPareto();
+        }
       }
     });
   });
@@ -325,9 +397,18 @@ async function runAutoresearch() {
       throw new Error(errData.error || 'Server error (' + resp.status + ')');
     }
     const data = await resp.json();
-    resultEl.textContent = data.error
+    let msg = data.error
       ? 'Error: ' + data.error
       : 'Cycle complete. Proposals evaluated: ' + (data.proposals_evaluated ?? '—');
+    if (data.data_health) {
+      const dh = data.data_health;
+      msg += ' | Guardrail mode: ' + (data.guardrail_mode || '—');
+      msg += ' | Data: events ' + (dh.event_count ?? '—') + ', PIT rows ' + (dh.pit_rolling_stats_rows ?? '—');
+      if (dh.warnings && dh.warnings.length) {
+        msg += '\nNote: ' + dh.warnings.join(' ');
+      }
+    }
+    resultEl.textContent = msg;
     resultEl.className = data.error ? 'result status error' : 'result status success';
     await loadAutoresearchStatus();
     await loadAutoresearchRuns();
@@ -354,10 +435,31 @@ async function startAutoresearchEngine() {
   resultEl.className = 'result status loading';
 
   try {
+    const engineModeEl = document.getElementById('engineModeSelect');
+    const studyInp = document.getElementById('optunaStudyNameInput');
+    const scalarInp = document.getElementById('optunaScalarStudyNameInput');
+    const scalarObj = document.getElementById('scalarObjectiveSelect');
+    const nTrialsEl = document.getElementById('optunaNTrialsInput');
+    const engineMode = engineModeEl ? engineModeEl.value : 'research_cycle';
+    const studyName = studyInp && studyInp.value.trim() ? studyInp.value.trim() : undefined;
+    const scalarStudyName = scalarInp && scalarInp.value.trim() ? scalarInp.value.trim() : undefined;
+    const scalarObjective = scalarObj ? scalarObj.value : undefined;
+    const ot = nTrialsEl
+      ? Math.max(1, Math.min(50, parseInt(nTrialsEl.value || '3', 10)))
+      : 3;
     const resp = await fetch('/api/autoresearch/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: 'global', interval_seconds: 300, max_candidates: 5 }),
+      body: JSON.stringify({
+        scope: 'global',
+        interval_seconds: 300,
+        max_candidates: 5,
+        engine_mode: engineMode,
+        optuna_study_name: studyName,
+        optuna_scalar_study_name: scalarStudyName,
+        scalar_objective: scalarObjective,
+        optuna_trials_per_cycle: ot,
+      }),
     });
     if (!resp.ok) {
       const errData = await resp.json().catch(function () { return {}; });
@@ -365,8 +467,14 @@ async function startAutoresearchEngine() {
     }
     const data = await resp.json();
     const running = data && data.optimizer && data.optimizer.running;
+    const startedOptuna = engineMode === 'optuna';
+    const startedScalar = engineMode === 'optuna_scalar';
     resultEl.textContent = running
-      ? 'Autoresearch engine started. Running every 5 minutes with 5 candidates per cycle.'
+      ? (startedScalar
+        ? 'Autoresearch engine started. Optuna scalar runs every 5 minutes (' + ot + ' trial(s) per cycle).'
+        : startedOptuna
+          ? 'Autoresearch engine started. Optuna MO runs every 5 minutes (' + ot + ' trial(s) per cycle).'
+          : 'Autoresearch engine started. Running every 5 minutes with 5 candidates per cycle.')
       : 'Start request returned, but engine is not running.';
     resultEl.className = running ? 'result status success' : 'result status error';
     await loadAutoresearchStatus();
@@ -492,6 +600,10 @@ async function loadAutoresearchStatus() {
     if (startBtn) startBtn.disabled = running;
     if (stopBtn) stopBtn.disabled = !running;
 
+    APP_STATE.autoresearchStatus = status;
+    await loadAutoresearchSettings();
+    await fetchOptunaStudyDashboard();
+    updateSinceStartSection();
     setAutoresearchPollingInterval(running ? 5000 : 15000);
   } catch (err) {
     statusEl.style.display = 'block';
@@ -499,6 +611,268 @@ async function loadAutoresearchStatus() {
     statusEl.textContent = 'Failed to load engine status: ' + err.message;
     setAutoresearchPollingInterval(15000);
   }
+}
+
+async function loadAutoresearchSettings() {
+  const select = document.getElementById('guardrailModeSelect');
+  if (!select) return;
+  try {
+    const resp = await fetch('/api/autoresearch/settings');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    APP_STATE.autoresearchSettings = data;
+    const mode = (data.guardrail_mode || 'strict').toLowerCase();
+    if (mode === 'strict' || mode === 'loose') {
+      select.value = mode;
+    }
+    const engineSel = document.getElementById('engineModeSelect');
+    if (engineSel && data.engine_mode) {
+      const em = data.engine_mode;
+      engineSel.value =
+        em === 'optuna' ? 'optuna' : em === 'optuna_scalar' ? 'optuna_scalar' : 'research_cycle';
+    }
+    const llmCb = document.getElementById('useTheoryLlmCheckbox');
+    if (llmCb) llmCb.checked = !!data.use_theory_engine_llm;
+    const studyInp = document.getElementById('optunaStudyNameInput');
+    if (studyInp && data.optuna_study_name) studyInp.value = data.optuna_study_name;
+    const scalarInp = document.getElementById('optunaScalarStudyNameInput');
+    if (scalarInp && data.optuna_scalar_study_name) scalarInp.value = data.optuna_scalar_study_name;
+    const scalarObj = document.getElementById('scalarObjectiveSelect');
+    if (scalarObj && data.scalar_objective) {
+      scalarObj.value = data.scalar_objective === 'weighted_roi_pct' ? 'weighted_roi_pct' : 'blended_score';
+    }
+    const nTrials = document.getElementById('optunaNTrialsInput');
+    if (nTrials && data.optuna_trials_per_cycle != null) {
+      nTrials.value = String(Math.max(1, Math.min(50, parseInt(data.optuna_trials_per_cycle, 10) || 3)));
+    }
+  } catch (err) {
+    APP_STATE.autoresearchSettings = null;
+    select.value = 'strict';
+  }
+}
+
+function handleEngineModeChange() {
+  const select = document.getElementById('engineModeSelect');
+  if (!select) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ engine_mode: select.value }),
+  })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function () {
+      return loadAutoresearchSettings();
+    })
+    .then(function () {
+      return fetchOptunaStudyDashboard();
+    })
+    .then(function () {
+      if (APP_STATE.recentCandidates && APP_STATE.recentCandidates.length) {
+        updateStatsBar(APP_STATE.recentCandidates, APP_STATE.recentRuns || []);
+      }
+      updateSinceStartSection();
+    })
+    .catch(function () {});
+}
+
+function handleTheoryLlmChange() {
+  const cb = document.getElementById('useTheoryLlmCheckbox');
+  if (!cb) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ use_theory_engine_llm: cb.checked }),
+  })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () {});
+}
+
+function handleOptunaStudyBlur() {
+  const inp = document.getElementById('optunaStudyNameInput');
+  if (!inp || !inp.value.trim()) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optuna_study_name: inp.value.trim().slice(0, 120) }),
+  }).catch(function () {});
+}
+
+function handleScalarStudyBlur() {
+  const inp = document.getElementById('optunaScalarStudyNameInput');
+  if (!inp || !inp.value.trim()) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optuna_scalar_study_name: inp.value.trim().slice(0, 120) }),
+  }).catch(function () {});
+}
+
+function handleScalarObjectiveChange() {
+  const sel = document.getElementById('scalarObjectiveSelect');
+  if (!sel) return;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scalar_objective: sel.value }),
+  }).catch(function () {});
+}
+
+async function loadAutoresearchPareto() {
+  const container = document.getElementById('optunaParetoContainer');
+  const studyInput = document.getElementById('optunaStudyNameInput');
+  const scalarInput = document.getElementById('optunaScalarStudyNameInput');
+  if (!container) return;
+  const em = getAutoresearchEngineMode();
+  const studyKind = em === 'optuna_scalar' ? 'scalar' : 'mo';
+  const name =
+    studyKind === 'scalar'
+      ? (scalarInput && scalarInput.value.trim() ? scalarInput.value.trim() : '')
+      : (studyInput && studyInput.value.trim() ? studyInput.value.trim() : '');
+  const q =
+    '?study_kind=' +
+    encodeURIComponent(studyKind) +
+    (name ? '&study_name=' + encodeURIComponent(name) : '');
+  try {
+    const resp = await fetch('/api/autoresearch/study' + q);
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to load study');
+    const summ = data.summary || {};
+    if (studyKind === 'scalar') {
+      const bt = summ.best_trial;
+      const bv = summ.best_value;
+      if (summ.n_trials == null || summ.n_trials === 0) {
+        container.innerHTML =
+          '<div class="status info">No scalar trials yet. Run trials below or CLI with <code>study_kind=scalar</code>.</div>';
+        await fetchOptunaStudyDashboard();
+        return;
+      }
+      const detail = bt
+        ? '<table class="ar-pareto-table"><thead><tr><th>Trial</th><th>Objective</th><th>ROI</th><th>Promotable</th></tr></thead><tbody><tr><td>' +
+          escapeHtml(String(bt.number)) +
+          '</td><td>' +
+          escapeHtml(String(bt.value != null ? Number(bt.value).toFixed(4) : '—')) +
+          '</td><td>' +
+          escapeHtml(String((bt.user_attrs && bt.user_attrs.weighted_roi_pct != null) ? Number(bt.user_attrs.weighted_roi_pct).toFixed(2) : '—')) +
+          '</td><td>' +
+          escapeHtml(
+            bt.user_attrs && bt.user_attrs.feasible && bt.user_attrs.guardrail_passed ? 'yes' : 'no'
+          ) +
+          '</td></tr></tbody></table>'
+        : '';
+      container.innerHTML =
+        '<div class="status info">Scalar study: best objective = ' +
+        escapeHtml(bv != null ? String(Number(bv).toFixed(4)) : '—') +
+        '</div>' +
+        detail;
+      await fetchOptunaStudyDashboard();
+      if (APP_STATE.recentCandidates) {
+        updateStatsBar(APP_STATE.recentCandidates, APP_STATE.recentRuns || []);
+      }
+      updateSinceStartSection();
+      return;
+    }
+    const rows = summ.pareto_trials || [];
+    if (!rows.length) {
+      container.innerHTML =
+        '<div class="status info">No Pareto trials yet. Run trials (button below) or CLI: <code>python scripts/run_autoresearch_optuna.py</code>.</div>';
+      return;
+    }
+    let html =
+      '<table class="ar-pareto-table"><thead><tr><th>Trial</th><th>ROI</th><th>CLV</th><th>−cal</th><th>−DD</th><th>Promotable</th></tr></thead><tbody>';
+    for (var i = 0; i < rows.length; i++) {
+      const pt = rows[i];
+      const vals = pt.values || [];
+      const ua = pt.user_attrs || {};
+      const roi = vals[0] != null ? Number(vals[0]).toFixed(2) : '—';
+      const clv = vals[1] != null ? Number(vals[1]).toFixed(4) : '—';
+      const ncal = vals[2] != null ? Number(vals[2]).toFixed(4) : '—';
+      const ndd = vals[3] != null ? Number(vals[3]).toFixed(2) : '—';
+      const prom = ua.feasible && ua.guardrail_passed ? 'yes' : 'no';
+      html +=
+        '<tr><td>' +
+        escapeHtml(String(pt.number)) +
+        '</td><td>' +
+        roi +
+        '</td><td>' +
+        clv +
+        '</td><td>' +
+        ncal +
+        '</td><td>' +
+        ndd +
+        '</td><td>' +
+        prom +
+        '</td></tr>';
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    await fetchOptunaStudyDashboard();
+    if (APP_STATE.recentCandidates) {
+      updateStatsBar(APP_STATE.recentCandidates, APP_STATE.recentRuns || []);
+    }
+    updateSinceStartSection();
+  } catch (err) {
+    container.innerHTML = '<div class="status error">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+async function runOptunaTrialsFromDashboard() {
+  const nEl = document.getElementById('optunaNTrialsInput');
+  const container = document.getElementById('optunaParetoContainer');
+  const studyInput = document.getElementById('optunaStudyNameInput');
+  const scalarInput = document.getElementById('optunaScalarStudyNameInput');
+  const scalarObj = document.getElementById('scalarObjectiveSelect');
+  if (!container) return;
+  const n = Math.max(1, Math.min(50, parseInt((nEl && nEl.value) || '5', 10)));
+  const em = getAutoresearchEngineMode();
+  const studyKind = em === 'optuna_scalar' ? 'scalar' : 'mo';
+  const studyName =
+    studyKind === 'scalar'
+      ? (scalarInput && scalarInput.value.trim() ? scalarInput.value.trim() : '')
+      : (studyInput && studyInput.value.trim() ? studyInput.value.trim() : '');
+  const payload = {
+    n_trials: n,
+    years: [2024, 2025],
+    study_kind: studyKind,
+    study_name: studyName || undefined,
+  };
+  if (studyKind === 'scalar' && scalarObj) {
+    payload.scalar_objective = scalarObj.value;
+  }
+  container.innerHTML =
+    '<div class="status info">Running ' + n + ' trial(s) — walk-forward replay; may take several minutes.</div>';
+  try {
+    const resp = await fetch('/api/autoresearch/optuna/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    await loadAutoresearchPareto();
+    await fetchOptunaStudyDashboard();
+    if (APP_STATE.recentCandidates) {
+      updateStatsBar(APP_STATE.recentCandidates, APP_STATE.recentRuns || []);
+    }
+    updateSinceStartSection();
+  } catch (err) {
+    container.innerHTML = '<div class="status error">' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function handleGuardrailModeChange() {
+  const select = document.getElementById('guardrailModeSelect');
+  if (!select) return;
+  const mode = select.value;
+  fetch('/api/autoresearch/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guardrail_mode: mode }),
+  })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (data && data.guardrail_mode) select.value = data.guardrail_mode;
+    })
+    .catch(function () {});
 }
 
 async function loadAutoresearchRuns() {
@@ -572,7 +946,11 @@ async function loadBestCandidates() {
   if (!container) return;
 
   try {
-    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=10');
+    if (!APP_STATE.autoresearchSettings) {
+      await loadAutoresearchSettings();
+    }
+    await fetchOptunaStudyDashboard();
+    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=3');
     if (!resp.ok) {
       const errData = await resp.json().catch(function () { return {}; });
       throw new Error(errData.error || 'Server error (' + resp.status + ')');
@@ -590,7 +968,8 @@ async function loadBestCandidates() {
     }
     updateStatsBar(candidates, APP_STATE.recentRuns || []);
     let html = '';
-    for (const c of candidates) {
+    candidates.forEach(function (c, index) {
+      const isLeader = index === 0;
       const sm = c.summary_metrics || {};
       const bsm = c.baseline_summary_metrics || {};
       const roi = sm.weighted_roi_pct != null ? sm.weighted_roi_pct.toFixed(2) + '%' : '—';
@@ -608,8 +987,10 @@ async function loadBestCandidates() {
         ? ' · <a href="#" class="report-link link-secondary" data-path="' +
           escapeHtml(reportPath) + '" data-action="report">report</a>'
         : '';
+      const itemClass = 'candidate-item' + (isLeader ? ' candidate-leader' : '');
       html +=
-        '<article class="candidate-item" data-id="' + escapeHtml(String(c.id)) + '">' +
+        '<article class="' + itemClass + '" data-id="' + escapeHtml(String(c.id)) + '" role="article" aria-label="' + (isLeader ? 'Best candidate' : 'Candidate ' + (index + 1)) + '">' +
+        (isLeader ? '<div class="candidate-leader-badge" aria-hidden="true">Best</div>' : '') +
         '<h3 class="candidate-name">' + escapeHtml(c.name || 'Unnamed') + '</h3>' +
         (hypothesis ? '<div class="run-item-text">' + hypothesis + '</div>' : '') +
         '<div class="metrics">ROI ' + roi + ' <span style="opacity:.5">vs</span> ' + baseRoi +
@@ -623,7 +1004,7 @@ async function loadBestCandidates() {
         escapeHtml(String(c.id)) + '">Promote</button>' +
         '<span id="promoteMsg' + escapeHtml(String(c.id)) + '" class="promote-msg"></span>' +
         '</div></article>';
-    }
+    });
     container.innerHTML = html;
   } catch (err) {
     container.innerHTML =
@@ -680,19 +1061,69 @@ function updateStatsBar(candidates, runs) {
     el.textContent = text;
     el.className = 'ar-stat-value' + (cls ? ' ' + cls : '');
   };
-  if (!candidates.length && !(runs || []).length) {
+  const od = APP_STATE.optunaDashboard;
+  const useOptuna = isOptunaEngineMode() && od != null;
+
+  const bestRoiLabel = document.getElementById('statBestRoiLabel');
+  const bestClvLabel = document.getElementById('statBestClvLabel');
+  const propLabel = document.getElementById('statTotalProposalsLabel');
+  const promoLabel = document.getElementById('statPromotableLabel');
+  const sk = od && od.study_kind;
+  if (bestRoiLabel) bestRoiLabel.textContent = useOptuna ? 'Best ROI (study max)' : 'Best ROI';
+  if (bestClvLabel) bestClvLabel.textContent = useOptuna ? 'Best CLV (study max)' : 'Best CLV';
+  if (propLabel) propLabel.textContent = useOptuna ? 'Trials' : 'Proposals';
+  if (promoLabel) promoLabel.textContent = useOptuna ? (sk === 'scalar' ? 'Best OK' : 'Pareto OK') : 'Promotable';
+
+  if (!candidates.length && !(runs || []).length && !useOptuna) {
     setVal('statBaselineRoi', '—'); setVal('statBestRoi', '—');
     setVal('statBaselineClv', '—'); setVal('statBestClv', '—');
     setVal('statTotalProposals', '—'); setVal('statPromotable', '0');
+    updateSinceStartSection();
     return;
   }
+
   var bsm = _findBaseline(candidates, runs);
+
+  if (useOptuna) {
+    var baseRoi = bsm.weighted_roi_pct;
+    var baseClv = bsm.weighted_clv_avg;
+    var trialMaxRoi = od.trial_max_roi_pct;
+    var trialMaxClv = od.trial_max_clv;
+    var nTrials = od.n_complete_trials != null ? od.n_complete_trials : 0;
+    var paretoOk = od.pareto_promotable_count != null ? od.pareto_promotable_count : 0;
+    setVal('statBaselineRoi', baseRoi != null ? baseRoi.toFixed(2) + '%' : '—', baseRoi != null ? (baseRoi > 0 ? 'val-positive' : 'val-negative') : '');
+    setVal(
+      'statBestRoi',
+      trialMaxRoi != null ? trialMaxRoi.toFixed(2) + '%' : '—',
+      trialMaxRoi != null && baseRoi != null && trialMaxRoi > baseRoi ? 'val-positive' : ''
+    );
+    setVal('statBaselineClv', baseClv != null ? baseClv.toFixed(4) : '—');
+    setVal(
+      'statBestClv',
+      trialMaxClv != null ? trialMaxClv.toFixed(4) : '—',
+      trialMaxClv != null && baseClv != null && trialMaxClv > baseClv ? 'val-positive' : ''
+    );
+    setVal('statTotalProposals', String(nTrials));
+    setVal('statPromotable', String(paretoOk), paretoOk > 0 ? 'val-positive' : '');
+    var note = document.getElementById('promotionQueueNote');
+    if (note) {
+      note.textContent =
+        paretoOk > 0
+          ? (sk === 'scalar'
+            ? paretoOk + ' best trial passes feasibility + guardrails'
+            : paretoOk + ' on Pareto pass feasibility + guardrails')
+          : '';
+    }
+    updateSinceStartSection();
+    return;
+  }
+
   var bestCandidate = candidates.length ? candidates[0] : null;
   var sm = bestCandidate ? (bestCandidate.summary_metrics || {}) : {};
-  var baseRoi = bsm.weighted_roi_pct;
-  var bestRoi = sm.weighted_roi_pct;
-  setVal('statBaselineRoi', baseRoi != null ? baseRoi.toFixed(2) + '%' : '—', baseRoi != null ? (baseRoi > 0 ? 'val-positive' : 'val-negative') : '');
-  setVal('statBestRoi', bestRoi != null ? bestRoi.toFixed(2) + '%' : '—', (bestRoi != null && baseRoi != null && bestRoi > baseRoi) ? 'val-positive' : '');
+  var baseRoiR = bsm.weighted_roi_pct;
+  var bestRoiR = sm.weighted_roi_pct;
+  setVal('statBaselineRoi', baseRoiR != null ? baseRoiR.toFixed(2) + '%' : '—', baseRoiR != null ? (baseRoiR > 0 ? 'val-positive' : 'val-negative') : '');
+  setVal('statBestRoi', bestRoiR != null ? bestRoiR.toFixed(2) + '%' : '—', (bestRoiR != null && baseRoiR != null && bestRoiR > baseRoiR) ? 'val-positive' : '');
   setVal('statBaselineClv', bsm.weighted_clv_avg != null ? bsm.weighted_clv_avg.toFixed(4) : '—');
   setVal('statBestClv', sm.weighted_clv_avg != null ? sm.weighted_clv_avg.toFixed(4) : '—');
   setVal('statTotalProposals', String(candidates.length));
@@ -704,11 +1135,54 @@ function updateStatsBar(candidates, runs) {
       c.summary_metrics.weighted_roi_pct > cb.weighted_roi_pct;
   });
   setVal('statPromotable', String(promotable.length), promotable.length > 0 ? 'val-positive' : '');
-  var note = document.getElementById('promotionQueueNote');
-  if (note) {
-    note.textContent = promotable.length > 0
+  var noteR = document.getElementById('promotionQueueNote');
+  if (noteR) {
+    noteR.textContent = promotable.length > 0
       ? promotable.length + ' ready to promote'
       : '';
+  }
+  updateSinceStartSection();
+}
+
+function updateSinceStartSection() {
+  const setVal = function (id, text, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'ar-stat-value' + (cls ? ' ' + cls : '');
+  };
+  const status = APP_STATE.autoresearchStatus || {};
+  const atStartRoi = status.at_start_baseline_roi;
+  const atStartClv = status.at_start_baseline_clv;
+  const candidates = APP_STATE.recentCandidates || [];
+  const best = candidates.length ? candidates[0] : null;
+  const od = APP_STATE.optunaDashboard;
+  const useOptuna = isOptunaEngineMode() && od != null;
+  const bestRoi = useOptuna
+    ? od.trial_max_roi_pct
+    : (best && best.summary_metrics ? best.summary_metrics.weighted_roi_pct : null);
+  const bestClv = useOptuna
+    ? od.trial_max_clv
+    : (best && best.summary_metrics ? best.summary_metrics.weighted_clv_avg : null);
+
+  setVal('sinceStartRoi', atStartRoi != null ? atStartRoi.toFixed(2) + '%' : '—', atStartRoi != null ? (atStartRoi >= 0 ? 'val-positive' : 'val-negative') : '');
+  setVal('sinceStartClv', atStartClv != null ? atStartClv.toFixed(4) : '—');
+  setVal('sinceStartCurrentRoi', bestRoi != null ? bestRoi.toFixed(2) + '%' : '—', bestRoi != null ? (bestRoi >= 0 ? 'val-positive' : 'val-negative') : '');
+  setVal('sinceStartCurrentClv', bestClv != null ? bestClv.toFixed(4) : '—');
+
+  if (atStartRoi != null && bestRoi != null) {
+    const deltaRoi = bestRoi - atStartRoi;
+    const roiText = (deltaRoi >= 0 ? '+' : '') + deltaRoi.toFixed(2) + '%';
+    setVal('sinceStartDeltaRoi', roiText, deltaRoi > 0 ? 'val-positive' : (deltaRoi < 0 ? 'val-negative' : ''));
+  } else {
+    setVal('sinceStartDeltaRoi', '—');
+  }
+  if (atStartClv != null && bestClv != null) {
+    const deltaClv = bestClv - atStartClv;
+    const clvText = (deltaClv >= 0 ? '+' : '') + deltaClv.toFixed(4);
+    setVal('sinceStartDeltaClv', clvText, deltaClv > 0 ? 'val-positive' : (deltaClv < 0 ? 'val-negative' : ''));
+  } else {
+    setVal('sinceStartDeltaClv', '—');
   }
 }
 
@@ -950,9 +1424,11 @@ document.addEventListener('dragstart', function (e) {
 
 document.addEventListener('DOMContentLoaded', function () {
   loadStatus();
-  loadBestCandidates();
-  loadAutoresearchStatus();
-  loadAutoresearchRuns();
+  (async function initAutoresearchUi() {
+    await loadAutoresearchStatus();
+    await loadAutoresearchRuns();
+    await loadBestCandidates();
+  })();
   initMainTabs();
   initCommandMenu();
 
@@ -972,6 +1448,22 @@ document.addEventListener('DOMContentLoaded', function () {
   if (stopAutoresearchBtn) stopAutoresearchBtn.addEventListener('click', stopAutoresearchEngine);
   if (resetAutoresearchBtn) resetAutoresearchBtn.addEventListener('click', resetAutoresearchState);
   if (downloadCardBtn) downloadCardBtn.addEventListener('click', downloadCard);
+  const guardrailModeSelect = document.getElementById('guardrailModeSelect');
+  if (guardrailModeSelect) guardrailModeSelect.addEventListener('change', handleGuardrailModeChange);
+  const engineModeSelect = document.getElementById('engineModeSelect');
+  if (engineModeSelect) engineModeSelect.addEventListener('change', handleEngineModeChange);
+  const useTheoryLlmCheckbox = document.getElementById('useTheoryLlmCheckbox');
+  if (useTheoryLlmCheckbox) useTheoryLlmCheckbox.addEventListener('change', handleTheoryLlmChange);
+  const optunaStudyNameInput = document.getElementById('optunaStudyNameInput');
+  if (optunaStudyNameInput) optunaStudyNameInput.addEventListener('blur', handleOptunaStudyBlur);
+  const optunaScalarStudyNameInput = document.getElementById('optunaScalarStudyNameInput');
+  if (optunaScalarStudyNameInput) optunaScalarStudyNameInput.addEventListener('blur', handleScalarStudyBlur);
+  const scalarObjectiveSelect = document.getElementById('scalarObjectiveSelect');
+  if (scalarObjectiveSelect) scalarObjectiveSelect.addEventListener('change', handleScalarObjectiveChange);
+  const loadParetoBtn = document.getElementById('loadParetoBtn');
+  if (loadParetoBtn) loadParetoBtn.addEventListener('click', loadAutoresearchPareto);
+  const runOptunaTrialsBtn = document.getElementById('runOptunaTrialsBtn');
+  if (runOptunaTrialsBtn) runOptunaTrialsBtn.addEventListener('click', runOptunaTrialsFromDashboard);
   const revealEls = document.querySelectorAll('.reveal');
   if (revealEls.length && 'IntersectionObserver' in window) {
     const observer = new IntersectionObserver(

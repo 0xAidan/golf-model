@@ -5,12 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from backtester.experiments import generate_neighbor_strategies
 from backtester.strategy import StrategyConfig
 from src.ai_brain import call_ai, is_ai_available
+from src.autoresearch_settings import get_settings
 
 logger = logging.getLogger("theory_engine")
 
@@ -236,13 +237,54 @@ def _openai_theories(base: StrategyConfig, max_candidates: int, scope: str, year
     return theories
 
 
+def _directed_submodel_variants(base: StrategyConfig) -> list[tuple[str, StrategyConfig]]:
+    """Structured tilts on the w_sub_* simplex + one EV step — diversifies when neighbors repeat."""
+    from backtester.experiments import _normalize_sub_weights
+
+    triples: list[tuple[str, float, float, float]] = [
+        ("course_fit_tilt", 0.52, 0.33, 0.15),
+        ("form_tilt", 0.33, 0.52, 0.15),
+        ("momentum_tilt", 0.30, 0.30, 0.40),
+    ]
+    out: list[tuple[str, StrategyConfig]] = []
+    for label, wc, wf, wm in triples:
+        cfg = replace(base)
+        cfg.name = f"{(base.name or 'baseline')}_{label}"
+        cfg.w_sub_course_fit, cfg.w_sub_form, cfg.w_sub_momentum = wc, wf, wm
+        _normalize_sub_weights(cfg)
+        out.append((label.replace("_", " ").title(), cfg))
+
+    ev_cfg = replace(base)
+    ev_cfg.name = f"{(base.name or 'baseline')}_min_ev_step"
+    ev_cfg.min_ev = round(max(0.02, min(0.20, float(base.min_ev) + 0.015)), 3)
+    out.append(("Min EV step (+1.5pp cap)", ev_cfg))
+    return out
+
+
 def _fallback_theories(base: StrategyConfig, max_candidates: int) -> list[dict[str, Any]]:
-    theories = []
-    candidates = generate_neighbor_strategies(base, n=max_candidates + 3, perturbation=0.05)
-    for index, strategy in enumerate(candidates[:max_candidates]):
+    theories: list[dict[str, Any]] = []
+    directed = _directed_submodel_variants(base)
+    for title, strategy in directed:
         theories.append(
             {
-                "title": f"Neighbor search {index + 1}",
+                "title": title,
+                "hypothesis": f"Directed exploration away from duplicate neighbors: {title}.",
+                "why_it_may_work": "Covers distinct regions of the PIT sub-model simplex and EV threshold.",
+                "source_type": "fallback_directed",
+                "novelty_score": 0.35,
+                "duplicate_marker": "",
+                "ranking_hint": 0.35,
+                "strategy": strategy,
+                "strategy_overrides": {},
+            }
+        )
+
+    neighbors = generate_neighbor_strategies(base, n=max_candidates + 5, perturbation=0.05)
+    start_idx = len(theories)
+    for index, strategy in enumerate(neighbors):
+        theories.append(
+            {
+                "title": f"Neighbor search {start_idx + index + 1}",
                 "hypothesis": f"Test nearby parameter changes around {base.name or 'baseline'}.",
                 "why_it_may_work": "Local search explores nearby PIT sub-model weights and betting parameters.",
                 "source_type": "fallback_neighbor",
@@ -279,6 +321,12 @@ def generate_candidate_theories(
     years: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     existing_hashes = _get_existing_strategy_hashes()
+
+    if not get_settings().get("use_theory_engine_llm", False):
+        logger.info("LLM theory generation disabled in autoresearch settings; using directed + neighbor search.")
+        fallback = _fallback_theories(base, max_candidates + 5)
+        fallback = _deduplicate_theories(fallback, existing_hashes)
+        return fallback[:max_candidates]
 
     if is_ai_available():
         try:

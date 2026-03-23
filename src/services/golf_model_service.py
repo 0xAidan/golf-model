@@ -13,6 +13,7 @@ from typing import Optional
 
 from src import db
 from src.player_normalizer import normalize_name, display_name
+from src.strategy_resolution import build_pipeline_strategy_config
 
 logger = logging.getLogger("golf_model_service")
 
@@ -38,8 +39,8 @@ class GolfModelService:
         mode: str = "full",
         include_weather: bool = False,
         include_post_review: bool = False,
-        include_methodology: bool = False,
-        strategy_source: str = "config",
+        include_methodology: bool = True,
+        strategy_source: str = "registry",
     ) -> dict:
         """
         Run the complete prediction pipeline.
@@ -115,18 +116,19 @@ class GolfModelService:
         print("  Loading course profile...")
         profile = self._load_course_profile(course_name, sync_result.get("decompositions_raw"))
 
-        # Step 7a: Resolve strategy from model registry if requested
+        # Step 7a: Resolve strategy from model registry (same chain as run_predictions CLI)
         if strategy_source == "registry":
             resolved = self._resolve_strategy()
             if resolved:
                 strategy, meta = resolved
-                self.strategy_config = self._map_strategy_to_config(strategy)
+                self.strategy_config = build_pipeline_strategy_config(strategy)
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
 
         # Step 8: Run composite model
         print("  Running composite model...")
         weights = self._get_weights(course_num)
+        result["pipeline_weights"] = weights
         composite = self._run_composite(tid, weights, course_name)
         result["composite_results"] = composite
 
@@ -188,9 +190,7 @@ class GolfModelService:
         # Step 10b: Matchups and 3-ball (live focus: plus-ROI areas)
         matchup_bets = []
         if mode in ("full", "matchups-only", "round-matchups"):
-            matchup_bets = self._fetch_matchup_value_bets(composite, tid)
-            if mode == "round-matchups":
-                matchup_bets = [b for b in matchup_bets if b.get("market_type") == "round_matchups"]
+            matchup_bets = self._fetch_matchup_value_bets(composite, tid, mode=mode)
             if matchup_bets:
                 print(f"    → {len(matchup_bets)} matchup value plays")
         result["matchup_bets"] = matchup_bets
@@ -225,6 +225,8 @@ class GolfModelService:
             self._log_predictions(tid, value_bets)
         elif value_bets and not picks_allowed:
             logger.warning("Skipping prediction logging — run quality check failed")
+        if matchup_bets and picks_allowed:
+            self._log_matchup_predictions(tid, matchup_bets)
 
         # Step 13: Generate card
         print("  Generating betting card...")
@@ -237,12 +239,21 @@ class GolfModelService:
         )
         result["card_filepath"] = card_path
 
-        # Step 13a: Generate methodology document (optional)
+        # Step 13a: Generate methodology document (companion to card; default on)
         if include_methodology and card_path:
-            meth_path = self._generate_methodology(
-                tournament_name, course_name, composite, value_bets,
-                output_dir, ai_pre_analysis, matchup_bets, profile,
+            meth_ctx = self._build_methodology_ctx(
+                tournament_name=tournament_name,
+                course_name=course_name,
+                tid=tid,
+                composite=composite,
+                value_bets=value_bets,
+                profile=profile,
+                ai_pre_analysis=ai_pre_analysis,
+                matchup_bets=matchup_bets,
+                weights=weights,
+                result=result,
             )
+            meth_path = self._generate_methodology(meth_ctx, output_dir)
             result["methodology_filepath"] = meth_path
 
         # Step 14: Post-tournament review for prior events (optional)
@@ -368,19 +379,23 @@ class GolfModelService:
         return None
 
     def _get_weights(self, course_num: int = None) -> dict:
-        """Get model weights, optionally blended with course-specific weights."""
+        """Merge DB/course weights with resolved strategy blend (matches run_predictions)."""
+        base = db.get_weights_for_course(course_num)
         if self.strategy_config and "weights" in self.strategy_config:
-            return self.strategy_config["weights"]
-        return db.get_weights_for_course(course_num)
+            merged = dict(base)
+            merged.update(self.strategy_config["weights"])
+            return merged
+        return base
 
     def _run_composite(self, tournament_id: int, weights: dict,
                         course_name: str = None) -> list[dict]:
-        """Run the composite model."""
+        """Run the composite model; weights already include strategy blend from _get_weights."""
         from src.models.composite import compute_composite
         return compute_composite(
-            tournament_id, weights,
+            tournament_id,
+            weights,
             course_name=course_name,
-            strategy_config=self.strategy_config,
+            strategy_config=None,
         )
 
     def _is_ai_available(self) -> bool:
@@ -420,10 +435,18 @@ class GolfModelService:
 
     def _compute_value_bets(self, composite, all_odds_by_market, tid) -> dict:
         """Compute value bets for each market."""
+        from src.confidence import get_field_strength
         from src.odds import get_best_odds
         from src.value import find_value_bets
 
+        ev_threshold = None
+        allowed = None
+        if self.strategy_config:
+            ev_threshold = self.strategy_config.get("ev_threshold")
+            allowed = self.strategy_config.get("allowed_markets")
+
         value_bets = {}
+        _fstr = get_field_strength(composite)
         for market_key, odds_list in all_odds_by_market.items():
             if not odds_list:
                 continue
@@ -434,30 +457,50 @@ class GolfModelService:
                 bt = "frl"
             else:
                 bt = market_key.replace("top_", "top")
-            vb = find_value_bets(composite, best, bet_type=bt, tournament_id=tid)
+            if allowed is not None and bt not in allowed:
+                continue
+            vb = find_value_bets(
+                composite,
+                best,
+                bet_type=bt,
+                tournament_id=tid,
+                field_strength=_fstr,
+                ev_threshold=ev_threshold,
+            )
             value_bets[bt] = vb
         return value_bets
 
-    def _fetch_matchup_value_bets(self, composite, tid) -> list:
-        """Fetch tournament and round matchup odds and return value bets (live focus).
-        Only includes matchups that have odds at the preferred book (e.g. bet365)."""
+    def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> list:
+        """Fetch matchup value bets at the preferred book only.
+
+        **full** and **matchups-only**: 72-hole (tournament) matchups only — same product bet365
+        and other books actually list. **round-matchups**: per-round H2H only (often missing on-app).
+        """
         try:
             from src.datagolf import fetch_matchup_odds
             from src.matchup_value import find_matchup_value_bets
             from src.odds import get_preferred_book
             from src import config
 
-            ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
+            ev_threshold = self.strategy_config.get("matchup_ev_threshold") if self.strategy_config else None
+            if ev_threshold is None:
+                ev_threshold = self.strategy_config.get("ev_threshold") if self.strategy_config else None
+            if ev_threshold is None:
+                ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
             required_book = get_preferred_book()
+            if mode == "round-matchups":
+                markets = [("round_matchups", "round")]
+            else:
+                markets = [("tournament_matchups", "72-hole")]
             aggregated = []
-            for market_key, label in [("tournament_matchups", "72-hole"), ("round_matchups", "round")]:
+            for market_key, label in markets:
                 try:
                     odds = fetch_matchup_odds(market=market_key, tour=self.tour)
                     if not odds:
                         continue
                     bets = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
-                        required_book=required_book,
+                        required_book=required_book, market_type=market_key,
                     )
                     for b in bets:
                         b["market_type"] = market_key
@@ -578,6 +621,52 @@ class GolfModelService:
         except Exception as e:
             logger.warning(f"Prediction logging error: {e}")
 
+    def _log_matchup_predictions(self, tid, matchup_bets):
+        """Log matchup predictions for calibration tracking."""
+        try:
+            from src.learning import log_matchup_predictions_for_tournament
+            log_matchup_predictions_for_tournament(tid, matchup_bets)
+        except Exception as e:
+            logger.warning(f"Matchup prediction logging error: {e}")
+
+    def _build_methodology_ctx(
+        self,
+        *,
+        tournament_name: str,
+        course_name: str | None,
+        tid: int,
+        composite: list,
+        value_bets: dict,
+        profile,
+        ai_pre_analysis,
+        matchup_bets: list | None,
+        weights: dict,
+        result: dict,
+    ) -> dict:
+        """Context dict for src.methodology.generate_methodology (same shape as run_predictions)."""
+        from src import config as src_config
+
+        meta = result.get("strategy_meta") or {}
+        return {
+            "tournament_name": tournament_name,
+            "course_name": course_name or "Unknown",
+            "event_id": str(tid),
+            "composite_results": composite,
+            "value_bets": value_bets or {},
+            "weights": weights or {"course_fit": 0.45, "form": 0.45, "momentum": 0.10},
+            "profile": profile,
+            "ai_pre_analysis": ai_pre_analysis,
+            "matchup_bets": matchup_bets or [],
+            "metric_counts": result.get("metric_counts") or {},
+            "rounds_by_year": result.get("rounds_by_year") or {},
+            "total_rounds": result.get("total_rounds"),
+            "model_version": getattr(src_config, "MODEL_VERSION", "4.2"),
+            "strategy": {
+                "runtime_settings": meta.get("runtime_settings")
+                or {"blend_weights": weights or {}},
+            },
+        }
+
     def _generate_card(self, tournament_name, course_name, composite,
                         value_bets, output_dir, ai_pre_analysis, ai_decisions,
                         matchup_bets: list = None, mode: str = "full") -> str | None:
@@ -625,50 +714,15 @@ class GolfModelService:
             pass  # Non-critical
 
     def _resolve_strategy(self) -> tuple | None:
-        """Resolve strategy from model registry with fallback chain."""
+        """Resolve strategy using shared registry chain (live -> research -> active -> default)."""
         try:
-            from backtester.model_registry import get_live_weekly_model_record, get_research_champion_record
-            from backtester.experiments import get_active_strategy
-            from backtester.strategy import StrategyConfig
+            from src.strategy_resolution import resolve_runtime_strategy
 
-            for source, fetch in [
-                ("live", lambda: get_live_weekly_model_record("global")),
-                ("research_champion", lambda: get_research_champion_record("global")),
-            ]:
-                record = fetch()
-                if record and record.get("strategy_config_json"):
-                    try:
-                        strategy = StrategyConfig.from_json(record["strategy_config_json"])
-                        return strategy, {"strategy_source": source, "strategy_name": strategy.name or source}
-                    except Exception:
-                        logger.warning("Failed to parse %s strategy config", source, exc_info=True)
-
-            active = get_active_strategy("global")
-            if active:
-                return active, {"strategy_source": "active_strategy", "strategy_name": active.name or "active"}
-
-            return StrategyConfig(name="default"), {"strategy_source": "default", "strategy_name": "default"}
+            strategy, meta = resolve_runtime_strategy("global")
+            return strategy, meta
         except Exception:
             logger.warning("Strategy resolution failed, using defaults", exc_info=True)
             return None
-
-    def _map_strategy_to_config(self, strategy) -> dict:
-        """Map a StrategyConfig dataclass to a dict for pipeline consumption."""
-        market_map = {
-            "win": "outright", "top_5": "top5", "top_10": "top10",
-            "top_20": "top20", "frl": "frl", "make_cut": "make_cut",
-        }
-        allowed_markets = {market_map.get(m, m) for m in (strategy.markets or [])}
-        return {
-            "weights": {
-                "course_fit": float(strategy.w_sub_course_fit),
-                "form": float(strategy.w_sub_form),
-                "momentum": float(strategy.w_sub_momentum),
-            },
-            "ev_threshold": float(strategy.min_ev),
-            "kelly_fraction": float(strategy.kelly_fraction),
-            "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
-        }
 
     def _compute_weather(self, tournament_id: int, course_name: str) -> dict | None:
         """Fetch forecast and compute weather adjustments."""
@@ -681,20 +735,12 @@ class GolfModelService:
             logger.warning("Weather adjustments failed (non-fatal)", exc_info=True)
         return None
 
-    def _generate_methodology(self, tournament_name, course_name, composite,
-                               value_bets, output_dir, ai_pre_analysis,
-                               matchup_bets, course_profile) -> str | None:
+    def _generate_methodology(self, ctx: dict, output_dir: str) -> str | None:
         """Generate methodology document alongside the betting card."""
         try:
             from src.methodology import generate_methodology
-            return generate_methodology(
-                tournament_name, course_name or "Unknown",
-                composite, value_bets,
-                output_dir=output_dir,
-                ai_pre_analysis=ai_pre_analysis,
-                matchup_bets=matchup_bets or [],
-                course_profile=course_profile,
-            )
+
+            return generate_methodology(ctx, output_dir=output_dir)
         except Exception:
             logger.warning("Methodology generation failed (non-fatal)", exc_info=True)
             return None

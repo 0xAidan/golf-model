@@ -120,7 +120,7 @@ def test_promotion_gates_can_block_live_promotion(monkeypatch):
         assert "minimum_bets_not_met" in exc.result.reasons
 
 
-def test_upcoming_prediction_uses_live_weekly_model(monkeypatch):
+def test_upcoming_prediction_uses_resolved_strategy_pipeline(monkeypatch):
     import app as app_module
     from backtester.strategy import StrategyConfig
     from fastapi.testclient import TestClient
@@ -132,6 +132,7 @@ def test_upcoming_prediction_uses_live_weekly_model(monkeypatch):
             captured["strategy_config"] = strategy_config or {}
 
         def run_analysis(self, **kwargs):
+            captured["run_analysis_kwargs"] = kwargs
             return {
                 "status": "complete",
                 "event_name": "Test Event",
@@ -139,9 +140,10 @@ def test_upcoming_prediction_uses_live_weekly_model(monkeypatch):
                 "output_file": "output/test.md",
             }
 
+    strat = StrategyConfig(name="live_lane_model", min_ev=0.09)
     monkeypatch.setattr(
-        "backtester.model_registry.get_live_weekly_model",
-        lambda scope="global": StrategyConfig(name="live_lane_model", min_ev=0.09),
+        "src.strategy_resolution.resolve_runtime_strategy",
+        lambda scope="global": (strat, {"strategy_source": "live", "strategy_name": "live_lane_model"}),
     )
     monkeypatch.setattr("src.services.golf_model_service.GolfModelService", FakeService)
 
@@ -150,3 +152,6 @@ def test_upcoming_prediction_uses_live_weekly_model(monkeypatch):
 
     assert response.status_code == 200
     assert captured["strategy_config"]["name"] == "live_lane_model"
+    assert captured["run_analysis_kwargs"].get("strategy_source") == "config"
+    body = response.json()
+    assert body.get("model_lane") == "live"

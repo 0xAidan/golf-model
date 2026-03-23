@@ -131,11 +131,58 @@ def _parse_book_odds(matchup: dict, book: str) -> tuple[int | None, int | None]:
     return (None, None)
 
 
+def compute_conviction_score(
+    form_gap: float,
+    course_fit_gap: float,
+    pick_momentum: float,
+    opp_momentum: float,
+    model_win_prob: float,
+    platt_win_prob: float,
+    dg_prob: float | None = None,
+) -> int:
+    """Compute a 0-100 conviction score for a matchup bet.
+
+    Components:
+    - Form differential (40%): normalized |form_gap| / 40, capped at 1.0
+    - Course fit differential (25%): normalized |course_fit_gap| / 30, capped at 1.0
+    - Momentum alignment (20%): 1.0 if pick hot + opp cold, partial otherwise
+    - DG/model agreement strength (15%): how strongly both agree on the pick
+    """
+    form_score = min(abs(form_gap) / 40.0, 1.0)
+    cf_score = min(abs(course_fit_gap) / 30.0, 1.0)
+
+    momentum_score = 0.0
+    if pick_momentum > 55 and opp_momentum < 45:
+        momentum_score = 1.0
+    elif pick_momentum > 50 and opp_momentum < 50:
+        momentum_score = 0.5
+    elif pick_momentum > opp_momentum:
+        momentum_score = 0.25
+
+    agreement_score = 0.5
+    if dg_prob is not None:
+        both_favor = (dg_prob > 0.5 and platt_win_prob > 0.5)
+        if both_favor:
+            strength = min(dg_prob, platt_win_prob)
+            agreement_score = min((strength - 0.5) / 0.3, 1.0)
+        else:
+            agreement_score = 0.0
+
+    raw = (
+        0.40 * form_score
+        + 0.25 * cf_score
+        + 0.20 * momentum_score
+        + 0.15 * agreement_score
+    )
+    return round(raw * 100)
+
+
 def find_matchup_value_bets(composite_results: list[dict],
                              matchup_odds: list[dict],
                              ev_threshold: float = 0.05,
                              tournament_id: int = None,
-                             required_book: str | None = None) -> list[dict]:
+                             required_book: str | None = None,
+                             market_type: str = "tournament_matchups") -> list[dict]:
     """
     Find value in real sportsbook matchups using model composite scores.
 
@@ -256,6 +303,10 @@ def find_matchup_value_bets(composite_results: list[dict],
         form_gap = pick_form - opp_form
         course_fit_gap = pick_cf - opp_cf
 
+        pick_momentum = pick_data.get("momentum", 50)
+        opp_momentum = opp_data.get("momentum", 50)
+        momentum_aligned = pick_momentum > 55 and opp_momentum < 45
+
         reasons = []
         if abs(course_fit_gap) > 5:
             sign = "+" if course_fit_gap > 0 else ""
@@ -263,6 +314,33 @@ def find_matchup_value_bets(composite_results: list[dict],
         if abs(form_gap) > 5:
             sign = "+" if form_gap > 0 else ""
             reasons.append(f"form {sign}{form_gap:.0f}")
+        if momentum_aligned:
+            pick_dir = pick_data.get("momentum_direction", "")
+            opp_dir = opp_data.get("momentum_direction", "")
+            if pick_dir:
+                reasons.append(f"pick {pick_dir}")
+            if opp_dir:
+                reasons.append(f"opp {opp_dir}")
+
+        dg_prob_for_conviction = None
+        if dg_pairings:
+            dg_pair_check = dg_pairings.get((pick_data["player_key"], opp_data["player_key"]))
+            if not dg_pair_check:
+                dg_pair_rev_check = dg_pairings.get((opp_data["player_key"], pick_data["player_key"]))
+                if dg_pair_rev_check:
+                    dg_prob_for_conviction = dg_pair_rev_check["p2_win_prob"]
+            else:
+                dg_prob_for_conviction = dg_pair_check["p1_win_prob"]
+
+        conviction = compute_conviction_score(
+            form_gap=form_gap,
+            course_fit_gap=course_fit_gap,
+            pick_momentum=pick_momentum,
+            opp_momentum=opp_momentum,
+            model_win_prob=model_win_prob,
+            platt_win_prob=platt_win_prob,
+            dg_prob=dg_prob_for_conviction,
+        )
 
         stake_mult = adaptation["stake_multiplier"] if adaptation else 1.0
 
@@ -292,12 +370,22 @@ def find_matchup_value_bets(composite_results: list[dict],
             "adaptation_state": adaptation["state"] if adaptation else "normal",
             "stake_multiplier": stake_mult,
             "tier": tier,
+            "pick_momentum": round(pick_momentum, 1),
+            "opp_momentum": round(opp_momentum, 1),
+            "momentum_aligned": momentum_aligned,
+            "conviction": conviction,
         })
 
-    value_bets.sort(key=lambda x: x["ev"], reverse=True)
+    value_bets.sort(
+        key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
+        reverse=True,
+    )
 
     # Per-player exposure cap: limit how many matchup bets feature the same player (WD protection)
-    max_exposure = getattr(config, "MATCHUP_MAX_PLAYER_EXPOSURE", 3)
+    if market_type == "tournament_matchups":
+        max_exposure = getattr(config, "MATCHUP_TOURNAMENT_MAX_PLAYER_EXPOSURE", 2)
+    else:
+        max_exposure = getattr(config, "MATCHUP_MAX_PLAYER_EXPOSURE", 3)
     player_counts: dict[str, int] = {}
     capped: list[dict] = []
     for bet in value_bets:

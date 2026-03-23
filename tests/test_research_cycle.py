@@ -32,6 +32,7 @@ def test_run_research_cycle_creates_bounded_evaluated_proposals(monkeypatch, tmp
     from backtester.research_cycle import run_research_cycle
     from backtester.strategy import StrategyConfig
 
+    monkeypatch.setenv("AUTORESEARCH_AUTO_APPLY", "1")
     seen = {}
 
     monkeypatch.setattr(
@@ -246,6 +247,10 @@ def test_run_research_cycle_does_not_promote_bad_research_winner(monkeypatch, tm
     monkeypatch.setattr(
         "backtester.research_cycle.set_research_champion",
         lambda *args, **kwargs: promoted.__setitem__("called", True),
+    )
+    monkeypatch.setattr(
+        "backtester.research_cycle._get_global_best_proposal_for_iteration",
+        lambda *args, **kwargs: None,
     )
 
     result = run_research_cycle(max_candidates=1, years=[2025], output_dir=str(tmp_path))

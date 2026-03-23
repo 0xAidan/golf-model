@@ -75,9 +75,19 @@ def test_compute_weighted_metrics_emits_weighted_and_unweighted_views():
     assert metrics["events_evaluated"] == 2
 
 
-def test_guardrails_block_large_regressions_and_low_sample():
+def test_guardrails_block_large_regressions_and_low_sample(monkeypatch):
     """Guardrails should reject unstable or under-sampled candidates."""
     from backtester.weighted_walkforward import evaluate_guardrails
+
+    monkeypatch.setattr(
+        "src.config.get_autoresearch_guardrail_params",
+        lambda: {
+            "min_bets": 30,
+            "max_clv_regression": 0.02,
+            "max_calibration_regression": 0.03,
+            "max_drawdown_regression": 10.0,
+        },
+    )
 
     candidate = {
         "total_bets": 40,

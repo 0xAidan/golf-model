@@ -36,8 +36,8 @@
           <label for="predictionMode" class="sr-only">Prediction mode</label>
           <select id="predictionMode" class="btn btn-secondary btn-sm" aria-label="Select prediction mode">
             <option value="full">Full Card</option>
-            <option value="matchups-only">Matchups Only</option>
-            <option value="round-matchups">Round Matchups Only</option>
+            <option value="matchups-only">72-hole matchups only</option>
+            <option value="round-matchups">Round matchups only (per-round H2H)</option>
             <option value="placements-only">Placements Only</option>
           </select>
           <button type="button" id="runPredictionBtn" class="btn btn-primary" aria-label="Run prediction for this week">Run prediction</button>
@@ -53,6 +53,11 @@
     <!-- ═══════ AUTORESEARCH TAB ═══════ -->
     <div id="tab-autoresearch" role="tabpanel" aria-labelledby="tab-btn-autoresearch" class="tab-panel" hidden>
 
+      <p class="subtle" role="note" style="margin-bottom: 12px;">
+        <strong>Report-only default:</strong> the research-cycle engine evaluates proposals but does <strong>not</strong> change your research champion unless the server has <code>AUTORESEARCH_AUTO_APPLY=1</code>.
+        Review results, then merge into <code>autoresearch/strategy_config.json</code> yourself. Optuna trials log to <code>output/research/ledger.jsonl</code>. Advanced: change engine below.
+      </p>
+
       <!-- Engine control strip -->
       <div class="ar-control-strip">
         <div class="ar-controls">
@@ -60,6 +65,29 @@
           <button type="button" id="stopAutoresearchBtn" class="btn btn-secondary btn-sm" aria-label="Stop autoresearch engine">Stop</button>
           <button type="button" id="runAutoresearchBtn" class="btn btn-secondary btn-sm" aria-label="Run one autoresearch cycle">Run Once</button>
           <button type="button" id="resetAutoresearchBtn" class="btn btn-secondary btn-sm" aria-label="Reset research state">Reset State</button>
+          <label for="guardrailModeSelect" class="ar-guardrail-label">Guardrail mode</label>
+          <select id="guardrailModeSelect" class="btn btn-secondary btn-sm ar-guardrail-select" aria-label="Guardrail mode: strict or loose">
+            <option value="strict">Strict</option>
+            <option value="loose">Loose</option>
+          </select>
+        </div>
+        <div class="ar-controls ar-controls-row2">
+          <label for="engineModeSelect" class="ar-guardrail-label">Engine</label>
+          <select id="engineModeSelect" class="btn btn-secondary btn-sm ar-guardrail-select" aria-label="Autoresearch engine: research cycle, Optuna MO, or Optuna scalar">
+            <option value="research_cycle">Research cycle</option>
+            <option value="optuna">Optuna MO</option>
+            <option value="optuna_scalar">Optuna scalar</option>
+          </select>
+          <label class="ar-checkbox-label"><input type="checkbox" id="useTheoryLlmCheckbox" /> LLM theories</label>
+          <label for="optunaStudyNameInput" class="ar-guardrail-label">MO study</label>
+          <input type="text" id="optunaStudyNameInput" class="ar-study-name-input" placeholder="golf_mo_dashboard" autocomplete="off" aria-label="Optuna multi-objective study name" />
+          <label for="optunaScalarStudyNameInput" class="ar-guardrail-label">Scalar study</label>
+          <input type="text" id="optunaScalarStudyNameInput" class="ar-study-name-input" placeholder="golf_scalar_dashboard" autocomplete="off" aria-label="Optuna scalar study name" />
+          <label for="scalarObjectiveSelect" class="ar-guardrail-label">Scalar target</label>
+          <select id="scalarObjectiveSelect" class="btn btn-secondary btn-sm ar-guardrail-select" aria-label="Scalar objective for Optuna scalar engine">
+            <option value="blended_score">blended_score</option>
+            <option value="weighted_roi_pct">weighted_roi_pct</option>
+          </select>
         </div>
         <div id="autoresearchEngineStatus" class="ar-status-badge">Engine: idle</div>
       </div>
@@ -68,12 +96,40 @@
       <!-- Stats bar -->
       <div class="ar-stats-bar" id="arStatsBar">
         <div class="ar-stat"><span class="ar-stat-label">Baseline ROI</span><span class="ar-stat-value" id="statBaselineRoi">—</span></div>
-        <div class="ar-stat"><span class="ar-stat-label">Best ROI</span><span class="ar-stat-value" id="statBestRoi">—</span></div>
+        <div class="ar-stat"><span class="ar-stat-label" id="statBestRoiLabel">Best ROI</span><span class="ar-stat-value" id="statBestRoi">—</span></div>
         <div class="ar-stat"><span class="ar-stat-label">Baseline CLV</span><span class="ar-stat-value" id="statBaselineClv">—</span></div>
-        <div class="ar-stat"><span class="ar-stat-label">Best CLV</span><span class="ar-stat-value" id="statBestClv">—</span></div>
-        <div class="ar-stat"><span class="ar-stat-label">Proposals</span><span class="ar-stat-value" id="statTotalProposals">—</span></div>
-        <div class="ar-stat"><span class="ar-stat-label">Promotable</span><span class="ar-stat-value" id="statPromotable">—</span></div>
+        <div class="ar-stat"><span class="ar-stat-label" id="statBestClvLabel">Best CLV</span><span class="ar-stat-value" id="statBestClv">—</span></div>
+        <div class="ar-stat"><span class="ar-stat-label" id="statTotalProposalsLabel">Proposals</span><span class="ar-stat-value" id="statTotalProposals">—</span></div>
+        <div class="ar-stat"><span class="ar-stat-label" id="statPromotableLabel">Promotable</span><span class="ar-stat-value" id="statPromotable">—</span></div>
       </div>
+      <p id="arOptunaStatsNote" class="subtle" style="display: none" role="note"></p>
+
+      <!-- Since engine start -->
+      <div class="ar-since-start" id="arSinceStart" aria-labelledby="sinceStartHeading">
+        <h3 id="sinceStartHeading" class="ar-since-start-heading">Since engine start</h3>
+        <div class="ar-since-start-grid">
+          <div class="ar-stat"><span class="ar-stat-label">At start ROI</span><span class="ar-stat-value" id="sinceStartRoi">—</span></div>
+          <div class="ar-stat"><span class="ar-stat-label">At start CLV</span><span class="ar-stat-value" id="sinceStartClv">—</span></div>
+          <div class="ar-stat"><span class="ar-stat-label">Current best ROI</span><span class="ar-stat-value" id="sinceStartCurrentRoi">—</span></div>
+          <div class="ar-stat"><span class="ar-stat-label">Current best CLV</span><span class="ar-stat-value" id="sinceStartCurrentClv">—</span></div>
+          <div class="ar-stat"><span class="ar-stat-label">Change ROI</span><span class="ar-stat-value" id="sinceStartDeltaRoi">—</span></div>
+          <div class="ar-stat"><span class="ar-stat-label">Change CLV</span><span class="ar-stat-value" id="sinceStartDeltaClv">—</span></div>
+        </div>
+      </div>
+
+      <section class="card reveal" aria-labelledby="pareto-heading">
+        <h2 id="pareto-heading">Optuna Pareto frontier</h2>
+        <p class="subtle">Exploratory frontier (not the same as production promotion). Promotable = feasible sample + guardrails pass. Persistence: <code>output/research/optuna/studies.db</code>.</p>
+        <div class="autoresearch-controls">
+          <button type="button" id="loadParetoBtn" class="btn btn-secondary btn-sm">Refresh Pareto</button>
+          <button type="button" id="runOptunaTrialsBtn" class="btn btn-primary btn-sm">Run trials</button>
+          <label for="optunaNTrialsInput" class="ar-guardrail-label">N</label>
+          <input type="number" id="optunaNTrialsInput" min="1" max="50" value="5" class="ar-n-trials-input" aria-label="Number of Optuna trials" />
+        </div>
+        <div id="optunaParetoContainer" class="ar-scroll-inner run-feed pareto-container">
+          <div class="status info">Switch to this tab or click Refresh to load Pareto trials.</div>
+        </div>
+      </section>
 
       <div class="ar-grid">
         <!-- Left column: activity feed -->
@@ -91,7 +147,7 @@
         <div class="ar-intel-col">
           <section class="card ar-scroll-card" aria-labelledby="candidates-heading">
             <div class="ar-section-head">
-              <h2 id="candidates-heading">Best Candidates <span class="badge" id="candidateCountBadge">0</span></h2>
+              <h2 id="candidates-heading">Best candidate(s) <span class="badge" id="candidateCountBadge">0</span></h2>
               <span class="subtle" id="promotionQueueNote"></span>
             </div>
             <div id="bestCandidates" class="ar-scroll-inner candidate-list">

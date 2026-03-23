@@ -994,6 +994,81 @@ body {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.ar-guardrail-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 8px;
+  margin-right: 2px;
+}
+
+.ar-guardrail-select {
+  min-width: 90px;
+}
+
+.ar-controls-row2 {
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ar-checkbox-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.ar-checkbox-label input {
+  accent-color: var(--accent);
+}
+
+.ar-study-name-input {
+  min-width: 10rem;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.ar-n-trials-input {
+  width: 4rem;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.pareto-container {
+  margin-top: 10px;
+  max-height: 280px;
+}
+
+.ar-pareto-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.ar-pareto-table th,
+.ar-pareto-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.ar-pareto-table th {
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .ar-status-badge {
@@ -1057,6 +1132,36 @@ body {
 
 .ar-stat-value.val-positive { color: var(--success-text); }
 .ar-stat-value.val-negative { color: var(--error-text); }
+
+/* Since engine start */
+.ar-since-start {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.ar-since-start-heading {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--muted);
+}
+
+.ar-since-start-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.ar-since-start-grid .ar-stat {
+  flex: 1;
+  min-width: 100px;
+}
 
 .ar-grid {
   display: grid;
@@ -1257,6 +1362,30 @@ body {
 .candidate-item .btn-promote {
   padding: 4px 10px;
   font-size: 0.75rem;
+}
+
+/* Best candidate (leader) — single one we iterate on */
+.candidate-item.candidate-leader {
+  border-color: rgba(63, 185, 80, 0.5);
+  background: linear-gradient(135deg, rgba(63, 185, 80, 0.08) 0%, var(--surface-elevated) 100%);
+  box-shadow: 0 0 0 1px rgba(63, 185, 80, 0.15);
+}
+
+.candidate-item.candidate-leader:hover {
+  border-color: rgba(63, 185, 80, 0.6);
+}
+
+.candidate-leader-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--success, #22c55e);
+  margin-bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(63, 185, 80, 0.15);
 }
 
 /* ═══════ Skeleton loading ═══════ */

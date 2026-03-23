@@ -16,5 +16,8 @@ pyyaml>=6.0
 # Testing
 pytest>=8.0
 
+# Autoresearch v2 (multi-objective study)
+optuna>=3.6.0
+
 # Optional: Intel harvester
 feedparser>=6.0
