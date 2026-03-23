@@ -3,7 +3,9 @@
 import os
 import sys
 
+import optuna
 from fastapi.testclient import TestClient
+from optuna.trial import TrialState
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,12 +22,14 @@ def test_home_page_shows_simple_actions():
     assert "Golf Model" in text
     assert "Prediction" in text
     assert "Autoresearch" in text
+    assert "Simple Mode" in text
+    assert "Lab Mode" in text
     assert "Run prediction" in text
-    assert "Start autoresearch engine" in text
-    assert "run once" in text.lower()
+    assert "Start Edge Tuner" in text
+    assert "Run Once" in text
     assert "Command Menu" in text
-    assert "/static/css/main.css" in text
-    assert "/static/js/app.js" in text
+    assert "/static/css/main.css?v=" in text
+    assert "/static/js/app.js?v=" in text
 
 
 def test_home_page_uses_autoresearch_language_not_optimizer_heading():
@@ -39,6 +43,7 @@ def test_home_page_uses_autoresearch_language_not_optimizer_heading():
     text = response.text
     assert "autoresearch" in text.lower()
     assert "Continuous Optimizer" not in text
+    assert "Edge Tuner" in text
 
 
 def test_upcoming_prediction_endpoint_returns_output_file(monkeypatch):
@@ -337,5 +342,221 @@ def test_home_page_recent_runs_js_escapes_report_path_safely():
 
     assert response.status_code == 200
     text = response.text
-    assert "/static/js/app.js" in text
+    assert "/static/js/app.js?v=" in text
     assert "bestCandidates" in text
+
+
+def test_simple_autoresearch_control_flow_uses_scalar_defaults(monkeypatch):
+    import app as app_module
+
+    current_state = {
+        "running": False,
+        "run_count": 0,
+        "last_run_started_at": None,
+        "last_run_finished_at": None,
+        "last_error": None,
+        "engine_mode": "optuna_scalar",
+        "scalar_objective": "weighted_roi_pct",
+        "optuna_scalar_study_name": "golf_scalar_simple",
+        "optuna_trials_per_cycle": 3,
+        "last_result": {},
+    }
+
+    def _fake_start(**kwargs):
+        assert kwargs["scope"] == "global"
+        assert kwargs["interval_seconds"] == 300
+        assert kwargs["engine_mode"] == "optuna_scalar"
+        assert kwargs["scalar_objective"] == "weighted_roi_pct"
+        assert kwargs["optuna_scalar_study_name"] == "golf_scalar_simple"
+        assert kwargs["optuna_trials_per_cycle"] == 3
+        current_state.update(
+            {
+                "running": True,
+                "last_run_started_at": "2026-03-14T00:00:00Z",
+                "engine_mode": kwargs["engine_mode"],
+                "scalar_objective": kwargs["scalar_objective"],
+                "optuna_scalar_study_name": kwargs["optuna_scalar_study_name"],
+                "optuna_trials_per_cycle": kwargs["optuna_trials_per_cycle"],
+            }
+        )
+        return dict(current_state)
+
+    def _fake_stop():
+        current_state["running"] = False
+        current_state["last_run_finished_at"] = "2026-03-14T00:05:00Z"
+        return dict(current_state)
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.optimizer_runtime.start_continuous_optimizer", _fake_start)
+    monkeypatch.setattr("backtester.optimizer_runtime.stop_continuous_optimizer", _fake_stop)
+    monkeypatch.setattr("backtester.optimizer_runtime.get_optimizer_status", lambda: dict(current_state))
+
+    client = TestClient(app_module.app)
+    start_response = client.post("/api/simple/autoresearch/start")
+    status_response = client.get("/api/simple/autoresearch/status")
+    stop_response = client.post("/api/simple/autoresearch/stop")
+
+    assert start_response.status_code == 200
+    assert start_response.json()["mode"] == "simple_scalar"
+    assert start_response.json()["is_running"] is True
+    assert status_response.status_code == 200
+    assert status_response.json()["objective"] == "weighted_roi_pct"
+    assert status_response.json()["report_only"] is True
+    assert stop_response.status_code == 200
+    assert stop_response.json()["is_running"] is False
+
+
+def test_simple_autoresearch_status_cycle_in_progress(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(
+        "backtester.optimizer_runtime.get_optimizer_status",
+        lambda: {
+            "running": True,
+            "last_run_started_at": "2026-03-23T20:00:00+00:00",
+            "last_run_finished_at": "2026-03-23T19:30:00+00:00",
+            "last_error": None,
+            "scalar_objective": "weighted_roi_pct",
+            "last_result": {},
+        },
+    )
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/simple/autoresearch/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cycle_in_progress"] is True
+    assert "walk-forward" in body["headline"].lower()
+
+
+def test_simple_autoresearch_run_once_returns_plain_best_improvement(monkeypatch):
+    import app as app_module
+    from backtester.strategy import StrategyConfig
+
+    captured = {}
+    study = optuna.create_study(direction="maximize")
+    study.add_trial(
+        optuna.trial.create_trial(
+            params={},
+            distributions={},
+            value=8.8,
+            user_attrs={
+                "feasible": False,
+                "guardrail_passed": False,
+                "weighted_roi_pct": 8.8,
+                "weighted_clv_avg": 0.03,
+                "blended_score": 8.8,
+            },
+            state=TrialState.COMPLETE,
+        )
+    )
+    study.add_trial(
+        optuna.trial.create_trial(
+            params={},
+            distributions={},
+            value=4.4,
+            user_attrs={
+                "feasible": True,
+                "guardrail_passed": True,
+                "weighted_roi_pct": 4.4,
+                "weighted_clv_avg": 0.05,
+                "blended_score": 4.4,
+            },
+            state=TrialState.COMPLETE,
+        )
+    )
+
+    def _fake_run_scalar_study(**kwargs):
+        captured.update(kwargs)
+        return study
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "backtester.model_registry.get_research_champion",
+        lambda scope="global": StrategyConfig(name="research_baseline", min_ev=0.06),
+    )
+    monkeypatch.setattr("backtester.model_registry.get_live_weekly_model", lambda scope="global": None)
+    monkeypatch.setattr("backtester.experiments.get_active_strategy", lambda scope="global": None)
+    monkeypatch.setattr("backtester.research_lab.mo_study.run_scalar_study", _fake_run_scalar_study)
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/simple/autoresearch/run-once")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "complete"
+    assert body["mode"] == "simple_scalar"
+    assert body["report_only"] is True
+    assert body["objective"] == "weighted_roi_pct"
+    assert body["best_improvement"]["metric_value"] == 4.4
+    assert body["best_improvement"]["guardrails_passed"] is True
+    assert body["recent_attempts"][0]["trial_number"] == 1
+    assert len(body["recent_attempts"]) == 2
+    assert captured["study_name"] == "golf_scalar_simple"
+    assert captured["scalar_metric"] == "weighted_roi_pct"
+
+
+def test_simple_autoresearch_status_surfaces_recent_scalar_attempts(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(
+        "backtester.optimizer_runtime.get_optimizer_status",
+        lambda: {
+            "running": False,
+            "scope": "global",
+            "last_run_finished_at": "2026-03-14T00:05:00Z",
+            "engine_mode": "optuna_scalar",
+            "scalar_objective": "weighted_roi_pct",
+            "optuna_scalar_study_name": "golf_scalar_simple",
+            "last_result": {
+                "evaluation_mode": "optuna_scalar",
+                "optuna_scalar_summary": {
+                    "best_promotable_trial": {
+                        "number": 4,
+                        "value": 4.4,
+                        "user_attrs": {
+                            "feasible": True,
+                            "guardrail_passed": True,
+                            "weighted_roi_pct": 4.4,
+                            "weighted_clv_avg": 0.05,
+                            "blended_score": 4.4,
+                        },
+                    },
+                    "recent_trials": [
+                        {
+                            "number": 4,
+                            "value": 4.4,
+                            "user_attrs": {
+                                "feasible": True,
+                                "guardrail_passed": True,
+                                "weighted_roi_pct": 4.4,
+                                "weighted_clv_avg": 0.05,
+                                "blended_score": 4.4,
+                            },
+                        },
+                        {
+                            "number": 3,
+                            "value": 6.6,
+                            "user_attrs": {
+                                "feasible": False,
+                                "guardrail_passed": False,
+                                "weighted_roi_pct": 6.6,
+                                "weighted_clv_avg": 0.03,
+                                "blended_score": 6.6,
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/simple/autoresearch/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["best_improvement"]["trial_number"] == 4
+    assert [attempt["trial_number"] for attempt in body["recent_attempts"]] == [4, 3]

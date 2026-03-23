@@ -4,14 +4,23 @@
 
 1. **SQLite `data/golf.db`** with historical **`rounds`**, **`pit_rolling_stats`** (run `backtester.pit_stats.build_all_pit_stats` for your years), **`historical_odds`**, and **`historical_matchup_odds`** (backfill scripts / Data Golf pipeline).
 2. **`DATAGOLF_API_KEY`** for live runs; OpenAI optional for theory generation (falls back to directed + neighbor search).
-3. Understand **evaluation paths**:
+3. Understand **operator paths**:
+   - **Simple Mode (recommended):** the dashboard’s default **Edge Tuner** flow uses `/api/simple/autoresearch/start|status|stop|run-once`. It always runs **Optuna scalar**, uses **`weighted_roi_pct`** as the main objective, keeps **report-only** behavior, and uses the default scalar study base name **`golf_scalar_simple`**.
+   - **Lab Mode:** exposes the advanced controls below if you want to inspect or run the underlying engines manually.
+4. Understand **evaluation paths**:
    - **Research-cycle engine (default):** Dashboard “Start Engine” / `POST /api/autoresearch/start` with `engine_mode: "research_cycle"` → `backtester/autoresearch_engine.run_cycle` → weighted walk-forward + `replay_event` → **`research_proposals`**. **Research champion** auto-update runs only if **`AUTORESEARCH_AUTO_APPLY=1`** (default is report-only; see `docs/research/EDGE_TUNER_REPORT.md`).
    - **Optuna MO:** `engine_mode: "optuna"` → multi-objective Pareto trials via `backtester/research_lab/mo_study.py`, storage `output/research/optuna/studies.db`. **Exploration:** tradeoffs between ROI, CLV, calibration, drawdown — not a single “ROI only” optimizer unless you add a selection policy in `docs/research/research_program.md`.
-   - **Optuna scalar:** `engine_mode: "optuna_scalar"` → single-objective (`blended_score` or `weighted_roi_pct` per settings). Uses a **different** `study_name` than MO (default `golf_scalar_dashboard` vs `golf_mo_dashboard`). CLI: `python scripts/run_autoresearch_optuna.py --scalar --scalar-metric blended_score --study-name golf_scalar_dashboard`.
+   - **Optuna scalar:** `engine_mode: "optuna_scalar"` → single-objective (`blended_score` or `weighted_roi_pct` per settings). Uses a **different** `study_name` than MO (default `golf_scalar_simple` vs `golf_mo_dashboard`). CLI: `python scripts/run_autoresearch_optuna.py --scalar --scalar-metric blended_score --study-name golf_scalar_simple`.
    - **CLI contract eval (audit):** `scripts/run_autoresearch_eval.py` + **`docs/autoresearch/pilot_contract.json`** — immutable checkpoints for holdout/audit; not the same JSON as the live dashboard cycle unless you align contracts manually.
-4. **Ledger:** Every Optuna trial appends to **`output/research/ledger.jsonl`** (append-only). CLI loop (`scripts/run_autoresearch_loop.py`) dual-writes the legacy filename. **State:** `output/research/study_state.json` (heartbeat when the daemon starts/stops).
-5. **Trial budget:** `AUTORESEARCH_MAX_TRIAL_SECONDS` (default `3600`) caps wall time per walk-forward evaluation.
-6. **Local Mac:** No GPU required. Keep the repo off iCloud/Dropbox for SQLite stability; use fewer trials / shorter years if runs are slow.
+5. **Ledger:** Every Optuna trial appends to **`output/research/ledger.jsonl`** (append-only). CLI loop (`scripts/run_autoresearch_loop.py`) dual-writes the legacy filename. **State:** `output/research/study_state.json` (heartbeat when the daemon starts/stops).
+6. **Trial budget:** `AUTORESEARCH_MAX_TRIAL_SECONDS` (default `3600`) caps wall time per walk-forward evaluation.
+7. **Local Mac:** No GPU required. Keep the repo off iCloud/Dropbox for SQLite stability; use fewer trials / shorter years if runs are slow.
+
+## Terminal output & port 8000
+
+- The Edge Tuner runs **in the same process** as `python app.py`. Progress prints only in the **terminal where that process is attached**. If you start a second `app.py` and see **`[Errno 48] address already in use`**, another server is already bound to port **8000** — your browser may be talking to that older process. Find it with `lsof -nP -iTCP:8000 | grep LISTEN` (macOS), stop that PID, then start one clean `python app.py`.
+- You should see **`[AUTORESEARCH] cycle starting`** / **`cycle finished`** around each batch, and **`[AUTORESEARCH] optuna_scalar trial=…`** as each Optuna trial completes. Long gaps are normal while walk-forward backtests run.
+- **Blocked** in the Simple Mode list means a trial finished but **did not pass guardrails** — that is expected exploration, not a crash.
 
 ## Mutex: dashboard engine vs research worker
 
@@ -19,7 +28,9 @@ Do **not** run **`workers/research_agent.py` autoresearch loop** at the same tim
 
 ## Running a cycle
 
-- **UI:** Autoresearch tab → **Run once** (calls `POST /api/autoresearch/run-once`) — always the bounded **research** cycle, not Optuna.
+- **UI Simple Mode:** Autoresearch tab → **Start Edge Tuner** or **Run Once**. This is the recommended path and always uses the safe scalar wrapper.
+- **UI Lab Mode:** Autoresearch tab → **Lab Mode** for direct engine selection, Pareto study inspection, theory toggles, and reset controls.
+- **Legacy lab run-once:** `POST /api/autoresearch/run-once` still runs the bounded **research** cycle, not Optuna.
 - **Start engine:** `POST /api/autoresearch/start` with optional `engine_mode` (`research_cycle` | `optuna` | `optuna_scalar`), `optuna_study_name`, `optuna_scalar_study_name`, `scalar_objective`, `optuna_trials_per_cycle`, `max_candidates`.
 - **Study read-only:** `GET /api/autoresearch/study?study_kind=mo|scalar&study_name=...` loads MO Pareto or scalar best-trial summary plus `dashboard` aggregates. The stats bar uses these for **Optuna MO** and **Optuna scalar** so it does not mix in the research-proposal list (ranked by blended score).
 - **API (research once):** `{"scope": "global", "max_candidates": 3, "years": [2024, 2025]}`.
@@ -35,6 +46,22 @@ If `data_health.ok` is false, fix backfill/PIT before trusting ROI/CLV numbers.
 
 - Configured via **`get_autoresearch_guardrail_params()`** in `src/config.py`, overridden by **`data/autoresearch_settings.json`** (`guardrail_mode`: strict | loose) or env `AUTORESEARCH_GUARDRAIL_*`.
 - Typical failure reasons: `insufficient_sample`, `clv_regression`, `calibration_regression`, `drawdown_regression`. See `next_attempt_hint` on evaluated proposals.
+
+## Reset / archive
+
+- `POST /api/autoresearch/reset` now performs an **archive-first reset** instead of trying to mark rows `legacy`.
+- Archive location: **`output/research/archive/<timestamp>/`**
+- What gets archived out of the active research lane:
+  - DB rows from `research_proposals`, `proposal_reviews`, and `research_model_registry`
+  - `output/research/` artifacts including ledger/state files and Optuna storage
+  - `data/autoresearch_settings.json`
+- What stays active:
+  - the current live prediction lane (`live_model_registry`)
+  - experiments / `active_strategy`
+- Safety behavior:
+  - archive files are written before active research rows are cleared
+  - optimizer/runtime state is reset so Simple Mode and Lab Mode come back empty
+  - if the current predictions are being driven by the research champion and there is no live model row yet, reset first snapshots that strategy into the live lane so prediction behavior stays the same
 
 ## Promotion to production
 

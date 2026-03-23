@@ -235,7 +235,7 @@ golf-model/
 | Intent | Command | Notes |
 |--------|---------|-------|
 | Full prediction pipeline | `python run_predictions.py` | Primary entry. Auto-detects current DG event, runs full pipeline. Uses GolfModelService. |
-| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Tabs: predictions, cards, grading, registry, autoresearch, calibration. **Prediction default / full card:** 72-hole (tournament) matchups only at preferred book; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
+| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups only at preferred book; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
 | First-time setup | `python setup_wizard.py` | Backfills data, initializes DB. Run once. |
 | Unified launcher | `python start.py` | Interactive menu routing to pipeline, backtester, etc. |
 | CLI analysis | `python analyze.py --tournament "Name" --course "Name" --sync` | Own pipeline by default. Add `--service` to use GolfModelService. `--ai` for AI. `--calibration` for dashboard. |
@@ -432,6 +432,12 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 ## 9. Autoresearch System
 
 **Default behavior:** **`AUTORESEARCH_AUTO_APPLY` is off.** Research cycle **does not** auto-call `set_research_champion` / `approve_proposal` unless that env var is set to `1`. Do **not** suggest auto-applying Optuna or walk-forward winners to live or registry without explicit operator approval; point to [`docs/research/EDGE_TUNER_REPORT.md`](../research/EDGE_TUNER_REPORT.md) and manual merge into `autoresearch/strategy_config.json`.
+
+**Dashboard default workflow:** The recommended UI path is the **Simple Mode** edge tuner exposed via `/api/simple/autoresearch/start|status|stop|run-once`. It always runs **Optuna scalar**, uses **`weighted_roi_pct`** as the primary objective, keeps **report-only** behavior, and uses the scalar study base name **`golf_scalar_simple`**. **Lab Mode** still exposes the lower-level `engine_mode`, Pareto/study views, theory toggle, and reset controls.
+
+**Persisted defaults:** `src/autoresearch_settings.DEFAULT_SETTINGS` now boots the advanced settings layer to `engine_mode="optuna_scalar"`, `scalar_objective="weighted_roi_pct"`, `optuna_scalar_study_name="golf_scalar_simple"`, and `optuna_trials_per_cycle=3`.
+
+**Reset behavior:** `POST /api/autoresearch/reset` is now an **archive-first** reset. It exports old `research_proposals`, `proposal_reviews`, and `research_model_registry` rows plus active `output/research/` artifacts and `data/autoresearch_settings.json` into `output/research/archive/<timestamp>/`, then clears the active research lane and resets optimizer runtime state. `live_model_registry` and the live prediction lane stay active. If predictions were currently resolving from the research champion and there is no live row yet, reset snapshots that strategy into the live lane first so prediction behavior stays unchanged.
 
 **Predictions / `GolfModelService`:** `include_methodology` defaults to **true** — each run should emit a `*_methodology_*.md` next to the card unless the caller passes `include_methodology=False` (e.g. fast tests).
 

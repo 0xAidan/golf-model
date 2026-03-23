@@ -46,6 +46,8 @@ const APP_STATE = {
   autoresearchStatus: null,
   autoresearchSettings: null,
   optunaDashboard: null,
+  simpleAutoresearch: null,
+  autoresearchMode: 'simple',
   runRoiCache: new Map(),
   watchlist: new Set(),
 };
@@ -124,6 +126,7 @@ function setAutoresearchPollingInterval(ms) {
     window.clearInterval(autoresearchPollTimer);
   }
   autoresearchPollTimer = window.setInterval(async function () {
+    await loadSimpleAutoresearchStatus();
     await loadAutoresearchStatus();
     await loadAutoresearchRuns();
     await loadBestCandidates();
@@ -151,6 +154,16 @@ function formatPctDelta(value) {
   return (num >= 0 ? '+' : '') + num.toFixed(decimals) + '%';
 }
 
+function formatIntervalLabel(seconds) {
+  const num = toFiniteNumber(seconds);
+  if (num == null) return 'Custom cadence';
+  if (num % 60 === 0) {
+    const minutes = num / 60;
+    return 'Every ' + minutes + ' minute' + (minutes === 1 ? '' : 's');
+  }
+  return 'Every ' + num + ' seconds';
+}
+
 function computeRunRoiDelta(run) {
   const direct = toFiniteNumber(run.roi_delta);
   if (direct != null) return direct;
@@ -170,6 +183,39 @@ function computeCandidateConfidence(run) {
   if (run.is_positive_test) score += 8;
   if (String(run.decision || '').toLowerCase() === 'discarded') score -= 12;
   return Math.max(5, Math.min(98, Math.round(score)));
+}
+
+function getCurrentAutoresearchMode() {
+  return APP_STATE.autoresearchMode || 'simple';
+}
+
+function setAutoresearchMode(mode) {
+  const nextMode = mode === 'lab' ? 'lab' : 'simple';
+  APP_STATE.autoresearchMode = nextMode;
+  const buttons = document.querySelectorAll('[data-ar-mode]');
+  const panels = document.querySelectorAll('.ar-mode-panel');
+  buttons.forEach(function (button) {
+    const isActive = button.getAttribute('data-ar-mode') === nextMode;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    button.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+  panels.forEach(function (panel) {
+    const isActive = panel.id === (nextMode === 'lab' ? 'arModeLab' : 'arModeSimple');
+    panel.classList.toggle('is-active', isActive);
+    panel.hidden = !isActive;
+  });
+  if (nextMode === 'lab') {
+    loadAutoresearchPareto();
+  }
+}
+
+function openAutoresearchTab(mode) {
+  const autoresearchTab = document.getElementById('tab-btn-autoresearch');
+  if (autoresearchTab) {
+    autoresearchTab.click();
+  }
+  setAutoresearchMode(mode || 'simple');
 }
 
 function initMainTabs() {
@@ -198,11 +244,24 @@ function initMainTabs() {
         targetPanel.classList.add('is-active');
         targetPanel.hidden = false;
         if (targetId === 'tab-autoresearch') {
-          loadAutoresearchPareto();
+          if (getCurrentAutoresearchMode() === 'lab') {
+            loadAutoresearchPareto();
+          }
         }
       }
     });
   });
+}
+
+function initAutoresearchModeTabs() {
+  const buttons = document.querySelectorAll('[data-ar-mode]');
+  if (!buttons.length) return;
+  buttons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      setAutoresearchMode(button.getAttribute('data-ar-mode') || 'simple');
+    });
+  });
+  setAutoresearchMode(getCurrentAutoresearchMode());
 }
 
 function renderWatchlist() {
@@ -334,16 +393,20 @@ function downloadCard() {
   URL.revokeObjectURL(a.href);
 }
 
-async function gradeLastEvent() {
-  const btn = document.getElementById('gradeLastEventBtn');
-  const resultEl = document.getElementById('gradeResult');
-  if (!btn || !resultEl) return;
+async function gradeLastEvent(event) {
+  const triggerBtn = event && event.currentTarget ? event.currentTarget : document.getElementById('gradeLastEventBtn');
+  const primaryResult = document.getElementById('gradeResult');
+  const tabResult = document.getElementById('gradeResultTab');
+  const resultEls = [primaryResult, tabResult].filter(Boolean);
+  if (!triggerBtn || !resultEls.length) return;
 
-  btn.disabled = true;
-  btn.classList.add('is-loading');
-  resultEl.style.display = 'block';
-  resultEl.textContent = 'Grading last event…';
-  resultEl.className = 'result';
+  triggerBtn.disabled = true;
+  triggerBtn.classList.add('is-loading');
+  resultEls.forEach(function (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.textContent = 'Grading last event…';
+    resultEl.className = 'result';
+  });
 
   try {
     const resp = await fetch('/api/grade-tournament', {
@@ -353,22 +416,216 @@ async function gradeLastEvent() {
     });
     const data = await resp.json();
     if (data.error) {
-      resultEl.textContent = 'Error: ' + data.error;
-      resultEl.classList.add('status', 'error');
+      resultEls.forEach(function (resultEl) {
+        resultEl.textContent = 'Error: ' + data.error;
+        resultEl.classList.add('status', 'error');
+      });
       return;
     }
     const scoring = data.steps && data.steps.scoring ? data.steps.scoring : {};
     const profit = scoring.total_profit || 0;
     const profitStr = profit >= 0 ? '+' + profit.toFixed(2) : profit.toFixed(2);
-    resultEl.textContent =
-      'Graded: ' + (data.event_id || '—') +
-      ' | Picks: ' + (scoring.total_picks || 0) +
-      ' | W/L: ' + (scoring.wins || 0) + '/' + (scoring.losses || 0) +
-      ' | P/L: ' + profitStr + 'u';
-    resultEl.classList.add('status', 'success');
+    resultEls.forEach(function (resultEl) {
+      resultEl.textContent =
+        'Graded: ' + (data.event_id || '—') +
+        ' | Picks: ' + (scoring.total_picks || 0) +
+        ' | W/L: ' + (scoring.wins || 0) + '/' + (scoring.losses || 0) +
+        ' | P/L: ' + profitStr + 'u';
+      resultEl.classList.add('status', 'success');
+    });
   } catch (err) {
-    resultEl.textContent = 'Grading failed: ' + err.message;
-    resultEl.classList.add('status', 'error');
+    resultEls.forEach(function (resultEl) {
+      resultEl.textContent = 'Grading failed: ' + err.message;
+      resultEl.classList.add('status', 'error');
+    });
+  } finally {
+    triggerBtn.disabled = false;
+    triggerBtn.classList.remove('is-loading');
+  }
+}
+
+function renderSimpleAutoresearchBest(best) {
+  const container = document.getElementById('simpleAutoresearchBest');
+  if (!container) return;
+  if (!best) {
+    container.className = 'ar-simple-empty';
+    container.textContent = 'No completed tuning runs yet.';
+    return;
+  }
+  const roi = best.roi_pct != null ? Number(best.roi_pct).toFixed(2) + '%' : '—';
+  const clv = best.clv_avg != null ? Number(best.clv_avg).toFixed(4) : '—';
+  const metric = best.metric_value != null ? Number(best.metric_value).toFixed(2) + '%' : '—';
+  const label = best.guardrails_passed ? 'Best safe trial' : 'Best trial (blocked)';
+  container.className = 'ar-simple-summary';
+  container.innerHTML =
+    '<div class="ar-simple-number">' + escapeHtml(metric) + '</div>' +
+    '<div class="ar-simple-detail">' + escapeHtml(label) + ' #' + escapeHtml(String(best.trial_number ?? '—')) + '</div>' +
+    '<div class="ar-simple-detail">ROI ' + escapeHtml(roi) + ' · CLV ' + escapeHtml(clv) + '</div>';
+}
+
+function renderSimpleAutoresearchRecent(attempts) {
+  const container = document.getElementById('simpleAutoresearchRecent');
+  if (!container) return;
+  if (!attempts || !attempts.length) {
+    container.className = 'ar-simple-empty';
+    container.textContent = 'Recent attempts will show up here after a run.';
+    return;
+  }
+  container.className = 'ar-simple-list';
+  container.innerHTML = attempts.map(function (attempt) {
+    const roi = attempt.roi_pct != null ? Number(attempt.roi_pct).toFixed(2) + '%' : '—';
+    const clv = attempt.clv_avg != null ? Number(attempt.clv_avg).toFixed(4) : '—';
+    const verdict = attempt.guardrails_passed ? 'Safe' : 'Blocked';
+    return '<div class="ar-simple-list-item">' +
+      '<div><strong>Trial #' + escapeHtml(String(attempt.trial_number ?? '—')) + '</strong> · ' + escapeHtml(verdict) + '</div>' +
+      '<div class="ar-simple-list-meta">ROI ' + escapeHtml(roi) + ' · CLV ' + escapeHtml(clv) + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function updateSimpleAutoresearchUi(data) {
+  if (!data) return;
+  APP_STATE.simpleAutoresearch = data;
+  const badge = document.getElementById('simpleAutoresearchBadge');
+  const goal = document.getElementById('simpleAutoresearchGoal');
+  const cadence = document.getElementById('simpleAutoresearchCadence');
+  const headline = document.getElementById('simpleAutoresearchHeadline');
+  const objective = document.getElementById('simpleAutoresearchObjective');
+  const lastRun = document.getElementById('simpleAutoresearchLastRun');
+  const error = document.getElementById('simpleAutoresearchError');
+  const startBtn = document.getElementById('simpleAutoresearchStartBtn');
+  const stopBtn = document.getElementById('simpleAutoresearchStopBtn');
+
+  if (badge) {
+    badge.textContent = data.state === 'running' ? 'Running' : data.state === 'error' ? 'Attention' : data.state === 'completed' ? 'Ready' : 'Idle';
+    badge.className = 'ar-simple-badge' +
+      (data.state === 'running' ? ' is-running' : data.state === 'error' ? ' is-error' : data.state === 'completed' ? ' is-ready' : '');
+  }
+  if (goal) goal.textContent = data.goal || 'Testing small matchup-strategy tweaks against the current baseline.';
+  if (cadence) cadence.textContent = formatIntervalLabel(data.interval_seconds || 300);
+  if (headline) headline.textContent = data.headline || 'Edge tuner is idle.';
+  if (objective) objective.textContent = 'Objective: ' + (data.objective || 'weighted_roi_pct');
+  if (lastRun) {
+    if (data.cycle_in_progress && data.last_run_started_at) {
+      lastRun.textContent = 'Current batch started: ' + formatTime(data.last_run_started_at);
+    } else {
+      lastRun.textContent =
+        'Last completed: ' + (data.last_run_finished_at ? formatTime(data.last_run_finished_at) : 'Never');
+    }
+  }
+  if (error) {
+    error.textContent = data.error ? 'Error: ' + data.error : 'No errors.';
+  }
+  if (startBtn) startBtn.disabled = !!data.is_running;
+  if (stopBtn) stopBtn.disabled = !data.is_running;
+  renderSimpleAutoresearchBest(data.best_improvement);
+  renderSimpleAutoresearchRecent(data.recent_attempts || []);
+}
+
+function setSimpleAutoresearchResult(message, tone) {
+  const resultEl = document.getElementById('simpleAutoresearchResult');
+  if (!resultEl) return;
+  resultEl.style.display = 'block';
+  resultEl.textContent = message;
+  resultEl.className = 'result status ' + (tone || 'info');
+}
+
+async function loadSimpleAutoresearchStatus() {
+  try {
+    const resp = await fetch('/api/simple/autoresearch/status');
+    if (!resp.ok) throw new Error('Server error (' + resp.status + ')');
+    const data = await resp.json();
+    updateSimpleAutoresearchUi(data);
+  } catch (err) {
+    setSimpleAutoresearchResult('Could not load edge tuner status: ' + err.message, 'error');
+  }
+}
+
+async function startSimpleAutoresearch() {
+  const btn = document.getElementById('simpleAutoresearchStartBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  setSimpleAutoresearchResult('Starting edge tuner…', 'loading');
+  try {
+    const resp = await fetch('/api/simple/autoresearch/start', { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    updateSimpleAutoresearchUi(data);
+    setSimpleAutoresearchResult('Edge tuner started. It will keep testing small changes in report-only mode.', 'success');
+    await loadAutoresearchStatus();
+    loadStatus();
+  } catch (err) {
+    setSimpleAutoresearchResult('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+async function stopSimpleAutoresearch() {
+  const btn = document.getElementById('simpleAutoresearchStopBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  setSimpleAutoresearchResult('Stopping edge tuner…', 'loading');
+  try {
+    const resp = await fetch('/api/simple/autoresearch/stop', { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    updateSimpleAutoresearchUi(data);
+    setSimpleAutoresearchResult('Edge tuner stopped.', 'success');
+    await loadAutoresearchStatus();
+    loadStatus();
+  } catch (err) {
+    setSimpleAutoresearchResult('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+  }
+}
+
+async function runSimpleAutoresearchOnce() {
+  const btn = document.getElementById('simpleAutoresearchRunOnceBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  setSimpleAutoresearchResult('Running one safe edge-tuner batch…', 'loading');
+  try {
+    const resp = await fetch('/api/simple/autoresearch/run-once', { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    updateSimpleAutoresearchUi({
+      mode: data.mode,
+      report_only: data.report_only,
+      state: 'completed',
+      is_running: false,
+      objective: data.objective,
+      goal: data.goal,
+      headline: data.best_improvement
+        ? 'One batch finished. A safe candidate was found for review.'
+        : 'One batch finished. No safe candidate beat the current baseline.',
+      interval_seconds: APP_STATE.simpleAutoresearch && APP_STATE.simpleAutoresearch.interval_seconds
+        ? APP_STATE.simpleAutoresearch.interval_seconds
+        : 300,
+      best_improvement: data.best_improvement,
+      recent_attempts: data.recent_attempts || [],
+      last_run_finished_at: new Date().toISOString(),
+      error: null,
+    });
+    const best = data.best_improvement;
+    const message = best
+      ? (
+        best.guardrails_passed
+          ? 'Run complete. Best safe trial #' + best.trial_number + ' posted ROI ' + Number(best.roi_pct || 0).toFixed(2) + '%.'
+          : 'Run complete. Best trial #' + best.trial_number + ' did not clear guardrails.'
+      )
+      : 'Run complete. No safe candidate beat the baseline in this batch.';
+    setSimpleAutoresearchResult(message, 'success');
+    await loadAutoresearchStatus();
+    loadStatus();
+  } catch (err) {
+    setSimpleAutoresearchResult('Error: ' + err.message, 'error');
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-loading');
@@ -1319,13 +1576,21 @@ function initCommandMenu() {
       runPrediction();
     }
     if (cmd === 'grade-event') gradeLastEvent();
-    if (cmd === 'run-once') runAutoresearch();
-    if (cmd === 'start-engine') startAutoresearchEngine();
+    if (cmd === 'run-once') {
+      openAutoresearchTab('simple');
+      runSimpleAutoresearchOnce();
+    }
+    if (cmd === 'start-engine') {
+      openAutoresearchTab('simple');
+      startSimpleAutoresearch();
+    }
+    if (cmd === 'open-lab') {
+      openAutoresearchTab('lab');
+    }
     if (cmd === 'view-grading') {
       var gradingTab = document.getElementById('tab-btn-grading');
       if (gradingTab) gradingTab.click();
     }
-    if (cmd === 'reset-state') resetAutoresearchState();
     close();
   });
 }
@@ -1424,15 +1689,20 @@ document.addEventListener('dragstart', function (e) {
 
 document.addEventListener('DOMContentLoaded', function () {
   loadStatus();
+  loadSimpleAutoresearchStatus();
   (async function initAutoresearchUi() {
     await loadAutoresearchStatus();
     await loadAutoresearchRuns();
     await loadBestCandidates();
   })();
   initMainTabs();
+  initAutoresearchModeTabs();
   initCommandMenu();
 
   const runPredictionBtn = document.getElementById('runPredictionBtn');
+  const simpleAutoresearchStartBtn = document.getElementById('simpleAutoresearchStartBtn');
+  const simpleAutoresearchRunOnceBtn = document.getElementById('simpleAutoresearchRunOnceBtn');
+  const simpleAutoresearchStopBtn = document.getElementById('simpleAutoresearchStopBtn');
   const runAutoresearchBtn = document.getElementById('runAutoresearchBtn');
   const startAutoresearchBtn = document.getElementById('startAutoresearchBtn');
   const stopAutoresearchBtn = document.getElementById('stopAutoresearchBtn');
@@ -1440,6 +1710,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const downloadCardBtn = document.getElementById('downloadCardBtn');
   const gradeLastEventBtn = document.getElementById('gradeLastEventBtn');
   if (runPredictionBtn) runPredictionBtn.addEventListener('click', runPrediction);
+  if (simpleAutoresearchStartBtn) simpleAutoresearchStartBtn.addEventListener('click', startSimpleAutoresearch);
+  if (simpleAutoresearchRunOnceBtn) simpleAutoresearchRunOnceBtn.addEventListener('click', runSimpleAutoresearchOnce);
+  if (simpleAutoresearchStopBtn) simpleAutoresearchStopBtn.addEventListener('click', stopSimpleAutoresearch);
   if (gradeLastEventBtn) gradeLastEventBtn.addEventListener('click', gradeLastEvent);
   var gradeLastEventBtnTab = document.getElementById('gradeLastEventBtnTab');
   if (gradeLastEventBtnTab) gradeLastEventBtnTab.addEventListener('click', gradeLastEvent);
