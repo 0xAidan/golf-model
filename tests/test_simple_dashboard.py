@@ -28,8 +28,8 @@ def test_home_page_shows_simple_actions():
     assert "Start Edge Tuner" in text
     assert "Run Once" in text
     assert "Command Menu" in text
-    assert "/static/css/main.css" in text
-    assert "/static/js/app.js" in text
+    assert "/static/css/main.css?v=" in text
+    assert "/static/js/app.js?v=" in text
 
 
 def test_home_page_uses_autoresearch_language_not_optimizer_heading():
@@ -342,7 +342,7 @@ def test_home_page_recent_runs_js_escapes_report_path_safely():
 
     assert response.status_code == 200
     text = response.text
-    assert "/static/js/app.js" in text
+    assert "/static/js/app.js?v=" in text
     assert "bestCandidates" in text
 
 

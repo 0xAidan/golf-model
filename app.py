@@ -344,7 +344,14 @@ def _render_dashboard_html():
     path = BASE_DIR / "templates" / "index.html"
     if not path.is_file():
         return _fallback_dashboard_html()
-    return path.read_text(encoding="utf-8")
+    html = path.read_text(encoding="utf-8")
+    css_path = BASE_DIR / "static" / "css" / "main.css"
+    js_path = BASE_DIR / "static" / "js" / "app.js"
+    css_version = str(int(css_path.stat().st_mtime)) if css_path.is_file() else "0"
+    js_version = str(int(js_path.stat().st_mtime)) if js_path.is_file() else "0"
+    html = html.replace('/static/css/main.css', f'/static/css/main.css?v={css_version}')
+    html = html.replace('/static/js/app.js', f'/static/js/app.js?v={js_version}')
+    return html
 
 
 def _fallback_dashboard_html():
