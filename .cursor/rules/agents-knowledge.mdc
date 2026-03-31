@@ -1,0 +1,20 @@
+---
+description: Agent knowledge base — project structure, config, conventions, charter. Read for full context when working in this repo.
+globs: 
+alwaysApply: true
+---
+
+# Agent Knowledge Base
+
+Before executing tasks in this project, read **`docs/AGENTS_KNOWLEDGE.md`** (project root) for:
+
+- Repository layout and critical file paths
+- Entry points (run_predictions.py, app.py, setup_wizard, etc.) and how to run
+- Configuration: .env, feature_flags.yaml, profiles.yaml, src/config.py
+- Data flow (sync → rolling → composite → value → card)
+- Conventions and known tech debt (so you don’t “fix” intentional behavior)
+- User expectations (PR for changes, no breakage, realistic feedback)
+- Project charter (stopping rules, bootstrap phases, go-live gates)
+- Where to change what (quick reference table)
+
+That document is the single source of truth for AI agents. Prefer updating `docs/AGENTS_KNOWLEDGE.md` when you add entry points, config, or conventions so future agents stay in sync.
