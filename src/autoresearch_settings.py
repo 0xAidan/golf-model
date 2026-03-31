@@ -16,7 +16,7 @@ _CACHE: dict[str, Any] | None = None
 DEFAULT_GUARDRAIL_MODE = "strict"
 VALID_GUARDRAIL_MODES = ("strict", "loose")
 
-DEFAULT_ENGINE_MODE = "research_cycle"
+DEFAULT_ENGINE_MODE = "optuna_scalar"
 VALID_ENGINE_MODES = ("research_cycle", "optuna", "optuna_scalar")
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -24,8 +24,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "engine_mode": DEFAULT_ENGINE_MODE,
     "use_theory_engine_llm": False,
     "optuna_study_name": "golf_mo_dashboard",
-    "optuna_scalar_study_name": "golf_scalar_dashboard",
-    "scalar_objective": "blended_score",
+    "optuna_scalar_study_name": "golf_scalar_simple",
+    "scalar_objective": "weighted_roi_pct",
     "optuna_trials_per_cycle": 3,
 }
 

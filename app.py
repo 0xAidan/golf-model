@@ -13,7 +13,7 @@ import re
 import asyncio
 import shutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -62,6 +62,11 @@ CSV_DIR = os.path.join(os.path.dirname(__file__), "data", "csvs")
 os.makedirs(CSV_DIR, exist_ok=True)
 SIMPLE_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output", "backtests")
 os.makedirs(SIMPLE_OUTPUT_DIR, exist_ok=True)
+SIMPLE_AUTORESEARCH_SCOPE = "global"
+SIMPLE_AUTORESEARCH_INTERVAL_SECONDS = 300
+SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE = 3
+SIMPLE_AUTORESEARCH_OBJECTIVE = "weighted_roi_pct"
+SIMPLE_AUTORESEARCH_STUDY_NAME = "golf_scalar_simple"
 
 
 def _latest_output_file(*, subdir: str = "", suffix: str = ".md") -> str | None:
@@ -339,7 +344,14 @@ def _render_dashboard_html():
     path = BASE_DIR / "templates" / "index.html"
     if not path.is_file():
         return _fallback_dashboard_html()
-    return path.read_text(encoding="utf-8")
+    html = path.read_text(encoding="utf-8")
+    css_path = BASE_DIR / "static" / "css" / "main.css"
+    js_path = BASE_DIR / "static" / "js" / "app.js"
+    css_version = str(int(css_path.stat().st_mtime)) if css_path.is_file() else "0"
+    js_version = str(int(js_path.stat().st_mtime)) if js_path.is_file() else "0"
+    html = html.replace('/static/css/main.css', f'/static/css/main.css?v={css_version}')
+    html = html.replace('/static/js/app.js', f'/static/js/app.js?v={js_version}')
+    return html
 
 
 def _fallback_dashboard_html():
@@ -448,6 +460,241 @@ def _write_simple_backtest_report(strategy, baseline_strategy, years, evaluation
             f"{recommendation}\n"
         )
     return {"path": path, "verdict": verdict}
+
+
+def _simple_autoresearch_state(status: dict) -> str:
+    if status.get("running"):
+        return "running"
+    if status.get("last_error"):
+        return "error"
+    if status.get("last_run_finished_at"):
+        return "completed"
+    return "idle"
+
+
+def _simple_cycle_in_progress(status: dict) -> bool:
+    """True while a walk-forward / Optuna batch is actively running (started_at > last finished)."""
+    if not status.get("running"):
+        return False
+    started = status.get("last_run_started_at")
+    if not started:
+        return False
+    finished = status.get("last_run_finished_at")
+    if not finished:
+        return True
+    return str(started) > str(finished)
+
+
+def _simple_scalar_trial_summary(trial: dict | None) -> dict | None:
+    if not trial:
+        return None
+    user_attrs = trial.get("user_attrs") or {}
+    return {
+        "trial_number": trial.get("number"),
+        "metric_name": SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "metric_value": trial.get("value"),
+        "roi_pct": user_attrs.get("weighted_roi_pct"),
+        "clv_avg": user_attrs.get("weighted_clv_avg"),
+        "blended_score": user_attrs.get("blended_score"),
+        "guardrails_passed": bool(user_attrs.get("guardrail_passed")),
+        "feasible": bool(user_attrs.get("feasible")),
+    }
+
+
+def _simple_recent_scalar_attempts(study, limit: int = 3) -> list[dict]:
+    attempts = []
+    complete_trials = [
+        trial for trial in getattr(study, "trials", [])
+        if trial.state.name == "COMPLETE" and trial.value is not None
+    ]
+    for trial in sorted(complete_trials, key=lambda item: item.number, reverse=True)[:limit]:
+        attempts.append(
+            _simple_scalar_trial_summary(
+                {
+                    "number": trial.number,
+                    "value": trial.value,
+                    "user_attrs": dict(trial.user_attrs),
+                }
+            )
+        )
+    return [attempt for attempt in attempts if attempt]
+
+
+def _simple_autoresearch_payload(status: dict) -> dict:
+    state = _simple_autoresearch_state(status)
+    last_result = status.get("last_result") or {}
+    scalar_summary = last_result.get("optuna_scalar_summary") or {}
+    best_trial = scalar_summary.get("best_promotable_trial") or scalar_summary.get("best_trial")
+    recent_trials = scalar_summary.get("recent_trials") or []
+    cycle_in_progress = _simple_cycle_in_progress(status)
+    if status.get("running"):
+        headline = (
+            "Running a walk-forward tuning batch (each trial can take several minutes)…"
+            if cycle_in_progress
+            else "Between batches — next run is scheduled on the timer."
+        )
+    else:
+        headline = "Edge tuner is idle."
+    return {
+        "mode": "simple_scalar",
+        "report_only": True,
+        "scope": status.get("scope", SIMPLE_AUTORESEARCH_SCOPE),
+        "state": state,
+        "is_running": bool(status.get("running")),
+        "cycle_in_progress": cycle_in_progress,
+        "objective": status.get("scalar_objective") or SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "study_name": status.get("optuna_scalar_study_name") or SIMPLE_AUTORESEARCH_STUDY_NAME,
+        "interval_seconds": status.get("interval_seconds") or SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
+        "goal": "Testing small matchup-strategy tweaks against the current baseline.",
+        "headline": headline,
+        "last_run_started_at": status.get("last_run_started_at"),
+        "last_run_finished_at": status.get("last_run_finished_at"),
+        "error": status.get("last_error"),
+        "best_improvement": _simple_scalar_trial_summary(best_trial),
+        "recent_attempts": [
+            attempt
+            for attempt in (_simple_scalar_trial_summary(trial) for trial in recent_trials)
+            if attempt
+        ],
+    }
+
+
+def _write_json_file(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+
+
+def _fetch_table_rows(conn, table_name: str) -> list[dict]:
+    rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+    return [dict(row) for row in rows]
+
+
+def _table_has_column(conn, table_name: str, column_name: str) -> bool:
+    cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(col[1] == column_name for col in cols)
+
+
+def _archive_active_research_files(output_dir: Path, archive_root: Path) -> list[str]:
+    research_dir = output_dir / "research"
+    archived_files: list[str] = []
+    if not research_dir.exists():
+        return archived_files
+    files_root = archive_root / "files"
+    files_root.mkdir(parents=True, exist_ok=True)
+    for child in list(research_dir.iterdir()):
+        if child.name == "archive":
+            continue
+        destination = files_root / child.name
+        if child.is_dir():
+            shutil.move(str(child), str(destination))
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(child), str(destination))
+        archived_files.append(_relative_output_path(str(child)))
+    (research_dir / "optuna").mkdir(parents=True, exist_ok=True)
+    return archived_files
+
+
+def _archive_autoresearch_settings_file(archive_root: Path) -> str | None:
+    import src.autoresearch_settings as settings_module
+
+    settings_path = Path(settings_module._SETTINGS_FILE)
+    if not settings_path.exists():
+        settings_module.invalidate_cache()
+        return None
+    destination = archive_root / "settings" / settings_path.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(settings_path), str(destination))
+    settings_module.invalidate_cache()
+    return str(destination)
+
+
+@app.post("/api/simple/autoresearch/start")
+async def simple_autoresearch_start():
+    """Start the simple scalar autoresearch loop with safe defaults."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import start_continuous_optimizer
+
+    status = start_continuous_optimizer(
+        scope=SIMPLE_AUTORESEARCH_SCOPE,
+        interval_seconds=SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
+        engine_mode="optuna_scalar",
+        optuna_scalar_study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+        scalar_objective=SIMPLE_AUTORESEARCH_OBJECTIVE,
+        optuna_trials_per_cycle=SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE,
+    )
+    return _simple_autoresearch_payload(status)
+
+
+@app.get("/api/simple/autoresearch/status")
+async def simple_autoresearch_status():
+    """Return plain-language status for the simple scalar autoresearch loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import get_optimizer_status
+
+    return _simple_autoresearch_payload(get_optimizer_status())
+
+
+@app.post("/api/simple/autoresearch/stop")
+async def simple_autoresearch_stop():
+    """Stop the simple scalar autoresearch loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import stop_continuous_optimizer
+
+    return _simple_autoresearch_payload(stop_continuous_optimizer())
+
+
+@app.post("/api/simple/autoresearch/run-once")
+async def simple_autoresearch_run_once():
+    """Run one bounded simple scalar autoresearch batch and summarize the result."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.experiments import get_active_strategy
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.optimizer_runtime import record_manual_autoresearch_result
+    from backtester.research_cycle import PIT_EVALUATION_YEARS
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_scalar_study, study_scalar_summary
+
+    baseline = (
+        get_research_champion(SIMPLE_AUTORESEARCH_SCOPE)
+        or get_live_weekly_model(SIMPLE_AUTORESEARCH_SCOPE)
+        or get_active_strategy(SIMPLE_AUTORESEARCH_SCOPE)
+    )
+    benchmark_spec = WalkForwardBenchmarkSpec(years=PIT_EVALUATION_YEARS)
+    study = run_scalar_study(
+        n_trials=SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE,
+        baseline=baseline,
+        benchmark_spec=benchmark_spec,
+        study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+        scalar_metric=SIMPLE_AUTORESEARCH_OBJECTIVE,
+    )
+    summary = study_scalar_summary(study)
+    best_trial = summary.get("best_promotable_trial") or summary.get("best_trial")
+    record_manual_autoresearch_result(
+        {
+            "evaluation_mode": "optuna_scalar",
+            "scalar_objective": SIMPLE_AUTORESEARCH_OBJECTIVE,
+            "optuna_scalar_summary": summary,
+        },
+        scope=SIMPLE_AUTORESEARCH_SCOPE,
+        engine_mode="optuna_scalar",
+        scalar_objective=SIMPLE_AUTORESEARCH_OBJECTIVE,
+        optuna_scalar_study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+    )
+    return {
+        "status": "complete",
+        "mode": "simple_scalar",
+        "report_only": True,
+        "objective": SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "goal": "Testing small matchup-strategy tweaks against the current baseline.",
+        "study_name": summary.get("study_name"),
+        "best_improvement": _simple_scalar_trial_summary(best_trial),
+        "recent_attempts": _simple_recent_scalar_attempts(study),
+    }
 
 
 @app.post("/api/simple/upcoming-prediction")
@@ -848,9 +1095,12 @@ async def get_autoresearch_study(
     from src.db import ensure_initialized
     ensure_initialized()
     from src.autoresearch_settings import get_settings
+    from backtester.research_cycle import PIT_EVALUATION_YEARS
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
     from backtester.research_lab.mo_study import (
         create_or_load_scalar_study,
         create_or_load_study,
+        resolve_scalar_study_name,
         study_dashboard_metrics,
         study_scalar_dashboard_metrics,
         study_scalar_summary,
@@ -860,7 +1110,15 @@ async def get_autoresearch_study(
     settings = get_settings()
     kind = (study_kind or "mo").strip().lower()
     if kind == "scalar":
-        name = (study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        scalar_objective = (settings.get("scalar_objective") or "blended_score").strip().lower()
+        if scalar_objective not in ("blended_score", "weighted_roi_pct"):
+            scalar_objective = "blended_score"
+        base_name = (study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        name = resolve_scalar_study_name(
+            base_name,
+            benchmark_spec=WalkForwardBenchmarkSpec(years=PIT_EVALUATION_YEARS),
+            scalar_metric=scalar_objective,
+        )
     else:
         name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
     try:
@@ -965,8 +1223,20 @@ async def get_autoresearch_status():
     else:
         state = "idle"
     last_result = status.get("last_result") or {}
+    evaluation_mode = last_result.get("evaluation_mode")
     winner = last_result.get("winner") or {}
     winner_score = winner.get("blended_score")
+    guardrail_failures = 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1
+    if evaluation_mode == "optuna_scalar":
+        scalar_summary = last_result.get("optuna_scalar_summary") or {}
+        best_promotable_trial = scalar_summary.get("best_promotable_trial") or {}
+        best_trial = scalar_summary.get("best_trial") or {}
+        if best_promotable_trial:
+            winner_score = scalar_summary.get("best_promotable_value")
+            guardrail_failures = 0
+        elif best_trial:
+            winner_score = scalar_summary.get("best_value")
+            guardrail_failures = 0 if (best_trial.get("user_attrs") or {}).get("guardrail_passed") else 1
     return {
         "status": {
             "state": state,
@@ -981,7 +1251,7 @@ async def get_autoresearch_status():
             "best_metric": winner_score,
             "baseline_metric": None,
             "delta_metric": None,
-            "guardrail_failures": 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1,
+            "guardrail_failures": guardrail_failures,
             "last_updated_at": status.get("last_run_finished_at") or status.get("last_run_started_at"),
             "keep_rate": status.get("keep_rate", 0.0),
             "crash_rate": status.get("crash_rate", 0.0),
@@ -1268,24 +1538,75 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
 
 @app.post("/api/autoresearch/reset")
 async def reset_autoresearch_state():
-    """Reset research champion and mark old proposals as legacy for a fresh start."""
-    from src.db import ensure_initialized, get_conn
+    """Archive old research data and clear the active autoresearch lane for a fresh start."""
+    from src.db import ensure_initialized
+    from backtester.optimizer_runtime import reset_optimizer_state
+    from backtester.model_registry import get_live_weekly_model_record, set_live_weekly_model
+    from src.strategy_resolution import resolve_runtime_strategy
+
     ensure_initialized()
     try:
+        effective_strategy, strategy_meta = resolve_runtime_strategy("global")
+        prediction_lane_preserved = False
+        if strategy_meta.get("strategy_source") == "research_champion" and not get_live_weekly_model_record("global"):
+            set_live_weekly_model(
+                effective_strategy,
+                scope="global",
+                promoted_by="reset",
+                action="reset_preserve_current_prediction_lane",
+                notes="Preserved the current prediction strategy before clearing old autoresearch history.",
+            )
+            prediction_lane_preserved = True
+
         conn = get_conn()
-        # Mark old research champion entries as legacy
-        conn.execute("UPDATE research_model_registry SET scope = 'legacy_' || scope WHERE scope NOT LIKE 'legacy_%'")
-        # Mark old proposals evaluated under flawed scope
-        conn.execute("""
-            UPDATE research_proposals 
-            SET status = 'legacy' 
-            WHERE status = 'evaluated' 
-            AND id <= (SELECT COALESCE(MAX(id), 0) FROM research_proposals)
-        """)
+        output_dir = Path(_output_dir_absolute())
+        research_dir = output_dir / "research"
+        archive_root = research_dir / "archive" / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        archive_root.mkdir(parents=True, exist_ok=False)
+
+        archived_tables = {
+            "research_proposals": _fetch_table_rows(conn, "research_proposals"),
+            "proposal_reviews": _fetch_table_rows(conn, "proposal_reviews"),
+            "research_model_registry": _fetch_table_rows(conn, "research_model_registry"),
+        }
+        for table_name, rows in archived_tables.items():
+            _write_json_file(archive_root / "db" / f"{table_name}.json", rows)
+
+        archived_files = _archive_active_research_files(output_dir, archive_root)
+        archived_settings_path = _archive_autoresearch_settings_file(archive_root)
+
+        if _table_has_column(conn, "live_model_registry", "source_research_registry_id"):
+            conn.execute("UPDATE live_model_registry SET source_research_registry_id = NULL WHERE source_research_registry_id IS NOT NULL")
+        conn.execute("DELETE FROM research_model_registry")
+        conn.execute("DELETE FROM proposal_reviews")
+        conn.execute("DELETE FROM research_proposals")
         conn.commit()
         conn.close()
-        return {"ok": True, "message": "Research state reset. Old proposals marked as legacy. Next cycle will establish new baseline."}
+
+        reset_optimizer_state()
+
+        archive_manifest = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "archive_dir": str(archive_root),
+            "db_counts": {table_name: len(rows) for table_name, rows in archived_tables.items()},
+            "archived_files": archived_files,
+            "archived_settings": bool(archived_settings_path),
+            "active_prediction_lane_preserved": True,
+            "prediction_lane_snapshot_created": prediction_lane_preserved,
+        }
+        _write_json_file(archive_root / "archive_manifest.json", archive_manifest)
+        return {
+            "ok": True,
+            "archive_dir": _relative_output_path(str(archive_root)),
+            "message": "Old research was archived and the active autoresearch process was reset.",
+            "archived_counts": archive_manifest["db_counts"],
+        }
     except Exception as exc:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
