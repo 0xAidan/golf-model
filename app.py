@@ -1696,15 +1696,20 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
         return JSONResponse(status_code=500, content={"error": str(exc), "runs": []})
 
 
+# Maximum best candidates to show; we iterate on 1–3 only.
+BEST_CANDIDATES_MAX = 3
+
+
 @app.get("/api/autoresearch/best-candidates")
-async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 10):
-    """Return best evaluated proposals by blended score with strategy TLDR for dashboard."""
+async def get_autoresearch_best_candidates(scope: str = "global", limit: int = BEST_CANDIDATES_MAX):
+    """Return the top 1–3 best evaluated proposals by ROI for dashboard; no stale/long tail."""
     from src.db import ensure_initialized
     ensure_initialized()
     try:
         from backtester.weighted_walkforward import compute_blended_score
         from backtester.strategy import StrategyConfig
 
+        cap = min(max(1, limit), BEST_CANDIDATES_MAX)
         conn = get_conn()
         rows = conn.execute(
             """
@@ -1716,12 +1721,14 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
               AND status IN ('evaluated', 'approved', 'converted')
               AND summary_metrics_json IS NOT NULL
               AND guardrail_results_json IS NOT NULL
-            ORDER BY id DESC
+            ORDER BY COALESCE(evaluated_at, created_at) DESC, id DESC
             LIMIT ?
             """,
-            (scope, max(limit, 50)),
+            (scope, 200),
         ).fetchall()
         conn.close()
+        # Pool is "most recently evaluated" so newly evaluated (often better) proposals
+        # compete for top 3 by ROI; sort below picks best by weighted_roi_pct/clv/score.
 
         candidates = []
         for row in rows:
@@ -1762,15 +1769,16 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = 1
                 "artifact_content_path": content_path,
             })
 
+        # Primary sort: best ROI first (highest weighted_roi_pct). Then CLV, then blended_score.
         candidates.sort(
             key=lambda item: (
-                item["blended_score"],
                 item["summary_metrics"].get("weighted_roi_pct", -999),
                 item["summary_metrics"].get("weighted_clv_avg", -999),
+                item["blended_score"],
             ),
             reverse=True,
         )
-        return {"candidates": candidates[:limit]}
+        return {"candidates": candidates[:cap]}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc), "candidates": []})
 
@@ -2637,7 +2645,7 @@ async function runAutoresearch() {
 async function loadBestCandidates() {
   const container = document.getElementById('bestCandidates');
   try {
-    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=10');
+    const resp = await fetch('/api/autoresearch/best-candidates?scope=global&limit=3');
     const data = await resp.json();
     const candidates = data.candidates || [];
     if (!candidates.length) {
