@@ -32,6 +32,7 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
 
 function App() {
   const queryClient = useQueryClient()
+  const liveRefreshBootstrapDone = useRef(false)
   const [predictionRequest, setPredictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
   const [storedPredictionRun, setStoredPredictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
@@ -164,6 +165,42 @@ function App() {
     selectedScheduleEvent,
     setPredictionRequest,
   ])
+
+  useEffect(() => {
+    if (liveRefreshBootstrapDone.current) {
+      return
+    }
+    liveRefreshBootstrapDone.current = true
+
+    const ensureAlwaysOnLiveRefresh = async () => {
+      try {
+        const runtime = await api.getLiveRefreshStatus()
+        const settings = runtime.settings ?? {}
+        const status = runtime.status ?? {}
+        if (settings.enabled === false) {
+          return
+        }
+
+        const tour = settings.tour || predictionRequest.tour || "pga"
+        if (settings.autostart !== true) {
+          await api.patchAutoresearchSettings({
+            live_refresh: { ...settings, enabled: true, autostart: true, tour },
+          })
+        }
+
+        if (!status.running) {
+          await api.startLiveRefresh({
+            tour,
+            live_refresh: { ...settings, enabled: true, autostart: true, tour },
+          })
+        }
+      } catch {
+        // Keep the UI usable even if runtime bootstrap checks fail.
+      }
+    }
+
+    void ensureAlwaysOnLiveRefresh()
+  }, [predictionRequest.tour])
 
   return (
     <CommandShell

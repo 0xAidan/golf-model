@@ -13,6 +13,18 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
 }
 
+type LiveRefreshStatusResponse = {
+  status?: {
+    running?: boolean
+    tour?: string
+  }
+  settings?: {
+    enabled?: boolean
+    autostart?: boolean
+    tour?: string
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
   if (!response.ok) {
@@ -34,6 +46,19 @@ export const api = {
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),
   getResearchProposals: () => request<ResearchProposal[]>("/api/research/proposals?limit=12"),
   getAutoresearchStatus: () => request<Record<string, unknown>>("/api/autoresearch/status"),
+  getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
+  startLiveRefresh: (payload?: { tour?: string; live_refresh?: Record<string, unknown> }) =>
+    request<Record<string, unknown>>("/api/live-refresh/start", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload ?? {}),
+    }),
+  patchAutoresearchSettings: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/autoresearch/settings", {
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload),
+    }),
   runPrediction: (payload: PredictionRunRequest) =>
     request<PredictionRunResponse>("/api/simple/upcoming-prediction", {
       method: "POST",
