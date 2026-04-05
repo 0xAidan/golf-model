@@ -68,14 +68,20 @@ def cmd_dashboard(args):
     """Start the FastAPI web dashboard."""
     import subprocess
     port = args.port or 8000
+    quiet_logs = os.environ.get("QUIET_DEV_ACCESS_LOGS", "0").strip().lower() in {"1", "true", "yes", "on"}
     print(f"\nStarting dashboard on http://localhost:{port}")
+    if quiet_logs:
+        print("Quiet access logs enabled (QUIET_DEV_ACCESS_LOGS=1).")
     print("Press Ctrl+C to stop\n")
-    subprocess.run([
+    cmd = [
         sys.executable, "-m", "uvicorn", "app:app",
         "--host", "0.0.0.0",
         "--port", str(port),
         "--reload",
-    ], cwd=ROOT)
+    ]
+    if quiet_logs:
+        cmd.extend(["--no-access-log"])
+    subprocess.run(cmd, cwd=ROOT)
 
 
 def cmd_agent(args):

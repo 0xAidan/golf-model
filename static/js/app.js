@@ -50,9 +50,13 @@ const APP_STATE = {
   autoresearchMode: 'simple',
   runRoiCache: new Map(),
   watchlist: new Set(),
+  liveRefreshStatus: null,
+  liveSnapshot: null,
+  livePollMs: 15000,
 };
 
 let autoresearchPollTimer = null;
+let liveRefreshPollTimer = null;
 
 function isOptunaEngineMode() {
   const st = APP_STATE.autoresearchStatus || {};
@@ -304,6 +308,195 @@ async function loadStatus() {
     if (liveEl) liveEl.textContent = '—';
     if (researchEl) researchEl.textContent = '—';
     if (lastRunEl) lastRunEl.textContent = '—';
+  }
+}
+
+function setLiveRefreshPollingInterval(ms) {
+  APP_STATE.livePollMs = ms;
+  if (liveRefreshPollTimer) {
+    window.clearInterval(liveRefreshPollTimer);
+  }
+  liveRefreshPollTimer = window.setInterval(async function () {
+    await loadLiveRefreshStatus();
+    await loadLiveRefreshSnapshot();
+  }, ms);
+}
+
+function renderTournamentTable(items, targetId, emptyMessage) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  if (!items || !items.length) {
+    el.innerHTML = '<div class="status info">' + escapeHtml(emptyMessage) + '</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>#</th><th>Player</th><th>Composite</th><th>Course Fit</th><th>Form</th><th>Momentum</th></tr></thead><tbody>';
+  for (let i = 0; i < items.length; i++) {
+    const row = items[i];
+    html += '<tr>' +
+      '<td>' + escapeHtml(String(row.rank || i + 1)) + '</td>' +
+      '<td>' + escapeHtml(row.player || '—') + '</td>' +
+      '<td>' + escapeHtml(row.composite != null ? Number(row.composite).toFixed(3) : '—') + '</td>' +
+      '<td>' + escapeHtml(row.course_fit != null ? Number(row.course_fit).toFixed(3) : '—') + '</td>' +
+      '<td>' + escapeHtml(row.form != null ? Number(row.form).toFixed(3) : '—') + '</td>' +
+      '<td>' + escapeHtml(row.momentum != null ? Number(row.momentum).toFixed(3) : '—') + '</td>' +
+      '</tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderMatchupTable(items, targetId, emptyMessage) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  if (!items || !items.length) {
+    el.innerHTML = '<div class="status info">' + escapeHtml(emptyMessage) + '</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Player</th><th>Opponent</th><th>Odds</th><th>Book</th><th>EV</th><th>Market</th></tr></thead><tbody>';
+  for (let i = 0; i < items.length; i++) {
+    const row = items[i];
+    html += '<tr>' +
+      '<td>' + escapeHtml(row.player || '—') + '</td>' +
+      '<td>' + escapeHtml(row.opponent || '—') + '</td>' +
+      '<td>' + escapeHtml(row.market_odds || '—') + '</td>' +
+      '<td>' + escapeHtml(row.bookmaker || '—') + '</td>' +
+      '<td>' + escapeHtml(row.ev != null ? Number(row.ev).toFixed(3) : '—') + '</td>' +
+      '<td>' + escapeHtml(row.market_type || '—') + '</td>' +
+      '</tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderLiveSnapshot(snapshot, ageSeconds) {
+  if (!snapshot) return;
+  APP_STATE.liveSnapshot = snapshot;
+  const modeEl = document.getElementById('liveCadenceMode');
+  const updatedEl = document.getElementById('liveSnapshotUpdated');
+  const ageEl = document.getElementById('liveSnapshotAge');
+  if (modeEl) modeEl.textContent = snapshot.cadence_mode || '—';
+  if (updatedEl) updatedEl.textContent = formatTime(snapshot.generated_at);
+  if (ageEl) ageEl.textContent = ageSeconds != null ? String(ageSeconds) + 's' : '—';
+
+  const live = snapshot.live_tournament || {};
+  const upcoming = snapshot.upcoming_tournament || {};
+  const liveMeta = document.getElementById('liveTournamentMeta');
+  const liveStatus = document.getElementById('liveTournamentStatus');
+  if (liveMeta) {
+    liveMeta.textContent = (live.event_name || 'Unknown event') + ' · Field ' + (live.field_size != null ? live.field_size : '—');
+  }
+  if (liveStatus) {
+    liveStatus.className = 'result status ' + (live.active ? 'success' : 'info');
+    liveStatus.textContent = live.active
+      ? 'Live window active. Snapshot auto-refresh is running.'
+      : 'Live window not currently active. Showing latest available snapshot.';
+  }
+
+  const upcomingMeta = document.getElementById('upcomingTournamentMeta');
+  const upcomingStatus = document.getElementById('upcomingTournamentStatus');
+  if (upcomingMeta) {
+    upcomingMeta.textContent = (upcoming.event_name || 'Upcoming event') + ' · Field ' + (upcoming.field_size != null ? upcoming.field_size : '—');
+  }
+  if (upcomingStatus) {
+    upcomingStatus.className = 'result status info';
+    upcomingStatus.textContent = 'Upcoming projections auto-refresh from the always-on runtime.';
+  }
+
+  renderTournamentTable(live.rankings, 'liveRankings', 'No live rankings yet.');
+  renderMatchupTable(live.matchups, 'liveMatchups', 'No live matchup opportunities yet.');
+  renderTournamentTable(upcoming.rankings, 'upcomingRankings', 'No upcoming rankings yet.');
+  renderMatchupTable(upcoming.matchups, 'upcomingMatchups', 'No upcoming matchup opportunities yet.');
+}
+
+async function loadLiveRefreshSnapshot() {
+  try {
+    const resp = await fetch('/api/live-refresh/snapshot');
+    if (!resp.ok) throw new Error('Server error (' + resp.status + ')');
+    const data = await resp.json();
+    if (!data.ok || !data.snapshot) return;
+    renderLiveSnapshot(data.snapshot, data.age_seconds);
+  } catch (_) {}
+}
+
+async function loadLiveRefreshStatus() {
+  const opsResult = document.getElementById('liveRefreshOpsResult');
+  try {
+    const resp = await fetch('/api/live-refresh/status');
+    if (!resp.ok) throw new Error('Server error (' + resp.status + ')');
+    const data = await resp.json();
+    const status = data.status || {};
+    APP_STATE.liveRefreshStatus = status;
+    const running = !!status.running;
+    const isVisible = typeof document !== 'undefined' ? document.visibilityState === 'visible' : true;
+    const pollMs = running ? (isVisible ? 5000 : 30000) : (isVisible ? 15000 : 60000);
+    if (APP_STATE.livePollMs !== pollMs) {
+      setLiveRefreshPollingInterval(pollMs);
+    }
+    const startBtn = document.getElementById('startLiveRefreshBtn');
+    const stopBtn = document.getElementById('stopLiveRefreshBtn');
+    if (startBtn) startBtn.disabled = running;
+    if (stopBtn) stopBtn.disabled = !running;
+    if (opsResult) {
+      opsResult.style.display = 'block';
+      opsResult.className = 'result status ' + (running ? 'success' : 'info');
+      opsResult.textContent =
+        'Live refresh ' + (running ? 'running' : 'stopped') +
+        ' · mode ' + (status.cadence_mode || '—') +
+        ' · next recompute ' + (status.next_recompute_at ? formatTime(status.next_recompute_at) : '—');
+    }
+  } catch (err) {
+    if (opsResult) {
+      opsResult.style.display = 'block';
+      opsResult.className = 'result status error';
+      opsResult.textContent = 'Could not load live refresh status: ' + err.message;
+    }
+  }
+}
+
+async function startLiveRefresh() {
+  const opsResult = document.getElementById('liveRefreshOpsResult');
+  try {
+    if (opsResult) {
+      opsResult.style.display = 'block';
+      opsResult.className = 'result status loading';
+      opsResult.textContent = 'Starting live refresh runtime…';
+    }
+    const resp = await fetch('/api/live-refresh/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    await loadLiveRefreshStatus();
+    await loadLiveRefreshSnapshot();
+  } catch (err) {
+    if (opsResult) {
+      opsResult.style.display = 'block';
+      opsResult.className = 'result status error';
+      opsResult.textContent = 'Error: ' + err.message;
+    }
+  }
+}
+
+async function stopLiveRefresh() {
+  const opsResult = document.getElementById('liveRefreshOpsResult');
+  try {
+    if (opsResult) {
+      opsResult.style.display = 'block';
+      opsResult.className = 'result status loading';
+      opsResult.textContent = 'Stopping live refresh runtime…';
+    }
+    const resp = await fetch('/api/live-refresh/stop', { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    await loadLiveRefreshStatus();
+  } catch (err) {
+    if (opsResult) {
+      opsResult.style.display = 'block';
+      opsResult.className = 'result status error';
+      opsResult.textContent = 'Error: ' + err.message;
+    }
   }
 }
 
@@ -1689,6 +1882,9 @@ document.addEventListener('dragstart', function (e) {
 
 document.addEventListener('DOMContentLoaded', function () {
   loadStatus();
+  loadLiveRefreshStatus();
+  loadLiveRefreshSnapshot();
+  setLiveRefreshPollingInterval(15000);
   loadSimpleAutoresearchStatus();
   (async function initAutoresearchUi() {
     await loadAutoresearchStatus();
@@ -1709,6 +1905,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const resetAutoresearchBtn = document.getElementById('resetAutoresearchBtn');
   const downloadCardBtn = document.getElementById('downloadCardBtn');
   const gradeLastEventBtn = document.getElementById('gradeLastEventBtn');
+  const startLiveRefreshBtn = document.getElementById('startLiveRefreshBtn');
+  const stopLiveRefreshBtn = document.getElementById('stopLiveRefreshBtn');
   if (runPredictionBtn) runPredictionBtn.addEventListener('click', runPrediction);
   if (simpleAutoresearchStartBtn) simpleAutoresearchStartBtn.addEventListener('click', startSimpleAutoresearch);
   if (simpleAutoresearchRunOnceBtn) simpleAutoresearchRunOnceBtn.addEventListener('click', runSimpleAutoresearchOnce);
@@ -1737,6 +1935,11 @@ document.addEventListener('DOMContentLoaded', function () {
   if (loadParetoBtn) loadParetoBtn.addEventListener('click', loadAutoresearchPareto);
   const runOptunaTrialsBtn = document.getElementById('runOptunaTrialsBtn');
   if (runOptunaTrialsBtn) runOptunaTrialsBtn.addEventListener('click', runOptunaTrialsFromDashboard);
+  if (startLiveRefreshBtn) startLiveRefreshBtn.addEventListener('click', startLiveRefresh);
+  if (stopLiveRefreshBtn) stopLiveRefreshBtn.addEventListener('click', stopLiveRefresh);
+  document.addEventListener('visibilitychange', function () {
+    loadLiveRefreshStatus();
+  });
   const revealEls = document.querySelectorAll('.reveal');
   if (revealEls.length && 'IntersectionObserver' in window) {
     const observer = new IntersectionObserver(

@@ -9,6 +9,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.live_refresh_policy import (
+    default_live_refresh_settings,
+    normalize_live_refresh_settings,
+)
+
 _SETTINGS_DIR = Path(__file__).resolve().parent.parent / "data"
 _SETTINGS_FILE = _SETTINGS_DIR / "autoresearch_settings.json"
 _CACHE: dict[str, Any] | None = None
@@ -27,6 +32,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "optuna_scalar_study_name": "golf_scalar_simple",
     "scalar_objective": "weighted_roi_pct",
     "optuna_trials_per_cycle": 3,
+    "live_refresh": default_live_refresh_settings(),
 }
 
 
@@ -36,6 +42,7 @@ def _ensure_dir() -> None:
 
 def _merge_defaults(raw: dict[str, Any]) -> dict[str, Any]:
     out = dict(DEFAULT_SETTINGS)
+    out["live_refresh"] = normalize_live_refresh_settings(raw.get("live_refresh"))
     mode = (raw.get("guardrail_mode") or "").strip().lower()
     if mode in VALID_GUARDRAIL_MODES:
         out["guardrail_mode"] = mode
@@ -113,6 +120,10 @@ def set_settings(updates: dict[str, Any]) -> dict[str, Any]:
             current["optuna_trials_per_cycle"] = max(1, min(50, n))
         except (TypeError, ValueError):
             pass
+    if "live_refresh" in updates and isinstance(updates["live_refresh"], dict):
+        merged_live_refresh = dict(current.get("live_refresh") or {})
+        merged_live_refresh.update(updates["live_refresh"])
+        current["live_refresh"] = normalize_live_refresh_settings(merged_live_refresh)
     _ensure_dir()
     with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(current, f, indent=2)

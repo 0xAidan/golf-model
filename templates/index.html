@@ -22,31 +22,49 @@
     </header>
 
     <nav class="main-tabs" role="tablist" aria-label="Main navigation">
-      <button type="button" class="main-tab is-active" role="tab" aria-selected="true" aria-controls="tab-predictions" id="tab-btn-predictions" tabindex="0">Predictions</button>
+      <button type="button" class="main-tab is-active" role="tab" aria-selected="true" aria-controls="tab-live" id="tab-btn-live" tabindex="0">Live Tournament</button>
+      <button type="button" class="main-tab" role="tab" aria-selected="false" aria-controls="tab-upcoming" id="tab-btn-upcoming" tabindex="-1">Upcoming Tournament</button>
       <button type="button" class="main-tab" role="tab" aria-selected="false" aria-controls="tab-autoresearch" id="tab-btn-autoresearch" tabindex="-1">Autoresearch</button>
       <button type="button" class="main-tab" role="tab" aria-selected="false" aria-controls="tab-grading" id="tab-btn-grading" tabindex="-1">Grading</button>
+      <button type="button" class="main-tab" role="tab" aria-selected="false" aria-controls="tab-ops" id="tab-btn-ops" tabindex="-1">Ops</button>
     </nav>
 
-    <!-- ═══════ PREDICTIONS TAB ═══════ -->
-    <div id="tab-predictions" role="tabpanel" aria-labelledby="tab-btn-predictions" class="tab-panel is-active">
-      <section class="card reveal" aria-labelledby="pred-heading">
-        <h2 id="pred-heading">Run Prediction</h2>
-        <p class="subtle">Uses the current live model and DataGolf to detect this weekend's event.</p>
+    <!-- ═══════ LIVE TOURNAMENT TAB ═══════ -->
+    <div id="tab-live" role="tabpanel" aria-labelledby="tab-btn-live" class="tab-panel is-active">
+      <section class="card reveal" aria-labelledby="live-heading">
+        <h2 id="live-heading">Live Tournament</h2>
+        <p class="subtle" id="liveTournamentMeta">Waiting for live refresh snapshot…</p>
         <div class="autoresearch-controls">
-          <label for="predictionMode" class="sr-only">Prediction mode</label>
-          <select id="predictionMode" class="btn btn-secondary btn-sm" aria-label="Select prediction mode">
-            <option value="full">Full Card</option>
-            <option value="matchups-only">72-hole matchups only</option>
-            <option value="round-matchups">Round matchups only (per-round H2H)</option>
-            <option value="placements-only">Placements Only</option>
-          </select>
-          <button type="button" id="runPredictionBtn" class="btn btn-primary" aria-label="Run prediction for this week">Run prediction</button>
-          <button type="button" id="gradeLastEventBtn" class="btn btn-secondary" aria-label="Grade last completed event">Grade Last Event</button>
+          <span class="metric-pill">Mode: <strong id="liveCadenceMode">—</strong></span>
+          <span class="metric-pill">Updated: <strong id="liveSnapshotUpdated">—</strong></span>
+          <span class="metric-pill">Age: <strong id="liveSnapshotAge">—</strong></span>
         </div>
-        <div id="predResult" class="result" style="display:none;"></div>
-        <div id="gradeResult" class="result" style="display:none;"></div>
-        <div id="predCardViewer" class="card-viewer" style="display:none;"></div>
-        <button type="button" id="downloadCardBtn" class="btn btn-secondary" style="display:none; margin-top: 12px;" aria-label="Download prediction card as markdown file">Download card (.md)</button>
+        <div id="liveTournamentStatus" class="result status info">No live snapshot loaded yet.</div>
+      </section>
+      <section class="card reveal" aria-labelledby="live-rankings-heading">
+        <h2 id="live-rankings-heading">Player Rankings</h2>
+        <div id="liveRankings" class="run-feed"><div class="status info">Waiting for rankings…</div></div>
+      </section>
+      <section class="card reveal" aria-labelledby="live-matchups-heading">
+        <h2 id="live-matchups-heading">Live Matchups</h2>
+        <div id="liveMatchups" class="run-feed"><div class="status info">Waiting for matchup opportunities…</div></div>
+      </section>
+    </div>
+
+    <!-- ═══════ UPCOMING TOURNAMENT TAB ═══════ -->
+    <div id="tab-upcoming" role="tabpanel" aria-labelledby="tab-btn-upcoming" class="tab-panel" hidden>
+      <section class="card reveal" aria-labelledby="upcoming-heading">
+        <h2 id="upcoming-heading">Upcoming Tournament</h2>
+        <p class="subtle" id="upcomingTournamentMeta">Waiting for upcoming snapshot…</p>
+        <div id="upcomingTournamentStatus" class="result status info">No upcoming snapshot loaded yet.</div>
+      </section>
+      <section class="card reveal" aria-labelledby="upcoming-rankings-heading">
+        <h2 id="upcoming-rankings-heading">Projected Rankings</h2>
+        <div id="upcomingRankings" class="run-feed"><div class="status info">Waiting for projections…</div></div>
+      </section>
+      <section class="card reveal" aria-labelledby="upcoming-matchups-heading">
+        <h2 id="upcoming-matchups-heading">Early Matchups</h2>
+        <div id="upcomingMatchups" class="run-feed"><div class="status info">Waiting for matchup opportunities…</div></div>
       </section>
     </div>
 
@@ -217,6 +235,34 @@
             </div>
           </div>
         </div>
+      </section>
+    </div>
+
+    <!-- ═══════ OPS TAB ═══════ -->
+    <div id="tab-ops" role="tabpanel" aria-labelledby="tab-btn-ops" class="tab-panel" hidden>
+      <section class="card reveal" aria-labelledby="ops-heading">
+        <h2 id="ops-heading">Ops Controls</h2>
+        <p class="subtle">Manual controls live here only. Primary tournament tabs are fully auto-refresh.</p>
+        <div class="autoresearch-controls">
+          <label for="predictionMode" class="sr-only">Prediction mode</label>
+          <select id="predictionMode" class="btn btn-secondary btn-sm" aria-label="Select prediction mode">
+            <option value="full">Full Card</option>
+            <option value="matchups-only">72-hole matchups only</option>
+            <option value="round-matchups">Round matchups only (per-round H2H)</option>
+            <option value="placements-only">Placements Only</option>
+          </select>
+          <button type="button" id="runPredictionBtn" class="btn btn-primary" aria-label="Run prediction for this week">Run prediction</button>
+          <button type="button" id="gradeLastEventBtn" class="btn btn-secondary" aria-label="Grade last completed event">Grade Last Event</button>
+        </div>
+        <div class="autoresearch-controls" style="margin-top:8px;">
+          <button type="button" id="startLiveRefreshBtn" class="btn btn-primary btn-sm" aria-label="Start always-on live refresh">Start Live Refresh</button>
+          <button type="button" id="stopLiveRefreshBtn" class="btn btn-secondary btn-sm" aria-label="Stop always-on live refresh">Stop Live Refresh</button>
+        </div>
+        <div id="liveRefreshOpsResult" class="result" style="display:none;"></div>
+        <div id="predResult" class="result" style="display:none;"></div>
+        <div id="gradeResult" class="result" style="display:none;"></div>
+        <div id="predCardViewer" class="card-viewer" style="display:none;"></div>
+        <button type="button" id="downloadCardBtn" class="btn btn-secondary" style="display:none; margin-top: 12px;" aria-label="Download prediction card as markdown file">Download card (.md)</button>
       </section>
     </div>
 

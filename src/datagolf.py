@@ -1204,6 +1204,21 @@ def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None
         return None
 
 
+def fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True) -> list[dict]:
+    """Fetch DataGolf schedule rows."""
+    params = {"tour": tour}
+    if upcoming_only:
+        params["upcoming_only"] = "yes"
+    raw = _call_api("get-schedule", params)
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        rows = raw.get("schedule")
+        if isinstance(rows, list):
+            return rows
+    return []
+
+
 def fetch_dg_matchup_all_pairings(tour: str = "pga", odds_format: str = "american") -> dict:
     """
     Fetch DG's own model probabilities for all matchup pairings.

@@ -137,6 +137,25 @@ RestartSec=30
 WantedBy=multi-user.target
 SVC
 
+        # Always-on live refresh worker
+        cat > /etc/systemd/system/golf-live-refresh.service << 'SVC'
+[Unit]
+Description=Golf Model Live Refresh Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/golf-model
+Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+ExecStart=/opt/golf-model/venv/bin/python -m workers.live_refresh_worker
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
         # Nightly backup timer
         cat > /etc/systemd/system/golf-backup.service << 'SVC'
 [Unit]
@@ -162,8 +181,8 @@ WantedBy=timers.target
 SVC
 
         systemctl daemon-reload
-        systemctl enable golf-dashboard golf-agent golf-backup.timer
-        systemctl start golf-dashboard golf-agent golf-backup.timer
+        systemctl enable golf-dashboard golf-agent golf-live-refresh golf-backup.timer
+        systemctl start golf-dashboard golf-agent golf-live-refresh golf-backup.timer
 
         echo "Services installed and started."
 SYSTEMD_EOF
@@ -175,6 +194,7 @@ SYSTEMD_EOF
     log "Commands:"
     log "  systemctl status golf-dashboard"
     log "  systemctl status golf-agent"
+    log "  systemctl status golf-live-refresh"
     log "  journalctl -u golf-dashboard -f"
 }
 
@@ -208,7 +228,7 @@ update_server() {
         python -c "from src.db import init_db; init_db()"
 
         # Restart services
-        systemctl restart golf-dashboard golf-agent
+        systemctl restart golf-dashboard golf-agent golf-live-refresh
 
         echo "Update complete."
 UPDATE_EOF
@@ -226,6 +246,7 @@ check_status() {
         echo "=== Services ==="
         systemctl is-active golf-dashboard || true
         systemctl is-active golf-agent || true
+        systemctl is-active golf-live-refresh || true
 
         echo ""
         echo "=== Database ==="

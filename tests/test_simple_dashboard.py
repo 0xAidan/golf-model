@@ -39,6 +39,20 @@ def test_home_page_uses_autoresearch_language_not_optimizer_heading():
     assert "/static/js/app.js" not in text
 
 
+def test_home_page_exposes_live_and_upcoming_tabs():
+    """Top navigation should prioritize live and upcoming tournaments."""
+    import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    text = response.text
+    assert "Live Tournament" in text
+    assert "Upcoming Tournament" in text
+    assert "Ops Controls" in text
+
+
 def test_upcoming_prediction_endpoint_returns_output_file(monkeypatch):
     """Simple prediction endpoint should run the prediction service and return the markdown path."""
     import app as app_module

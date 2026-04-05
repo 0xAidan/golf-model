@@ -38,6 +38,23 @@ python app.py                   # start the web UI at http://localhost:8000
 
 The dashboard at `http://localhost:8000` handles the full workflow: run predictions, view betting cards, grade past tournaments, manage the model registry, run autoresearch experiments, and track calibration/ROI over time. FastAPI auto-generates API docs at `/docs`.
 
+### Always-On Live Refresh
+
+The dashboard now supports an always-on snapshot runtime for separate **Live Tournament** and **Upcoming Tournament** views:
+
+- `POST /api/live-refresh/start` starts the runtime loop
+- `POST /api/live-refresh/stop` stops the runtime loop
+- `GET /api/live-refresh/status` returns runtime health and cadence
+- `GET /api/live-refresh/snapshot` returns the latest live/upcoming snapshot payload
+
+Cadence windows are tournament-aware and configurable through persisted settings (`live_refresh` in `data/autoresearch_settings.json`).
+
+For quieter local logs while developing, set:
+
+```bash
+export QUIET_DEV_ACCESS_LOGS=1
+```
+
 ## How It Works
 
 1. **Sync** — Pull the current event, field, predictions, decompositions, skill ratings, and odds from Data Golf.

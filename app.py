@@ -13,6 +13,7 @@ import re
 import asyncio
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,7 +45,22 @@ from src.scoring import determine_outcome
 import pandas as pd
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="Golf Betting Model")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    from src.autoresearch_settings import get_settings
+    from backtester.dashboard_runtime import start_live_refresh, stop_live_refresh
+
+    settings = get_settings().get("live_refresh", {})
+    if settings.get("enabled") and settings.get("autostart"):
+        start_live_refresh(tour=str(settings.get("tour", "pga")))
+    try:
+        yield
+    finally:
+        stop_live_refresh()
+
+
+app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
@@ -851,26 +867,18 @@ async def run_upcoming_prediction(request: Request):
 
     from src.db import ensure_initialized
     ensure_initialized()
+    from src.services.live_snapshot_service import run_snapshot_analysis
 
-    from src.services.golf_model_service import GolfModelService
-    from src.strategy_resolution import build_pipeline_strategy_config, resolve_runtime_strategy
-
-    strategy, strategy_meta = resolve_runtime_strategy("global")
-    pipeline_cfg = build_pipeline_strategy_config(strategy)
-    service = GolfModelService(
-        tour=payload.get("tour", "pga"),
-        strategy_config=pipeline_cfg,
-    )
     mode = payload.get("mode", "full")
     if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
         mode = "full"
-    result = service.run_analysis(
+    result = run_snapshot_analysis(
+        tour=payload.get("tour", "pga"),
         tournament_name=payload.get("tournament"),
         course_name=payload.get("course"),
-        enable_ai=payload.get("enable_ai", True),
-        enable_backfill=payload.get("enable_backfill", True),
+        enable_ai=payload.get("enable_ai", False),
+        enable_backfill=payload.get("enable_backfill", False),
         mode=mode,
-        strategy_source="config",
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]
@@ -888,10 +896,6 @@ async def run_upcoming_prediction(request: Request):
                 result["card_content"] = None
         else:
             result["card_content"] = None
-    src = strategy_meta.get("strategy_source", "default")
-    result["model_lane"] = src
-    result["strategy_meta"] = strategy_meta
-    result["live_model_name"] = strategy.name or pipeline_cfg.get("name", "strategy")
     return result
 
 
@@ -1165,6 +1169,89 @@ async def get_dashboard_state(scope: str = "global"):
             "scope": get_optimizer_status().get("scope", scope),
         },
         "datagolf": get_datagolf_throttle_status(),
+    }
+
+
+@app.post("/api/live-refresh/start")
+async def start_live_refresh_runtime(request: Request):
+    """Start always-on live refresh runtime."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import start_live_refresh
+    from src.autoresearch_settings import get_settings, set_settings
+
+    if os.environ.get("LIVE_REFRESH_ENABLED", "1").strip().lower() in {"0", "false", "off", "no"}:
+        return JSONResponse({"error": "LIVE_REFRESH_ENABLED is disabled"}, status_code=403)
+
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    current = get_settings()
+    live_cfg = dict(current.get("live_refresh") or {})
+    if isinstance(payload.get("live_refresh"), dict):
+        live_cfg.update(payload["live_refresh"])
+    if payload.get("tour"):
+        requested_tour = str(payload["tour"]).strip().lower()
+        live_cfg["tour"] = requested_tour if requested_tour in {"pga", "euro", "kft", "alt"} else "pga"
+    live_cfg["enabled"] = True
+    set_settings({"live_refresh": live_cfg})
+    status = start_live_refresh(tour=live_cfg.get("tour", "pga"))
+    return {"ok": True, "status": status}
+
+
+@app.post("/api/live-refresh/stop")
+async def stop_live_refresh_runtime():
+    """Stop always-on live refresh runtime."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import stop_live_refresh
+    from src.autoresearch_settings import get_settings, set_settings
+
+    cfg = dict((get_settings().get("live_refresh") or {}))
+    cfg["enabled"] = False
+    set_settings({"live_refresh": cfg})
+    status = stop_live_refresh()
+    return {"ok": True, "status": status}
+
+
+@app.get("/api/live-refresh/status")
+async def get_live_refresh_runtime_status():
+    """Return always-on runtime status and live refresh settings."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import get_live_refresh_status
+    from src.autoresearch_settings import get_settings
+
+    return {
+        "status": get_live_refresh_status(),
+        "settings": (get_settings().get("live_refresh") or {}),
+    }
+
+
+@app.get("/api/live-refresh/snapshot")
+async def get_live_refresh_snapshot():
+    """Return latest always-on snapshot for Live/Upcoming dashboard tabs."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import read_snapshot
+
+    snapshot = read_snapshot()
+    if not snapshot:
+        return {
+            "ok": False,
+            "snapshot": None,
+            "stale_reason": "No snapshot generated yet. Start live refresh runtime.",
+        }
+    generated_at = snapshot.get("generated_at")
+    age_seconds = None
+    if generated_at:
+        try:
+            age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
+        except ValueError:
+            age_seconds = None
+    return {
+        "ok": True,
+        "snapshot": snapshot,
+        "generated_at": generated_at,
+        "age_seconds": age_seconds,
     }
 
 
@@ -3539,4 +3626,11 @@ if __name__ == "__main__":
     init_db()
     print("\\n  Golf Betting Model — Web UI")
     print("  Open in browser: http://localhost:8000\\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    quiet_logs = os.environ.get("QUIET_DEV_ACCESS_LOGS", "0").strip().lower() in {"1", "true", "yes", "on"}
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="warning",
+        access_log=not quiet_logs,
+    )
