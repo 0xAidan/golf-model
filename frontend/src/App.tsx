@@ -36,6 +36,7 @@ function App() {
   const [predictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
+  const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
   const [predictionLayout, setPredictionLayout] = useLocalStorageState<"board" | "table" | "players">("golf-model.prediction-layout", "board")
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
   const [selectedMatchupKey, setSelectedMatchupKey] = useLocalStorageState("golf-model.selected-matchup", "")
@@ -53,11 +54,6 @@ function App() {
     queryKey: ["research-proposals"],
     queryFn: api.getResearchProposals,
   })
-  const playerProfileQuery = useQuery({
-    queryKey: ["player-profile", selectedPlayerKey, predictionRun?.tournament_id, predictionRun?.course_num],
-    queryFn: () => api.getPlayerProfile(selectedPlayerKey, predictionRun?.tournament_id ?? 0, predictionRun?.course_num),
-    enabled: Boolean(selectedPlayerKey && predictionRun?.tournament_id),
-  })
   const liveRefreshStatusQuery = useQuery({
     queryKey: ["live-refresh-status"],
     queryFn: api.getLiveRefreshStatus,
@@ -71,6 +67,25 @@ function App() {
     queryFn: api.getLiveRefreshSnapshot,
     refetchInterval: 10_000,
   })
+  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming">("live")
+  const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
+  const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
+  const hydratedRun = useMemo(() => buildHydratedPredictionRun(liveSnapshot), [liveSnapshot])
+  const effectivePredictionRun = predictionRun ?? hydratedRun
+  const normalizedSelectedBooks = useMemo(
+    () => selectedBooks.map((book) => normalizeSportsbook(book)).filter(Boolean),
+    [selectedBooks],
+  )
+  const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
+  const availableBooks = useMemo(
+    () => collectAvailableBooks(effectivePredictionRun, liveSnapshot),
+    [effectivePredictionRun, liveSnapshot],
+  )
+  const playerProfileQuery = useQuery({
+    queryKey: ["player-profile", selectedPlayerKey, effectivePredictionRun?.tournament_id, effectivePredictionRun?.course_num],
+    queryFn: () => api.getPlayerProfile(selectedPlayerKey, effectivePredictionRun?.tournament_id ?? 0, effectivePredictionRun?.course_num),
+    enabled: Boolean(selectedPlayerKey && effectivePredictionRun?.tournament_id),
+  })
 
   const gradeMutation = useMutation({
     mutationFn: () => api.gradeLatestTournament(dashboardQuery.data?.latest_completed_event ?? undefined),
@@ -80,16 +95,18 @@ function App() {
     },
   })
 
-  const players = predictionRun?.composite_results ?? []
+  const players = effectivePredictionRun?.composite_results ?? []
   const filteredMatchups = useMemo(() => {
-    const sourceMatchups = predictionRun?.matchup_bets ?? []
+    const sourceMatchups = effectivePredictionRun?.matchup_bets ?? []
     return sourceMatchups.filter((matchup) => {
+      const matchupBook = normalizeSportsbook(matchup.book)
+      const passesBook = selectedBookSet.size === 0 || selectedBookSet.has(matchupBook)
       const passesSearch = matchupSearch
         ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
         : true
-      return passesSearch && matchup.ev >= minEdge
+      return passesBook && passesSearch && matchup.ev >= minEdge
     })
-  }, [matchupSearch, minEdge, predictionRun?.matchup_bets])
+  }, [effectivePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
 
   const selectedPlayer = players.find((player) => player.player_key === selectedPlayerKey) ?? players[0] ?? null
   const selectedMatchup =
@@ -97,13 +114,10 @@ function App() {
     filteredMatchups[0] ??
     null
 
-  const secondaryBets = flattenSecondaryBets(predictionRun)
+  const secondaryBets = flattenSecondaryBets(effectivePredictionRun)
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const proposals = researchQuery.data ?? []
   const dashboard = dashboardQuery.data as DashboardState | undefined
-  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming">("live")
-  const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
-  const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
 
   useEffect(() => {
     const ensureAlwaysOnRuntime = async () => {
@@ -134,7 +148,7 @@ function App() {
 
   return (
     <CommandShell
-      headline={predictionRun?.event_name ?? "Operator command station"}
+      headline={effectivePredictionRun?.event_name ?? "Operator command station"}
       subheadline="Desktop-first betting intelligence across predictions, player drill-downs, course context, grading continuity, and research control."
       actions={
         <>
@@ -169,6 +183,9 @@ function App() {
               liveRuntimeRunning={liveRuntimeRunning}
               predictionTab={predictionTab}
               onPredictionTabChange={setPredictionTab}
+              availableBooks={availableBooks}
+              selectedBooks={normalizedSelectedBooks}
+              onSelectedBooksChange={setSelectedBooks}
               filteredMatchups={filteredMatchups}
               gradingHistory={gradingHistory}
               layout={predictionLayout}
@@ -180,7 +197,7 @@ function App() {
               onPlayerSelect={setSelectedPlayerKey}
               onMatchupSelect={setSelectedMatchupKey}
               players={players}
-              predictionRun={predictionRun}
+              predictionRun={effectivePredictionRun}
               secondaryBets={secondaryBets}
               selectedPlayer={selectedPlayer}
               selectedMatchup={selectedMatchup}
@@ -214,7 +231,7 @@ function App() {
             <CoursePage
               dashboard={dashboard}
               players={players}
-              predictionRun={predictionRun}
+              predictionRun={effectivePredictionRun}
             />
           }
         />
@@ -241,6 +258,9 @@ function PredictionWorkspacePage({
   liveRuntimeRunning,
   predictionTab,
   onPredictionTabChange,
+  availableBooks,
+  selectedBooks,
+  onSelectedBooksChange,
   filteredMatchups,
   gradingHistory,
   layout,
@@ -262,6 +282,9 @@ function PredictionWorkspacePage({
   liveRuntimeRunning: boolean
   predictionTab: "live" | "upcoming"
   onPredictionTabChange: (value: "live" | "upcoming") => void
+  availableBooks: string[]
+  selectedBooks: string[]
+  onSelectedBooksChange: (value: string[]) => void
   filteredMatchups: MatchupBet[]
   gradingHistory: GradedTournamentSummary[]
   layout: "board" | "table" | "players"
@@ -281,11 +304,22 @@ function PredictionWorkspacePage({
   const totalProfit = gradingHistory.reduce((sum, tournament) => sum + Number(tournament.total_profit ?? 0), 0)
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
-  const liveLabel = liveTournament?.active ? "Live Event" : "Past Event"
+  const selectedBookSet = new Set(selectedBooks)
+  const liveLabel = !liveSnapshot
+    ? "Live status unavailable"
+    : liveTournament?.active
+      ? "Live Event"
+      : "Completed Event"
   const liveRankings = (liveTournament?.rankings ?? []).filter((row) => !isCutFinishState(row.finish_state))
-  const liveMatchups = liveTournament?.matchups ?? []
+  const liveMatchups = (liveTournament?.matchups ?? []).filter((row) => {
+    const normalized = normalizeSportsbook(row.bookmaker)
+    return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
+  })
   const upcomingRankings = upcomingTournament?.rankings ?? []
-  const upcomingMatchups = upcomingTournament?.matchups ?? []
+  const upcomingMatchups = (upcomingTournament?.matchups ?? []).filter((row) => {
+    const normalized = normalizeSportsbook(row.bookmaker)
+    return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
+  })
 
   return (
     <div className="space-y-6">
@@ -315,6 +349,11 @@ function PredictionWorkspacePage({
             Upcoming Event
           </Button>
         </div>
+        <BookFilterBar
+          books={availableBooks}
+          selectedBooks={selectedBooks}
+          onSelectedBooksChange={onSelectedBooksChange}
+        />
         {predictionTab === "live" ? (
           <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -354,7 +393,10 @@ function PredictionWorkspacePage({
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live matchups</p>
-              <p className="mt-2 text-sm text-slate-300">Best currently surfaced opportunities from always-on scans.</p>
+              <p className="mt-2 text-sm text-slate-300">
+                Best currently surfaced opportunities from always-on scans.
+                {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
+              </p>
               <div className="mt-4 space-y-2">
                 {liveMatchups.length ? (
                   liveMatchups.slice(0, 20).map((row, index) => (
@@ -410,8 +452,11 @@ function PredictionWorkspacePage({
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming matchups</p>
-              <p className="mt-2 text-sm text-slate-300">Early lines as books publish more pairs.</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming event matchups</p>
+              <p className="mt-2 text-sm text-slate-300">
+                Early lines for the next event as books publish more pairs.
+                {selectedBooks.length ? ` Showing ${upcomingMatchups.length} after book filter.` : ""}
+              </p>
               <div className="mt-4 space-y-2">
                 {upcomingMatchups.length ? (
                   upcomingMatchups.slice(0, 20).map((row, index) => (
@@ -489,111 +534,125 @@ function PredictionWorkspacePage({
           </div>
           {layout === "board" ? (
             <div className="grid gap-3 xl:grid-cols-2">
-              {filteredMatchups.map((matchup) => (
-                <button
-                  key={buildMatchupKey(matchup)}
-                  type="button"
-                  className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                  onClick={() => {
-                    onMatchupSelect(buildMatchupKey(matchup))
-                    onPlayerSelect(matchup.pick_key)
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-white">{matchup.pick}</p>
-                      <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+              {filteredMatchups.length ? (
+                filteredMatchups.map((matchup) => (
+                  <button
+                    key={buildMatchupKey(matchup)}
+                    type="button"
+                    className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
+                    onClick={() => {
+                      onMatchupSelect(buildMatchupKey(matchup))
+                      onPlayerSelect(matchup.pick_key)
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white">{matchup.pick}</p>
+                        <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+                      </div>
+                      <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                        {matchup.tier ?? "lean"}
+                      </span>
                     </div>
-                    <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
-                      {matchup.tier ?? "lean"}
-                    </span>
-                  </div>
-                  <div className="mt-4 grid grid-cols-4 gap-3 text-sm">
-                    <div>
-                      <p className="text-slate-500">Edge</p>
-                      <p className="font-semibold text-cyan-200">{matchup.ev_pct}</p>
+                    <div className="mt-4 grid grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <p className="text-slate-500">Edge</p>
+                        <p className="font-semibold text-cyan-200">{matchup.ev_pct}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Price</p>
+                        <p className="font-semibold text-white">{matchup.odds}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Gap</p>
+                        <p className="font-semibold text-white">{formatNumber(matchup.composite_gap, 1)}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Conviction</p>
+                        <p className="font-semibold text-white">{formatNumber(matchup.conviction, 0)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-slate-500">Price</p>
-                      <p className="font-semibold text-white">{matchup.odds}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Gap</p>
-                      <p className="font-semibold text-white">{formatNumber(matchup.composite_gap, 1)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Conviction</p>
-                      <p className="font-semibold text-white">{formatNumber(matchup.conviction, 0)}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))
+              ) : (
+                <div className="xl:col-span-2">
+                  <EmptyState message="No matchup rows match current search/EV/book filters." />
+                </div>
+              )}
             </div>
           ) : layout === "table" ? (
             <div className="overflow-hidden rounded-2xl border border-white/10">
-              <table className="w-full border-collapse text-left text-sm">
-                <thead className="bg-white/6 text-xs uppercase tracking-[0.18em] text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Pick</th>
-                    <th className="px-4 py-3">Edge</th>
-                    <th className="px-4 py-3">Price</th>
-                    <th className="px-4 py-3">Model</th>
-                    <th className="px-4 py-3">Implied</th>
-                    <th className="px-4 py-3">Form gap</th>
-                    <th className="px-4 py-3">Course gap</th>
-                    <th className="px-4 py-3">Conviction</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMatchups.map((matchup) => (
-                    <tr
-                      key={buildMatchupKey(matchup)}
-                      className="cursor-pointer border-t border-white/6 text-slate-200 transition hover:bg-white/6"
-                      onClick={() => {
-                        onMatchupSelect(buildMatchupKey(matchup))
-                        onPlayerSelect(matchup.pick_key)
-                      }}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-white">{matchup.pick}</div>
-                        <div className="text-xs text-slate-500">vs {matchup.opponent}</div>
-                      </td>
-                      <td className="px-4 py-3 text-cyan-200">{matchup.ev_pct}</td>
-                      <td className="px-4 py-3">{matchup.odds}</td>
-                      <td className="px-4 py-3">{`${(matchup.model_win_prob * 100).toFixed(1)}%`}</td>
-                      <td className="px-4 py-3">{`${(matchup.implied_prob * 100).toFixed(1)}%`}</td>
-                      <td className="px-4 py-3">{formatNumber(matchup.form_gap, 1)}</td>
-                      <td className="px-4 py-3">{formatNumber(matchup.course_fit_gap, 1)}</td>
-                      <td className="px-4 py-3">{formatNumber(matchup.conviction, 0)}</td>
+              {filteredMatchups.length ? (
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="bg-white/6 text-xs uppercase tracking-[0.18em] text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">Pick</th>
+                      <th className="px-4 py-3">Edge</th>
+                      <th className="px-4 py-3">Price</th>
+                      <th className="px-4 py-3">Model</th>
+                      <th className="px-4 py-3">Implied</th>
+                      <th className="px-4 py-3">Form gap</th>
+                      <th className="px-4 py-3">Course gap</th>
+                      <th className="px-4 py-3">Conviction</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredMatchups.map((matchup) => (
+                      <tr
+                        key={buildMatchupKey(matchup)}
+                        className="cursor-pointer border-t border-white/6 text-slate-200 transition hover:bg-white/6"
+                        onClick={() => {
+                          onMatchupSelect(buildMatchupKey(matchup))
+                          onPlayerSelect(matchup.pick_key)
+                        }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-white">{matchup.pick}</div>
+                          <div className="text-xs text-slate-500">vs {matchup.opponent}</div>
+                        </td>
+                        <td className="px-4 py-3 text-cyan-200">{matchup.ev_pct}</td>
+                        <td className="px-4 py-3">{matchup.odds}</td>
+                        <td className="px-4 py-3">{`${(matchup.model_win_prob * 100).toFixed(1)}%`}</td>
+                        <td className="px-4 py-3">{`${(matchup.implied_prob * 100).toFixed(1)}%`}</td>
+                        <td className="px-4 py-3">{formatNumber(matchup.form_gap, 1)}</td>
+                        <td className="px-4 py-3">{formatNumber(matchup.course_fit_gap, 1)}</td>
+                        <td className="px-4 py-3">{formatNumber(matchup.conviction, 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <EmptyState message="No matchup rows match current search/EV/book filters." />
+              )}
             </div>
           ) : (
             <div className="grid gap-3">
-              {players.slice(0, 12).map((player) => (
-                <button
-                  key={player.player_key}
-                  type="button"
-                  className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                  onClick={() => onPlayerSelect(player.player_key)}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-white">
-                        #{player.rank} {player.player_display}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        composite {formatNumber(player.composite, 1)} • momentum {formatNumber(player.momentum, 1)}
-                      </p>
+              {players.length ? (
+                players.slice(0, 12).map((player) => (
+                  <button
+                    key={player.player_key}
+                    type="button"
+                    className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
+                    onClick={() => onPlayerSelect(player.player_key)}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white">
+                          #{player.rank} {player.player_display}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          composite {formatNumber(player.composite, 1)} • momentum {formatNumber(player.momentum, 1)}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white/6 px-3 py-1 text-xs uppercase tracking-[0.16em] text-slate-300">
+                        {player.momentum_direction ?? "steady"}
+                      </span>
                     </div>
-                    <span className="rounded-full bg-white/6 px-3 py-1 text-xs uppercase tracking-[0.16em] text-slate-300">
-                      {player.momentum_direction ?? "steady"}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))
+              ) : (
+                <EmptyState message="No players are loaded for this context yet." />
+              )}
             </div>
           )}
         </SurfaceCard>
@@ -672,27 +731,31 @@ function PredictionWorkspacePage({
             description="The operator list keeps the top of the board visible while letting you pivot into player drill-downs."
           />
           <div className="space-y-2">
-            {players.slice(0, 12).map((player) => (
-              <button
-                key={player.player_key}
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                onClick={() => onPlayerSelect(player.player_key)}
-              >
-                <div>
-                  <p className="font-medium text-white">
-                    #{player.rank} {player.player_display}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    form {formatNumber(player.form, 1)} • course {formatNumber(player.course_fit, 1)} • momentum {formatNumber(player.momentum, 1)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</p>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">composite</p>
-                </div>
-              </button>
-            ))}
+            {players.length ? (
+              players.slice(0, 12).map((player) => (
+                <button
+                  key={player.player_key}
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
+                  onClick={() => onPlayerSelect(player.player_key)}
+                >
+                  <div>
+                    <p className="font-medium text-white">
+                      #{player.rank} {player.player_display}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      form {formatNumber(player.form, 1)} • course {formatNumber(player.course_fit, 1)} • momentum {formatNumber(player.momentum, 1)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">composite</p>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <EmptyState message="No player ladder is available yet. Run is still warming up." />
+            )}
           </div>
         </SurfaceCard>
 
@@ -777,16 +840,18 @@ function PlayersPage({
   selectedPlayerProfile?: PlayerProfile
   onPlayerSelect: (playerKey: string) => void
 }) {
+  const recentTrend = (selectedPlayerProfile?.recent_rounds ?? []).map((round) => Number(round.sg_total ?? 0)).reverse()
   const momentumValues =
-    selectedPlayerProfile?.recent_rounds.map((round) => Number(round.sg_total ?? 0)).reverse() ??
-    (selectedPlayer
-      ? [
-          selectedPlayer.course_fit,
-          selectedPlayer.form,
-          selectedPlayer.momentum,
-          selectedPlayer.composite,
-        ]
-      : [])
+    recentTrend.length > 0
+      ? recentTrend
+      : (selectedPlayer
+          ? [
+              selectedPlayer.course_fit,
+              selectedPlayer.form,
+              selectedPlayer.momentum,
+              selectedPlayer.composite,
+            ]
+          : [])
   const courseValues = selectedPlayerProfile?.course_history.map((round) => Number(round.sg_total ?? 0)).reverse() ?? []
 
   return (
@@ -794,20 +859,24 @@ function PlayersPage({
       <SurfaceCard>
         <SectionTitle title="Projection ladder" description="Click any player to open a richer projection profile with score components and momentum context." />
         <div className="space-y-2">
-          {players.map((player) => (
-            <button
-              key={player.player_key}
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-              onClick={() => onPlayerSelect(player.player_key)}
-            >
-              <div>
-                <p className="font-medium text-white">{player.player_display}</p>
-                <p className="text-xs text-slate-500">rank #{player.rank}</p>
-              </div>
-              <p className="text-sm font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</p>
-            </button>
-          ))}
+          {players.length ? (
+            players.map((player) => (
+              <button
+                key={player.player_key}
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
+                onClick={() => onPlayerSelect(player.player_key)}
+              >
+                <div>
+                  <p className="font-medium text-white">{player.player_display}</p>
+                  <p className="text-xs text-slate-500">rank #{player.rank}</p>
+                </div>
+                <p className="text-sm font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</p>
+              </button>
+            ))
+          ) : (
+            <EmptyState message="No players available yet for this event context." />
+          )}
         </div>
       </SurfaceCard>
       <SurfaceCard>
@@ -891,38 +960,44 @@ function MatchupsPage({
       <SurfaceCard>
         <SectionTitle title="Matchup conviction map" description="Scan tier, edge, pricing, and momentum at a glance." />
         <div className="grid gap-3 xl:grid-cols-2">
-          {matchups.map((matchup) => (
-            <button
-              key={buildMatchupKey(matchup)}
-              type="button"
-              onClick={() => onMatchupSelect(buildMatchupKey(matchup))}
-              className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium text-white">{matchup.pick}</p>
-                  <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+          {matchups.length ? (
+            matchups.map((matchup) => (
+              <button
+                key={buildMatchupKey(matchup)}
+                type="button"
+                onClick={() => onMatchupSelect(buildMatchupKey(matchup))}
+                className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-white">{matchup.pick}</p>
+                    <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+                  </div>
+                  <span className="rounded-full bg-cyan-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                    {matchup.tier ?? "lean"}
+                  </span>
                 </div>
-                <span className="rounded-full bg-cyan-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
-                  {matchup.tier ?? "lean"}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                <div>
-                  <p className="text-slate-500">Edge</p>
-                  <p className="font-semibold text-cyan-200">{matchup.ev_pct}</p>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <p className="text-slate-500">Edge</p>
+                    <p className="font-semibold text-cyan-200">{matchup.ev_pct}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Price</p>
+                    <p className="font-semibold text-white">{matchup.odds}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Conviction</p>
+                    <p className="font-semibold text-white">{formatNumber(matchup.conviction, 0)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-slate-500">Price</p>
-                  <p className="font-semibold text-white">{matchup.odds}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Conviction</p>
-                  <p className="font-semibold text-white">{formatNumber(matchup.conviction, 0)}</p>
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))
+          ) : (
+            <div className="xl:col-span-2">
+              <EmptyState message="No matchups available under the current filters." />
+            </div>
+          )}
         </div>
       </SurfaceCard>
       <SurfaceCard>
@@ -1136,20 +1211,21 @@ function ComponentTable({
   components?: Record<string, number>
 }) {
   const entries = Object.entries(components ?? {})
-  if (!entries.length) {
-    return null
-  }
   return (
     <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
       <h4 className="mb-3 text-sm font-semibold text-white">{title}</h4>
-      <div className="space-y-2">
-        {entries.map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between gap-4 text-sm">
-            <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
-            <span className="font-medium text-slate-100">{formatNumber(value, 2)}</span>
-          </div>
-        ))}
-      </div>
+      {entries.length ? (
+        <div className="space-y-2">
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex items-center justify-between gap-4 text-sm">
+              <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
+              <span className="font-medium text-slate-100">{formatNumber(value, 2)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">No component detail available yet.</p>
+      )}
     </div>
   )
 }
@@ -1162,27 +1238,28 @@ function MetricsCategoryTable({
   categories?: Record<string, Record<string, number | string | null>>
 }) {
   const entries = Object.entries(categories ?? {})
-  if (!entries.length) {
-    return null
-  }
   return (
     <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
       <h4 className="mb-3 text-sm font-semibold text-white">{title}</h4>
-      <div className="space-y-4">
-        {entries.map(([category, values]) => (
-          <div key={category}>
-            <p className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">{category}</p>
-            <div className="grid gap-2 md:grid-cols-2">
-              {Object.entries(values).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between gap-4 rounded-xl border border-white/6 px-3 py-2 text-sm">
-                  <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
-                  <span className="font-medium text-slate-100">{typeof value === "number" ? formatNumber(value, 2) : String(value)}</span>
-                </div>
-              ))}
+      {entries.length ? (
+        <div className="space-y-4">
+          {entries.map(([category, values]) => (
+            <div key={category}>
+              <p className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">{category}</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                {Object.entries(values).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between gap-4 rounded-xl border border-white/6 px-3 py-2 text-sm">
+                    <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
+                    <span className="font-medium text-slate-100">{typeof value === "number" ? formatNumber(value, 2) : String(value)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">No current market metrics are available for this player.</p>
+      )}
     </div>
   )
 }
@@ -1241,6 +1318,69 @@ function ChartColumnIcon() {
   return <div className="h-4 w-4 rounded-full bg-cyan-300/80" aria-hidden="true" />
 }
 
+function BookFilterBar({
+  books,
+  selectedBooks,
+  onSelectedBooksChange,
+}: {
+  books: string[]
+  selectedBooks: string[]
+  onSelectedBooksChange: (value: string[]) => void
+}) {
+  return (
+    <div className="mb-4 rounded-2xl border border-white/8 bg-black/20 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Book filter</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => onSelectedBooksChange([])}>
+            All books
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onSelectedBooksChange(books)}>
+            Select all
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onSelectedBooksChange([])}>
+            Clear
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {books.length ? (
+          books.map((book) => {
+            const active = selectedBooks.includes(book)
+            return (
+              <button
+                key={book}
+                type="button"
+                onClick={() => {
+                  if (active) {
+                    onSelectedBooksChange(selectedBooks.filter((entry) => entry !== book))
+                  } else {
+                    onSelectedBooksChange([...selectedBooks, book])
+                  }
+                }}
+                className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] transition ${
+                  active
+                    ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-100"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:border-white/30"
+                }`}
+              >
+                {book}
+              </button>
+            )
+          })
+        ) : (
+          <p className="text-sm text-slate-400">No sportsbook rows detected yet.</p>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        {selectedBooks.length === 0
+          ? "Showing all books."
+          : `Showing ${selectedBooks.length} selected book${selectedBooks.length === 1 ? "" : "s"}.`}
+      </p>
+    </div>
+  )
+}
+
 function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
   const entries = Object.entries(predictionRun?.value_bets ?? {})
   return entries
@@ -1271,6 +1411,96 @@ function secondaryBadgeLabel(market: string) {
     return "placement"
   }
   return "mispriced"
+}
+
+function normalizeSportsbook(value?: string | null): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+}
+
+function collectAvailableBooks(
+  predictionRun: PredictionRunResponse | null,
+  liveSnapshot: LiveRefreshSnapshot | null,
+): string[] {
+  const names = new Set<string>()
+  for (const matchup of predictionRun?.matchup_bets ?? []) {
+    const normalized = normalizeSportsbook(matchup.book)
+    if (normalized) {
+      names.add(normalized)
+    }
+  }
+  for (const row of liveSnapshot?.live_tournament?.matchups ?? []) {
+    const normalized = normalizeSportsbook(row.bookmaker)
+    if (normalized) {
+      names.add(normalized)
+    }
+  }
+  for (const row of liveSnapshot?.upcoming_tournament?.matchups ?? []) {
+    const normalized = normalizeSportsbook(row.bookmaker)
+    if (normalized) {
+      names.add(normalized)
+    }
+  }
+  return Array.from(names).sort()
+}
+
+function buildHydratedPredictionRun(snapshot: LiveRefreshSnapshot | null): PredictionRunResponse | null {
+  if (!snapshot) {
+    return null
+  }
+  const source = snapshot.live_tournament ?? snapshot.upcoming_tournament
+  if (!source) {
+    return null
+  }
+  const rankings = source.rankings ?? []
+  const matchups = source.matchups ?? []
+  return {
+    status: "hydrated",
+    event_name: source.event_name ?? "Event",
+    course_name: source.course_name ?? "",
+    field_size: source.field_size ?? rankings.length,
+    composite_results: rankings.map((row) => ({
+      player_key: row.player_key ?? normalize_name_for_ui(row.player),
+      player_display: row.player,
+      rank: Number(row.rank ?? 0),
+      composite: Number(row.composite ?? 0),
+      course_fit: Number(row.course_fit ?? 0),
+      form: Number(row.form ?? 0),
+      momentum: Number(row.momentum ?? 0),
+    })),
+    matchup_bets: matchups.map((row) => {
+      const pickKey = row.player_key ?? normalize_name_for_ui(row.player)
+      const opponentKey = row.opponent_key ?? normalize_name_for_ui(row.opponent)
+      const ev = Number(row.ev ?? 0)
+      return {
+        pick: row.player,
+        pick_key: pickKey,
+        opponent: row.opponent,
+        opponent_key: opponentKey,
+        odds: String(row.market_odds ?? "--"),
+        book: normalizeSportsbook(row.bookmaker) || "unknown",
+        model_win_prob: Number(row.model_prob ?? 0.5),
+        implied_prob: 0.5,
+        ev,
+        ev_pct: `${(ev * 100).toFixed(1)}%`,
+        composite_gap: 0,
+        form_gap: 0,
+        course_fit_gap: 0,
+        reason: "Hydrated from always-on snapshot",
+      }
+    }),
+    value_bets: {},
+    warnings: ["Hydrated from live snapshot. Run a manual prediction for full model details."],
+  }
+}
+
+function normalize_name_for_ui(value?: string): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
 }
 
 function isCutFinishState(finishState?: string | null) {

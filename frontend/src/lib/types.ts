@@ -58,7 +58,9 @@ export type LiveRankingRow = {
 
 export type LiveMatchupRow = {
   player: string
+  player_key?: string
   opponent: string
+  opponent_key?: string
   bookmaker?: string
   market_odds?: string
   model_prob?: number
@@ -68,6 +70,10 @@ export type LiveMatchupRow = {
 
 export type LiveTournamentSnapshot = {
   event_name?: string
+  source_event_id?: string
+  source_event_name?: string
+  generated_from?: string
+  data_mode?: string
   course_name?: string
   field_size?: number
   active?: boolean

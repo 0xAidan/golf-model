@@ -50,6 +50,7 @@ class GolfModelService:
         include_post_review: bool = False,
         include_methodology: bool = True,
         strategy_source: str = "registry",
+        apply_ai_adjustments: bool = True,
     ) -> dict:
         """
         Run the complete prediction pipeline.
@@ -145,6 +146,8 @@ class GolfModelService:
                 self.strategy_config = build_pipeline_strategy_config(strategy)
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
+        elif strategy_source == "config" and self.strategy_config:
+            result["strategy_meta"] = self._strategy_meta_from_pipeline(self.strategy_config)
 
         # Step 8: Run composite model
         print("  Running composite model...")
@@ -176,9 +179,12 @@ class GolfModelService:
                 tid, composite, profile, tournament_name, course_name
             )
             if ai_pre_analysis:
-                composite = self._apply_ai_adjustments(composite, ai_pre_analysis)
-                result["composite_results"] = composite
-                print("    → AI adjustments applied")
+                if apply_ai_adjustments:
+                    composite = self._apply_ai_adjustments(composite, ai_pre_analysis)
+                    result["composite_results"] = composite
+                    print("    → AI adjustments applied")
+                else:
+                    print("    → AI narrative only (composite scores unchanged)")
 
         result["ai_pre_analysis"] = ai_pre_analysis
 
@@ -257,6 +263,8 @@ class GolfModelService:
             ai_pre_analysis, ai_decisions,
             matchup_bets=matchup_bets,
             mode=mode,
+            strategy_meta=result.get("strategy_meta"),
+            ai_scores_adjusted=not (enable_ai and ai_pre_analysis and not apply_ai_adjustments),
         )
         result["card_filepath"] = card_path
 
@@ -538,15 +546,14 @@ class GolfModelService:
         return value_bets
 
     def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> list:
-        """Fetch matchup value bets at the preferred book only.
+        """Fetch matchup value bets across all available books.
 
-        **full** and **matchups-only**: 72-hole (tournament) matchups only — same product bet365
-        and other books actually list. **round-matchups**: per-round H2H only (often missing on-app).
+        **full** and **matchups-only**: 72-hole (tournament) matchups.
+        **round-matchups**: per-round H2H first, with tournament fallback when books are sparse.
         """
         try:
             from src.datagolf import fetch_matchup_odds
             from src.matchup_value import find_matchup_value_bets
-            from src.odds import get_preferred_book
             from src import config
 
             ev_threshold = self.strategy_config.get("matchup_ev_threshold") if self.strategy_config else None
@@ -554,9 +561,9 @@ class GolfModelService:
                 ev_threshold = self.strategy_config.get("ev_threshold") if self.strategy_config else None
             if ev_threshold is None:
                 ev_threshold = getattr(config, "MATCHUP_EV_THRESHOLD", 0.05)
-            required_book = get_preferred_book()
             if mode == "round-matchups":
-                markets = [("round_matchups", "round")]
+                # Prefer true round H2H in live windows, but include tournament lines as fallback.
+                markets = [("round_matchups", "round"), ("tournament_matchups", "72-hole fallback")]
             else:
                 markets = [("tournament_matchups", "72-hole")]
             aggregated = []
@@ -567,14 +574,28 @@ class GolfModelService:
                         continue
                     bets = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
-                        required_book=required_book, market_type=market_key,
+                        required_book=None, market_type=market_key,
                     )
                     for b in bets:
                         b["market_type"] = market_key
                     aggregated.extend(bets)
                 except Exception as e:
                     logger.warning("Matchup fetch %s: %s", label, e)
-            return sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
+
+            # Deduplicate identical lines that can appear in both markets/fallbacks.
+            deduped = {}
+            for bet in aggregated:
+                key = (
+                    bet.get("pick_key"),
+                    bet.get("opponent_key"),
+                    str(bet.get("book") or "").strip().lower(),
+                    str(bet.get("odds")),
+                    bet.get("market_type"),
+                )
+                current = deduped.get(key)
+                if current is None or float(bet.get("ev", 0)) > float(current.get("ev", 0)):
+                    deduped[key] = bet
+            return sorted(deduped.values(), key=lambda x: x.get("ev", 0), reverse=True)
         except Exception as e:
             logger.warning("Matchup value bets failed: %s", e)
             return []
@@ -734,9 +755,27 @@ class GolfModelService:
             },
         }
 
+    def _strategy_meta_from_pipeline(self, pipeline: dict) -> dict:
+        """Card footer / provenance when strategy_config is passed explicitly (e.g. sandbox)."""
+        w = pipeline.get("weights") or {}
+        return {
+            "strategy_source": "sandbox",
+            "strategy_name": pipeline.get("name", "custom"),
+            "runtime_settings": {
+                "blend_weights": {
+                    "course_fit": float(w.get("course_fit", 0.45)),
+                    "form": float(w.get("form", 0.45)),
+                    "momentum": float(w.get("momentum", 0.10)),
+                },
+                "ev_threshold": pipeline.get("ev_threshold"),
+            },
+        }
+
     def _generate_card(self, tournament_name, course_name, composite,
                         value_bets, output_dir, ai_pre_analysis, ai_decisions,
-                        matchup_bets: list = None, mode: str = "full") -> str | None:
+                        matchup_bets: list = None, mode: str = "full",
+                        strategy_meta: dict | None = None,
+                        ai_scores_adjusted: bool = True) -> str | None:
         """Generate markdown betting card."""
         try:
             from src.card import generate_card
@@ -750,6 +789,8 @@ class GolfModelService:
                 ai_decisions=ai_decisions,
                 matchup_bets=matchup_bets or [],
                 mode=mode,
+                strategy_meta=strategy_meta,
+                ai_scores_adjusted=ai_scores_adjusted,
             )
         except Exception as e:
             logger.warning(f"Card generation error: {e}")

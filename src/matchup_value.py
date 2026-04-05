@@ -131,6 +131,58 @@ def _parse_book_odds(matchup: dict, book: str) -> tuple[int | None, int | None]:
     return (None, None)
 
 
+def _iter_book_odds(matchup: dict) -> list[tuple[str, int, int]]:
+    """Return all books that have valid two-sided prices for a matchup."""
+    books: list[tuple[str, int, int]] = []
+    books_data = matchup.get("odds", {})
+    if not books_data:
+        for key, val in matchup.items():
+            if isinstance(val, dict) and (
+                key.startswith("book_")
+                or key.lower() in ("draftkings", "fanduel", "betmgm", "caesars", "bet365", "pinnacle")
+            ):
+                books_data[key] = val
+
+    for book_name, book_odds in books_data.items():
+        if not isinstance(book_odds, dict):
+            continue
+        p1_price = book_odds.get("p1") or book_odds.get("odds_1") or book_odds.get("player_1")
+        p2_price = book_odds.get("p2") or book_odds.get("odds_2") or book_odds.get("player_2")
+        try:
+            p1_val = int(float(p1_price)) if p1_price is not None else None
+            p2_val = int(float(p2_price)) if p2_price is not None else None
+        except (ValueError, TypeError):
+            p1_val = None
+            p2_val = None
+        if p1_val is None or p2_val is None:
+            continue
+        books.append((str(book_name), p1_val, p2_val))
+
+    # DataGolf fallback if nested books are unavailable.
+    if not books:
+        for field_p1, field_p2 in [("p1_odds", "p2_odds"), ("odds_p1", "odds_p2")]:
+            if matchup.get(field_p1) is None or matchup.get(field_p2) is None:
+                continue
+            try:
+                p1_val = int(float(matchup[field_p1]))
+                p2_val = int(float(matchup[field_p2]))
+            except (ValueError, TypeError):
+                continue
+            books.append(("datagolf", p1_val, p2_val))
+            break
+
+    # Deduplicate by normalized book key, keep first valid pair encountered.
+    deduped: list[tuple[str, int, int]] = []
+    seen_books: set[str] = set()
+    for book_name, p1_odds, p2_odds in books:
+        key = book_name.strip().lower()
+        if key in seen_books:
+            continue
+        seen_books.add(key)
+        deduped.append((book_name, p1_odds, p2_odds))
+    return deduped
+
+
 def compute_conviction_score(
     form_gap: float,
     course_fit_gap: float,
@@ -238,14 +290,6 @@ def find_matchup_value_bets(composite_results: list[dict],
         if not p1_data or not p2_data:
             continue
 
-        if required_book:
-            p1_odds, p2_odds = _parse_book_odds(matchup, required_book)
-            if p1_odds is None or p2_odds is None:
-                continue
-            p1_best, p2_best = (p1_odds, required_book), (p2_odds, required_book)
-        else:
-            p1_best, p2_best = _parse_best_odds(matchup)
-
         composite_gap = p1_data["composite"] - p2_data["composite"]
         if composite_gap == 0:
             continue
@@ -253,19 +297,10 @@ def find_matchup_value_bets(composite_results: list[dict],
         # Pick the player our model favors
         if composite_gap > 0:
             pick_data, opp_data = p1_data, p2_data
-            pick_odds_pair = p1_best
+            pick_side = "p1"
         else:
             pick_data, opp_data = p2_data, p1_data
-            pick_odds_pair = p2_best
-
-        if pick_odds_pair is None:
-            continue
-
-        pick_odds, pick_book = pick_odds_pair
-
-        implied_prob = american_to_implied_prob(pick_odds)
-        if not implied_prob or implied_prob <= 0:
-            continue
+            pick_side = "p2"
 
         # Model win probability via Platt-style sigmoid: P(win) = 1/(1+exp(A*gap+B))
         gap = abs(composite_gap)
@@ -289,11 +324,6 @@ def find_matchup_value_bets(composite_results: list[dict],
                 if config.REQUIRE_DG_MODEL_AGREEMENT:
                     if (dg_prob > 0.5) != (platt_win_prob > 0.5):
                         continue
-
-        ev = (model_win_prob / implied_prob) - 1.0
-
-        if ev < ev_threshold:
-            continue
 
         # Gaps from the pick's perspective
         pick_form = pick_data.get("form", 50)
@@ -344,37 +374,53 @@ def find_matchup_value_bets(composite_results: list[dict],
 
         stake_mult = adaptation["stake_multiplier"] if adaptation else 1.0
 
-        ev_pct = ev * 100
-        if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT and gap > config.MATCHUP_TIER_STRONG_GAP:
-            tier = "STRONG"
-        elif ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT and gap > config.MATCHUP_TIER_GOOD_GAP:
-            tier = "GOOD"
+        if required_book:
+            p1_odds, p2_odds = _parse_book_odds(matchup, required_book)
+            book_lines = [(required_book, p1_odds, p2_odds)] if p1_odds is not None and p2_odds is not None else []
         else:
-            tier = "LEAN"
+            book_lines = _iter_book_odds(matchup)
 
-        value_bets.append({
-            "pick": pick_data["player_display"],
-            "pick_key": pick_data["player_key"],
-            "opponent": opp_data["player_display"],
-            "opponent_key": opp_data["player_key"],
-            "odds": pick_odds,
-            "book": pick_book,
-            "model_win_prob": round(model_win_prob, 4),
-            "implied_prob": round(implied_prob, 4),
-            "ev": round(ev, 4),
-            "ev_pct": f"{ev * 100:.1f}%",
-            "composite_gap": round(gap, 1),
-            "form_gap": round(form_gap, 1),
-            "course_fit_gap": round(course_fit_gap, 1),
-            "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
-            "adaptation_state": adaptation["state"] if adaptation else "normal",
-            "stake_multiplier": stake_mult,
-            "tier": tier,
-            "pick_momentum": round(pick_momentum, 1),
-            "opp_momentum": round(opp_momentum, 1),
-            "momentum_aligned": momentum_aligned,
-            "conviction": conviction,
-        })
+        for book_name, p1_odds, p2_odds in book_lines:
+            pick_odds = p1_odds if pick_side == "p1" else p2_odds
+            implied_prob = american_to_implied_prob(pick_odds)
+            if not implied_prob or implied_prob <= 0:
+                continue
+
+            ev = (model_win_prob / implied_prob) - 1.0
+            if ev < ev_threshold:
+                continue
+
+            ev_pct = ev * 100
+            if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT and gap > config.MATCHUP_TIER_STRONG_GAP:
+                tier = "STRONG"
+            elif ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT and gap > config.MATCHUP_TIER_GOOD_GAP:
+                tier = "GOOD"
+            else:
+                tier = "LEAN"
+
+            value_bets.append({
+                "pick": pick_data["player_display"],
+                "pick_key": pick_data["player_key"],
+                "opponent": opp_data["player_display"],
+                "opponent_key": opp_data["player_key"],
+                "odds": pick_odds,
+                "book": str(book_name).strip().lower(),
+                "model_win_prob": round(model_win_prob, 4),
+                "implied_prob": round(implied_prob, 4),
+                "ev": round(ev, 4),
+                "ev_pct": f"{ev * 100:.1f}%",
+                "composite_gap": round(gap, 1),
+                "form_gap": round(form_gap, 1),
+                "course_fit_gap": round(course_fit_gap, 1),
+                "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
+                "adaptation_state": adaptation["state"] if adaptation else "normal",
+                "stake_multiplier": stake_mult,
+                "tier": tier,
+                "pick_momentum": round(pick_momentum, 1),
+                "opp_momentum": round(opp_momentum, 1),
+                "momentum_aligned": momentum_aligned,
+                "conviction": conviction,
+            })
 
     value_bets.sort(
         key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
@@ -386,15 +432,41 @@ def find_matchup_value_bets(composite_results: list[dict],
         max_exposure = getattr(config, "MATCHUP_TOURNAMENT_MAX_PLAYER_EXPOSURE", 2)
     else:
         max_exposure = getattr(config, "MATCHUP_MAX_PLAYER_EXPOSURE", 3)
-    player_counts: dict[str, int] = {}
-    capped: list[dict] = []
+    def _pair_key(bet: dict) -> tuple[str, str, str]:
+        return (
+            str(bet.get("pick_key") or ""),
+            str(bet.get("opponent_key") or ""),
+            str(market_type),
+        )
+
+    best_by_pair: dict[tuple[str, str, str], dict] = {}
     for bet in value_bets:
+        key = _pair_key(bet)
+        current = best_by_pair.get(key)
+        if current is None or float(bet.get("ev", 0.0)) > float(current.get("ev", 0.0)):
+            best_by_pair[key] = bet
+    ranked_pairs = sorted(
+        best_by_pair.values(),
+        key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
+        reverse=True,
+    )
+
+    player_counts: dict[str, int] = {}
+    allowed_pairs: set[tuple[str, str, str]] = set()
+    for bet in ranked_pairs:
         pk = bet["pick_key"]
         ok = bet["opponent_key"]
         if player_counts.get(pk, 0) >= max_exposure or player_counts.get(ok, 0) >= max_exposure:
             continue
         player_counts[pk] = player_counts.get(pk, 0) + 1
         player_counts[ok] = player_counts.get(ok, 0) + 1
-        capped.append(bet)
-    value_bets = capped[: config.MATCHUP_CAP]
-    return value_bets
+        allowed_pairs.add(_pair_key(bet))
+        if len(allowed_pairs) >= config.MATCHUP_CAP:
+            break
+
+    filtered = [bet for bet in value_bets if _pair_key(bet) in allowed_pairs]
+    filtered.sort(
+        key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
+        reverse=True,
+    )
+    return filtered

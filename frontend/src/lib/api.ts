@@ -29,7 +29,7 @@ export const api = {
   getGradingHistory: () => request<GradingHistoryResponse>("/api/grading/history"),
   getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) =>
     request<PlayerProfile>(
-      `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum ? `&course_num=${courseNum}` : ""}`,
+      `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum === undefined || courseNum === null ? "" : `&course_num=${courseNum}`}`,
     ),
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),
   getResearchProposals: () => request<ResearchProposal[]>("/api/research/proposals?limit=12"),
