@@ -124,6 +124,14 @@ export type EventSummary = {
   year: number
 }
 
+export type ScheduleEvent = {
+  event_id: string
+  event_name: string
+  course: string
+  start_date?: string | null
+  end_date?: string | null
+}
+
 export type GradedTournamentSummary = {
   id?: number
   name: string
@@ -197,14 +205,21 @@ export type MatchupBet = {
 
 export type SecondaryBet = {
   player: string
+  player_display?: string
   player_key?: string
   bet_type: string
   odds: string
+  book?: string
   ev: number
+  ev_pct?: string
   is_value?: boolean
   confidence?: string
   reasoning?: string
   recommended_stake?: string
+  model_prob?: number
+  market_prob?: number
+  best_odds?: number
+  best_book?: string
 }
 
 export type FieldValidation = {

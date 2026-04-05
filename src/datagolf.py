@@ -1218,6 +1218,26 @@ def fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True) -> list[dic
             return rows
     return []
 
+def get_schedule_events(tour: str = "pga", upcoming_only: bool = True) -> list[dict]:
+    """Return DG schedule events for a tour, normalized for UI selection."""
+    try:
+        events = fetch_schedule(tour=tour, upcoming_only=upcoming_only)
+        normalized = []
+        for event in events:
+            normalized.append(
+                {
+                    "event_id": str(event.get("event_id", "")),
+                    "event_name": event.get("event_name", ""),
+                    "course": event.get("course", ""),
+                    "start_date": event.get("start_date"),
+                    "end_date": event.get("end_date"),
+                }
+            )
+        return normalized
+    except Exception:
+        logger.warning("get_schedule_events failed", exc_info=True)
+        return []
+
 
 def fetch_dg_matchup_all_pairings(tour: str = "pga", odds_format: str = "american") -> dict:
     """
