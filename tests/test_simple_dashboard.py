@@ -1,6 +1,7 @@
 """Tests for the simplified dashboard and one-click actions."""
 
 import os
+import sqlite3
 import sys
 
 import optuna
@@ -11,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_home_page_shows_simple_actions():
-    """The root dashboard should expose prediction and autoresearch sections."""
+    """The root dashboard should serve the built command-station shell."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -19,21 +20,13 @@ def test_home_page_shows_simple_actions():
 
     assert response.status_code == 200
     text = response.text
-    assert "Golf Model" in text
-    assert "Prediction" in text
-    assert "Autoresearch" in text
-    assert "Simple Mode" in text
-    assert "Lab Mode" in text
-    assert "Run prediction" in text
-    assert "Start Edge Tuner" in text
-    assert "Run Once" in text
-    assert "Command Menu" in text
-    assert "/static/css/main.css?v=" in text
-    assert "/static/js/app.js?v=" in text
+    assert "Golf Model Command Station" in text
+    assert '<div id="root"></div>' in text
+    assert "/assets/" in text
 
 
 def test_home_page_uses_autoresearch_language_not_optimizer_heading():
-    """The main page should present autoresearch, not optimizer."""
+    """The built shell should no longer reference the legacy optimizer wording."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -41,9 +34,9 @@ def test_home_page_uses_autoresearch_language_not_optimizer_heading():
 
     assert response.status_code == 200
     text = response.text
-    assert "autoresearch" in text.lower()
+    assert "Golf Model Command Station" in text
     assert "Continuous Optimizer" not in text
-    assert "Edge Tuner" in text
+    assert "/static/js/app.js" not in text
 
 
 def test_upcoming_prediction_endpoint_returns_output_file(monkeypatch):
@@ -258,6 +251,201 @@ def test_output_latest_not_found(monkeypatch):
     assert r.json().get("not_found") is True
 
 
+def test_latest_completed_event_endpoint_prefers_completed_schedule_event(monkeypatch):
+    """The dashboard should expose the most recently completed event, not the next upcoming one."""
+    import app as app_module
+
+    monkeypatch.setattr(
+        "src.datagolf._call_api",
+        lambda endpoint, params=None: {
+            "schedule": [
+                {"event_id": "501", "event_name": "Masters Tournament", "start_date": "2026-04-09", "end_date": "2026-04-12"},
+                {"event_id": "500", "event_name": "Valero Texas Open", "start_date": "2026-04-02", "end_date": "2026-04-05"},
+                {"event_id": "499", "event_name": "Texas Children's Houston Open", "start_date": "2026-03-26", "end_date": "2026-03-29"},
+            ]
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/events/latest-completed")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event_id"] == "500"
+    assert body["event_name"] == "Valero Texas Open"
+    assert body["year"] == 2026
+
+
+def test_dashboard_state_includes_latest_completed_event_and_relative_prediction_path(monkeypatch, tmp_path):
+    """Dashboard state should expose stable event/output metadata for refresh-safe UI state."""
+    import app as app_module
+    from backtester.strategy import StrategyConfig
+
+    prediction_file = tmp_path / "valero_texas_open_20260405.md"
+    prediction_file.write_text("# Valero Texas Open — Betting Card")
+
+    monkeypatch.setattr(app_module, "_output_dir_absolute", lambda: str(tmp_path))
+    monkeypatch.setattr(
+        app_module,
+        "_latest_output_file",
+        lambda *args, **kwargs: {
+            ("", ".md"): str(prediction_file),
+            ("backtests", ".md"): None,
+            ("research", ".md"): None,
+        }.get((kwargs.get("subdir", ""), kwargs.get("suffix", ".md"))),
+    )
+    monkeypatch.setattr(
+        "src.ai_brain.get_ai_status",
+        lambda: {"provider": "openai", "available": True, "model": "gpt-4o"},
+    )
+    monkeypatch.setattr(
+        "backtester.model_registry.get_live_weekly_model",
+        lambda scope="global": StrategyConfig(name="live_model", min_ev=0.05),
+    )
+    monkeypatch.setattr(
+        "backtester.model_registry.get_research_champion",
+        lambda scope="global": StrategyConfig(name="research_model", min_ev=0.07),
+    )
+    monkeypatch.setattr(
+        "backtester.model_registry.get_live_weekly_model_record",
+        lambda scope="global": {"id": 1, "scope": "global"},
+    )
+    monkeypatch.setattr(
+        "backtester.model_registry.get_research_champion_record",
+        lambda scope="global": {"id": 2, "scope": "global"},
+    )
+    monkeypatch.setattr(
+        "backtester.optimizer_runtime.get_optimizer_status",
+        lambda: {"running": False, "run_count": 0},
+    )
+    monkeypatch.setattr(
+        "src.datagolf.get_datagolf_throttle_status",
+        lambda: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        app_module,
+        "_latest_completed_event_summary",
+        lambda: {"event_id": "500", "event_name": "Valero Texas Open", "year": 2026},
+    )
+    monkeypatch.setattr(
+        app_module,
+        "_latest_graded_tournament_summary",
+        lambda: {"name": "Valero Texas Open", "total_profit": 1.5, "graded_pick_count": 4},
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/dashboard/state")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["latest_completed_event"]["event_id"] == "500"
+    assert body["latest_prediction_artifact"]["path"] == "output/valero_texas_open_20260405.md"
+    assert body["latest_graded_tournament"]["name"] == "Valero Texas Open"
+
+
+def test_grading_history_endpoint_returns_scored_tournament_summaries(monkeypatch, tmp_path):
+    """The dashboard should expose durable grading history from SQLite, not just transient DOM state."""
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_history.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "Valero Texas Open", "TPC San Antonio", 2026, "500"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, bet_type, player_key, player_display, market_odds, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "matchup", "ludvig_aberg", "Ludvig Aberg", "-110", 0.12),
+    )
+    conn.execute(
+        "INSERT INTO results (tournament_id, player_key, player_display, finish_text, made_cut) VALUES (?, ?, ?, ?, ?)",
+        (1, "ludvig_aberg", "Ludvig Aberg", "T5", 1),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes
+           (pick_id, hit, actual_finish, odds_decimal, stake, profit, entered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "T5", 1.91, 1.0, 0.91, "2026-04-05 18:45:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/history")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["tournaments"]) == 1
+    assert body["tournaments"][0]["event_id"] == "500"
+    assert body["tournaments"][0]["graded_pick_count"] == 1
+    assert body["tournaments"][0]["hits"] == 1
+    assert body["tournaments"][0]["total_profit"] == 0.91
+
+
+def test_player_profile_endpoint_returns_recent_rounds_course_history_and_linked_bets(monkeypatch, tmp_path):
+    """Player intelligence should expose a deep profile payload for frontend drill-downs."""
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "player_profile.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (7, "Masters Tournament", "Augusta National", 2026, "501"),
+    )
+    conn.execute(
+        """INSERT INTO metrics
+           (tournament_id, player_key, player_display, metric_category, metric_name, metric_value)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (7, "jon_rahm", "Jon Rahm", "dg_skill", "sg_total", 1.82),
+    )
+    conn.execute(
+        """INSERT INTO rounds
+           (dg_id, player_name, player_key, tour, season, year, event_id, event_name, event_completed,
+            course_name, course_num, course_par, round_num, score, sg_total, fin_text)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (123, "Jon Rahm", "jon_rahm", "alt", 2026, 2026, "480", "LIV Miami", "2026-04-01", "Augusta National", 10, 72, 4, 69, 2.4, "T3"),
+    )
+    conn.execute(
+        """INSERT INTO rounds
+           (dg_id, player_name, player_key, tour, season, year, event_id, event_name, event_completed,
+            course_name, course_num, course_par, round_num, score, sg_total, fin_text)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (123, "Jon Rahm", "jon_rahm", "alt", 2026, 2026, "479", "LIV Singapore", "2026-03-22", "Sentosa", 44, 72, 4, 71, 1.1, "T8"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, bet_type, player_key, player_display, opponent_key, opponent_display, market_odds, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (11, 7, "matchup", "jon_rahm", "Jon Rahm", "scottie_scheffler", "Scottie Scheffler", "-110", 0.08),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/players/jon_rahm/profile?tournament_id=7&course_num=10")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["player_key"] == "jon_rahm"
+    assert body["player_display"] == "Jon Rahm"
+    assert len(body["recent_rounds"]) == 2
+    assert len(body["course_history"]) == 1
+    assert len(body["linked_bets"]) == 1
+    assert body["current_metrics"]["dg_skill"]["sg_total"] == 1.82
+
+
 def test_output_list_and_content_endpoints_are_safe(tmp_path, monkeypatch):
     """The dashboard should list output files and safely read them by output-relative path."""
     import app as app_module
@@ -334,7 +522,7 @@ def test_latest_output_summaries_endpoint_returns_compact_cards(tmp_path, monkey
 
 
 def test_home_page_recent_runs_js_escapes_report_path_safely():
-    """The dashboard loads script and has structure for candidates (report links built in JS)."""
+    """The built dashboard should boot from the frontend asset bundle."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -342,8 +530,30 @@ def test_home_page_recent_runs_js_escapes_report_path_safely():
 
     assert response.status_code == 200
     text = response.text
-    assert "/static/js/app.js?v=" in text
-    assert "bestCandidates" in text
+    assert "/assets/" in text
+    assert '<div id="root"></div>' in text
+
+
+def test_home_page_prefers_built_react_dashboard_when_frontend_dist_exists(tmp_path, monkeypatch):
+    """The app should serve the built React dashboard when a frontend dist is available."""
+    import app as app_module
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "index.html").write_text(
+        "<!doctype html><html><body><div id='root'></div><script type='module' src='/assets/index.js'></script></body></html>",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(app_module, "FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setattr(app_module, "FRONTEND_DIST_INDEX", dist_dir / "index.html")
+
+    client = TestClient(app_module.app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "<div id='root'></div>" in response.text
+    assert "/assets/index.js" in response.text
 
 
 def test_simple_autoresearch_control_flow_uses_scalar_defaults(monkeypatch):

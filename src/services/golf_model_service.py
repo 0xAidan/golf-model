@@ -17,6 +17,15 @@ from src.strategy_resolution import build_pipeline_strategy_config
 
 logger = logging.getLogger("golf_model_service")
 
+MAJOR_EVENT_NAMES = (
+    "masters",
+    "pga championship",
+    "u.s. open",
+    "us open",
+    "the open",
+    "open championship",
+)
+
 
 class GolfModelService:
     """Orchestrates the full prediction pipeline."""
@@ -85,6 +94,7 @@ class GolfModelService:
 
         result["event_name"] = tournament_name
         result["course_name"] = course_name
+        result["course_num"] = course_num
 
         # Step 2: Create/get tournament
         tid = db.get_or_create_tournament(tournament_name, course_name)
@@ -92,7 +102,7 @@ class GolfModelService:
 
         # Step 3: Backfill round data if needed
         if enable_backfill:
-            self._backfill_rounds(backfill_years)
+            self._backfill_rounds(backfill_years, tournament_name=tournament_name)
 
         # Step 4: Sync DG predictions, decompositions, field
         sync_result = self._sync_tournament_data(tid)
@@ -106,6 +116,17 @@ class GolfModelService:
         if field_keys:
             print("  Fetching DG skill ratings & rankings...")
             self._sync_skill_data(tid, field_keys)
+
+        field_validation = self._validate_field_data(tid, tournament_name, field_keys)
+        result["field_validation"] = field_validation
+        if field_validation.get("has_cross_tour_field_risk"):
+            warning = (
+                "Field data coverage warning: "
+                f"{len(field_validation.get('players_with_thin_rounds', []))} players with thin round history, "
+                f"{len(field_validation.get('players_missing_dg_skill', []))} players missing DG skill data."
+            )
+            result["warnings"].append(warning)
+            logger.warning(warning)
 
         # Step 6: Compute rolling stats
         print("  Computing rolling stats...")
@@ -279,7 +300,25 @@ class GolfModelService:
             logger.warning(f"Could not detect event: {e}")
             return None
 
-    def _backfill_rounds(self, years: list[int] = None):
+    def _is_major_event(self, tournament_name: str | None) -> bool:
+        if not tournament_name:
+            return False
+        normalized = tournament_name.strip().lower()
+        return any(name in normalized for name in MAJOR_EVENT_NAMES)
+
+    def _backfill_tours_for_event(self, tournament_name: str | None) -> list[str]:
+        tours = [self.tour]
+        if self.tour == "pga" and self._is_major_event(tournament_name):
+            tours.append("alt")
+        seen = set()
+        ordered = []
+        for tour in tours:
+            if tour not in seen:
+                seen.add(tour)
+                ordered.append(tour)
+        return ordered
+
+    def _backfill_rounds(self, years: list[int] = None, tournament_name: str = None):
         """Ensure round data exists for required years."""
         from src.datagolf import fetch_historical_rounds, _parse_rounds_response
 
@@ -287,17 +326,19 @@ class GolfModelService:
             years = [2024, 2025, 2026]
 
         status = db.get_rounds_backfill_status()
-        for year in years:
-            found = any(r["tour"] == self.tour and r["year"] == year for r in status)
-            if not found:
-                try:
-                    logger.info(f"Backfilling {self.tour.upper()} {year}...")
-                    raw = fetch_historical_rounds(tour=self.tour, event_id="all", year=year)
-                    rows = _parse_rounds_response(raw, self.tour, year)
-                    db.store_rounds(rows)
-                    time.sleep(2)
-                except Exception as e:
-                    logger.warning(f"Backfill error for {year}: {e}")
+        tours = self._backfill_tours_for_event(tournament_name)
+        for tour in tours:
+            for year in years:
+                found = any(r["tour"] == tour and r["year"] == year for r in status)
+                if not found:
+                    try:
+                        logger.info(f"Backfilling {tour.upper()} {year}...")
+                        raw = fetch_historical_rounds(tour=tour, event_id="all", year=year)
+                        rows = _parse_rounds_response(raw, tour, year)
+                        db.store_rounds(rows)
+                        time.sleep(2)
+                    except Exception as e:
+                        logger.warning(f"Backfill error for {tour.upper()} {year}: {e}")
 
     def _sync_tournament_data(self, tournament_id: int) -> dict:
         """Sync predictions, decompositions, field from DG."""
@@ -337,6 +378,32 @@ class GolfModelService:
         except Exception as e:
             logger.warning(f"Rolling stats error: {e}")
             return {"error": str(e)}
+
+    def _validate_field_data(self, tournament_id: int, tournament_name: str | None, field_keys: list[str]) -> dict:
+        """Summarize whether field players have enough recent data, especially in majors."""
+        thin_rounds = []
+        missing_skill = []
+
+        for player_key in field_keys:
+            pretty_name = " ".join(part.capitalize() for part in player_key.split("_") if part)
+            recent_rounds = db.get_player_recent_rounds_by_key(player_key, limit=24)
+            if len(recent_rounds) < 8:
+                thin_rounds.append(pretty_name)
+
+            player_metrics = db.get_player_metrics(tournament_id, player_key)
+            has_dg_skill = any(m.get("metric_category") == "dg_skill" for m in player_metrics)
+            has_dg_ranking = any(m.get("metric_category") == "dg_ranking" for m in player_metrics)
+            if not has_dg_skill and not has_dg_ranking:
+                missing_skill.append(pretty_name)
+
+        return {
+            "major_event": self._is_major_event(tournament_name),
+            "cross_tour_backfill_used": "alt" in self._backfill_tours_for_event(tournament_name),
+            "players_checked": len(field_keys),
+            "players_with_thin_rounds": thin_rounds,
+            "players_missing_dg_skill": missing_skill,
+            "has_cross_tour_field_risk": bool(thin_rounds or missing_skill),
+        }
 
     def _harvest_intel(self, field_keys: list[str],
                        tournament_id: int = None) -> dict | None:
