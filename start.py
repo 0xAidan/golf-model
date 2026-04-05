@@ -78,6 +78,69 @@ def cmd_dashboard(args):
     ], cwd=ROOT)
 
 
+def cmd_ui(args):
+    """Start the UI in build mode or dev mode."""
+    import subprocess
+
+    frontend_root = os.path.join(ROOT, "frontend")
+    port = args.port or 8000
+
+    if getattr(args, "dev", False):
+        if os.path.isdir(frontend_root) and not getattr(args, "skip_frontend_install", False):
+            print("\nInstalling frontend dependencies...\n")
+            subprocess.run(["npm", "install"], cwd=frontend_root, check=True)
+
+        print(f"\nStarting backend on http://127.0.0.1:{port}")
+        print(f"Starting frontend dev server on http://127.0.0.1:{args.frontend_port}")
+        print("Press Ctrl+C to stop both\n")
+
+        backend_command = [
+            sys.executable, "-m", "uvicorn", "app:app",
+            "--host", "0.0.0.0",
+            "--port", str(port),
+        ]
+        if not getattr(args, "no_reload", False):
+            backend_command.append("--reload")
+
+        frontend_command = [
+            "npm", "run", "dev", "--",
+            "--host", "127.0.0.1",
+            "--port", str(args.frontend_port),
+        ]
+
+        backend_process = subprocess.Popen(backend_command, cwd=ROOT)
+        frontend_process = subprocess.Popen(frontend_command, cwd=frontend_root)
+
+        try:
+            frontend_process.wait()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            for process in (frontend_process, backend_process):
+                if process.poll() is None:
+                    process.terminate()
+        return
+
+    if os.path.isdir(frontend_root):
+        if not getattr(args, "skip_frontend_install", False):
+            print("\nInstalling frontend dependencies...\n")
+            subprocess.run(["npm", "install"], cwd=frontend_root, check=True)
+
+        print("\nBuilding frontend dashboard...\n")
+        subprocess.run(["npm", "run", "build"], cwd=frontend_root, check=True)
+
+    print(f"\nStarting UI on http://localhost:{port}")
+    print("Press Ctrl+C to stop\n")
+    dashboard_command = [
+        sys.executable, "-m", "uvicorn", "app:app",
+        "--host", "0.0.0.0",
+        "--port", str(port),
+    ]
+    if not getattr(args, "no_reload", False):
+        dashboard_command.append("--reload")
+    subprocess.run(dashboard_command, cwd=ROOT, check=True)
+
+
 def cmd_agent(args):
     """Start the autonomous research agent."""
     from src.db import ensure_initialized
@@ -610,15 +673,16 @@ def interactive_menu():
     print()
     print("  1. Run Analysis (this week's tournament)")
     print("  2. Open Web Dashboard")
-    print("  3. Start Research Agent")
-    print("  4. Run Backfill")
-    print("  5. Run Backtest")
-    print("  6. System Status")
-    print("  7. Setup Wizard")
+    print("  3. Launch Full UI (one command)")
+    print("  4. Start Research Agent")
+    print("  5. Run Backfill")
+    print("  6. Run Backtest")
+    print("  7. System Status")
+    print("  8. Setup Wizard")
     print("  0. Exit")
     print()
 
-    choice = input("  Enter choice (0-7): ").strip()
+    choice = input("  Enter choice (0-8): ").strip()
 
     class FakeArgs:
         tour = "pga"
@@ -627,6 +691,8 @@ def interactive_menu():
         no_ai = False
         no_backfill = False
         port = 8000
+        skip_frontend_install = False
+        no_reload = False
         years = None
         no_weather = False
         name = None
@@ -640,14 +706,16 @@ def interactive_menu():
     elif choice == "2":
         cmd_dashboard(args)
     elif choice == "3":
-        cmd_agent(args)
+        cmd_ui(args)
     elif choice == "4":
-        cmd_backfill(args)
+        cmd_agent(args)
     elif choice == "5":
-        cmd_backtest(args)
+        cmd_backfill(args)
     elif choice == "6":
-        cmd_status(args)
+        cmd_backtest(args)
     elif choice == "7":
+        cmd_status(args)
+    elif choice == "8":
         cmd_setup(args)
     elif choice == "0":
         print("  Goodbye!")
@@ -676,6 +744,14 @@ def main():
     # dashboard
     p_dash = subparsers.add_parser("dashboard", help="Start web dashboard")
     p_dash.add_argument("--port", type=int, default=8000)
+
+    # ui
+    p_ui = subparsers.add_parser("ui", help="Install/build frontend and start the dashboard")
+    p_ui.add_argument("--port", type=int, default=8000)
+    p_ui.add_argument("--frontend-port", type=int, default=5173)
+    p_ui.add_argument("--dev", action="store_true")
+    p_ui.add_argument("--skip-frontend-install", action="store_true")
+    p_ui.add_argument("--no-reload", action="store_true")
 
     # agent
     subparsers.add_parser("agent", help="Start research agent")
@@ -771,6 +847,8 @@ def main():
         cmd_analyze(args)
     elif args.command == "dashboard":
         cmd_dashboard(args)
+    elif args.command == "ui":
+        cmd_ui(args)
     elif args.command == "agent":
         cmd_agent(args)
     elif args.command == "backfill":

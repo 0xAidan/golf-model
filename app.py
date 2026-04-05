@@ -397,6 +397,14 @@ async def get_latest_completed_event():
     return event
 
 
+@app.get("/api/events/schedule")
+async def get_events_schedule(tour: str = "pga", upcoming_only: bool = True):
+    """Return selectable schedule events for a tour."""
+    from src.datagolf import get_schedule_events
+
+    return {"events": get_schedule_events(tour=tour, upcoming_only=upcoming_only)}
+
+
 @app.get("/api/grading/history")
 async def get_grading_history(limit: int = 20):
     """Return durable grading history from stored tournaments, results, and pick outcomes."""

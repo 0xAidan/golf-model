@@ -1204,6 +1204,31 @@ def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None
         return None
 
 
+def get_schedule_events(tour: str = "pga", upcoming_only: bool = True) -> list[dict]:
+    """Return DG schedule events for a tour, normalized for UI selection."""
+    try:
+        params = {"tour": tour}
+        if upcoming_only:
+            params["upcoming_only"] = "yes"
+        schedule = _call_api("get-schedule", params)
+        events = schedule if isinstance(schedule, list) else schedule.get("schedule", [])
+        normalized = []
+        for event in events:
+            normalized.append(
+                {
+                    "event_id": str(event.get("event_id", "")),
+                    "event_name": event.get("event_name", ""),
+                    "course": event.get("course", ""),
+                    "start_date": event.get("start_date"),
+                    "end_date": event.get("end_date"),
+                }
+            )
+        return normalized
+    except Exception:
+        logger.warning("get_schedule_events failed", exc_info=True)
+        return []
+
+
 def fetch_dg_matchup_all_pairings(tour: str = "pga", odds_format: str = "american") -> dict:
     """
     Fetch DG's own model probabilities for all matchup pairings.

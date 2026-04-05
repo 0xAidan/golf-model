@@ -276,6 +276,43 @@ def test_latest_completed_event_endpoint_prefers_completed_schedule_event(monkey
     assert body["year"] == 2026
 
 
+def test_events_schedule_endpoint_returns_selectable_events_for_tour(monkeypatch):
+    """The dashboard should expose schedule events for dropdown-based run controls."""
+    import app as app_module
+
+    monkeypatch.setattr(
+        "src.datagolf._call_api",
+        lambda endpoint, params=None: {
+            "schedule": [
+                {
+                    "event_id": "501",
+                    "event_name": "Masters Tournament",
+                    "course": "Augusta National",
+                    "start_date": "2026-04-09",
+                    "end_date": "2026-04-12",
+                },
+                {
+                    "event_id": "500",
+                    "event_name": "Valero Texas Open",
+                    "course": "TPC San Antonio",
+                    "start_date": "2026-04-02",
+                    "end_date": "2026-04-05",
+                },
+            ]
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/events/schedule?tour=pga")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["events"]) == 2
+    assert body["events"][0]["event_id"] == "501"
+    assert body["events"][0]["event_name"] == "Masters Tournament"
+    assert body["events"][0]["course"] == "Augusta National"
+
+
 def test_dashboard_state_includes_latest_completed_event_and_relative_prediction_path(monkeypatch, tmp_path):
     """Dashboard state should expose stable event/output metadata for refresh-safe UI state."""
     import app as app_module

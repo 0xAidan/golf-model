@@ -31,12 +31,37 @@ cp .env.example .env   # then add your API keys
 
 python setup_wizard.py          # first-time setup: backfills data, initializes DB
 python run_predictions.py       # run the full pipeline for this week's tournament
-python app.py                   # start the web UI at http://localhost:8000
+python start.py ui              # one command: build frontend + start UI at http://localhost:8000
+python start.py ui --dev        # one command: backend + Vite dev server for Cursor design mode
 ```
 
 ## Web UI
 
 The dashboard at `http://localhost:8000` handles the full workflow: run predictions, view betting cards, grade past tournaments, manage the model registry, run autoresearch experiments, and track calibration/ROI over time. FastAPI auto-generates API docs at `/docs`.
+
+Run it from the repo root with:
+
+```bash
+python start.py ui
+```
+
+For Cursor design mode / live frontend work, use:
+
+```bash
+python start.py ui --dev
+```
+
+That starts:
+
+- FastAPI on `http://127.0.0.1:8000`
+- Vite on `http://127.0.0.1:5173`
+
+Optional flags:
+
+- `python start.py ui --skip-frontend-install` to skip `npm install` when dependencies are already present
+- `python start.py ui --port 8080` to change the port
+- `python start.py ui --dev --frontend-port 4173` to change the Vite dev port
+- `python start.py ui --no-reload` to disable FastAPI reload mode
 
 ## How It Works
 
