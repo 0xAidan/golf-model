@@ -151,6 +151,11 @@ def _algorithm_overview(lines, w_cf, w_form, w_mom):
                  "Data Golf's calibrated probability** (95% DG + 5% model) to produce a final model probability. "
                  "This probability is compared against live sportsbook odds to find value bets.")
     lines.append("")
+    lines.append("**Card strategy:** The betting card is matchup-first: the top plays are always tournament and round matchups (up to "
+                 f"{getattr(config, 'BEST_BETS_COUNT', 5)}). Placements appear only when EV meets the high-confidence floor (≥{getattr(config, 'PLACEMENT_CARD_EV_FLOOR', 0.15):.0%}). "
+                 "Each matchup bet includes a **conviction score** (0–100) combining form differential, course-fit differential, "
+                 "momentum alignment (pick hot / opponent cold), and DG/model agreement strength.")
+    lines.append("")
     lines.append("### High-Level Flow")
     lines.append("")
     lines.append("```")
@@ -782,14 +787,19 @@ def _picks_rationale(lines, value_bets, composite, ctx):
     if matchup_bets:
         lines.append(f"### Matchup Value ({len(matchup_bets)} bets)")
         lines.append("")
-        lines.append("| Pick | vs | Odds | Model Win% | EV | Book |")
-        lines.append("|------|-----|------|------------|-----|------|")
+        lines.append("Matchups use a Platt-style sigmoid on composite gap, blended 80% DG / 20% model. "
+                     "Conviction (0–100) combines form gap, course-fit gap, momentum alignment, and DG/model agreement.")
+        lines.append("")
+        lines.append("| Pick | vs | Odds | Model Win% | EV | Conviction | Tier | Book |")
+        lines.append("|------|-----|------|------------|-----|------------|------|------|")
         for bet in matchup_bets[:10]:
             odds = bet.get("odds", 0)
             odds_str = _fmt_odds(odds)
+            conv = bet.get("conviction", "—")
+            conv_str = str(conv) if conv is not None else "—"
             lines.append(
                 f"| {bet['pick']} | {bet['opponent']} | {odds_str} "
-                f"| {bet.get('model_win_prob', 0):.1%} | {bet.get('ev_pct', '')} | {bet.get('book', '—')} |"
+                f"| {bet.get('model_win_prob', 0):.1%} | {bet.get('ev_pct', '')} | {conv_str} | {bet.get('tier', '—')} | {bet.get('book', '—')} |"
             )
         lines.append("")
 

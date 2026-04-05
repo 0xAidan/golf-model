@@ -235,7 +235,7 @@ golf-model/
 | Intent | Command | Notes |
 |--------|---------|-------|
 | Full prediction pipeline | `python run_predictions.py` | Primary entry. Auto-detects current DG event, runs full pipeline. Uses GolfModelService. |
-| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Tabs: predictions, cards, grading, registry, autoresearch, calibration. 2916 lines. |
+| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups only at preferred book; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
 | First-time setup | `python setup_wizard.py` | Backfills data, initializes DB. Run once. |
 | Unified launcher | `python start.py` | Interactive menu routing to pipeline, backtester, etc. |
 | CLI analysis | `python analyze.py --tournament "Name" --course "Name" --sync` | Own pipeline by default. Add `--service` to use GolfModelService. `--ai` for AI. `--calibration` for dashboard. |
@@ -253,7 +253,7 @@ detect event → backfill rounds (if enabled)
 → load course profile
 → composite model (course_fit + form + momentum; optional weather)
 → AI pre-tournament analysis (if enabled; adjustments applied to composite)
-→ value detection (model vs market EV, blend DG/model) + matchup value (Platt-style)
+→ value detection (model vs market EV, blend DG/model; placement probs corrected by empirical calibration when bucket has 50+ samples) + matchup value (Platt-style)
 → portfolio diversification + exposure caps
 → generate card + methodology → write to output/
 ```
@@ -276,6 +276,12 @@ All orchestration goes through `src.services.golf_model_service.GolfModelService
 | `OPENAI_MODEL` | No | `gpt-4o` | Model override for OpenAI provider |
 | `EV_THRESHOLD` | No | `0.08` | Override default EV threshold |
 | `MATCHUP_EV_THRESHOLD` | No | `0.05` | Override matchup EV threshold |
+| `AUTORESEARCH_GUARDRAIL_MODE` | No | *(empty)* | Env override for guardrail mode. Prefer setting **Guardrail mode** in the dashboard (Autoresearch tab); stored in `data/autoresearch_settings.json`. Set here to override UI for scripts. |
+| `AUTORESEARCH_MAX_TRIAL_SECONDS` | No | `3600` | Wall-clock cap per walk-forward trial inside Optuna (thread timeout). Lower on laptops. |
+| `AUTORESEARCH_GUARDRAIL_MIN_BETS` | No | `30` | Min bets required for a candidate to pass guardrails (ignored when `AUTORESEARCH_GUARDRAIL_MODE=loose`) |
+| `AUTORESEARCH_GUARDRAIL_MAX_CLV_REGRESSION` | No | `0.02` | Max allowed CLV drop vs baseline (ignored when mode=loose) |
+| `AUTORESEARCH_GUARDRAIL_MAX_CALIBRATION_REGRESSION` | No | `0.03` | Max allowed calibration error increase vs baseline (ignored when mode=loose) |
+| `AUTORESEARCH_GUARDRAIL_MAX_DRAWDOWN_REGRESSION` | No | `10.0` | Max allowed drawdown increase vs baseline (ignored when mode=loose) |
 | `PREFERRED_BOOK` | No | `bet365` | Target sportsbook for live card |
 | `PREFERRED_BOOK_ONLY` | No | `true` | Only show plays at preferred book |
 
@@ -291,16 +297,17 @@ Three profiles: `default` (AI + backfill 2024–2026), `quick` (no AI, no backfi
 
 Major sections and key values:
 - **Value/EV:** `DEFAULT_EV_THRESHOLD` (0.08), `MARKET_EV_THRESHOLDS` (per market: outright 0.15, top5 0.10, top10 0.08, top20 0.08, frl 0.10, make_cut 0.05, 3ball 0.08), `MAX_TOTAL_VALUE_BETS` (5), `MAX_TOTAL_VALUE_BETS_WEAK_FIELD` (6), `MAX_CREDIBLE_EV` (2.0), `PHANTOM_EV_THRESHOLD` (1.0), `MIN_MARKET_PROB` (0.005), dead heat discounts, `MAX_REASONABLE_ODDS` (per market dict)
-- **Best bets:** `BEST_BETS_MATCHUP_ONLY` (True — matchups first, placements fallback), `MAX_CREDIBLE_PLACEMENT_EV` (0.50)
+- **Best bets:** `BEST_BETS_MATCHUP_ONLY` (True), `BEST_BETS_COUNT` (5 — matchup plays shown in card header), `PLACEMENT_CARD_EV_FLOOR` (0.15 — only show placements with EV ≥15%), `PLACEMENT_CARD_MAX` (3 — max placement bets on card), `MAX_CREDIBLE_PLACEMENT_EV` (0.50)
 - **Blend weights:** `BLEND_WEIGHTS` (currently 95% DG / 5% model for ALL markets — model is minor tiebreaker until calibrated)
 - **Softmax temps:** `SOFTMAX_TEMP_BY_TYPE` (per market: outright 8.0, top5 10.0, top10 12.0, top20 15.0, make_cut 20.0, frl 7.0, 3ball 10.0)
 - **Adaptation:** `ADAPTATION_MIN_BETS` (10), states triggered by ROI: normal (>-20%), caution (-20%), cold (-40%), frozen (10 consecutive losses), `ADAPTATION_STAKE_MULTIPLIER_COLD` (0.5)
-- **Matchup:** `MATCHUP_PLATT_A` (-0.05), `MATCHUP_PLATT_B` (0.0), `MATCHUP_EV_THRESHOLD` (0.05), `MATCHUP_CAP` (20), `MATCHUP_MAX_PLAYER_EXPOSURE` (3), DG/model blend 80/20, `REQUIRE_DG_MODEL_AGREEMENT` (True), tier thresholds (STRONG ≥15% EV, GOOD ≥8%, else LEAN)
+- **Matchup:** `MATCHUP_PLATT_A` (-0.05), `MATCHUP_PLATT_B` (0.0), `MATCHUP_EV_THRESHOLD` (0.05), `MATCHUP_CAP` (20), `MATCHUP_MAX_PLAYER_EXPOSURE` (3), `MATCHUP_TOURNAMENT_MAX_PLAYER_EXPOSURE` (2 — tighter cap for 72-hole matchups), DG/model blend 80/20, `REQUIRE_DG_MODEL_AGREEMENT` (True), tier thresholds (STRONG ≥15% EV, GOOD ≥8%, else LEAN)
 - **Default weights:** `DEFAULT_WEIGHTS` dict — course_fit 0.45, form 0.45, momentum 0.10; SG sub-weights: OTT 0.30, APP 0.28, TOT 0.22, PUTT 0.10; form windows: 16r 0.35, 12month 0.25, sim 0.25, rolling 0.15
 - **Other:** `PUTT_SHRINKAGE_FACTOR` (0.5), `MOMENTUM_ENABLED` (True), `AI_ADJUSTMENT_CAP` (±3.0)
 - **Weather:** `WIND_THRESHOLD_KMH` (15), `COLD_THRESHOLD_C` (10), max adjustments (wave 3, resilience 5)
 - **Confidence:** factor weights (course_profile 0.20, dg_coverage 0.25, course_history 0.15, field_strength 0.10, odds_quality 0.15, model_market_alignment 0.15), weak-field multipliers (EV ×1.5, softmax temp ×1.2)
 - **Data integrity:** `METRIC_FRESHNESS_HOURS` (48), `FIELD_SIZE_MIN` (50), `FIELD_SIZE_MAX` (170), `PROBABILITY_SUM_TOLERANCE` (0.05), `ALLOW_MID_TOURNAMENT_RUN` (False)
+- **Autoresearch guardrails:** `get_autoresearch_guardrail_params()` in config. Guardrail mode is **configurable in the UI** (Autoresearch tab → "Guardrail mode" dropdown: Strict / Loose), persisted in `data/autoresearch_settings.json`. Env `AUTORESEARCH_GUARDRAIL_MODE` overrides UI when set. Strict: min_bets 30, max_clv_regression 0.02, max_calibration_regression 0.03, max_drawdown_regression 10.0. Loose: 15, 0.05, 0.06, 20.0. Used by `backtester/weighted_walkforward.evaluate_guardrails`. API: `GET/PATCH /api/autoresearch/settings`.
 - **API:** `API_TIMEOUT` (120s), `API_RATE_LIMIT_SECONDS` (1.0), `PIPELINE_LOCK_STALE_SECONDS` (7200), `SUPPORTED_BOOKS` (draftkings, fanduel, betmgm, caesars, bet365, pointsbet, betrivers, fanatics)
 
 ---
@@ -316,7 +323,7 @@ Major sections and key values:
 5. **Course profile:** `course_profile.load_course_profile()` from `data/courses/*.json` or AI vision extraction.
 6. **Composite:** `models.composite.compute_composite()` calls `course_fit`, `form`, `momentum`; blends with weights from config or DB `weight_sets`; optional weather adjustments.
 7. **AI pre-tournament:** `ai_brain.pre_tournament_analysis()` → narrative, key factors, player adjustments → `ai_decisions` table. Adjustments applied to composite scores (capped at `config.AI_ADJUSTMENT_CAP` = ±3).
-8. **Value:** `value.find_value_bets()` converts composite → probabilities (softmax), blends with DG calibrated probs (95/5), computes EV vs market odds, filters by threshold. `matchup_value.find_matchup_value_bets()` uses Platt-sigmoid + DG matchup blend (80/20).
+8. **Value:** `value.find_value_bets()` converts composite → probabilities (softmax), blends with DG calibrated probs (95/5), applies empirical calibration correction when bucket has ≥50 samples (`calibration.get_calibration_correction`), computes EV vs market odds, filters by threshold. Value bet dicts include `calibration_applied`. `matchup_value.find_matchup_value_bets()` uses Platt-sigmoid + DG matchup blend (80/20), conviction scoring, and per-market exposure (tournament 2, round 3). Matchup predictions are logged to `prediction_log` for post-tournament scoring and Platt recalibration.
 9. **Portfolio:** `portfolio.enforce_diversification()` + `exposure` caps.
 10. **Output:** `card.generate_card()` → `output/{safe_name}_{YYYYMMDD}.md`. `methodology.generate_methodology()` → `output/{safe_name}_methodology_{YYYYMMDD}.md`. `output_manager.archive_previous()` moves older versions to `output/archive/`.
 
@@ -362,7 +369,7 @@ Notes:
 - **Walk-forward only:** Backtests must use only data available before each event. PIT stats enforce this.
 - **Blend weights (95/5):** Model softmax is uncalibrated; DG probabilities dominate. Model is a minor tiebreaker until calibrated. Do not change ratio without calibration evidence.
 - **Max 5 value bets per card:** Quality over quantity. Configurable via `config.MAX_TOTAL_VALUE_BETS`.
-- **Matchups first:** Best bets drawn from matchups first; placements are fallback (`config.BEST_BETS_MATCHUP_ONLY = True`).
+- **Matchup-first card:** Top plays are always matchups (up to `BEST_BETS_COUNT`); placements only appear when EV ≥ `PLACEMENT_CARD_EV_FLOOR`. Speculative outrights are not shown on the card. Matchups first (`config.BEST_BETS_MATCHUP_ONLY = True`).
 - **Player normalization:** Always use `player_normalizer.normalize_name()` for keys and `display_name()` for output.
 - **Test fixtures:** Use `tmp_db` fixture for any test writing to DB. Defined in `tests/conftest.py`.
 - **Output naming:** Card: `{safe_name}_{YYYYMMDD}.md`. Methodology: `{safe_name}_methodology_{YYYYMMDD}.md`. `safe_name` = tournament name lowercased, spaces→underscores, apostrophes removed.
@@ -424,19 +431,51 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 
 ## 9. Autoresearch System
 
-The backtester includes an autonomous research system that proposes, tests, and promotes strategy changes:
+**Default behavior:** **`AUTORESEARCH_AUTO_APPLY` is off.** Research cycle **does not** auto-call `set_research_champion` / `approve_proposal` unless that env var is set to `1`. Do **not** suggest auto-applying Optuna or walk-forward winners to live or registry without explicit operator approval; point to [`docs/research/EDGE_TUNER_REPORT.md`](../research/EDGE_TUNER_REPORT.md) and manual merge into `autoresearch/strategy_config.json`.
 
-- **Theory engine** (`backtester/theory_engine.py`): Generates candidate theories (weight changes, threshold adjustments, etc.)
-- **Proposals** (`backtester/proposals.py`): CRUD for strategy proposals (create → evaluate → approve/reject). DB tables: `research_proposals`, `proposal_reviews`.
-- **Experiments** (`backtester/experiments.py`): Experiment tracking & strategy promotion pipeline. Manages lifecycle: create → run → evaluate (significance testing) → promote. DB tables: `experiments`, `active_strategy`.
-- **Research cycle** (`backtester/research_cycle.py`): Orchestrates proposal → backtest → evaluation → dossier
-- **Weighted walk-forward** (`backtester/weighted_walkforward.py`): Recency-weighted evaluation (recent events count more)
-- **Model registry** (`backtester/model_registry.py`): Tracks live model vs research champion; promotes when evidence is sufficient. DB tables: `research_model_registry`, `live_model_registry`.
-- **Research dossier** (`backtester/research_dossier.py`): Writes human-readable evaluation reports
-- **Config:** `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json`
+**Dashboard default workflow:** The recommended UI path is the **Simple Mode** edge tuner exposed via `/api/simple/autoresearch/start|status|stop|run-once`. It always runs **Optuna scalar**, uses **`weighted_roi_pct`** as the primary objective, keeps **report-only** behavior, and uses the scalar study base name **`golf_scalar_simple`**. **Lab Mode** still exposes the lower-level `engine_mode`, Pareto/study views, theory toggle, and reset controls.
+
+**Persisted defaults:** `src/autoresearch_settings.DEFAULT_SETTINGS` now boots the advanced settings layer to `engine_mode="optuna_scalar"`, `scalar_objective="weighted_roi_pct"`, `optuna_scalar_study_name="golf_scalar_simple"`, and `optuna_trials_per_cycle=3`.
+
+**Reset behavior:** `POST /api/autoresearch/reset` is now an **archive-first** reset. It exports old `research_proposals`, `proposal_reviews`, and `research_model_registry` rows plus active `output/research/` artifacts and `data/autoresearch_settings.json` into `output/research/archive/<timestamp>/`, then clears the active research lane and resets optimizer runtime state. `live_model_registry` and the live prediction lane stay active. If predictions were currently resolving from the research champion and there is no live row yet, reset snapshots that strategy into the live lane first so prediction behavior stays unchanged.
+
+**Predictions / `GolfModelService`:** `include_methodology` defaults to **true** — each run should emit a `*_methodology_*.md` next to the card unless the caller passes `include_methodology=False` (e.g. fast tests).
+
+**Target v2 design (full spec):** [`docs/autoresearch/SPEC_V2.md`](autoresearch/SPEC_V2.md) — canonical evaluator, Optuna (MO + scalar), append-only **`output/research/ledger.jsonl`**, human program [`docs/research/research_program.md`](../research/research_program.md), [`docs/research/KARPATHY_AGENT_RUNBOOK.md`](../research/KARPATHY_AGENT_RUNBOOK.md) for LLM-driven workflows.
+
+### Single strategy resolution (production)
+
+All prediction entry points use **`src/strategy_resolution.resolve_runtime_strategy(scope)`**: **live weekly model → research champion → active_strategy (experiments) → default** `StrategyConfig`. **`build_pipeline_strategy_config(strategy)`** maps `w_sub_*` weights and EV/markets for `GolfModelService` (aligned with `run_predictions.py` and PIT replay).
+
+- **CLI:** `run_predictions.py` imports resolution from `src/strategy_resolution.py`.
+- **Web:** `/api/simple/upcoming-prediction` resolves once, passes `strategy_source="config"` with the built pipeline dict (no double-resolve).
+- **GolfModelService:** Default `strategy_source` is **`registry`** so `/api/run-service` matches CLI unless callers pass `strategy_source="config"` with an explicit pipeline dict.
+
+### Two evaluation modes (do not confuse)
+
+| Mode | Entry | What it measures |
+|------|--------|------------------|
+| **Primary (dashboard/API)** | `backtester/autoresearch_engine.run_cycle` → `run_research_cycle` | Weighted walk-forward over `load_historical_events`, `replay_event`, proposals in DB. Returns `evaluation_mode`, `data_health`, `guardrail_mode`. |
+| **Holdout / contract (CLI)** | `scripts/run_autoresearch_eval.py`, `run_autoresearch_loop.py`, `run_autoresearch_holdout.py` | Immutable checkpoint replay + `docs/autoresearch/pilot_contract.json`. Does **not** update `research_proposals` unless wired separately. |
+
+Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
+
+### Components
+
+- **Theory engine** (`backtester/theory_engine.py`): OpenAI theories with dedup; fallback **directed** `w_sub_*` tilts + **neighbor** search (`fallback_directed`, `fallback_neighbor`).
+- **Proposals** (`backtester/proposals.py`): CRUD for strategy proposals. DB: `research_proposals`, `proposal_reviews`.
+- **Experiments** (`backtester/experiments.py`): `experiments` table, `active_strategy`, `promote_strategy` (separate lane from research champion).
+- **Canonical evaluation (v2 prep)** (`backtester/research_lab/canonical.py`): `evaluate_walk_forward_benchmark`, `evaluate_checkpoint_pilot`, `EvaluationResult` (objective vector, `feasible`, `to_dict`); used by `run_research_cycle` (`canonical_evaluation` on each candidate) and `scripts/run_autoresearch_eval.py`.
+- **Optuna studies** (`backtester/research_lab/mo_study.py`, `param_space.py`): **MO** (Pareto) and **scalar** (single objective: `blended_score` or `weighted_roi_pct`); storage `output/research/optuna/studies.db`. Trial rows append to **`output/research/ledger.jsonl`**. CLI MO: `python scripts/run_autoresearch_optuna.py --n-trials 10`; CLI scalar: `... --scalar --scalar-metric blended_score`. Engine modes: `research_cycle` | `optuna` | `optuna_scalar` (`data/autoresearch_settings.json`).
+- **Research cycle** (`backtester/research_cycle.py`): Orchestrates proposal → `evaluate_weighted_walkforward` → dossier; includes **`validate_autoresearch_data_health`** preflight in the returned payload.
+- **Data health** (`backtester/autoresearch_data_health.py`): Event/PIT/odds row counts and warnings before trusting metrics.
+- **Weighted walk-forward** (`backtester/weighted_walkforward.py`): `evaluate_guardrails` uses `get_autoresearch_guardrail_params()` (UI `data/autoresearch_settings.json` or env).
+- **Model registry** (`backtester/model_registry.py`): `research_model_registry`, `live_model_registry`; promote research → live via API gates.
+- **Research dossier** (`backtester/research_dossier.py`): Markdown artifacts under `output/research/`.
+- **Config files:** `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json`
 - **Contracts:** `docs/autoresearch/pilot_contract.json`, `docs/autoresearch/evaluation_contract.md`
-- **Runner scripts:** `scripts/run_autoresearch_loop.py`, `scripts/run_autoresearch_eval.py`, `scripts/run_autoresearch_holdout.py`
-- **Workers:** `workers/research_agent.py` — 6-thread daemon: (1) data collector, (2) hypothesis generator, (3) experiment runner, (4) outlier analyst, (5) optimizer (Bayesian neighborhood search), (6) autoresearch loop runner.
+- **Workers:** `workers/research_agent.py` — autoresearch loop calls `autoresearch_engine.run_cycle`.
+- **Dashboard:** Autoresearch tab; **since engine start** snapshot in optimizer runtime state when the daemon starts.
 
 ---
 
@@ -476,6 +515,9 @@ The backtester includes an autonomous research system that proposes, tests, and 
 | Experiment tracking / promotion | `backtester/experiments.py` |
 | Research cycle / proposals | `backtester/research_cycle.py`, `backtester/proposals.py` |
 | Autoresearch config | `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json` |
+| Strategy resolution (CLI/web parity) | `src/strategy_resolution.py` |
+| Autoresearch facade + health | `backtester/autoresearch_engine.py`, `backtester/autoresearch_data_health.py` |
+| Operator runbook | `docs/autoresearch/RUNBOOK.md` |
 | Course profiles | `data/courses/*.json`; extraction via `course.py` or `src/course_profile.py` |
 | Rolling stats computation | `src/rolling_stats.py` |
 | CI | `.github/workflows/ci.yml` |

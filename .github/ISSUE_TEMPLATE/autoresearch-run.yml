@@ -1,0 +1,37 @@
+name: Autoresearch run
+description: Track a dashboard or CLI autoresearch cycle and data readiness
+title: "[Autoresearch] "
+labels: ["autoresearch"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when debugging a research cycle. See `docs/autoresearch/RUNBOOK.md`.
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Data readiness
+      options:
+        - label: Backfill / PIT stats built for target years
+        - label: historical_odds and historical_matchup_odds populated
+        - label: data_health.ok true (or warnings understood)
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Evaluation mode
+      options:
+        - Dashboard / API (weighted walk-forward)
+        - CLI checkpoint eval (pilot contract)
+    validations:
+      required: true
+  - type: input
+    id: guardrail
+    attributes:
+      label: Guardrail mode (strict / loose)
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome / notes
+      description: promotion_decision, failure reasons, proposal IDs
+    validations:
+      required: false

@@ -10,9 +10,11 @@ import os
 import sys
 import json
 import re
+import asyncio
 import shutil
 import tempfile
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +26,7 @@ try:
 except ImportError:
     pass  # python-dotenv not installed; keys must be in environment
 
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
@@ -43,10 +45,29 @@ from src.scoring import determine_outcome
 import pandas as pd
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="Golf Betting Model")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    from src.autoresearch_settings import get_settings
+    from backtester.dashboard_runtime import start_live_refresh, stop_live_refresh
+
+    settings = get_settings().get("live_refresh", {})
+    if settings.get("enabled") and settings.get("autostart"):
+        start_live_refresh(tour=str(settings.get("tour", "pga")))
+    try:
+        yield
+    finally:
+        stop_live_refresh()
+
+
+app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
 
 BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
+FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR / "index.html"
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+if (FRONTEND_DIST_DIR / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="frontend-assets")
 
 from src.routes.research import router as research_router
 from src.routes.model_registry import router as model_registry_router
@@ -61,6 +82,11 @@ CSV_DIR = os.path.join(os.path.dirname(__file__), "data", "csvs")
 os.makedirs(CSV_DIR, exist_ok=True)
 SIMPLE_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output", "backtests")
 os.makedirs(SIMPLE_OUTPUT_DIR, exist_ok=True)
+SIMPLE_AUTORESEARCH_SCOPE = "global"
+SIMPLE_AUTORESEARCH_INTERVAL_SECONDS = 300
+SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE = 3
+SIMPLE_AUTORESEARCH_OBJECTIVE = "weighted_roi_pct"
+SIMPLE_AUTORESEARCH_STUDY_NAME = "golf_scalar_simple"
 
 
 def _latest_output_file(*, subdir: str = "", suffix: str = ".md") -> str | None:
@@ -271,6 +297,53 @@ def _latest_output_summary(output_type: str) -> dict | None:
     }
 
 
+def _latest_completed_event_summary() -> dict | None:
+    from scripts.grade_tournament import find_latest_completed_event
+
+    return find_latest_completed_event()
+
+
+def _latest_output_artifact(output_type: str) -> dict | None:
+    subdirs = {"prediction": "", "backtest": "backtests", "research": "research"}
+    path = _latest_output_file(subdir=subdirs[output_type], suffix=".md")
+    if not path:
+        return None
+    return {
+        "type": output_type,
+        "path": _relative_output_path(path),
+        "summary": _summarize_output(output_type, _read_output_content(_relative_output_path(path))),
+    }
+
+
+def _latest_graded_tournament_summary() -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT
+            t.id,
+            t.name,
+            t.course,
+            t.year,
+            t.event_id,
+            COUNT(DISTINCT r.id) AS results_count,
+            COUNT(DISTINCT p.id) AS picks_count,
+            COUNT(DISTINCT po.id) AS graded_pick_count,
+            COALESCE(SUM(po.hit), 0) AS hits,
+            ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
+            MAX(po.entered_at) AS last_graded_at
+        FROM tournaments t
+        JOIN results r ON r.tournament_id = t.id
+        LEFT JOIN picks p ON p.tournament_id = t.id
+        LEFT JOIN pick_outcomes po ON po.pick_id = p.id
+        GROUP BY t.id, t.name, t.course, t.year, t.event_id
+        ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 @app.get("/api/output/latest")
 async def get_latest_output_content(type: str = "backtest"):
     """
@@ -331,14 +404,117 @@ async def get_latest_output_summaries():
     }
 
 
+@app.get("/api/events/latest-completed")
+async def get_latest_completed_event():
+    """Return the most recently completed event for grading defaults."""
+    event = _latest_completed_event_summary()
+    if not event:
+        return JSONResponse({"error": "No completed event found"}, status_code=404)
+    return event
+
+
+@app.get("/api/grading/history")
+async def get_grading_history(limit: int = 20):
+    """Return durable grading history from stored tournaments, results, and pick outcomes."""
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT
+            t.id,
+            t.name,
+            t.course,
+            t.year,
+            t.event_id,
+            COUNT(DISTINCT r.id) AS results_count,
+            COUNT(DISTINCT p.id) AS picks_count,
+            COUNT(DISTINCT po.id) AS graded_pick_count,
+            COALESCE(SUM(po.hit), 0) AS hits,
+            ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
+            MAX(po.entered_at) AS last_graded_at
+        FROM tournaments t
+        JOIN results r ON r.tournament_id = t.id
+        LEFT JOIN picks p ON p.tournament_id = t.id
+        LEFT JOIN pick_outcomes po ON po.pick_id = p.id
+        GROUP BY t.id, t.name, t.course, t.year, t.event_id
+        ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {"tournaments": [dict(row) for row in rows]}
+
+
+@app.get("/api/players/{player_key}/profile")
+async def get_player_profile(player_key: str, tournament_id: int, course_num: int | None = None):
+    """Return deep profile data for one player in the current tournament context."""
+    from src import db
+
+    metrics = db.get_player_metrics(tournament_id, player_key)
+    recent_rounds = db.get_player_recent_rounds_by_key(player_key, limit=24)
+
+    metrics_by_category: dict[str, dict[str, float | str | None]] = {}
+    for metric in metrics:
+        category = metric.get("metric_category") or "other"
+        bucket = metrics_by_category.setdefault(category, {})
+        bucket[metric.get("metric_name") or "value"] = metric.get("metric_value", metric.get("metric_text"))
+
+    dg_id = recent_rounds[0].get("dg_id") if recent_rounds else None
+    course_history = []
+    if dg_id and course_num is not None:
+        course_history = db.get_player_course_rounds(int(dg_id), course_num)
+
+    conn = get_conn()
+    linked_bets = conn.execute(
+        """
+        SELECT bet_type, player_display, opponent_display, market_odds, ev, confidence, reasoning
+        FROM picks
+        WHERE tournament_id = ?
+          AND (player_key = ? OR opponent_key = ?)
+        ORDER BY ev DESC, id DESC
+        """,
+        (tournament_id, player_key, player_key),
+    ).fetchall()
+    conn.close()
+
+    player_display = None
+    for metric in metrics:
+        if metric.get("player_display"):
+            player_display = metric["player_display"]
+            break
+    if not player_display and recent_rounds:
+        player_display = recent_rounds[0].get("player_name")
+    if not player_display:
+        player_display = " ".join(part.capitalize() for part in player_key.split("_") if part)
+
+    return {
+        "player_key": player_key,
+        "player_display": player_display,
+        "current_metrics": metrics_by_category,
+        "recent_rounds": recent_rounds,
+        "course_history": course_history,
+        "linked_bets": [dict(row) for row in linked_bets],
+    }
+
+
 # ── API Endpoints ───────────────────────────────────────────────────
 
 def _render_dashboard_html():
-    """Load dashboard template from templates/index.html."""
+    """Load the built React dashboard when present, otherwise fall back to the legacy shell."""
+    if FRONTEND_DIST_INDEX.is_file():
+        return FRONTEND_DIST_INDEX.read_text(encoding="utf-8")
+
     path = BASE_DIR / "templates" / "index.html"
     if not path.is_file():
         return _fallback_dashboard_html()
-    return path.read_text(encoding="utf-8")
+    html = path.read_text(encoding="utf-8")
+    css_path = BASE_DIR / "static" / "css" / "main.css"
+    js_path = BASE_DIR / "static" / "js" / "app.js"
+    css_version = str(int(css_path.stat().st_mtime)) if css_path.is_file() else "0"
+    js_version = str(int(js_path.stat().st_mtime)) if js_path.is_file() else "0"
+    html = html.replace('/static/css/main.css', f'/static/css/main.css?v={css_version}')
+    html = html.replace('/static/js/app.js', f'/static/js/app.js?v={js_version}')
+    return html
 
 
 def _fallback_dashboard_html():
@@ -449,6 +625,241 @@ def _write_simple_backtest_report(strategy, baseline_strategy, years, evaluation
     return {"path": path, "verdict": verdict}
 
 
+def _simple_autoresearch_state(status: dict) -> str:
+    if status.get("running"):
+        return "running"
+    if status.get("last_error"):
+        return "error"
+    if status.get("last_run_finished_at"):
+        return "completed"
+    return "idle"
+
+
+def _simple_cycle_in_progress(status: dict) -> bool:
+    """True while a walk-forward / Optuna batch is actively running (started_at > last finished)."""
+    if not status.get("running"):
+        return False
+    started = status.get("last_run_started_at")
+    if not started:
+        return False
+    finished = status.get("last_run_finished_at")
+    if not finished:
+        return True
+    return str(started) > str(finished)
+
+
+def _simple_scalar_trial_summary(trial: dict | None) -> dict | None:
+    if not trial:
+        return None
+    user_attrs = trial.get("user_attrs") or {}
+    return {
+        "trial_number": trial.get("number"),
+        "metric_name": SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "metric_value": trial.get("value"),
+        "roi_pct": user_attrs.get("weighted_roi_pct"),
+        "clv_avg": user_attrs.get("weighted_clv_avg"),
+        "blended_score": user_attrs.get("blended_score"),
+        "guardrails_passed": bool(user_attrs.get("guardrail_passed")),
+        "feasible": bool(user_attrs.get("feasible")),
+    }
+
+
+def _simple_recent_scalar_attempts(study, limit: int = 3) -> list[dict]:
+    attempts = []
+    complete_trials = [
+        trial for trial in getattr(study, "trials", [])
+        if trial.state.name == "COMPLETE" and trial.value is not None
+    ]
+    for trial in sorted(complete_trials, key=lambda item: item.number, reverse=True)[:limit]:
+        attempts.append(
+            _simple_scalar_trial_summary(
+                {
+                    "number": trial.number,
+                    "value": trial.value,
+                    "user_attrs": dict(trial.user_attrs),
+                }
+            )
+        )
+    return [attempt for attempt in attempts if attempt]
+
+
+def _simple_autoresearch_payload(status: dict) -> dict:
+    state = _simple_autoresearch_state(status)
+    last_result = status.get("last_result") or {}
+    scalar_summary = last_result.get("optuna_scalar_summary") or {}
+    best_trial = scalar_summary.get("best_promotable_trial") or scalar_summary.get("best_trial")
+    recent_trials = scalar_summary.get("recent_trials") or []
+    cycle_in_progress = _simple_cycle_in_progress(status)
+    if status.get("running"):
+        headline = (
+            "Running a walk-forward tuning batch (each trial can take several minutes)…"
+            if cycle_in_progress
+            else "Between batches — next run is scheduled on the timer."
+        )
+    else:
+        headline = "Edge tuner is idle."
+    return {
+        "mode": "simple_scalar",
+        "report_only": True,
+        "scope": status.get("scope", SIMPLE_AUTORESEARCH_SCOPE),
+        "state": state,
+        "is_running": bool(status.get("running")),
+        "cycle_in_progress": cycle_in_progress,
+        "objective": status.get("scalar_objective") or SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "study_name": status.get("optuna_scalar_study_name") or SIMPLE_AUTORESEARCH_STUDY_NAME,
+        "interval_seconds": status.get("interval_seconds") or SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
+        "goal": "Testing small matchup-strategy tweaks against the current baseline.",
+        "headline": headline,
+        "last_run_started_at": status.get("last_run_started_at"),
+        "last_run_finished_at": status.get("last_run_finished_at"),
+        "error": status.get("last_error"),
+        "best_improvement": _simple_scalar_trial_summary(best_trial),
+        "recent_attempts": [
+            attempt
+            for attempt in (_simple_scalar_trial_summary(trial) for trial in recent_trials)
+            if attempt
+        ],
+    }
+
+
+def _write_json_file(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+
+
+def _fetch_table_rows(conn, table_name: str) -> list[dict]:
+    rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+    return [dict(row) for row in rows]
+
+
+def _table_has_column(conn, table_name: str, column_name: str) -> bool:
+    cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(col[1] == column_name for col in cols)
+
+
+def _archive_active_research_files(output_dir: Path, archive_root: Path) -> list[str]:
+    research_dir = output_dir / "research"
+    archived_files: list[str] = []
+    if not research_dir.exists():
+        return archived_files
+    files_root = archive_root / "files"
+    files_root.mkdir(parents=True, exist_ok=True)
+    for child in list(research_dir.iterdir()):
+        if child.name == "archive":
+            continue
+        destination = files_root / child.name
+        if child.is_dir():
+            shutil.move(str(child), str(destination))
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(child), str(destination))
+        archived_files.append(_relative_output_path(str(child)))
+    (research_dir / "optuna").mkdir(parents=True, exist_ok=True)
+    return archived_files
+
+
+def _archive_autoresearch_settings_file(archive_root: Path) -> str | None:
+    import src.autoresearch_settings as settings_module
+
+    settings_path = Path(settings_module._SETTINGS_FILE)
+    if not settings_path.exists():
+        settings_module.invalidate_cache()
+        return None
+    destination = archive_root / "settings" / settings_path.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(settings_path), str(destination))
+    settings_module.invalidate_cache()
+    return str(destination)
+
+
+@app.post("/api/simple/autoresearch/start")
+async def simple_autoresearch_start():
+    """Start the simple scalar autoresearch loop with safe defaults."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import start_continuous_optimizer
+
+    status = start_continuous_optimizer(
+        scope=SIMPLE_AUTORESEARCH_SCOPE,
+        interval_seconds=SIMPLE_AUTORESEARCH_INTERVAL_SECONDS,
+        engine_mode="optuna_scalar",
+        optuna_scalar_study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+        scalar_objective=SIMPLE_AUTORESEARCH_OBJECTIVE,
+        optuna_trials_per_cycle=SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE,
+    )
+    return _simple_autoresearch_payload(status)
+
+
+@app.get("/api/simple/autoresearch/status")
+async def simple_autoresearch_status():
+    """Return plain-language status for the simple scalar autoresearch loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import get_optimizer_status
+
+    return _simple_autoresearch_payload(get_optimizer_status())
+
+
+@app.post("/api/simple/autoresearch/stop")
+async def simple_autoresearch_stop():
+    """Stop the simple scalar autoresearch loop."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.optimizer_runtime import stop_continuous_optimizer
+
+    return _simple_autoresearch_payload(stop_continuous_optimizer())
+
+
+@app.post("/api/simple/autoresearch/run-once")
+async def simple_autoresearch_run_once():
+    """Run one bounded simple scalar autoresearch batch and summarize the result."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.experiments import get_active_strategy
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.optimizer_runtime import record_manual_autoresearch_result
+    from backtester.research_cycle import PIT_EVALUATION_YEARS
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_scalar_study, study_scalar_summary
+
+    baseline = (
+        get_research_champion(SIMPLE_AUTORESEARCH_SCOPE)
+        or get_live_weekly_model(SIMPLE_AUTORESEARCH_SCOPE)
+        or get_active_strategy(SIMPLE_AUTORESEARCH_SCOPE)
+    )
+    benchmark_spec = WalkForwardBenchmarkSpec(years=PIT_EVALUATION_YEARS)
+    study = run_scalar_study(
+        n_trials=SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE,
+        baseline=baseline,
+        benchmark_spec=benchmark_spec,
+        study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+        scalar_metric=SIMPLE_AUTORESEARCH_OBJECTIVE,
+    )
+    summary = study_scalar_summary(study)
+    best_trial = summary.get("best_promotable_trial") or summary.get("best_trial")
+    record_manual_autoresearch_result(
+        {
+            "evaluation_mode": "optuna_scalar",
+            "scalar_objective": SIMPLE_AUTORESEARCH_OBJECTIVE,
+            "optuna_scalar_summary": summary,
+        },
+        scope=SIMPLE_AUTORESEARCH_SCOPE,
+        engine_mode="optuna_scalar",
+        scalar_objective=SIMPLE_AUTORESEARCH_OBJECTIVE,
+        optuna_scalar_study_name=SIMPLE_AUTORESEARCH_STUDY_NAME,
+    )
+    return {
+        "status": "complete",
+        "mode": "simple_scalar",
+        "report_only": True,
+        "objective": SIMPLE_AUTORESEARCH_OBJECTIVE,
+        "goal": "Testing small matchup-strategy tweaks against the current baseline.",
+        "study_name": summary.get("study_name"),
+        "best_improvement": _simple_scalar_trial_summary(best_trial),
+        "recent_attempts": _simple_recent_scalar_attempts(study),
+    }
+
+
 @app.post("/api/simple/upcoming-prediction")
 async def run_upcoming_prediction(request: Request):
     """Run the normal upcoming-event prediction flow with simple JSON input."""
@@ -456,25 +867,17 @@ async def run_upcoming_prediction(request: Request):
 
     from src.db import ensure_initialized
     ensure_initialized()
+    from src.services.live_snapshot_service import run_snapshot_analysis
 
-    from backtester.model_registry import get_live_weekly_model
-    from src.services.golf_model_service import GolfModelService
-
-    live_strategy = get_live_weekly_model("global")
-    service = GolfModelService(
-        tour=payload.get("tour", "pga"),
-        strategy_config={
-            key: value for key, value in vars(live_strategy).items() if not key.startswith("_")
-        },
-    )
     mode = payload.get("mode", "full")
     if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
         mode = "full"
-    result = service.run_analysis(
+    result = run_snapshot_analysis(
+        tour=payload.get("tour", "pga"),
         tournament_name=payload.get("tournament"),
         course_name=payload.get("course"),
-        enable_ai=payload.get("enable_ai", True),
-        enable_backfill=payload.get("enable_backfill", True),
+        enable_ai=payload.get("enable_ai", False),
+        enable_backfill=payload.get("enable_backfill", False),
         mode=mode,
     )
     if not result.get("output_file") and result.get("card_filepath"):
@@ -493,8 +896,6 @@ async def run_upcoming_prediction(request: Request):
                 result["card_content"] = None
         else:
             result["card_content"] = None
-    result["model_lane"] = "live_weekly_model"
-    result["live_model_name"] = live_strategy.name
     return result
 
 
@@ -752,6 +1153,11 @@ async def get_dashboard_state(scope: str = "global"):
             "backtest_markdown_path": _latest_output_file(subdir="backtests", suffix=".md"),
             "research_markdown_path": _latest_output_file(subdir="research", suffix=".md"),
         },
+        "latest_prediction_artifact": _latest_output_artifact("prediction"),
+        "latest_backtest_artifact": _latest_output_artifact("backtest"),
+        "latest_research_artifact": _latest_output_artifact("research"),
+        "latest_completed_event": _latest_completed_event_summary(),
+        "latest_graded_tournament": _latest_graded_tournament_summary(),
         "optimizer": get_optimizer_status(),
         "autoresearch": {
             "running": get_optimizer_status().get("running", False),
@@ -763,6 +1169,89 @@ async def get_dashboard_state(scope: str = "global"):
             "scope": get_optimizer_status().get("scope", scope),
         },
         "datagolf": get_datagolf_throttle_status(),
+    }
+
+
+@app.post("/api/live-refresh/start")
+async def start_live_refresh_runtime(request: Request):
+    """Start always-on live refresh runtime."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import start_live_refresh
+    from src.autoresearch_settings import get_settings, set_settings
+
+    if os.environ.get("LIVE_REFRESH_ENABLED", "1").strip().lower() in {"0", "false", "off", "no"}:
+        return JSONResponse({"error": "LIVE_REFRESH_ENABLED is disabled"}, status_code=403)
+
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    current = get_settings()
+    live_cfg = dict(current.get("live_refresh") or {})
+    if isinstance(payload.get("live_refresh"), dict):
+        live_cfg.update(payload["live_refresh"])
+    if payload.get("tour"):
+        requested_tour = str(payload["tour"]).strip().lower()
+        live_cfg["tour"] = requested_tour if requested_tour in {"pga", "euro", "kft", "alt"} else "pga"
+    live_cfg["enabled"] = True
+    set_settings({"live_refresh": live_cfg})
+    status = start_live_refresh(tour=live_cfg.get("tour", "pga"))
+    return {"ok": True, "status": status}
+
+
+@app.post("/api/live-refresh/stop")
+async def stop_live_refresh_runtime():
+    """Stop always-on live refresh runtime."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import stop_live_refresh
+    from src.autoresearch_settings import get_settings, set_settings
+
+    cfg = dict((get_settings().get("live_refresh") or {}))
+    cfg["enabled"] = False
+    set_settings({"live_refresh": cfg})
+    status = stop_live_refresh()
+    return {"ok": True, "status": status}
+
+
+@app.get("/api/live-refresh/status")
+async def get_live_refresh_runtime_status():
+    """Return always-on runtime status and live refresh settings."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import get_live_refresh_status
+    from src.autoresearch_settings import get_settings
+
+    return {
+        "status": get_live_refresh_status(),
+        "settings": (get_settings().get("live_refresh") or {}),
+    }
+
+
+@app.get("/api/live-refresh/snapshot")
+async def get_live_refresh_snapshot():
+    """Return latest always-on snapshot for Live/Upcoming dashboard tabs."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.dashboard_runtime import read_snapshot
+
+    snapshot = read_snapshot()
+    if not snapshot:
+        return {
+            "ok": False,
+            "snapshot": None,
+            "stale_reason": "No snapshot generated yet. Start live refresh runtime.",
+        }
+    generated_at = snapshot.get("generated_at")
+    age_seconds = None
+    if generated_at:
+        try:
+            age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
+        except ValueError:
+            age_seconds = None
+    return {
+        "ok": True,
+        "snapshot": snapshot,
+        "generated_at": generated_at,
+        "age_seconds": age_seconds,
     }
 
 
@@ -790,11 +1279,17 @@ async def start_optimizer_runtime(request: Request):
     from backtester.optimizer_runtime import start_continuous_optimizer
 
     payload = await request.json()
+    mc = payload.get("max_candidates")
     status = start_continuous_optimizer(
         scope=payload.get("scope", "global"),
         interval_seconds=float(payload.get("interval_seconds", 300)),
-        max_candidates=int(payload.get("max_candidates", 3)),
+        max_candidates=int(mc) if mc is not None else None,
         years=payload.get("years"),
+        engine_mode=payload.get("engine_mode"),
+        optuna_study_name=payload.get("optuna_study_name"),
+        optuna_scalar_study_name=payload.get("optuna_scalar_study_name"),
+        scalar_objective=payload.get("scalar_objective"),
+        optuna_trials_per_cycle=payload.get("optuna_trials_per_cycle"),
     )
     return {"ok": True, "optimizer": status}
 
@@ -809,6 +1304,142 @@ async def stop_optimizer_runtime():
 
     status = stop_continuous_optimizer()
     return {"ok": True, "optimizer": status}
+
+
+@app.get("/api/autoresearch/settings")
+async def get_autoresearch_settings():
+    """Return UI-persisted autoresearch settings (e.g. guardrail_mode: strict | loose)."""
+    from src.autoresearch_settings import get_settings
+    return get_settings()
+
+
+@app.patch("/api/autoresearch/settings")
+async def patch_autoresearch_settings(request: Request):
+    """Update autoresearch settings (guardrail_mode, engine_mode, use_theory_engine_llm, optuna_*)."""
+    from src.autoresearch_settings import set_settings
+    try:
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        body = {}
+    updated = set_settings(body)
+    return updated
+
+
+@app.get("/api/autoresearch/study")
+async def get_autoresearch_study(
+    study_name: str | None = Query(None),
+    study_kind: str | None = Query("mo"),
+):
+    """Load persisted Optuna study and return Pareto or scalar summary (read-only)."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from src.autoresearch_settings import get_settings
+    from backtester.research_cycle import PIT_EVALUATION_YEARS
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import (
+        create_or_load_scalar_study,
+        create_or_load_study,
+        resolve_scalar_study_name,
+        study_dashboard_metrics,
+        study_scalar_dashboard_metrics,
+        study_scalar_summary,
+        study_summary,
+    )
+
+    settings = get_settings()
+    kind = (study_kind or "mo").strip().lower()
+    if kind == "scalar":
+        scalar_objective = (settings.get("scalar_objective") or "blended_score").strip().lower()
+        if scalar_objective not in ("blended_score", "weighted_roi_pct"):
+            scalar_objective = "blended_score"
+        base_name = (study_name or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        name = resolve_scalar_study_name(
+            base_name,
+            benchmark_spec=WalkForwardBenchmarkSpec(years=PIT_EVALUATION_YEARS),
+            scalar_metric=scalar_objective,
+        )
+    else:
+        name = (study_name or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
+    try:
+        if kind == "scalar":
+            study = create_or_load_scalar_study(name)
+            return {
+                "ok": True,
+                "study_name": name,
+                "study_kind": "scalar",
+                "summary": study_scalar_summary(study),
+                "dashboard": study_scalar_dashboard_metrics(study),
+            }
+        study = create_or_load_study(name)
+        return {
+            "ok": True,
+            "study_name": name,
+            "study_kind": "mo",
+            "summary": study_summary(study),
+            "dashboard": study_dashboard_metrics(study),
+        }
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+
+
+@app.post("/api/autoresearch/optuna/run")
+async def post_autoresearch_optuna_run(request: Request):
+    """Run N Optuna MO or scalar trials in a worker thread (can take minutes)."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from backtester.experiments import get_active_strategy
+    from backtester.model_registry import get_live_weekly_model, get_research_champion
+    from backtester.research_lab.canonical import WalkForwardBenchmarkSpec
+    from backtester.research_lab.mo_study import run_mo_study, run_scalar_study, study_scalar_summary, study_summary
+    from src.autoresearch_settings import get_settings
+
+    try:
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        body = {}
+    n_trials = max(1, min(50, int(body.get("n_trials", 5))))
+    years = body.get("years")
+    if years is None:
+        years = [2024, 2025]
+    scope = body.get("scope", "global")
+    settings = get_settings()
+    study_kind = (body.get("study_kind") or "mo").strip().lower()
+    if study_kind == "scalar":
+        study_name = (body.get("study_name") or settings.get("optuna_scalar_study_name") or "golf_scalar_dashboard").strip()[:120]
+        so = (body.get("scalar_objective") or settings.get("scalar_objective") or "blended_score").strip().lower()
+        if so not in ("blended_score", "weighted_roi_pct"):
+            so = "blended_score"
+
+        def _run_scalar():
+            baseline = get_research_champion(scope) or get_live_weekly_model(scope) or get_active_strategy(scope)
+            spec = WalkForwardBenchmarkSpec(years=years)
+            study = run_scalar_study(
+                n_trials=n_trials,
+                baseline=baseline,
+                benchmark_spec=spec,
+                study_name=study_name,
+                scalar_metric=so,
+            )
+            return study_scalar_summary(study)
+
+        summary = await asyncio.to_thread(_run_scalar)
+        return {"ok": True, "study_name": study_name, "study_kind": "scalar", "summary": summary}
+
+    study_name = (body.get("study_name") or settings.get("optuna_study_name") or "golf_mo_dashboard").strip()[:120]
+
+    def _run_block():
+        baseline = get_research_champion(scope) or get_live_weekly_model(scope) or get_active_strategy(scope)
+        spec = WalkForwardBenchmarkSpec(years=years)
+        study = run_mo_study(
+            n_trials=n_trials,
+            baseline=baseline,
+            benchmark_spec=spec,
+            study_name=study_name,
+        )
+        return study_summary(study)
+
+    summary = await asyncio.to_thread(_run_block)
+    return {"ok": True, "study_name": study_name, "study_kind": "mo", "summary": summary}
 
 
 @app.get("/api/autoresearch/status")
@@ -831,8 +1462,20 @@ async def get_autoresearch_status():
     else:
         state = "idle"
     last_result = status.get("last_result") or {}
+    evaluation_mode = last_result.get("evaluation_mode")
     winner = last_result.get("winner") or {}
     winner_score = winner.get("blended_score")
+    guardrail_failures = 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1
+    if evaluation_mode == "optuna_scalar":
+        scalar_summary = last_result.get("optuna_scalar_summary") or {}
+        best_promotable_trial = scalar_summary.get("best_promotable_trial") or {}
+        best_trial = scalar_summary.get("best_trial") or {}
+        if best_promotable_trial:
+            winner_score = scalar_summary.get("best_promotable_value")
+            guardrail_failures = 0
+        elif best_trial:
+            winner_score = scalar_summary.get("best_value")
+            guardrail_failures = 0 if (best_trial.get("user_attrs") or {}).get("guardrail_passed") else 1
     return {
         "status": {
             "state": state,
@@ -847,11 +1490,19 @@ async def get_autoresearch_status():
             "best_metric": winner_score,
             "baseline_metric": None,
             "delta_metric": None,
-            "guardrail_failures": 0 if (winner.get("guardrail_results") or {}).get("passed", True) else 1,
+            "guardrail_failures": guardrail_failures,
             "last_updated_at": status.get("last_run_finished_at") or status.get("last_run_started_at"),
             "keep_rate": status.get("keep_rate", 0.0),
             "crash_rate": status.get("crash_rate", 0.0),
             "guardrail_fail_rate": status.get("guardrail_fail_rate", 0.0),
+            "at_start_baseline_roi": status.get("at_start_baseline_roi"),
+            "at_start_baseline_clv": status.get("at_start_baseline_clv"),
+            "engine_mode": status.get("engine_mode", "research_cycle"),
+            "optuna_study_name": status.get("optuna_study_name"),
+            "optuna_scalar_study_name": status.get("optuna_scalar_study_name"),
+            "scalar_objective": status.get("scalar_objective"),
+            "optuna_trials_per_cycle": status.get("optuna_trials_per_cycle"),
+            "max_candidates": status.get("max_candidates"),
         }
     }
 
@@ -880,7 +1531,7 @@ async def run_autoresearch_once(request: Request):
     from src.db import ensure_initialized
     ensure_initialized()
     try:
-        from backtester.research_cycle import run_research_cycle
+        from backtester.autoresearch_engine import run_cycle as run_autoresearch_cycle
         payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
         kwargs = dict(
             max_candidates=int(payload.get("max_candidates", 3)),
@@ -889,10 +1540,16 @@ async def run_autoresearch_once(request: Request):
         )
         if payload.get("years") is not None:
             kwargs["years"] = payload["years"]
-        result = run_research_cycle(**kwargs)
+        result = run_autoresearch_cycle(**kwargs)
+        pd = result.get("promotion_decision") or ""
+        champion_updated = bool(result.get("research_champion_updated"))
+        cycle_ok = champion_updated or pd in (
+            "updated_research_champion",
+            "updated_iteration_baseline",
+        )
         return {
             "state": "completed",
-            "decision": "kept" if result.get("winner") else "discarded",
+            "decision": "kept" if cycle_ok else ("discarded" if result.get("proposals_evaluated") else "no_op"),
             **result,
         }
     except Exception as exc:
@@ -904,7 +1561,7 @@ async def run_autoresearch_batch(request: Request):
     """Run N bounded autoresearch cycles and return aggregated result."""
     from src.db import ensure_initialized
     ensure_initialized()
-    from backtester.research_cycle import run_research_cycle
+    from backtester.autoresearch_engine import run_cycle as run_autoresearch_cycle
 
     payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
     scope = payload.get("scope", "global")
@@ -914,7 +1571,7 @@ async def run_autoresearch_batch(request: Request):
     runs = []
     for idx in range(cycles):
         runs.append(
-            run_research_cycle(
+            run_autoresearch_cycle(
                 years=years,
                 max_candidates=max_candidates,
                 scope=scope,
@@ -987,10 +1644,21 @@ async def get_autoresearch_runs(scope: str = "global", limit: int = 20):
                 except Exception:
                     roi_delta = None
             status = row["status"]
-            kept = status in {"approved", "converted"}
             blocked_reason = guardrails.get("reasons", []) if isinstance(guardrails, dict) else []
-            blocked_by_guardrails = bool(blocked_reason) or guardrails.get("verdict") == "blocked_by_guardrails"
-            decision = "blocked_by_guardrails" if blocked_by_guardrails else ("kept" if kept else "discarded")
+            gr_passed = bool(guardrails.get("passed", False))
+            blocked_by_guardrails = not gr_passed
+            status_approved = status in {"approved", "converted"}
+            promotable = bool(guardrails.get("is_positive_test")) or (
+                roi_delta is not None and roi_delta > 0
+            )
+            # Previously only approved/converted → "kept", so passing evaluated runs looked like failures.
+            kept = status_approved or (gr_passed and promotable)
+            if blocked_by_guardrails:
+                decision = "blocked_by_guardrails"
+            elif kept:
+                decision = "kept"
+            else:
+                decision = "discarded"
             runs.append(
                 {
                     "id": row["id"],
@@ -1117,24 +1785,75 @@ async def get_autoresearch_best_candidates(scope: str = "global", limit: int = B
 
 @app.post("/api/autoresearch/reset")
 async def reset_autoresearch_state():
-    """Reset research champion and mark old proposals as legacy for a fresh start."""
-    from src.db import ensure_initialized, get_conn
+    """Archive old research data and clear the active autoresearch lane for a fresh start."""
+    from src.db import ensure_initialized
+    from backtester.optimizer_runtime import reset_optimizer_state
+    from backtester.model_registry import get_live_weekly_model_record, set_live_weekly_model
+    from src.strategy_resolution import resolve_runtime_strategy
+
     ensure_initialized()
     try:
+        effective_strategy, strategy_meta = resolve_runtime_strategy("global")
+        prediction_lane_preserved = False
+        if strategy_meta.get("strategy_source") == "research_champion" and not get_live_weekly_model_record("global"):
+            set_live_weekly_model(
+                effective_strategy,
+                scope="global",
+                promoted_by="reset",
+                action="reset_preserve_current_prediction_lane",
+                notes="Preserved the current prediction strategy before clearing old autoresearch history.",
+            )
+            prediction_lane_preserved = True
+
         conn = get_conn()
-        # Mark old research champion entries as legacy
-        conn.execute("UPDATE research_model_registry SET scope = 'legacy_' || scope WHERE scope NOT LIKE 'legacy_%'")
-        # Mark old proposals evaluated under flawed scope
-        conn.execute("""
-            UPDATE research_proposals 
-            SET status = 'legacy' 
-            WHERE status = 'evaluated' 
-            AND id <= (SELECT COALESCE(MAX(id), 0) FROM research_proposals)
-        """)
+        output_dir = Path(_output_dir_absolute())
+        research_dir = output_dir / "research"
+        archive_root = research_dir / "archive" / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        archive_root.mkdir(parents=True, exist_ok=False)
+
+        archived_tables = {
+            "research_proposals": _fetch_table_rows(conn, "research_proposals"),
+            "proposal_reviews": _fetch_table_rows(conn, "proposal_reviews"),
+            "research_model_registry": _fetch_table_rows(conn, "research_model_registry"),
+        }
+        for table_name, rows in archived_tables.items():
+            _write_json_file(archive_root / "db" / f"{table_name}.json", rows)
+
+        archived_files = _archive_active_research_files(output_dir, archive_root)
+        archived_settings_path = _archive_autoresearch_settings_file(archive_root)
+
+        if _table_has_column(conn, "live_model_registry", "source_research_registry_id"):
+            conn.execute("UPDATE live_model_registry SET source_research_registry_id = NULL WHERE source_research_registry_id IS NOT NULL")
+        conn.execute("DELETE FROM research_model_registry")
+        conn.execute("DELETE FROM proposal_reviews")
+        conn.execute("DELETE FROM research_proposals")
         conn.commit()
         conn.close()
-        return {"ok": True, "message": "Research state reset. Old proposals marked as legacy. Next cycle will establish new baseline."}
+
+        reset_optimizer_state()
+
+        archive_manifest = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "archive_dir": str(archive_root),
+            "db_counts": {table_name: len(rows) for table_name, rows in archived_tables.items()},
+            "archived_files": archived_files,
+            "archived_settings": bool(archived_settings_path),
+            "active_prediction_lane_preserved": True,
+            "prediction_lane_snapshot_created": prediction_lane_preserved,
+        }
+        _write_json_file(archive_root / "archive_manifest.json", archive_manifest)
+        return {
+            "ok": True,
+            "archive_dir": _relative_output_path(str(archive_root)),
+            "message": "Old research was archived and the active autoresearch process was reset.",
+            "archived_counts": archive_manifest["db_counts"],
+        }
     except Exception as exc:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
@@ -2915,4 +3634,11 @@ if __name__ == "__main__":
     init_db()
     print("\\n  Golf Betting Model — Web UI")
     print("  Open in browser: http://localhost:8000\\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    quiet_logs = os.environ.get("QUIET_DEV_ACCESS_LOGS", "0").strip().lower() in {"1", "true", "yes", "on"}
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="warning",
+        access_log=not quiet_logs,
+    )

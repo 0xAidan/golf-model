@@ -86,3 +86,46 @@ def test_autoresearch_runs_roi_delta_backfilled_from_dossier(monkeypatch):
 
     os.unlink(dossier_path)
 
+
+def test_autoresearch_status_prefers_promotable_scalar_best(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(
+        "backtester.optimizer_runtime.get_optimizer_status",
+        lambda: {
+            "running": False,
+            "run_count": 2,
+            "last_run_started_at": "2026-03-14T00:00:00Z",
+            "last_run_finished_at": "2026-03-14T00:02:00Z",
+            "last_error": None,
+            "engine_mode": "optuna_scalar",
+            "scalar_objective": "weighted_roi_pct",
+            "last_result": {
+                "evaluation_mode": "optuna_scalar",
+                "scalar_objective": "weighted_roi_pct",
+                "optuna_scalar_summary": {
+                    "best_value": 9.1,
+                    "best_trial": {
+                        "number": 7,
+                        "value": 9.1,
+                        "user_attrs": {"feasible": False, "guardrail_passed": False},
+                    },
+                    "best_promotable_value": 4.4,
+                    "best_promotable_trial": {
+                        "number": 4,
+                        "value": 4.4,
+                        "user_attrs": {"feasible": True, "guardrail_passed": True},
+                    },
+                },
+            },
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/autoresearch/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"]["best_metric"] == 4.4
+    assert payload["status"]["guardrail_failures"] == 0
+
