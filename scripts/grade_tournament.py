@@ -138,14 +138,15 @@ def resolve_tournament(event_name: str = None, event_id: str = None, year: int =
 
 def find_latest_completed_event() -> dict | None:
     """Find the most recently completed PGA event from DG schedule."""
-    from src.datagolf import get_current_event_info
-    info = get_current_event_info("pga")
+    from src.datagolf import get_latest_completed_event_info
+
+    info = get_latest_completed_event_info("pga")
     if not info:
         return None
     return {
         "event_id": str(info.get("event_id", "")),
         "event_name": info.get("event_name", ""),
-        "year": datetime.now().year,
+        "year": int(str(info.get("end_date", datetime.now().strftime("%Y-%m-%d")))[:4]),
     }
 
 

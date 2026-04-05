@@ -47,7 +47,11 @@ from fastapi.staticfiles import StaticFiles
 app = FastAPI(title="Golf Betting Model")
 
 BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
+FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR / "index.html"
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+if (FRONTEND_DIST_DIR / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="frontend-assets")
 
 from src.routes.research import router as research_router
 from src.routes.model_registry import router as model_registry_router
@@ -277,6 +281,53 @@ def _latest_output_summary(output_type: str) -> dict | None:
     }
 
 
+def _latest_completed_event_summary() -> dict | None:
+    from scripts.grade_tournament import find_latest_completed_event
+
+    return find_latest_completed_event()
+
+
+def _latest_output_artifact(output_type: str) -> dict | None:
+    subdirs = {"prediction": "", "backtest": "backtests", "research": "research"}
+    path = _latest_output_file(subdir=subdirs[output_type], suffix=".md")
+    if not path:
+        return None
+    return {
+        "type": output_type,
+        "path": _relative_output_path(path),
+        "summary": _summarize_output(output_type, _read_output_content(_relative_output_path(path))),
+    }
+
+
+def _latest_graded_tournament_summary() -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT
+            t.id,
+            t.name,
+            t.course,
+            t.year,
+            t.event_id,
+            COUNT(DISTINCT r.id) AS results_count,
+            COUNT(DISTINCT p.id) AS picks_count,
+            COUNT(DISTINCT po.id) AS graded_pick_count,
+            COALESCE(SUM(po.hit), 0) AS hits,
+            ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
+            MAX(po.entered_at) AS last_graded_at
+        FROM tournaments t
+        JOIN results r ON r.tournament_id = t.id
+        LEFT JOIN picks p ON p.tournament_id = t.id
+        LEFT JOIN pick_outcomes po ON po.pick_id = p.id
+        GROUP BY t.id, t.name, t.course, t.year, t.event_id
+        ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 @app.get("/api/output/latest")
 async def get_latest_output_content(type: str = "backtest"):
     """
@@ -337,10 +388,106 @@ async def get_latest_output_summaries():
     }
 
 
+@app.get("/api/events/latest-completed")
+async def get_latest_completed_event():
+    """Return the most recently completed event for grading defaults."""
+    event = _latest_completed_event_summary()
+    if not event:
+        return JSONResponse({"error": "No completed event found"}, status_code=404)
+    return event
+
+
+@app.get("/api/grading/history")
+async def get_grading_history(limit: int = 20):
+    """Return durable grading history from stored tournaments, results, and pick outcomes."""
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT
+            t.id,
+            t.name,
+            t.course,
+            t.year,
+            t.event_id,
+            COUNT(DISTINCT r.id) AS results_count,
+            COUNT(DISTINCT p.id) AS picks_count,
+            COUNT(DISTINCT po.id) AS graded_pick_count,
+            COALESCE(SUM(po.hit), 0) AS hits,
+            ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
+            MAX(po.entered_at) AS last_graded_at
+        FROM tournaments t
+        JOIN results r ON r.tournament_id = t.id
+        LEFT JOIN picks p ON p.tournament_id = t.id
+        LEFT JOIN pick_outcomes po ON po.pick_id = p.id
+        GROUP BY t.id, t.name, t.course, t.year, t.event_id
+        ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {"tournaments": [dict(row) for row in rows]}
+
+
+@app.get("/api/players/{player_key}/profile")
+async def get_player_profile(player_key: str, tournament_id: int, course_num: int | None = None):
+    """Return deep profile data for one player in the current tournament context."""
+    from src import db
+
+    metrics = db.get_player_metrics(tournament_id, player_key)
+    recent_rounds = db.get_player_recent_rounds_by_key(player_key, limit=24)
+
+    metrics_by_category: dict[str, dict[str, float | str | None]] = {}
+    for metric in metrics:
+        category = metric.get("metric_category") or "other"
+        bucket = metrics_by_category.setdefault(category, {})
+        bucket[metric.get("metric_name") or "value"] = metric.get("metric_value", metric.get("metric_text"))
+
+    dg_id = recent_rounds[0].get("dg_id") if recent_rounds else None
+    course_history = []
+    if dg_id and course_num is not None:
+        course_history = db.get_player_course_rounds(int(dg_id), course_num)
+
+    conn = get_conn()
+    linked_bets = conn.execute(
+        """
+        SELECT bet_type, player_display, opponent_display, market_odds, ev, confidence, reasoning
+        FROM picks
+        WHERE tournament_id = ?
+          AND (player_key = ? OR opponent_key = ?)
+        ORDER BY ev DESC, id DESC
+        """,
+        (tournament_id, player_key, player_key),
+    ).fetchall()
+    conn.close()
+
+    player_display = None
+    for metric in metrics:
+        if metric.get("player_display"):
+            player_display = metric["player_display"]
+            break
+    if not player_display and recent_rounds:
+        player_display = recent_rounds[0].get("player_name")
+    if not player_display:
+        player_display = " ".join(part.capitalize() for part in player_key.split("_") if part)
+
+    return {
+        "player_key": player_key,
+        "player_display": player_display,
+        "current_metrics": metrics_by_category,
+        "recent_rounds": recent_rounds,
+        "course_history": course_history,
+        "linked_bets": [dict(row) for row in linked_bets],
+    }
+
+
 # ── API Endpoints ───────────────────────────────────────────────────
 
 def _render_dashboard_html():
-    """Load dashboard template from templates/index.html."""
+    """Load the built React dashboard when present, otherwise fall back to the legacy shell."""
+    if FRONTEND_DIST_INDEX.is_file():
+        return FRONTEND_DIST_INDEX.read_text(encoding="utf-8")
+
     path = BASE_DIR / "templates" / "index.html"
     if not path.is_file():
         return _fallback_dashboard_html()
@@ -1002,6 +1149,11 @@ async def get_dashboard_state(scope: str = "global"):
             "backtest_markdown_path": _latest_output_file(subdir="backtests", suffix=".md"),
             "research_markdown_path": _latest_output_file(subdir="research", suffix=".md"),
         },
+        "latest_prediction_artifact": _latest_output_artifact("prediction"),
+        "latest_backtest_artifact": _latest_output_artifact("backtest"),
+        "latest_research_artifact": _latest_output_artifact("research"),
+        "latest_completed_event": _latest_completed_event_summary(),
+        "latest_graded_tournament": _latest_graded_tournament_summary(),
         "optimizer": get_optimizer_status(),
         "autoresearch": {
             "running": get_optimizer_status().get("running", False),

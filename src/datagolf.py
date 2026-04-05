@@ -18,6 +18,7 @@ import requests
 import threading
 import time
 from collections import deque
+from datetime import date, datetime
 from typing import Optional
 
 from src import db
@@ -1170,6 +1171,37 @@ def get_current_event_info(tour: str = "pga") -> dict | None:
     except Exception:
         logger.warning("get_current_event_info failed", exc_info=True)
     return None
+
+
+def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None) -> dict | None:
+    """Return the latest completed event from the full DG schedule for a tour."""
+    try:
+        schedule = _call_api("get-schedule", {"tour": tour})
+        events = schedule if isinstance(schedule, list) else schedule.get("schedule", [])
+        if not events:
+            return None
+
+        today = as_of or date.today()
+        completed: list[tuple[date, dict]] = []
+        for event in events:
+            end_date_raw = event.get("end_date")
+            if not end_date_raw:
+                continue
+            try:
+                end_date = datetime.strptime(end_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if end_date <= today:
+                completed.append((end_date, event))
+
+        if not completed:
+            return None
+
+        completed.sort(key=lambda item: item[0], reverse=True)
+        return completed[0][1]
+    except Exception:
+        logger.warning("get_latest_completed_event_info failed", exc_info=True)
+        return None
 
 
 def fetch_dg_matchup_all_pairings(tour: str = "pga", odds_format: str = "american") -> dict:

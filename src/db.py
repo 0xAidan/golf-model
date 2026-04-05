@@ -108,6 +108,7 @@ def init_db():
             course TEXT,
             date TEXT,
             year INTEGER,
+            event_id TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         );
 
@@ -757,6 +758,13 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.execute("SELECT year FROM tournaments LIMIT 1")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE tournaments ADD COLUMN year INTEGER")
+        conn.commit()
+
+    # Add event_id column to tournaments if missing
+    try:
+        conn.execute("SELECT event_id FROM tournaments LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE tournaments ADD COLUMN event_id TEXT")
         conn.commit()
 
     # Add actual_finish column to historical_predictions if missing
