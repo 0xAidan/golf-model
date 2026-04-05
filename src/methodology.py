@@ -183,7 +183,7 @@ def _algorithm_overview(lines, w_cf, w_form, w_mom):
 
 
 def _data_sources(lines, ctx, metric_counts):
-    total_rounds = ctx.get("total_rounds", 0)
+    total_rounds = ctx.get("total_rounds") or 0
     event_id = ctx.get("event_id", "")
     tournament_name = ctx.get("tournament_name", "")
     rounds_by_year = ctx.get("rounds_by_year", {})
@@ -854,7 +854,7 @@ def _limitations(lines, ctx):
 
     lines.append("### Database State After Run")
     lines.append("")
-    total_rounds = ctx.get("total_rounds", 0)
+    total_rounds = ctx.get("total_rounds") or 0
     n_logged = ctx.get("predictions_logged", 0)
     lines.append(f"- **Total rounds stored:** {total_rounds:,}")
     lines.append(f"- **Predictions logged:** {n_logged} for post-tournament scoring")

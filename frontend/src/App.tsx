@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Brain, CircleAlert, Clock3, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
 import { Route, Routes } from "react-router-dom"
@@ -18,6 +18,8 @@ import type {
   PredictionRunRequest,
   PredictionRunResponse,
   ResearchProposal,
+  SecondaryBet,
+  ScheduleEvent,
 } from "@/lib/types"
 
 const DEFAULT_REQUEST: PredictionRunRequest = {
@@ -31,12 +33,13 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
 function App() {
   const queryClient = useQueryClient()
   const [predictionRequest, setPredictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
-  const [predictionRun, setPredictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
+  const [storedPredictionRun, setStoredPredictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [predictionLayout, setPredictionLayout] = useLocalStorageState<"board" | "table" | "players">("golf-model.prediction-layout", "board")
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
   const [selectedMatchupKey, setSelectedMatchupKey] = useLocalStorageState("golf-model.selected-matchup", "")
+  const predictionRun = useMemo(() => normalizePredictionRun(storedPredictionRun), [storedPredictionRun])
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
@@ -51,16 +54,21 @@ function App() {
     queryKey: ["research-proposals"],
     queryFn: api.getResearchProposals,
   })
+  const scheduleQuery = useQuery({
+    queryKey: ["schedule-events", predictionRequest.tour],
+    queryFn: () => api.getScheduleEvents(predictionRequest.tour),
+  })
   const playerProfileQuery = useQuery({
     queryKey: ["player-profile", selectedPlayerKey, predictionRun?.tournament_id, predictionRun?.course_num],
     queryFn: () => api.getPlayerProfile(selectedPlayerKey, predictionRun?.tournament_id ?? 0, predictionRun?.course_num),
     enabled: Boolean(selectedPlayerKey && predictionRun?.tournament_id),
   })
+  const selectedPlayerProfile = useMemo(() => normalizePlayerProfile(playerProfileQuery.data), [playerProfileQuery.data])
 
   const predictionMutation = useMutation({
     mutationFn: api.runPrediction,
     onSuccess: (result) => {
-      setPredictionRun(result)
+      setStoredPredictionRun(normalizePredictionRun(result))
       if (result.composite_results?.[0]?.player_key) {
         setSelectedPlayerKey(result.composite_results[0].player_key)
       }
@@ -100,6 +108,62 @@ function App() {
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const proposals = researchQuery.data ?? []
   const dashboard = dashboardQuery.data as DashboardState | undefined
+  const scheduleEvents = useMemo(() => scheduleQuery.data?.events ?? [], [scheduleQuery.data?.events])
+  const selectedScheduleEvent =
+    scheduleEvents.find((event) => event.event_name === predictionRequest.tournament) ??
+    scheduleEvents[0] ??
+    null
+  const tournamentOptions = scheduleEvents.length
+    ? scheduleEvents.map((event) => ({
+        value: event.event_name,
+        label: buildEventOptionLabel(event),
+      }))
+    : predictionRequest.tournament
+      ? [{ value: predictionRequest.tournament, label: predictionRequest.tournament }]
+      : []
+  const courseOptions = selectedScheduleEvent?.course
+    ? [{ value: selectedScheduleEvent.course, label: selectedScheduleEvent.course }]
+    : predictionRequest.course
+      ? [{ value: predictionRequest.course, label: predictionRequest.course }]
+      : []
+  const scheduleStatusMessage = scheduleQuery.isLoading
+    ? "Loading tournament schedule..."
+    : scheduleQuery.isError
+      ? "Could not load tournament schedule. Check your DataGolf API key and backend logs."
+      : !scheduleEvents.length
+        ? "No schedule events returned for this tour."
+        : null
+
+  useEffect(() => {
+    if (!scheduleEvents.length) {
+      return
+    }
+
+    const nextTournament = selectedScheduleEvent?.event_name ?? ""
+    const nextCourse = selectedScheduleEvent?.course ?? ""
+    const shouldUpdateTournament = predictionRequest.tournament !== nextTournament
+    const shouldUpdateCourse = predictionRequest.course !== nextCourse
+
+    if (!shouldUpdateTournament && !shouldUpdateCourse) {
+      return
+    }
+
+    setPredictionRequest({
+      ...predictionRequest,
+      tournament: nextTournament,
+      course: nextCourse,
+    })
+  }, [
+    predictionRequest,
+    predictionRequest.course,
+    predictionRequest.enable_ai,
+    predictionRequest.tournament,
+    predictionRequest.mode,
+    predictionRequest.tour,
+    scheduleEvents,
+    selectedScheduleEvent,
+    setPredictionRequest,
+  ])
 
   return (
     <CommandShell
@@ -134,17 +198,45 @@ function App() {
           <LabeledInput
             label="Tour"
             value={predictionRequest.tour}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, tour: value })}
+            onChange={(value) =>
+              setPredictionRequest({
+                ...predictionRequest,
+                tour: value,
+                tournament: "",
+                course: "",
+              })
+            }
+            asSelect
+            options={[
+              { value: "pga", label: "PGA" },
+              { value: "euro", label: "DP World Tour" },
+              { value: "liv", label: "LIV" },
+            ]}
           />
           <LabeledInput
             label="Tournament"
             value={predictionRequest.tournament ?? ""}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, tournament: value })}
+            onChange={(value) => {
+              const event = scheduleEvents.find((item) => item.event_name === value)
+              setPredictionRequest({
+                ...predictionRequest,
+                tournament: value,
+                course: event?.course ?? "",
+              })
+            }}
+            asSelect
+            options={tournamentOptions}
+            disabled={scheduleQuery.isLoading || scheduleQuery.isError || !tournamentOptions.length}
+            emptyLabel={scheduleQuery.isLoading ? "Loading tournaments..." : "No tournaments available"}
           />
           <LabeledInput
             label="Course"
             value={predictionRequest.course ?? ""}
             onChange={(value) => setPredictionRequest({ ...predictionRequest, course: value })}
+            asSelect
+            options={courseOptions}
+            disabled={scheduleQuery.isLoading || !courseOptions.length}
+            emptyLabel={scheduleQuery.isLoading ? "Loading course..." : "Select a tournament first"}
           />
           <LabeledSelect
             label="Mode"
@@ -167,6 +259,11 @@ function App() {
             onChange={(value) => setPredictionRequest({ ...predictionRequest, enable_ai: value === "enabled" })}
           />
         </div>
+        {scheduleStatusMessage ? (
+          <p className="mt-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-sm text-slate-300">
+            {scheduleStatusMessage}
+          </p>
+        ) : null}
       </SurfaceCard>
 
       <Routes>
@@ -199,7 +296,7 @@ function App() {
             <PlayersPage
               players={players}
               selectedPlayer={selectedPlayer}
-              selectedPlayerProfile={playerProfileQuery.data}
+              selectedPlayerProfile={selectedPlayerProfile}
               onPlayerSelect={setSelectedPlayerKey}
             />
           }
@@ -272,7 +369,19 @@ function PredictionWorkspacePage({
   onMatchupSelect: (value: string) => void
   players: CompositePlayer[]
   predictionRun: PredictionRunResponse | null
-  secondaryBets: Array<{ market: string; player: string; odds: string; ev: number; confidence?: string }>
+  secondaryBets: Array<{
+    market: string
+    player: string
+    betType: string
+    odds: string
+    book?: string
+    ev: number
+    evPct?: string
+    confidence?: string
+    reasoning?: string
+    modelProb?: number
+    marketProb?: number
+  }>
   selectedPlayer: CompositePlayer | null
   selectedMatchup: MatchupBet | null
 }) {
@@ -555,6 +664,9 @@ function PredictionWorkspacePage({
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="text-sm font-semibold text-white">{bet.player}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.16em] text-cyan-200">
+                        {formatBetTypeLabel(bet.betType)}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
                           {bet.market}
@@ -565,10 +677,28 @@ function PredictionWorkspacePage({
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-cyan-200">{formatNumber(bet.ev * 100, 1)}% EV</p>
-                      <p className="text-xs text-slate-500">{bet.odds}</p>
+                      <p className="text-sm text-cyan-200">{bet.evPct ?? `${formatNumber(bet.ev * 100, 1)}% EV`}</p>
+                      <p className="text-xs text-slate-300">
+                        {bet.odds}
+                        {bet.book ? ` @ ${bet.book}` : ""}
+                      </p>
                     </div>
                   </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-slate-400">
+                    <div>
+                      <span className="text-slate-500">Model</span>{" "}
+                      <span className="text-slate-200">
+                        {bet.modelProb !== undefined ? `${formatNumber(bet.modelProb * 100, 1)}%` : "--"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Market</span>{" "}
+                      <span className="text-slate-200">
+                        {bet.marketProb !== undefined ? `${formatNumber(bet.marketProb * 100, 1)}%` : "--"}
+                      </span>
+                    </div>
+                  </div>
+                  {bet.reasoning ? <p className="mt-3 text-xs leading-5 text-slate-400">{bet.reasoning}</p> : null}
                 </div>
               ))
             ) : (
@@ -624,6 +754,7 @@ function PlayersPage({
   selectedPlayerProfile?: PlayerProfile
   onPlayerSelect: (playerKey: string) => void
 }) {
+  const profileRef = useRef<HTMLDivElement | null>(null)
   const momentumValues =
     selectedPlayerProfile?.recent_rounds.map((round) => Number(round.sg_total ?? 0)).reverse() ??
     (selectedPlayer
@@ -635,18 +766,38 @@ function PlayersPage({
         ]
       : [])
   const courseValues = selectedPlayerProfile?.course_history.map((round) => Number(round.sg_total ?? 0)).reverse() ?? []
+  const handlePlayerSelect = (playerKey: string) => {
+    onPlayerSelect(playerKey)
+
+    if (typeof window === "undefined") {
+      return
+    }
+
+    if (!window.matchMedia("(max-width: 1535px)").matches) {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+  }
 
   return (
     <div className="grid gap-6 2xl:grid-cols-[0.92fr_1.08fr]">
-      <SurfaceCard>
+      <SurfaceCard className="self-start">
         <SectionTitle title="Projection ladder" description="Click any player to open a richer projection profile with score components and momentum context." />
-        <div className="space-y-2">
+        <div className="max-h-[68vh] space-y-2 overflow-y-auto pr-2">
           {players.map((player) => (
             <button
               key={player.player_key}
               type="button"
-              className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-              onClick={() => onPlayerSelect(player.player_key)}
+              aria-pressed={player.player_key === selectedPlayer?.player_key}
+              className={
+                player.player_key === selectedPlayer?.player_key
+                  ? "flex w-full items-center justify-between rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-left transition"
+                  : "flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
+              }
+              onClick={() => handlePlayerSelect(player.player_key)}
             >
               <div>
                 <p className="font-medium text-white">{player.player_display}</p>
@@ -657,8 +808,12 @@ function PlayersPage({
           ))}
         </div>
       </SurfaceCard>
-      <SurfaceCard>
-        <SectionTitle title="Player profile" description="Current-week projection context, momentum, course confidence, and sub-score detail." />
+      <SurfaceCard className="self-start">
+        <div ref={profileRef}>
+          <SectionTitle
+            title={selectedPlayer ? `Player profile: ${selectedPlayer.player_display}` : "Player profile"}
+            description="Current-week projection context, momentum, course confidence, and sub-score detail."
+          />
         {selectedPlayer ? (
           <div className="space-y-5">
             <div className="grid gap-4 md:grid-cols-4">
@@ -719,6 +874,7 @@ function PlayersPage({
         ) : (
           <EmptyState message="Run a prediction to load player projections." />
         )}
+        </div>
       </SurfaceCard>
     </div>
   )
@@ -1035,25 +1191,51 @@ function MetricsCategoryTable({
 }
 
 function LabeledInput({
+  asSelect = false,
+  disabled = false,
+  emptyLabel = "No options available",
   label,
   onChange,
+  options = [],
   type = "text",
   value,
 }: {
+  asSelect?: boolean
+  disabled?: boolean
+  emptyLabel?: string
   label: string
   onChange: (value: string) => void
+  options?: Array<{ value: string; label: string }>
   type?: string
   value: string
 }) {
   return (
     <label className="block">
       <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30"
-      />
+      {asSelect ? (
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {!options.length ? (
+            <option value="">{emptyLabel}</option>
+          ) : null}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30"
+        />
+      )}
     </label>
   )
 }
@@ -1121,14 +1303,23 @@ function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
   const entries = Object.entries(predictionRun?.value_bets ?? {})
   return entries
     .flatMap(([market, bets]) =>
-      bets
+      asArray(bets)
         .filter((bet) => bet.is_value)
         .map((bet) => ({
           market,
-          player: bet.player,
-          odds: bet.odds,
+          player: bet.player_display ?? bet.player,
+          betType: bet.bet_type ?? market,
+          odds:
+            bet.best_odds !== undefined
+              ? formatAmericanOdds(bet.best_odds)
+              : bet.odds,
+          book: bet.best_book,
           ev: bet.ev,
+          evPct: bet.ev_pct,
           confidence: bet.confidence,
+          reasoning: bet.reasoning,
+          modelProb: bet.model_prob,
+          marketProb: bet.market_prob,
         })),
     )
     .sort((left, right) => right.ev - left.ev)
@@ -1136,6 +1327,11 @@ function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
 
 function buildMatchupKey(matchup: MatchupBet) {
   return `${matchup.pick_key}-${matchup.opponent_key}-${matchup.market_type ?? "matchup"}`
+}
+
+function buildEventOptionLabel(event: ScheduleEvent) {
+  const dateLabel = event.start_date ? ` (${event.start_date})` : ""
+  return `${event.event_name}${dateLabel}`
 }
 
 function secondaryBadgeLabel(market: string) {
@@ -1147,6 +1343,78 @@ function secondaryBadgeLabel(market: string) {
     return "placement"
   }
   return "mispriced"
+}
+
+function formatBetTypeLabel(betType?: string) {
+  if (!betType) {
+    return "Market"
+  }
+  const normalized = betType.replaceAll("_", " ")
+  return normalized
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function formatAmericanOdds(value: number) {
+  return value > 0 ? `+${value}` : String(value)
+}
+
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : []
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function normalizeValueBets(valueBets: PredictionRunResponse["value_bets"]): Record<string, SecondaryBet[]> {
+  if (!isRecord(valueBets)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(valueBets).map(([market, bets]) => [market, asArray(bets as SecondaryBet[])]),
+  )
+}
+
+function normalizePredictionRun(predictionRun: PredictionRunResponse | null): PredictionRunResponse | null {
+  if (!predictionRun) {
+    return null
+  }
+
+  const fieldValidation = predictionRun.field_validation
+
+  return {
+    ...predictionRun,
+    composite_results: asArray(predictionRun.composite_results),
+    matchup_bets: asArray(predictionRun.matchup_bets),
+    value_bets: normalizeValueBets(predictionRun.value_bets),
+    warnings: asArray(predictionRun.warnings),
+    errors: asArray(predictionRun.errors),
+    field_validation: fieldValidation
+      ? {
+          ...fieldValidation,
+          players_with_thin_rounds: asArray(fieldValidation.players_with_thin_rounds),
+          players_missing_dg_skill: asArray(fieldValidation.players_missing_dg_skill),
+        }
+      : undefined,
+  }
+}
+
+function normalizePlayerProfile(profile?: PlayerProfile): PlayerProfile | undefined {
+  if (!profile) {
+    return undefined
+  }
+
+  return {
+    ...profile,
+    current_metrics: isRecord(profile.current_metrics) ? (profile.current_metrics as PlayerProfile["current_metrics"]) : {},
+    recent_rounds: asArray(profile.recent_rounds),
+    course_history: asArray(profile.course_history),
+    linked_bets: asArray(profile.linked_bets),
+  }
 }
 
 export default App

@@ -132,6 +132,7 @@ class GolfModelService:
         print("  Computing rolling stats...")
         rolling = self._compute_rolling_stats(tid, field_keys, course_num)
         result["rolling_stats"] = rolling
+        result["total_rounds"] = db.get_rounds_count()
 
         # Step 7: Load course profile
         print("  Loading course profile...")
@@ -726,7 +727,7 @@ class GolfModelService:
             "matchup_bets": matchup_bets or [],
             "metric_counts": result.get("metric_counts") or {},
             "rounds_by_year": result.get("rounds_by_year") or {},
-            "total_rounds": result.get("total_rounds"),
+            "total_rounds": result.get("total_rounds") or 0,
             "model_version": getattr(src_config, "MODEL_VERSION", "4.2"),
             "strategy": {
                 "runtime_settings": meta.get("runtime_settings")

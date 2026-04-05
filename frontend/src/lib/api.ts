@@ -6,6 +6,7 @@ import type {
   PredictionRunRequest,
   PredictionRunResponse,
   ResearchProposal,
+  ScheduleEvent,
 } from "@/lib/types"
 
 const JSON_HEADERS = {
@@ -24,6 +25,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
   getLatestCompletedEvent: () => request<EventSummary>("/api/events/latest-completed"),
+  getScheduleEvents: (tour: string) => request<{ events: ScheduleEvent[] }>(`/api/events/schedule?tour=${tour}`),
   getGradingHistory: () => request<GradingHistoryResponse>("/api/grading/history"),
   getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) =>
     request<PlayerProfile>(

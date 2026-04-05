@@ -1,4 +1,5 @@
 from src.services.golf_model_service import GolfModelService
+from src.methodology import _data_sources
 
 
 def test_backfill_rounds_includes_alt_for_major_events(monkeypatch):
@@ -63,3 +64,40 @@ def test_validate_field_data_flags_players_with_thin_rounds_and_missing_skill(mo
     assert validation["has_cross_tour_field_risk"] is True
     assert validation["players_with_thin_rounds"] == ["Jon Rahm"]
     assert validation["players_missing_dg_skill"] == ["Jon Rahm"]
+
+
+def test_build_methodology_ctx_defaults_total_rounds_to_zero():
+    service = GolfModelService(tour="pga")
+
+    ctx = service._build_methodology_ctx(
+        tournament_name="Masters Tournament",
+        course_name="Augusta National",
+        tid=7,
+        composite=[],
+        value_bets={},
+        profile=None,
+        ai_pre_analysis=None,
+        matchup_bets=[],
+        weights={},
+        result={},
+    )
+
+    assert ctx["total_rounds"] == 0
+
+
+def test_data_sources_handles_missing_total_rounds():
+    lines = []
+
+    _data_sources(
+        lines,
+        {
+            "event_id": "123",
+            "tournament_name": "Masters Tournament",
+            "metric_counts": {},
+            "rounds_by_year": {},
+            "total_rounds": None,
+        },
+        {},
+    )
+
+    assert any("2019-2026 (0 total rounds)" in line for line in lines)
