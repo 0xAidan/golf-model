@@ -45,6 +45,66 @@ export type DashboardState = {
   }
 }
 
+export type LiveRankingRow = {
+  rank: number
+  player_key?: string
+  player: string
+  composite: number
+  course_fit: number
+  form: number
+  momentum: number
+  finish_state?: string | null
+}
+
+export type LiveMatchupRow = {
+  player: string
+  opponent: string
+  bookmaker?: string
+  market_odds?: string
+  model_prob?: number
+  ev?: number
+  market_type?: string
+}
+
+export type LiveTournamentSnapshot = {
+  event_name?: string
+  course_name?: string
+  field_size?: number
+  active?: boolean
+  rankings?: LiveRankingRow[]
+  matchups?: LiveMatchupRow[]
+  card_path?: string | null
+}
+
+export type LiveRefreshSnapshot = {
+  generated_at?: string
+  cadence_mode?: string
+  live_tournament?: LiveTournamentSnapshot
+  upcoming_tournament?: LiveTournamentSnapshot
+}
+
+export type LiveRefreshStatusResponse = {
+  status?: {
+    running?: boolean
+    cadence_mode?: string
+    run_count?: number
+    snapshot_age_seconds?: number | null
+    last_error?: string | null
+  }
+  settings?: {
+    enabled?: boolean
+    autostart?: boolean
+    tour?: string
+  }
+}
+
+export type LiveRefreshSnapshotResponse = {
+  ok: boolean
+  snapshot: LiveRefreshSnapshot | null
+  age_seconds?: number | null
+  stale_reason?: string | null
+}
+
 export type OutputArtifact = {
   type?: string
   path: string

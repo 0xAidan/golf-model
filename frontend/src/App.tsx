@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Brain, CircleAlert, Clock3, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
 import { Route, Routes } from "react-router-dom"
@@ -13,6 +13,8 @@ import type {
   CompositePlayer,
   DashboardState,
   GradedTournamentSummary,
+  LiveRefreshSnapshot,
+  LiveRefreshStatusResponse,
   MatchupBet,
   PlayerProfile,
   PredictionRunRequest,
@@ -30,8 +32,8 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
 
 function App() {
   const queryClient = useQueryClient()
-  const [predictionRequest, setPredictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
-  const [predictionRun, setPredictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
+  const [predictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
+  const [predictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [predictionLayout, setPredictionLayout] = useLocalStorageState<"board" | "table" | "players">("golf-model.prediction-layout", "board")
@@ -56,19 +58,18 @@ function App() {
     queryFn: () => api.getPlayerProfile(selectedPlayerKey, predictionRun?.tournament_id ?? 0, predictionRun?.course_num),
     enabled: Boolean(selectedPlayerKey && predictionRun?.tournament_id),
   })
-
-  const predictionMutation = useMutation({
-    mutationFn: api.runPrediction,
-    onSuccess: (result) => {
-      setPredictionRun(result)
-      if (result.composite_results?.[0]?.player_key) {
-        setSelectedPlayerKey(result.composite_results[0].player_key)
-      }
-      if (result.matchup_bets?.[0]) {
-        setSelectedMatchupKey(buildMatchupKey(result.matchup_bets[0]))
-      }
-      void queryClient.invalidateQueries({ queryKey: ["dashboard-state"] })
+  const liveRefreshStatusQuery = useQuery({
+    queryKey: ["live-refresh-status"],
+    queryFn: api.getLiveRefreshStatus,
+    refetchInterval: (query) => {
+      const data = query.state.data as LiveRefreshStatusResponse | undefined
+      return data?.status?.running ? 5_000 : 15_000
     },
+  })
+  const liveSnapshotQuery = useQuery({
+    queryKey: ["live-refresh-snapshot"],
+    queryFn: api.getLiveRefreshSnapshot,
+    refetchInterval: 10_000,
   })
 
   const gradeMutation = useMutation({
@@ -100,6 +101,36 @@ function App() {
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const proposals = researchQuery.data ?? []
   const dashboard = dashboardQuery.data as DashboardState | undefined
+  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming">("live")
+  const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
+  const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
+
+  useEffect(() => {
+    const ensureAlwaysOnRuntime = async () => {
+      try {
+        const runtime = await api.getLiveRefreshStatus()
+        const settings = runtime.settings ?? {}
+        if (settings.enabled === false) {
+          return
+        }
+        const tour = settings.tour || predictionRequest.tour || "pga"
+        if (settings.autostart !== true) {
+          await api.patchAutoresearchSettings({
+            live_refresh: { ...settings, enabled: true, autostart: true, tour },
+          })
+        }
+        if (!runtime.status?.running) {
+          await api.startLiveRefresh({
+            tour,
+            live_refresh: { ...settings, enabled: true, autostart: true, tour },
+          })
+        }
+      } catch {
+        // Keep UI rendering even if bootstrap check fails.
+      }
+    }
+    void ensureAlwaysOnRuntime()
+  }, [predictionRequest.tour])
 
   return (
     <CommandShell
@@ -109,72 +140,35 @@ function App() {
         <>
           <Button
             size="lg"
-            onClick={() => predictionMutation.mutate(predictionRequest)}
-            disabled={predictionMutation.isPending}
-          >
-            {predictionMutation.isPending ? "Running prediction..." : "Run prediction"}
-          </Button>
-          <Button
-            size="lg"
             variant="outline"
             onClick={() => gradeMutation.mutate()}
             disabled={gradeMutation.isPending}
           >
             {gradeMutation.isPending ? "Grading..." : "Grade latest event"}
           </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => {
+              void queryClient.invalidateQueries({ queryKey: ["live-refresh-status"] })
+              void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
+            }}
+          >
+            {liveRuntimeRunning ? "Refresh live board" : "Check runtime"}
+          </Button>
         </>
       }
     >
-      <SurfaceCard className="mb-6">
-        <SectionTitle
-          title="Run controls"
-          description="Prediction runs stay quantitative. This shell only changes how you inspect, filter, and revisit the output."
-        />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <LabeledInput
-            label="Tour"
-            value={predictionRequest.tour}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, tour: value })}
-          />
-          <LabeledInput
-            label="Tournament"
-            value={predictionRequest.tournament ?? ""}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, tournament: value })}
-          />
-          <LabeledInput
-            label="Course"
-            value={predictionRequest.course ?? ""}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, course: value })}
-          />
-          <LabeledSelect
-            label="Mode"
-            value={predictionRequest.mode}
-            options={[
-              { value: "full", label: "Full board" },
-              { value: "matchups-only", label: "Matchups only" },
-              { value: "placements-only", label: "Placements only" },
-              { value: "round-matchups", label: "Round matchups" },
-            ]}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, mode: value as PredictionRunRequest["mode"] })}
-          />
-          <LabeledSelect
-            label="AI"
-            value={predictionRequest.enable_ai ? "enabled" : "disabled"}
-            options={[
-              { value: "enabled", label: "Enabled" },
-              { value: "disabled", label: "Disabled" },
-            ]}
-            onChange={(value) => setPredictionRequest({ ...predictionRequest, enable_ai: value === "enabled" })}
-          />
-        </div>
-      </SurfaceCard>
-
       <Routes>
         <Route
           path="/"
           element={
             <PredictionWorkspacePage
               dashboard={dashboard}
+              liveSnapshot={liveSnapshot}
+              liveRuntimeRunning={liveRuntimeRunning}
+              predictionTab={predictionTab}
+              onPredictionTabChange={setPredictionTab}
               filteredMatchups={filteredMatchups}
               gradingHistory={gradingHistory}
               layout={predictionLayout}
@@ -243,6 +237,10 @@ function App() {
 
 function PredictionWorkspacePage({
   dashboard,
+  liveSnapshot,
+  liveRuntimeRunning,
+  predictionTab,
+  onPredictionTabChange,
   filteredMatchups,
   gradingHistory,
   layout,
@@ -260,6 +258,10 @@ function PredictionWorkspacePage({
   selectedMatchup,
 }: {
   dashboard?: DashboardState
+  liveSnapshot: LiveRefreshSnapshot | null
+  liveRuntimeRunning: boolean
+  predictionTab: "live" | "upcoming"
+  onPredictionTabChange: (value: "live" | "upcoming") => void
   filteredMatchups: MatchupBet[]
   gradingHistory: GradedTournamentSummary[]
   layout: "board" | "table" | "players"
@@ -277,9 +279,160 @@ function PredictionWorkspacePage({
   selectedMatchup: MatchupBet | null
 }) {
   const totalProfit = gradingHistory.reduce((sum, tournament) => sum + Number(tournament.total_profit ?? 0), 0)
+  const liveTournament = liveSnapshot?.live_tournament
+  const upcomingTournament = liveSnapshot?.upcoming_tournament
+  const liveLabel = liveTournament?.active ? "Live Event" : "Past Event"
+  const liveRankings = (liveTournament?.rankings ?? []).filter((row) => !isCutFinishState(row.finish_state))
+  const liveMatchups = liveTournament?.matchups ?? []
+  const upcomingRankings = upcomingTournament?.rankings ?? []
+  const upcomingMatchups = upcomingTournament?.matchups ?? []
 
   return (
     <div className="space-y-6">
+      <SurfaceCard>
+        <SectionTitle
+          title="Prediction stream"
+          description="Always-on runtime auto-detects live, upcoming, and past event context."
+          action={
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${liveRuntimeRunning ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
+              {liveRuntimeRunning ? "Runtime active" : "Runtime booting"}
+            </span>
+          }
+        />
+        <div className="mb-4 flex gap-2">
+          <Button
+            size="sm"
+            variant={predictionTab === "live" ? "default" : "outline"}
+            onClick={() => onPredictionTabChange("live")}
+          >
+            {liveLabel}
+          </Button>
+          <Button
+            size="sm"
+            variant={predictionTab === "upcoming" ? "default" : "outline"}
+            onClick={() => onPredictionTabChange("upcoming")}
+          >
+            Upcoming Event
+          </Button>
+        </div>
+        {predictionTab === "live" ? (
+          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{liveLabel} leaderboard</p>
+              <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "Waiting for event context..."}</p>
+              <p className="mt-1 text-xs text-slate-500">Cut and withdrawn players are hidden.</p>
+              <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Player</th>
+                      <th className="px-3 py-2 text-left">Composite</th>
+                      <th className="px-3 py-2 text-left">Form</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liveRankings.length ? (
+                      liveRankings.slice(0, 30).map((row) => (
+                        <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
+                          <td className="px-3 py-2">{row.rank}</td>
+                          <td className="px-3 py-2 text-white">{row.player}</td>
+                          <td className="px-3 py-2">{formatNumber(row.composite, 2)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.form, 2)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="px-3 py-3 text-slate-400" colSpan={4}>
+                          No rankings yet. Runtime is still collecting data.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live matchups</p>
+              <p className="mt-2 text-sm text-slate-300">Best currently surfaced opportunities from always-on scans.</p>
+              <div className="mt-4 space-y-2">
+                {liveMatchups.length ? (
+                  liveMatchups.slice(0, 20).map((row, index) => (
+                    <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
+                      <p className="text-sm font-medium text-white">
+                        {row.player} over {row.opponent}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState message="No live matchup edges yet." />
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming board</p>
+              <p className="mt-2 text-sm text-slate-300">{upcomingTournament?.event_name ?? "Waiting for next event..."}</p>
+              <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Player</th>
+                      <th className="px-3 py-2 text-left">Composite</th>
+                      <th className="px-3 py-2 text-left">Course</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {upcomingRankings.length ? (
+                      upcomingRankings.slice(0, 30).map((row) => (
+                        <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
+                          <td className="px-3 py-2">{row.rank}</td>
+                          <td className="px-3 py-2 text-white">{row.player}</td>
+                          <td className="px-3 py-2">{formatNumber(row.composite, 2)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.course_fit, 2)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="px-3 py-3 text-slate-400" colSpan={4}>
+                          No upcoming rankings yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming matchups</p>
+              <p className="mt-2 text-sm text-slate-300">Early lines as books publish more pairs.</p>
+              <div className="mt-4 space-y-2">
+                {upcomingMatchups.length ? (
+                  upcomingMatchups.slice(0, 20).map((row, index) => (
+                    <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
+                      <p className="text-sm font-medium text-white">
+                        {row.player} over {row.opponent}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState message="No upcoming matchup edges yet." />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </SurfaceCard>
+
       <div className="grid gap-4 xl:grid-cols-4">
         <MetricTile label="Field size" value={String(predictionRun?.field_size ?? 0)} detail={predictionRun?.event_name ?? "No run loaded"} />
         <MetricTile label="Matchups" value={String(filteredMatchups.length)} detail="Bread-and-butter board after live filters" />
@@ -1058,35 +1211,6 @@ function LabeledInput({
   )
 }
 
-function LabeledSelect({
-  label,
-  onChange,
-  options,
-  value,
-}: {
-  label: string
-  onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
-  value: string
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
 function EmptyState({ message }: { message: string }) {
   return <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-slate-400">{message}</div>
 }
@@ -1147,6 +1271,14 @@ function secondaryBadgeLabel(market: string) {
     return "placement"
   }
   return "mispriced"
+}
+
+function isCutFinishState(finishState?: string | null) {
+  if (!finishState) {
+    return false
+  }
+  const normalized = finishState.trim().toUpperCase()
+  return normalized === "CUT" || normalized === "MDF" || normalized === "WD" || normalized === "DQ" || normalized === "DNS"
 }
 
 export default App

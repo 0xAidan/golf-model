@@ -21,9 +21,9 @@ class LiveRefreshCadence:
 
 def default_live_refresh_settings() -> dict:
     return {
-        "enabled": False,
+        "enabled": True,
         "tour": "pga",
-        "autostart": False,
+        "autostart": True,
         "mode_override": None,
         "off_window": {
             "ingest_seconds": 1800,
