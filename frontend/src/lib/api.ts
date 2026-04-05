@@ -2,27 +2,16 @@ import type {
   DashboardState,
   EventSummary,
   GradingHistoryResponse,
+  LiveRefreshSnapshotResponse,
+  LiveRefreshStatusResponse,
   PlayerProfile,
   PredictionRunRequest,
   PredictionRunResponse,
   ResearchProposal,
-  ScheduleEvent,
 } from "@/lib/types"
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
-}
-
-type LiveRefreshStatusResponse = {
-  status?: {
-    running?: boolean
-    tour?: string
-  }
-  settings?: {
-    enabled?: boolean
-    autostart?: boolean
-    tour?: string
-  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -37,16 +26,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
   getLatestCompletedEvent: () => request<EventSummary>("/api/events/latest-completed"),
-  getScheduleEvents: (tour: string) => request<{ events: ScheduleEvent[] }>(`/api/events/schedule?tour=${tour}`),
   getGradingHistory: () => request<GradingHistoryResponse>("/api/grading/history"),
   getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) =>
     request<PlayerProfile>(
-      `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum ? `&course_num=${courseNum}` : ""}`,
+      `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum === undefined || courseNum === null ? "" : `&course_num=${courseNum}`}`,
     ),
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),
   getResearchProposals: () => request<ResearchProposal[]>("/api/research/proposals?limit=12"),
   getAutoresearchStatus: () => request<Record<string, unknown>>("/api/autoresearch/status"),
   getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
+  getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
   startLiveRefresh: (payload?: { tour?: string; live_refresh?: Record<string, unknown> }) =>
     request<Record<string, unknown>>("/api/live-refresh/start", {
       method: "POST",

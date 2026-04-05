@@ -7,6 +7,9 @@ export function SparklineChart({
   values: number[]
   color: string
 }) {
+  if (!values.length) {
+    return <div className="h-[110px] rounded-xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-xs text-slate-400">No trend data yet.</div>
+  }
   return (
     <ReactECharts
       style={{ height: 110 }}
@@ -65,6 +68,9 @@ export function BarTrendChart({
   values: number[]
   color: string
 }) {
+  if (!labels.length || !values.length) {
+    return <div className="h-[260px] rounded-xl border border-dashed border-white/10 bg-black/15 px-4 py-24 text-center text-sm text-slate-400">No chart data available yet.</div>
+  }
   return (
     <ReactECharts
       style={{ height: 260 }}

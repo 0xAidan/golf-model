@@ -8,10 +8,11 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src import db
 from src.live_refresh_policy import resolve_cadence
 from src.services.live_snapshot_service import run_snapshot_analysis
 
@@ -66,51 +67,160 @@ def read_snapshot() -> dict[str, Any]:
         return {}
 
 
-def _extract_rankings(composite: list[dict], *, limit: int = 30) -> list[dict]:
+def _parse_iso_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _is_live_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
+    start_date = _parse_iso_date(event_row.get("start_date"))
+    end_date = _parse_iso_date(event_row.get("end_date"))
+    if not start_date or not end_date:
+        return False
+    return start_date <= today <= end_date
+
+
+def _load_finish_state_map(event_id: str | None, *, year: int | None = None) -> dict[str, str]:
+    if not event_id:
+        return {}
+    resolved_year = int(year or datetime.now(timezone.utc).year)
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT player_key, MAX(fin_text) AS fin_text
+            FROM rounds
+            WHERE event_id = ? AND year = ?
+              AND fin_text IS NOT NULL
+              AND TRIM(fin_text) != ''
+            GROUP BY player_key
+            """,
+            (str(event_id), resolved_year),
+        ).fetchall()
+        finish_states: dict[str, str] = {}
+        for row in rows:
+            key = str(row["player_key"] or "").strip().lower()
+            finish = str(row["fin_text"] or "").strip().upper()
+            if key and finish:
+                finish_states[key] = finish
+        return finish_states
+    finally:
+        conn.close()
+
+
+def _is_cut_or_inactive(finish_state: str | None) -> bool:
+    if not finish_state:
+        return False
+    state = str(finish_state).strip().upper()
+    return state in {"CUT", "MDF", "WD", "DQ", "DNS"}
+
+
+def _extract_rankings(
+    composite: list[dict],
+    *,
+    finish_states: dict[str, str] | None = None,
+    exclude_cut_players: bool = False,
+    limit: int = 30,
+) -> list[dict]:
     rows = sorted(composite or [], key=lambda item: item.get("composite", 0), reverse=True)
     rankings: list[dict] = []
-    for idx, row in enumerate(rows[:limit], start=1):
+    finish_state_map = finish_states or {}
+    rank = 0
+    for row in rows:
+        player_key = str(row.get("player_key") or "").strip().lower()
+        finish_state = finish_state_map.get(player_key)
+        if exclude_cut_players and _is_cut_or_inactive(finish_state):
+            continue
+        rank += 1
         rankings.append(
             {
-                "rank": idx,
+                "rank": rank,
+                "player_key": row.get("player_key"),
                 "player": row.get("player_display"),
                 "composite": row.get("composite"),
                 "course_fit": row.get("course_fit"),
                 "form": row.get("form"),
                 "momentum": row.get("momentum"),
+                "finish_state": finish_state,
             }
         )
+        if rank >= limit:
+            break
     return rankings
 
 
 def _extract_matchups(matchups: list[dict], *, limit: int = 25) -> list[dict]:
     sorted_rows = sorted(matchups or [], key=lambda item: item.get("ev", 0), reverse=True)
-    return [
-        {
-            "player": row.get("player"),
-            "opponent": row.get("opponent"),
-            "bookmaker": row.get("bookmaker"),
-            "market_odds": row.get("market_odds"),
-            "model_prob": row.get("model_prob"),
-            "ev": row.get("ev"),
-            "market_type": row.get("market_type"),
-        }
-        for row in sorted_rows[:limit]
-    ]
+    rows: list[dict] = []
+    for row in sorted_rows[:limit]:
+        rows.append(
+            {
+                "player": row.get("player") or row.get("pick"),
+                "player_key": row.get("player_key") or row.get("pick_key"),
+                "opponent": row.get("opponent"),
+                "opponent_key": row.get("opponent_key"),
+                "bookmaker": row.get("bookmaker") or row.get("book"),
+                "market_odds": row.get("market_odds") or row.get("odds"),
+                "model_prob": row.get("model_prob") or row.get("model_win_prob"),
+                "ev": row.get("ev"),
+                "market_type": row.get("market_type"),
+            }
+        )
+    return rows
 
 
 def _run_ingest(tour: str) -> dict[str, Any]:
-    from src.datagolf import fetch_matchup_odds, fetch_schedule, get_current_event_info
+    from src.datagolf import (
+        fetch_matchup_odds,
+        fetch_schedule,
+        get_current_event_info,
+        get_latest_completed_event_info,
+    )
 
     event_info = get_current_event_info(tour) or {}
     schedule = fetch_schedule(tour=tour, upcoming_only=True)
     tournament_matchups = fetch_matchup_odds(market="tournament_matchups", tour=tour)
     three_ball = fetch_matchup_odds(market="3_balls", tour=tour)
+    now_date = _utc_now().date()
+    schedule_by_id = {str(row.get("event_id")): row for row in schedule if row.get("event_id")}
+    event_id = str(event_info.get("event_id") or "")
+    event_name = str(event_info.get("event_name") or "").strip()
+    current_row = schedule_by_id.get(event_id)
+    if current_row is None and event_name:
+        current_row = next(
+            (row for row in schedule if str(row.get("event_name") or "").strip().lower() == event_name.lower()),
+            None,
+        )
+    current_idx = schedule.index(current_row) if current_row in schedule else None
+    active_row = current_row if current_row else (schedule[0] if schedule else {})
+    live_event_active = bool(active_row and _is_live_schedule_event(active_row, today=now_date))
+    if current_idx is None:
+        if live_event_active and len(schedule) > 1:
+            upcoming_row = schedule[1]
+        else:
+            upcoming_row = schedule[0] if schedule else None
+    else:
+        if live_event_active:
+            next_idx = current_idx + 1
+            upcoming_row = schedule[next_idx] if next_idx < len(schedule) else None
+        else:
+            upcoming_row = schedule[current_idx]
+
+    latest_completed = get_latest_completed_event_info(tour=tour, as_of=now_date) or {}
     return {
         "event_name": event_info.get("event_name"),
         "event_id": event_info.get("event_id"),
         "course": event_info.get("course"),
         "schedule_count": len(schedule),
+        "live_event_active": live_event_active,
+        "current_event_row": current_row,
+        "upcoming_event_row": upcoming_row,
+        "latest_completed_event_name": latest_completed.get("event_name"),
+        "latest_completed_event_id": latest_completed.get("event_id"),
         "upcoming_event_names": [row.get("event_name") for row in schedule[:3] if row.get("event_name")],
         "market_counts": {
             "tournament_matchups": len(tournament_matchups),
@@ -121,23 +231,72 @@ def _run_ingest(tour: str) -> dict[str, Any]:
 
 def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any]) -> dict[str, Any]:
     mode = "full" if cadence_mode != "live_window" else "round-matchups"
-    result = run_snapshot_analysis(
+    live_result = run_snapshot_analysis(
         tour=tour,
         mode=mode,
         enable_ai=False,
         enable_backfill=False,
     )
     generated_at = _iso_now()
-    event_name = result.get("event_name") or ingest_summary.get("event_name")
+    event_name = live_result.get("event_name") or ingest_summary.get("event_name")
+    finish_states = _load_finish_state_map(ingest_summary.get("event_id"))
     section = {
         "event_name": event_name,
-        "course_name": result.get("course_name"),
-        "field_size": result.get("field_size"),
-        "rankings": _extract_rankings(result.get("composite_results") or []),
-        "matchups": _extract_matchups(result.get("matchup_bets") or []),
-        "card_path": result.get("output_file") or result.get("card_filepath"),
+        "course_name": live_result.get("course_name"),
+        "field_size": live_result.get("field_size"),
+        "rankings": _extract_rankings(
+            live_result.get("composite_results") or [],
+            finish_states=finish_states,
+            exclude_cut_players=False,
+        ),
+        "matchups": _extract_matchups(live_result.get("matchup_bets") or []),
+        "card_path": live_result.get("output_file") or live_result.get("card_filepath"),
     }
     schedule_names = ingest_summary.get("upcoming_event_names") or []
+    live_is_active = bool(ingest_summary.get("live_event_active"))
+    live_event_name = event_name if live_is_active else (ingest_summary.get("latest_completed_event_name") or event_name)
+    upcoming_row = ingest_summary.get("upcoming_event_row") or {}
+    upcoming_event_name = str(upcoming_row.get("event_name") or "").strip()
+    upcoming_course = str(upcoming_row.get("course") or "").split(";")[0].strip() or None
+    if not upcoming_event_name:
+        upcoming_event_name = schedule_names[1] if live_is_active and len(schedule_names) > 1 else (schedule_names[0] if schedule_names else event_name)
+
+    upcoming_result = {}
+    if upcoming_event_name:
+        try:
+            upcoming_result = run_snapshot_analysis(
+                tour=tour,
+                tournament_name=upcoming_event_name,
+                course_name=upcoming_course,
+                mode="full",
+                enable_ai=False,
+                enable_backfill=False,
+            )
+        except Exception as exc:
+            _logger.warning("Upcoming snapshot recompute failed; falling back to live section: %s", exc)
+            upcoming_result = {}
+
+    if upcoming_result:
+        upcoming_section = {
+            "event_name": upcoming_result.get("event_name") or upcoming_event_name,
+            "course_name": upcoming_result.get("course_name"),
+            "field_size": upcoming_result.get("field_size"),
+            "rankings": _extract_rankings(upcoming_result.get("composite_results") or [], exclude_cut_players=False),
+            "matchups": _extract_matchups(upcoming_result.get("matchup_bets") or []),
+            "card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
+            "source_event_id": str(upcoming_row.get("event_id") or ""),
+            "source_event_name": upcoming_event_name,
+            "generated_from": "upcoming_event_model",
+        }
+    else:
+        upcoming_section = {
+            **section,
+            "event_name": upcoming_event_name,
+            "source_event_id": str(upcoming_row.get("event_id") or ""),
+            "source_event_name": upcoming_event_name,
+            "generated_from": "live_fallback",
+        }
+
     snapshot = {
         "generated_at": generated_at,
         "cadence_mode": cadence_mode,
@@ -149,14 +308,24 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         },
         "live_tournament": {
             **section,
-            "active": cadence_mode == "live_window",
+            "event_name": live_event_name,
+            "active": live_is_active,
+            "rankings": _extract_rankings(
+                live_result.get("composite_results") or [],
+                finish_states=finish_states,
+                exclude_cut_players=True,
+            ),
+            "source_event_id": str(ingest_summary.get("event_id") or ""),
+            "source_event_name": event_name,
+            "data_mode": mode,
             "source": "current_event_model",
         },
         "upcoming_tournament": {
-            **section,
+            **upcoming_section,
             "active": True,
-            "event_name": schedule_names[1] if cadence_mode == "live_window" and len(schedule_names) > 1 else event_name,
-            "source": "current_event_model",
+            "event_name": upcoming_section.get("event_name") or upcoming_event_name,
+            "data_mode": "full",
+            "source": "upcoming_event_model",
         },
     }
     _write_snapshot(snapshot)

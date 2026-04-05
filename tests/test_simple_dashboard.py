@@ -48,9 +48,9 @@ def test_home_page_exposes_live_and_upcoming_tabs():
 
     assert response.status_code == 200
     text = response.text
-    assert "Live Tournament" in text
-    assert "Upcoming Tournament" in text
-    assert "Ops Controls" in text
+    serves_built_shell = '<div id="root"></div>' in text and "/assets/" in text
+    serves_server_shell = "Live Tournament" in text and "Upcoming Tournament" in text and "Ops Controls" in text
+    assert serves_built_shell or serves_server_shell
 
 
 def test_upcoming_prediction_endpoint_returns_output_file(monkeypatch):

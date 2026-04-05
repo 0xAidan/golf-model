@@ -165,3 +165,82 @@ def test_find_matchup_value_bets_sorted_by_ev():
     result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01)
     assert len(result) >= 2
     assert result[0]["ev"] >= result[1]["ev"]
+
+
+def test_find_matchup_value_bets_returns_all_qualifying_books(monkeypatch):
+    """When no required_book is provided, all qualifying books should be returned."""
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    composite = [
+        {
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "composite": 82.0,
+            "form": 78.0,
+            "course_fit": 75.0,
+            "momentum": 58.0,
+        },
+        {
+            "player_key": "player_b",
+            "player_display": "Player B",
+            "composite": 48.0,
+            "form": 45.0,
+            "course_fit": 44.0,
+            "momentum": 42.0,
+        },
+    ]
+    matchups = [
+        {
+            "p1_player_name": "Player A",
+            "p2_player_name": "Player B",
+            "odds": {
+                "bet365": {"p1": 105, "p2": -125},
+                "fanduel": {"p1": 112, "p2": -132},
+                "draftkings": {"p1": 108, "p2": -128},
+            },
+        }
+    ]
+
+    result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01, required_book=None)
+    books = {row["book"] for row in result}
+    assert "bet365" in books
+    assert "fanduel" in books
+    assert "draftkings" in books
+
+
+def test_find_matchup_value_bets_required_book_still_supported(monkeypatch):
+    """Legacy required_book mode should continue to work for scoped callers."""
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    composite = [
+        {
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "composite": 82.0,
+            "form": 78.0,
+            "course_fit": 75.0,
+            "momentum": 58.0,
+        },
+        {
+            "player_key": "player_b",
+            "player_display": "Player B",
+            "composite": 48.0,
+            "form": 45.0,
+            "course_fit": 44.0,
+            "momentum": 42.0,
+        },
+    ]
+    matchups = [
+        {
+            "p1_player_name": "Player A",
+            "p2_player_name": "Player B",
+            "odds": {
+                "bet365": {"p1": 105, "p2": -125},
+                "fanduel": {"p1": 112, "p2": -132},
+            },
+        }
+    ]
+
+    result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01, required_book="fanduel")
+    assert result
+    assert {row["book"] for row in result} == {"fanduel"}
