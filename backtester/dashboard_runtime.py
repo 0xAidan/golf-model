@@ -24,6 +24,7 @@ _thread: threading.Thread | None = None
 
 _SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "live_refresh_snapshot.json"
 _OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+_DOWNLOADS_DIR = Path.home() / "Downloads"
 
 
 def _default_state() -> dict[str, Any]:
@@ -182,22 +183,103 @@ def _event_slug(value: str | None) -> str:
 
 def _discover_event_card_path(event_name: str | None) -> str | None:
     slug = _event_slug(event_name)
-    if not slug or not _OUTPUT_DIR.exists():
+    if not slug:
         return None
     candidates: list[Path] = []
-    for path in _OUTPUT_DIR.glob("*.md"):
-        name = path.name
-        if "_methodology_" in name:
+    for root in (_OUTPUT_DIR, _DOWNLOADS_DIR):
+        if not root.exists():
             continue
-        if name.startswith("backtest") or name.startswith("research"):
-            continue
-        if slug not in path.stem:
-            continue
-        candidates.append(path)
+        for path in root.glob("*.md"):
+            name = path.name
+            if "_methodology_" in name:
+                continue
+            if name.startswith("backtest") or name.startswith("research"):
+                continue
+            if slug not in path.stem:
+                continue
+            candidates.append(path)
     if not candidates:
         return None
     latest = max(candidates, key=lambda entry: entry.stat().st_mtime)
     return str(latest)
+
+
+def _discover_latest_card_path() -> str | None:
+    """
+    Discover latest local card snapshot.
+
+    Preference order:
+    1) Downloads (manual/operator artifacts)
+    2) output/ (runtime artifacts)
+    """
+
+    def _collect(root: Path) -> list[Path]:
+        if not root.exists():
+            return []
+        rows: list[Path] = []
+        for path in root.glob("*.md"):
+            name = path.name
+            if "_methodology_" in name:
+                continue
+            if name.startswith("backtest") or name.startswith("research"):
+                continue
+            rows.append(path)
+        return rows
+
+    download_cards = _collect(_DOWNLOADS_DIR)
+    if download_cards:
+        return str(max(download_cards, key=lambda entry: entry.stat().st_mtime))
+    output_cards = _collect(_OUTPUT_DIR)
+    if output_cards:
+        return str(max(output_cards, key=lambda entry: entry.stat().st_mtime))
+    return None
+
+
+def _discover_latest_card_path_excluding(excluded_event_name: str | None) -> str | None:
+    excluded_slug = _event_slug(excluded_event_name)
+
+    def _collect(root: Path) -> list[Path]:
+        if not root.exists():
+            return []
+        rows: list[Path] = []
+        for path in root.glob("*.md"):
+            name = path.name
+            if "_methodology_" in name:
+                continue
+            if name.startswith("backtest") or name.startswith("research"):
+                continue
+            if excluded_slug and excluded_slug in path.stem:
+                continue
+            rows.append(path)
+        return rows
+
+    download_cards = _collect(_DOWNLOADS_DIR)
+    if download_cards:
+        return str(max(download_cards, key=lambda entry: entry.stat().st_mtime))
+    output_cards = _collect(_OUTPUT_DIR)
+    if output_cards:
+        return str(max(output_cards, key=lambda entry: entry.stat().st_mtime))
+    return None
+
+
+def _extract_event_name_from_card(card_path: str | None) -> str | None:
+    if not card_path:
+        return None
+    try:
+        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("# "):
+            continue
+        title = stripped[2:].strip()
+        if "— Betting Card" in title:
+            return title.split("— Betting Card", 1)[0].strip()
+        if "- Betting Card" in title:
+            return title.split("- Betting Card", 1)[0].strip()
+        return title
+    return None
 
 
 def _safe_float(value: str) -> float | None:
@@ -258,6 +340,55 @@ def _parse_rankings_from_card(card_path: str | None, *, limit: int = 30) -> list
     return rankings
 
 
+def _parse_matchups_from_card(card_path: str | None, *, limit: int = 25) -> list[dict]:
+    """Parse matchup bets from a stored betting card markdown file."""
+    if not card_path:
+        return []
+    try:
+        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    matchup_header = "| Pick | vs | Odds | Model Win% | EV | Conviction | Tier | Book | Why |"
+    matchups: list[dict] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == matchup_header:
+            i += 2  # skip header + separator
+            while i < len(lines):
+                stripped = lines[i].strip()
+                if not stripped.startswith("|"):
+                    break
+                parts = [part.strip() for part in stripped.strip("|").split("|")]
+                if len(parts) < 8:
+                    i += 1
+                    continue
+                player = parts[0].replace("**", "").strip()
+                opponent = parts[1].strip()
+                odds_str = parts[2].strip()
+                model_prob_str = parts[3].strip().rstrip("%")
+                ev_str = parts[4].strip().rstrip("%")
+                book = parts[7].strip()
+                ev_val = _safe_float(ev_str)
+                model_prob_val = _safe_float(model_prob_str)
+                if player and opponent:
+                    matchups.append({
+                        "player": player,
+                        "player_key": re.sub(r"[^a-z0-9]+", "_", player.lower()).strip("_"),
+                        "opponent": opponent,
+                        "opponent_key": re.sub(r"[^a-z0-9]+", "_", opponent.lower()).strip("_"),
+                        "bookmaker": book if book and book != "—" else None,
+                        "market_odds": odds_str,
+                        "model_prob": (model_prob_val / 100) if model_prob_val is not None else None,
+                        "ev": (ev_val / 100) if ev_val is not None else None,
+                        "market_type": "tournament_matchups",
+                    })
+                    if len(matchups) >= limit:
+                        return matchups
+                i += 1
+        i += 1
+    return matchups
+
+
 def _classify_matchup_state(
     *,
     market_counts: dict[str, Any] | None,
@@ -283,52 +414,62 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     from src.datagolf import (
         fetch_matchup_odds_with_diagnostics,
         fetch_schedule,
-        get_current_event_info,
         get_latest_completed_event_info,
     )
 
-    event_info = get_current_event_info(tour) or {}
-    schedule = fetch_schedule(tour=tour, upcoming_only=True)
+    full_schedule = fetch_schedule(tour=tour, upcoming_only=False)
+    upcoming_schedule = fetch_schedule(tour=tour, upcoming_only=True)
     tournament_matchups, tournament_diag = fetch_matchup_odds_with_diagnostics(market="tournament_matchups", tour=tour)
     three_ball, three_ball_diag = fetch_matchup_odds_with_diagnostics(market="3_balls", tour=tour)
     now_date = _utc_now().date()
-    schedule_by_id = {str(row.get("event_id")): row for row in schedule if row.get("event_id")}
-    event_id = str(event_info.get("event_id") or "")
-    event_name = str(event_info.get("event_name") or "").strip()
-    current_row = schedule_by_id.get(event_id)
-    if current_row is None and event_name:
-        current_row = next(
-            (row for row in schedule if str(row.get("event_name") or "").strip().lower() == event_name.lower()),
+    live_row = next((row for row in full_schedule if _is_live_schedule_event(row, today=now_date)), None)
+    live_event_active = bool(live_row)
+    current_row = live_row if live_row else (upcoming_schedule[0] if upcoming_schedule else {})
+
+    def _is_future_event(row: dict[str, Any]) -> bool:
+        start = _parse_iso_date(row.get("start_date"))
+        if not start:
+            return False
+        return start > now_date
+
+    if live_event_active:
+        upcoming_row = next(
+            (
+                row
+                for row in full_schedule
+                if _is_future_event(row) and str(row.get("event_id") or "") != str((live_row or {}).get("event_id") or "")
+            ),
             None,
         )
-    current_idx = schedule.index(current_row) if current_row in schedule else None
-    active_row = current_row if current_row else (schedule[0] if schedule else {})
-    live_event_active = bool(active_row and _is_live_schedule_event(active_row, today=now_date))
-    if current_idx is None:
-        if live_event_active and len(schedule) > 1:
-            upcoming_row = schedule[1]
-        else:
-            upcoming_row = schedule[0] if schedule else None
     else:
-        if live_event_active:
-            next_idx = current_idx + 1
-            upcoming_row = schedule[next_idx] if next_idx < len(schedule) else None
-        else:
-            upcoming_row = schedule[current_idx]
+        upcoming_row = next((row for row in upcoming_schedule if _is_future_event(row)), None)
+        if upcoming_row is None:
+            upcoming_row = upcoming_schedule[0] if upcoming_schedule else None
 
     latest_completed = get_latest_completed_event_info(tour=tour, as_of=now_date) or {}
+    latest_completed_name = str(latest_completed.get("event_name") or "").strip()
+    if latest_completed_name and upcoming_row and str(upcoming_row.get("event_name") or "").strip().lower() == latest_completed_name.lower():
+        upcoming_row = next(
+            (
+                row
+                for row in upcoming_schedule
+                if str(row.get("event_name") or "").strip().lower() != latest_completed_name.lower()
+            ),
+            upcoming_row,
+        )
+    context_row = live_row if live_row else (upcoming_row or current_row or {})
     return {
-        "event_name": event_info.get("event_name"),
-        "event_id": event_info.get("event_id"),
-        "course": event_info.get("course"),
-        "schedule_count": len(schedule),
+        "event_name": context_row.get("event_name"),
+        "event_id": context_row.get("event_id"),
+        "course": context_row.get("course"),
+        "schedule_count": len(upcoming_schedule),
         "live_event_active": live_event_active,
         "current_event_row": current_row,
         "upcoming_event_row": upcoming_row,
         "latest_completed_event_name": latest_completed.get("event_name"),
         "latest_completed_event_id": latest_completed.get("event_id"),
         "latest_completed_event_course": latest_completed.get("course"),
-        "upcoming_event_names": [row.get("event_name") for row in schedule[:3] if row.get("event_name")],
+        "upcoming_event_names": [row.get("event_name") for row in upcoming_schedule[:3] if row.get("event_name")],
         "market_counts": {
             "tournament_matchups": {
                 "raw_rows": len(tournament_matchups),
@@ -368,14 +509,45 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     }
     schedule_names = ingest_summary.get("upcoming_event_names") or []
     live_is_active = bool(ingest_summary.get("live_event_active"))
-    live_event_name = event_name if live_is_active else (ingest_summary.get("latest_completed_event_name") or event_name)
-    previous_event_card_path = _discover_event_card_path(live_event_name)
-    previous_event_rankings = _parse_rankings_from_card(previous_event_card_path)
     upcoming_row = ingest_summary.get("upcoming_event_row") or {}
     upcoming_event_name = str(upcoming_row.get("event_name") or "").strip()
     upcoming_course = str(upcoming_row.get("course") or "").split(";")[0].strip() or None
     if not upcoming_event_name:
         upcoming_event_name = schedule_names[1] if live_is_active and len(schedule_names) > 1 else (schedule_names[0] if schedule_names else event_name)
+
+    resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or "").strip()
+    resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
+    resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip()
+
+    # Guardrail: completed event must never silently mirror upcoming.
+    if (not resolved_completed_event_name) or (
+        upcoming_event_name and resolved_completed_event_name.lower() == upcoming_event_name.lower()
+    ):
+        fallback_card_path = _discover_latest_card_path_excluding(upcoming_event_name)
+        fallback_event_name = _extract_event_name_from_card(fallback_card_path)
+        if fallback_event_name and (not upcoming_event_name or fallback_event_name.lower() != upcoming_event_name.lower()):
+            resolved_completed_event_name = fallback_event_name
+            previous_event_card_path = fallback_card_path
+        else:
+            previous_event_card_path = _discover_event_card_path(resolved_completed_event_name or event_name)
+    else:
+        previous_event_card_path = _discover_event_card_path(resolved_completed_event_name)
+
+    # Final fallback: if resolved card still points to upcoming event, force non-upcoming latest card.
+    if previous_event_card_path:
+        resolved_card_event_name = _extract_event_name_from_card(previous_event_card_path)
+        if (
+            resolved_card_event_name
+            and upcoming_event_name
+            and resolved_card_event_name.strip().lower() == upcoming_event_name.strip().lower()
+        ):
+            non_upcoming_card = _discover_latest_card_path_excluding(upcoming_event_name)
+            non_upcoming_event_name = _extract_event_name_from_card(non_upcoming_card)
+            if non_upcoming_card and non_upcoming_event_name:
+                previous_event_card_path = non_upcoming_card
+                resolved_completed_event_name = non_upcoming_event_name
+    previous_event_rankings = _parse_rankings_from_card(previous_event_card_path)
+    live_event_name = event_name if live_is_active else (resolved_completed_event_name or event_name)
 
     upcoming_result = {}
     if upcoming_event_name:
@@ -451,16 +623,22 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_rankings = _extract_rankings(
         live_result.get("composite_results") or [],
         finish_states=finish_states,
-        exclude_cut_players=True,
+        exclude_cut_players=live_is_active,
     )
     live_ranking_source = "current_event_model"
     live_source_card_path = base_section.get("source_card_path")
+    live_matchups = base_section.get("matchups") or []
     if not live_is_active and previous_event_rankings:
         live_rankings = previous_event_rankings
         live_ranking_source = "previous_card_snapshot"
         live_source_card_path = previous_event_card_path
     elif not live_is_active:
         live_ranking_source = "current_event_model_fallback"
+
+    if not live_is_active:
+        card_matchups = _parse_matchups_from_card(previous_event_card_path)
+        if card_matchups:
+            live_matchups = card_matchups
 
     snapshot = {
         "generated_at": generated_at,
@@ -470,16 +648,19 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "event_id": ingest_summary.get("event_id"),
             "course": ingest_summary.get("course"),
             "upcoming_event_names": schedule_names,
+            "resolved_completed_event_name": resolved_completed_event_name or None,
+            "resolved_completed_event_course": resolved_completed_event_course or None,
         },
         "live_tournament": {
             **base_section,
             "event_name": live_event_name,
             "active": live_is_active,
             "rankings": live_rankings,
+            "matchups": live_matchups,
             "source_event_id": str(
-                ingest_summary.get("event_id") if live_is_active else ingest_summary.get("latest_completed_event_id") or ""
+                ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
             ),
-            "source_event_name": event_name if live_is_active else (ingest_summary.get("latest_completed_event_name") or event_name),
+            "source_event_name": event_name if live_is_active else (resolved_completed_event_name or event_name),
             "data_mode": mode,
             "source": "current_event_model",
             "source_card_path": live_source_card_path,
