@@ -235,6 +235,33 @@ def _discover_latest_card_path() -> str | None:
     return None
 
 
+def _discover_latest_card_path_excluding(excluded_event_name: str | None) -> str | None:
+    excluded_slug = _event_slug(excluded_event_name)
+
+    def _collect(root: Path) -> list[Path]:
+        if not root.exists():
+            return []
+        rows: list[Path] = []
+        for path in root.glob("*.md"):
+            name = path.name
+            if "_methodology_" in name:
+                continue
+            if name.startswith("backtest") or name.startswith("research"):
+                continue
+            if excluded_slug and excluded_slug in path.stem:
+                continue
+            rows.append(path)
+        return rows
+
+    download_cards = _collect(_DOWNLOADS_DIR)
+    if download_cards:
+        return str(max(download_cards, key=lambda entry: entry.stat().st_mtime))
+    output_cards = _collect(_OUTPUT_DIR)
+    if output_cards:
+        return str(max(output_cards, key=lambda entry: entry.stat().st_mtime))
+    return None
+
+
 def _extract_event_name_from_card(card_path: str | None) -> str | None:
     if not card_path:
         return None
@@ -447,7 +474,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     if (not resolved_completed_event_name) or (
         upcoming_event_name and resolved_completed_event_name.lower() == upcoming_event_name.lower()
     ):
-        fallback_card_path = _discover_latest_card_path()
+        fallback_card_path = _discover_latest_card_path_excluding(upcoming_event_name)
         fallback_event_name = _extract_event_name_from_card(fallback_card_path)
         if fallback_event_name and (not upcoming_event_name or fallback_event_name.lower() != upcoming_event_name.lower()):
             resolved_completed_event_name = fallback_event_name
@@ -456,6 +483,20 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             previous_event_card_path = _discover_event_card_path(resolved_completed_event_name or event_name)
     else:
         previous_event_card_path = _discover_event_card_path(resolved_completed_event_name)
+
+    # Final fallback: if resolved card still points to upcoming event, force non-upcoming latest card.
+    if previous_event_card_path:
+        resolved_card_event_name = _extract_event_name_from_card(previous_event_card_path)
+        if (
+            resolved_card_event_name
+            and upcoming_event_name
+            and resolved_card_event_name.strip().lower() == upcoming_event_name.strip().lower()
+        ):
+            non_upcoming_card = _discover_latest_card_path_excluding(upcoming_event_name)
+            non_upcoming_event_name = _extract_event_name_from_card(non_upcoming_card)
+            if non_upcoming_card and non_upcoming_event_name:
+                previous_event_card_path = non_upcoming_card
+                resolved_completed_event_name = non_upcoming_event_name
     previous_event_rankings = _parse_rankings_from_card(previous_event_card_path)
     live_event_name = event_name if live_is_active else (resolved_completed_event_name or event_name)
 
