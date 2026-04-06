@@ -217,7 +217,6 @@ function App() {
           element={
             <PlayersPage
               players={players}
-              selectedPlayer={selectedPlayer}
               selectedPlayerProfile={playerProfileQuery.data}
               onPlayerSelect={setSelectedPlayerKey}
             />
@@ -486,28 +485,39 @@ function PredictionWorkspacePage({
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming board</p>
               <p className="mt-2 text-sm text-slate-300">{upcomingTournament?.event_name ?? "Waiting for next event..."}</p>
               <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
+                <table className="w-full min-w-[540px] border-collapse text-sm">
+                  <thead className="sticky top-0 bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
                     <tr>
-                      <th className="px-3 py-2 text-left">#</th>
-                      <th className="px-3 py-2 text-left">Player</th>
-                      <th className="px-3 py-2 text-left">Composite</th>
-                      <th className="px-3 py-2 text-left">Course</th>
+                      <th className="px-3 py-2 text-left font-medium">#</th>
+                      <th className="px-3 py-2 text-left font-medium">Player</th>
+                      <th className="px-3 py-2 text-right font-medium">Composite</th>
+                      <th className="px-3 py-2 text-right font-medium">Course</th>
+                      <th className="px-3 py-2 text-right font-medium">Form</th>
+                      <th className="px-3 py-2 text-right font-medium">Momentum</th>
+                      <th className="px-3 py-2 text-center font-medium">Trend</th>
                     </tr>
                   </thead>
                   <tbody>
                     {upcomingRankings.length ? (
-                      upcomingRankings.slice(0, 30).map((row) => (
-                        <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
-                          <td className="px-3 py-2">{row.rank}</td>
-                          <td className="px-3 py-2 text-white">{row.player}</td>
-                          <td className="px-3 py-2">{formatNumber(row.composite, 2)}</td>
-                          <td className="px-3 py-2">{formatNumber(row.course_fit, 2)}</td>
-                        </tr>
-                      ))
+                      upcomingRankings.slice(0, 30).map((row) => {
+                        const dir = row.momentum_direction ?? ""
+                        const arrow = TREND_ARROW[dir] ?? "—"
+                        const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
+                        return (
+                          <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
+                            <td className="px-3 py-2 text-slate-400">{row.rank}</td>
+                            <td className="px-3 py-2 font-medium text-white">{row.player}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-cyan-200">{formatNumber(row.composite, 1)}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.course_fit, 1)}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.form, 1)}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.momentum, 1)}</td>
+                            <td className={`px-3 py-2 text-center text-lg ${trendColor}`}>{arrow}</td>
+                          </tr>
+                        )
+                      })
                     ) : (
                       <tr>
-                        <td className="px-3 py-3 text-slate-400" colSpan={4}>
+                        <td className="px-3 py-3 text-slate-400" colSpan={7}>
                           No upcoming rankings yet.
                         </td>
                       </tr>
@@ -932,22 +942,32 @@ const TREND_COLOR: Record<string, string> = {
 
 function PlayersPage({
   players,
-  selectedPlayer,
   selectedPlayerProfile,
   onPlayerSelect,
 }: {
   players: CompositePlayer[]
-  selectedPlayer: CompositePlayer | null
   selectedPlayerProfile?: PlayerProfile
   onPlayerSelect: (playerKey: string) => void
 }) {
-  const expandedKey = selectedPlayer?.player_key ?? null
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+
+  const handleToggle = (playerKey: string) => {
+    if (expandedKey === playerKey) {
+      setExpandedKey(null)
+      onPlayerSelect("")
+    } else {
+      setExpandedKey(playerKey)
+      onPlayerSelect(playerKey)
+    }
+  }
+
+  const expandedPlayer = expandedKey ? players.find((p) => p.player_key === expandedKey) ?? null : null
   const recentTrend = (selectedPlayerProfile?.recent_rounds ?? []).map((round) => Number(round.sg_total ?? 0)).reverse()
   const momentumValues =
     recentTrend.length > 0
       ? recentTrend
-      : selectedPlayer
-        ? [selectedPlayer.course_fit, selectedPlayer.form, selectedPlayer.momentum, selectedPlayer.composite]
+      : expandedPlayer
+        ? [expandedPlayer.course_fit, expandedPlayer.form, expandedPlayer.momentum, expandedPlayer.composite]
         : []
   const courseValues = selectedPlayerProfile?.course_history.map((round) => Number(round.sg_total ?? 0)).reverse() ?? []
 
@@ -974,6 +994,7 @@ function PlayersPage({
                 const dir = player.momentum_direction ?? ""
                 const arrow = TREND_ARROW[dir] ?? "—"
                 const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
+                const profileReady = isExpanded && selectedPlayerProfile && expandedKey === player.player_key
 
                 return (
                   <tr key={player.player_key} className="group">
@@ -983,8 +1004,8 @@ function PlayersPage({
                         aria-expanded={isExpanded}
                         aria-label={`${player.player_display} ranked ${player.rank}`}
                         tabIndex={0}
-                        className="flex w-full items-center transition hover:bg-white/5"
-                        onClick={() => onPlayerSelect(isExpanded ? "" : player.player_key)}
+                        className={`flex w-full cursor-pointer items-center transition hover:bg-white/5 ${isExpanded ? "bg-white/3" : ""}`}
+                        onClick={() => handleToggle(player.player_key)}
                       >
                         <span className="w-[calc(100%/7)] px-3 py-3 text-left text-slate-400">{player.rank}</span>
                         <span className="flex w-[calc(100%/7)] items-center gap-2 px-3 py-3 text-left font-medium text-white">
@@ -1006,13 +1027,15 @@ function PlayersPage({
                               <MetricTile label="Form" value={formatNumber(player.form, 1)} />
                               <MetricTile label="Momentum" value={formatNumber(player.momentum, 1)} />
                             </div>
-                            <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                              <div className="mb-2 flex items-center gap-2 text-slate-300">
-                                <TrendingUp className="h-4 w-4 text-cyan-200" />
-                                <span className="text-sm font-medium">Recent strokes-gained trend</span>
+                            {momentumValues.length ? (
+                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                                <div className="mb-2 flex items-center gap-2 text-slate-300">
+                                  <TrendingUp className="h-4 w-4 text-cyan-200" />
+                                  <span className="text-sm font-medium">Recent strokes-gained trend</span>
+                                </div>
+                                <SparklineChart values={momentumValues} color="#5eead4" />
                               </div>
-                              <SparklineChart values={momentumValues} color="#5eead4" />
-                            </div>
+                            ) : null}
                             {courseValues.length ? (
                               <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
                                 <div className="mb-2 flex items-center gap-2 text-slate-300">
@@ -1028,7 +1051,7 @@ function PlayersPage({
                               <MetricTile label="Course rounds" value={String(player.course_rounds ?? 0)} />
                               <MetricTile label="Weather adj." value={formatNumber(player.weather_adjustment, 1)} />
                             </div>
-                            {selectedPlayerProfile?.linked_bets?.length ? (
+                            {profileReady && selectedPlayerProfile?.linked_bets?.length ? (
                               <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
                                 <h4 className="mb-3 text-sm font-semibold text-white">Linked bets</h4>
                                 <div className="space-y-3">
