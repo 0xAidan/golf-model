@@ -178,6 +178,14 @@ def _extract_matchups(matchups: list[dict], *, limit: int = 25) -> list[dict]:
                 "model_prob": row.get("model_prob") or row.get("model_win_prob"),
                 "ev": row.get("ev"),
                 "market_type": row.get("market_type"),
+                "tier": row.get("tier"),
+                "conviction": row.get("conviction"),
+                "composite_gap": row.get("composite_gap"),
+                "form_gap": row.get("form_gap"),
+                "course_fit_gap": row.get("course_fit_gap"),
+                "pick_momentum": row.get("pick_momentum"),
+                "opp_momentum": row.get("opp_momentum"),
+                "momentum_aligned": row.get("momentum_aligned"),
             }
         )
     return rows

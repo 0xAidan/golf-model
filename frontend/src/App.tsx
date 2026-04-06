@@ -639,7 +639,7 @@ function PredictionWorkspacePage({
                         <p className="font-medium text-white">{matchup.pick}</p>
                         <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
                       </div>
-                      <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getTierStyle(matchup.tier)}`}>
                         {matchup.tier ?? "lean"}
                       </span>
                     </div>
@@ -940,6 +940,13 @@ const TREND_COLOR: Record<string, string> = {
   cold: "text-red-400",
 }
 
+const TIER_STYLE: Record<string, string> = {
+  STRONG: "bg-emerald-400/12 text-emerald-300",
+  GOOD: "bg-cyan-400/12 text-cyan-200",
+  LEAN: "bg-slate-400/10 text-slate-400",
+}
+const getTierStyle = (tier?: string) => TIER_STYLE[tier ?? ""] ?? TIER_STYLE.LEAN
+
 function PlayersPage({
   players,
   selectedPlayerProfile,
@@ -1121,7 +1128,7 @@ function MatchupsPage({
                     <p className="font-medium text-white">{matchup.pick}</p>
                     <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
                   </div>
-                  <span className="rounded-full bg-cyan-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getTierStyle(matchup.tier)}`}>
                     {matchup.tier ?? "lean"}
                   </span>
                 </div>
@@ -1677,6 +1684,7 @@ function buildHydratedPredictionRun(
       const pickKey = row.player_key ?? normalize_name_for_ui(row.player)
       const opponentKey = row.opponent_key ?? normalize_name_for_ui(row.opponent)
       const ev = Number(row.ev ?? 0)
+      const impliedProb = Number(row.model_prob ?? 0.5) > 0 ? 1 / (1 + ev / Number(row.model_prob ?? 0.5)) : 0.5
       return {
         pick: row.player,
         pick_key: pickKey,
@@ -1685,13 +1693,19 @@ function buildHydratedPredictionRun(
         odds: String(row.market_odds ?? "--"),
         book: normalizeSportsbook(row.bookmaker) || "unknown",
         model_win_prob: Number(row.model_prob ?? 0.5),
-        implied_prob: 0.5,
+        implied_prob: impliedProb,
         ev,
         ev_pct: `${(ev * 100).toFixed(1)}%`,
-        composite_gap: 0,
-        form_gap: 0,
-        course_fit_gap: 0,
+        composite_gap: Number(row.composite_gap ?? 0),
+        form_gap: Number(row.form_gap ?? 0),
+        course_fit_gap: Number(row.course_fit_gap ?? 0),
         reason: "Hydrated from always-on snapshot",
+        tier: row.tier,
+        conviction: row.conviction != null ? Number(row.conviction) : undefined,
+        pick_momentum: row.pick_momentum != null ? Number(row.pick_momentum) : undefined,
+        opp_momentum: row.opp_momentum != null ? Number(row.opp_momentum) : undefined,
+        momentum_aligned: row.momentum_aligned,
+        market_type: row.market_type,
       }
     }),
     value_bets: {},

@@ -75,6 +75,14 @@ export type LiveMatchupRow = {
   model_prob?: number
   ev?: number
   market_type?: string
+  tier?: string
+  conviction?: number
+  composite_gap?: number
+  form_gap?: number
+  course_fit_gap?: number
+  pick_momentum?: number
+  opp_momentum?: number
+  momentum_aligned?: boolean
 }
 
 export type LiveTournamentSnapshot = {
