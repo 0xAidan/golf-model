@@ -340,6 +340,55 @@ def _parse_rankings_from_card(card_path: str | None, *, limit: int = 30) -> list
     return rankings
 
 
+def _parse_matchups_from_card(card_path: str | None, *, limit: int = 25) -> list[dict]:
+    """Parse matchup bets from a stored betting card markdown file."""
+    if not card_path:
+        return []
+    try:
+        lines = Path(card_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    matchup_header = "| Pick | vs | Odds | Model Win% | EV | Conviction | Tier | Book | Why |"
+    matchups: list[dict] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == matchup_header:
+            i += 2  # skip header + separator
+            while i < len(lines):
+                stripped = lines[i].strip()
+                if not stripped.startswith("|"):
+                    break
+                parts = [part.strip() for part in stripped.strip("|").split("|")]
+                if len(parts) < 8:
+                    i += 1
+                    continue
+                player = parts[0].replace("**", "").strip()
+                opponent = parts[1].strip()
+                odds_str = parts[2].strip()
+                model_prob_str = parts[3].strip().rstrip("%")
+                ev_str = parts[4].strip().rstrip("%")
+                book = parts[7].strip()
+                ev_val = _safe_float(ev_str)
+                model_prob_val = _safe_float(model_prob_str)
+                if player and opponent:
+                    matchups.append({
+                        "player": player,
+                        "player_key": re.sub(r"[^a-z0-9]+", "_", player.lower()).strip("_"),
+                        "opponent": opponent,
+                        "opponent_key": re.sub(r"[^a-z0-9]+", "_", opponent.lower()).strip("_"),
+                        "bookmaker": book if book and book != "—" else None,
+                        "market_odds": odds_str,
+                        "model_prob": (model_prob_val / 100) if model_prob_val is not None else None,
+                        "ev": (ev_val / 100) if ev_val is not None else None,
+                        "market_type": "tournament_matchups",
+                    })
+                    if len(matchups) >= limit:
+                        return matchups
+                i += 1
+        i += 1
+    return matchups
+
+
 def _classify_matchup_state(
     *,
     market_counts: dict[str, Any] | None,
@@ -574,16 +623,22 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_rankings = _extract_rankings(
         live_result.get("composite_results") or [],
         finish_states=finish_states,
-        exclude_cut_players=True,
+        exclude_cut_players=live_is_active,
     )
     live_ranking_source = "current_event_model"
     live_source_card_path = base_section.get("source_card_path")
+    live_matchups = base_section.get("matchups") or []
     if not live_is_active and previous_event_rankings:
         live_rankings = previous_event_rankings
         live_ranking_source = "previous_card_snapshot"
         live_source_card_path = previous_event_card_path
     elif not live_is_active:
         live_ranking_source = "current_event_model_fallback"
+
+    if not live_is_active:
+        card_matchups = _parse_matchups_from_card(previous_event_card_path)
+        if card_matchups:
+            live_matchups = card_matchups
 
     snapshot = {
         "generated_at": generated_at,
@@ -601,6 +656,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "event_name": live_event_name,
             "active": live_is_active,
             "rankings": live_rankings,
+            "matchups": live_matchups,
             "source_event_id": str(
                 ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
             ),
