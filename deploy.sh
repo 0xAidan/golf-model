@@ -32,7 +32,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 # Configuration
 DEPLOY_HOST="${DEPLOY_HOST:-}"
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/golf-model}"
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-feature/model-overhaul}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 REPO_URL=$(git remote get-url origin 2>/dev/null || echo "")
 
 if [ -z "$DEPLOY_HOST" ]; then
