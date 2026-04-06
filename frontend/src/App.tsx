@@ -1282,29 +1282,91 @@ function GradingPage({ gradingHistory }: { gradingHistory: GradedTournamentSumma
   )
 }
 
-type TrackRecordPick = { pick: string; opponent: string; odds: string; result: string; pl: number }
-type TrackRecordEvent = {
+type MergedEvent = {
   name: string
-  dates: string
   course: string
-  record: { wins: number; losses: number; pushes: number }
-  profit_units: number
-  picks: TrackRecordPick[]
+  wins: number
+  losses: number
+  pushes: number
+  profit: number
+  picks: Array<{ pick: string; opponent: string; odds: string; result: string; pl: number }>
+}
+
+function useTrackRecordData(): { events: MergedEvent[]; totals: { wins: number; losses: number; pushes: number; profit: number } } {
+  const trackRecordQuery = useQuery({
+    queryKey: ["track-record"],
+    queryFn: api.getTrackRecord,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  return useMemo(() => {
+    const staticEvents = (trackRecordData as { events: Array<{ name: string; course: string; record: { wins: number; losses: number; pushes: number }; profit_units: number; picks: Array<{ pick: string; opponent: string; odds: string; result: string; pl: number }> }> }).events
+    const apiEvents = trackRecordQuery.data?.events ?? []
+
+    const apiByName = new Map(apiEvents.map((e) => [e.name.toLowerCase().trim(), e]))
+    const seen = new Set<string>()
+
+    const merged: MergedEvent[] = []
+
+    for (const apiEvent of apiEvents) {
+      const key = apiEvent.name.toLowerCase().trim()
+      seen.add(key)
+      const apiPicks = (apiEvent.picks ?? []).map((p) => ({
+        pick: p.player_display,
+        opponent: p.opponent_display,
+        odds: String(p.market_odds ?? "--"),
+        result: p.hit === 1 ? "win" : p.profit === 0 ? "push" : "loss",
+        pl: p.profit,
+      }))
+      const staticMatch = staticEvents.find((s) => s.name.toLowerCase().trim() === key)
+      const picks = apiPicks.length > 0 ? apiPicks : (staticMatch?.picks ?? [])
+      merged.push({
+        name: apiEvent.name,
+        course: apiEvent.course ?? staticMatch?.course ?? "",
+        wins: apiEvent.wins,
+        losses: apiEvent.losses,
+        pushes: apiEvent.pushes,
+        profit: apiEvent.total_profit,
+        picks,
+      })
+    }
+
+    for (const staticEvent of staticEvents) {
+      const key = staticEvent.name.toLowerCase().trim()
+      if (seen.has(key)) continue
+      merged.push({
+        name: staticEvent.name,
+        course: staticEvent.course,
+        wins: staticEvent.record.wins,
+        losses: staticEvent.record.losses,
+        pushes: staticEvent.record.pushes,
+        profit: staticEvent.profit_units,
+        picks: staticEvent.picks,
+      })
+    }
+
+    const totals = merged.reduce(
+      (acc, e) => ({ wins: acc.wins + e.wins, losses: acc.losses + e.losses, pushes: acc.pushes + e.pushes, profit: acc.profit + e.profit }),
+      { wins: 0, losses: 0, pushes: 0, profit: 0 },
+    )
+    return { events: merged, totals }
+  }, [trackRecordQuery.data])
 }
 
 function TrackRecordPage() {
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
-  const { headline, events } = trackRecordData as { headline: typeof trackRecordData.headline; events: TrackRecordEvent[] }
-  const totalBets = headline.wins + headline.losses + headline.pushes
-  const winRate = totalBets - headline.pushes > 0 ? ((headline.wins / (totalBets - headline.pushes)) * 100).toFixed(1) : "0"
+  const { events, totals } = useTrackRecordData()
+  const totalBets = totals.wins + totals.losses + totals.pushes
+  const winRate = totalBets - totals.pushes > 0 ? ((totals.wins / (totalBets - totals.pushes)) * 100).toFixed(1) : "0"
+  const roiPct = totalBets > 0 ? ((totals.profit / totalBets) * 100).toFixed(1) : "0"
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-5">
-        <MetricTile label="Record" value={`${headline.wins}-${headline.losses}-${headline.pushes}`} />
-        <MetricTile label="Win rate" value={`${winRate}%`} tone="positive" />
-        <MetricTile label="Profit" value={`+${headline.profit_units.toFixed(2)}u`} tone="positive" />
-        <MetricTile label="ROI" value={`+${headline.roi_pct}%`} tone="positive" />
+        <MetricTile label="Record" value={`${totals.wins}-${totals.losses}-${totals.pushes}`} />
+        <MetricTile label="Win rate" value={`${winRate}%`} tone={Number(winRate) >= 50 ? "positive" : undefined} />
+        <MetricTile label="Profit" value={`${totals.profit >= 0 ? "+" : ""}${totals.profit.toFixed(2)}u`} tone={totals.profit >= 0 ? "positive" : "warning"} />
+        <MetricTile label="ROI" value={`${Number(roiPct) >= 0 ? "+" : ""}${roiPct}%`} tone={Number(roiPct) >= 0 ? "positive" : "warning"} />
         <MetricTile label="Events" value={String(events.length)} />
       </div>
       <SurfaceCard>
@@ -1312,9 +1374,9 @@ function TrackRecordPage() {
         <div className="space-y-2">
           {events.map((event) => {
             const isOpen = expandedEvent === event.name
-            const record = `${event.record.wins}-${event.record.losses}-${event.record.pushes}`
-            const profitSign = event.profit_units >= 0 ? "+" : ""
-            const profitTone = event.profit_units >= 0 ? "text-emerald-300" : "text-red-400"
+            const record = `${event.wins}-${event.losses}-${event.pushes}`
+            const profitSign = event.profit >= 0 ? "+" : ""
+            const profitTone = event.profit >= 0 ? "text-emerald-300" : "text-red-400"
 
             return (
               <div key={event.name} className="rounded-2xl border border-white/8 bg-black/20">
@@ -1328,12 +1390,12 @@ function TrackRecordPage() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-white">{event.name}</p>
-                    <p className="text-xs text-slate-500">{event.dates} — {event.course}</p>
+                    <p className="text-xs text-slate-500">{event.course}</p>
                   </div>
                   <div className="flex items-center gap-5">
                     <div className="text-right">
                       <p className="text-sm font-semibold text-white">{record}</p>
-                      <p className={`text-xs font-medium ${profitTone}`}>{profitSign}{event.profit_units.toFixed(2)}u</p>
+                      <p className={`text-xs font-medium ${profitTone}`}>{profitSign}{event.profit.toFixed(2)}u</p>
                     </div>
                     <ChevronDown className={`h-4 w-4 text-slate-500 transition ${isOpen ? "rotate-180" : ""}`} />
                   </div>
@@ -1373,7 +1435,7 @@ function TrackRecordPage() {
                         </table>
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-400">Individual pick details will be added after grading.</p>
+                      <p className="text-sm text-slate-400">No individual pick data available for this event.</p>
                     )}
                   </div>
                 ) : null}

@@ -8,6 +8,7 @@ import type {
   PredictionRunRequest,
   PredictionRunResponse,
   ResearchProposal,
+  TrackRecordResponse,
 } from "@/lib/types"
 
 const JSON_HEADERS = {
@@ -54,6 +55,7 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload),
     }),
+  getTrackRecord: () => request<TrackRecordResponse>("/api/track-record"),
   gradeLatestTournament: (payload?: Partial<EventSummary>) =>
     request<Record<string, unknown>>("/api/grade-tournament", {
       method: "POST",

@@ -188,6 +188,35 @@ export type GradingHistoryResponse = {
   tournaments: GradedTournamentSummary[]
 }
 
+export type TrackRecordPick = {
+  player_display: string
+  opponent_display: string
+  market_odds: string
+  bet_type?: string
+  hit: number
+  profit: number
+}
+
+export type TrackRecordEvent = {
+  id: number
+  name: string
+  course?: string
+  year?: number
+  event_id?: string
+  graded_pick_count: number
+  hits: number
+  wins: number
+  pushes: number
+  losses: number
+  total_profit: number
+  last_graded_at?: string
+  picks: TrackRecordPick[]
+}
+
+export type TrackRecordResponse = {
+  events: TrackRecordEvent[]
+}
+
 export type PredictionRunRequest = {
   tour: string
   tournament?: string
