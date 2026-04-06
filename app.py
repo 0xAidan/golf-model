@@ -453,6 +453,52 @@ async def get_grading_history(limit: int = 20):
     return {"tournaments": [dict(row) for row in rows]}
 
 
+@app.get("/api/track-record")
+async def get_track_record(limit: int = 20):
+    """Return graded event history with individual pick results for the track record page."""
+    conn = get_conn()
+    events = conn.execute(
+        """
+        SELECT
+            t.id, t.name, t.course, t.year, t.event_id,
+            COUNT(DISTINCT po.id) AS graded_pick_count,
+            COALESCE(SUM(po.hit), 0) AS hits,
+            COALESCE(SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END), 0) AS wins,
+            COALESCE(SUM(CASE WHEN po.hit = 0 AND po.profit = 0 THEN 1 ELSE 0 END), 0) AS pushes,
+            COALESCE(SUM(CASE WHEN po.hit = 0 AND po.profit < 0 THEN 1 ELSE 0 END), 0) AS losses,
+            ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
+            MAX(po.entered_at) AS last_graded_at
+        FROM tournaments t
+        JOIN pick_outcomes po ON po.pick_id IN (SELECT id FROM picks WHERE tournament_id = t.id)
+        JOIN picks p ON p.id = po.pick_id
+        GROUP BY t.id
+        ORDER BY MAX(po.entered_at) DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    result = []
+    for event in events:
+        picks = conn.execute(
+            """
+            SELECT
+                p.player_display, p.opponent_display, p.market_odds,
+                p.bet_type, po.hit, ROUND(po.profit, 2) AS profit
+            FROM picks p
+            JOIN pick_outcomes po ON po.pick_id = p.id
+            WHERE p.tournament_id = ?
+            ORDER BY po.entered_at
+            """,
+            (event["id"],),
+        ).fetchall()
+        result.append({
+            **dict(event),
+            "picks": [dict(p) for p in picks],
+        })
+    conn.close()
+    return {"events": result}
+
+
 @app.get("/api/players/{player_key}/profile")
 async def get_player_profile(player_key: str, tournament_id: int, course_num: int | None = None):
     """Return deep profile data for one player in the current tournament context."""

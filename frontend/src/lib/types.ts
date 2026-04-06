@@ -4,8 +4,7 @@ export type WorkspaceId =
   | "matchups"
   | "course"
   | "grading"
-  | "history"
-  | "research"
+  | "track-record"
 
 export type DashboardState = {
   ai_status: {
@@ -53,7 +52,17 @@ export type LiveRankingRow = {
   course_fit: number
   form: number
   momentum: number
+  momentum_direction?: string
+  momentum_trend?: number
+  course_confidence?: number
+  course_rounds?: number
+  weather_adjustment?: number
   finish_state?: string | null
+  details?: {
+    course_components?: Record<string, number>
+    form_components?: Record<string, number>
+    momentum_windows?: Record<string, number>
+  }
 }
 
 export type LiveMatchupRow = {
@@ -77,6 +86,8 @@ export type LiveTournamentSnapshot = {
   data_mode?: string
   course_name?: string
   field_size?: number
+  tournament_id?: number
+  course_num?: number
   active?: boolean
   rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]

@@ -55,7 +55,7 @@ setup_server() {
 
         # Install system dependencies
         apt-get update -qq
-        apt-get install -y -qq python3 python3-pip python3-venv git sqlite3
+        apt-get install -y -qq python3 python3-pip python3-venv git sqlite3 nodejs npm
 
         # Create app directory
         mkdir -p /opt/golf-model
@@ -74,16 +74,41 @@ SETUP_EOF
         set -e
         cd /opt/golf-model
 
+        # Trust the Git host key on first use so non-interactive deploys do not fail.
+        # Auth is still required separately (deploy key / agent / token).
+        if echo "$REPO_URL" | grep -q "github.com"; then
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            touch ~/.ssh/known_hosts
+            ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+        fi
+
         if [ -d ".git" ]; then
             git fetch origin
             git checkout $DEPLOY_BRANCH
             git pull origin $DEPLOY_BRANCH
         else
-            git clone -b $DEPLOY_BRANCH $REPO_URL .
+            # Directory may already contain bootstrap files (like venv) from setup.
+            # Initialize git in-place so first-time deploy works without requiring
+            # an empty directory.
+            git init
+            if ! git remote get-url origin >/dev/null 2>&1; then
+                git remote add origin $REPO_URL
+            fi
+            git fetch origin $DEPLOY_BRANCH
+            git checkout -B $DEPLOY_BRANCH FETCH_HEAD
         fi
 
         source venv/bin/activate
         pip install -q -r requirements.txt
+
+        # Build frontend bundle when present so / serves the latest React UI
+        if [ -f "frontend/package.json" ]; then
+            cd frontend
+            npm ci --silent
+            npm run build --silent
+            cd /opt/golf-model
+        fi
 CLONE_EOF
 
     # Upload .env file
@@ -223,6 +248,14 @@ update_server() {
         # Install deps
         source venv/bin/activate
         pip install -q -r requirements.txt
+
+        # Build frontend bundle when present so / serves the latest React UI
+        if [ -f "frontend/package.json" ]; then
+            cd frontend
+            npm ci --silent
+            npm run build --silent
+            cd /opt/golf-model
+        fi
 
         # Initialize DB (runs migrations)
         python -c "from src.db import init_db; init_db()"

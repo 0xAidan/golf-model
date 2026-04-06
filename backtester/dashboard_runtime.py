@@ -139,18 +139,25 @@ def _extract_rankings(
         if exclude_cut_players and _is_cut_or_inactive(finish_state):
             continue
         rank += 1
-        rankings.append(
-            {
-                "rank": rank,
-                "player_key": row.get("player_key"),
-                "player": row.get("player_display"),
-                "composite": row.get("composite"),
-                "course_fit": row.get("course_fit"),
-                "form": row.get("form"),
-                "momentum": row.get("momentum"),
-                "finish_state": finish_state,
-            }
-        )
+        entry: dict = {
+            "rank": rank,
+            "player_key": row.get("player_key"),
+            "player": row.get("player_display"),
+            "composite": row.get("composite"),
+            "course_fit": row.get("course_fit"),
+            "form": row.get("form"),
+            "momentum": row.get("momentum"),
+            "momentum_direction": row.get("momentum_direction"),
+            "momentum_trend": row.get("momentum_trend"),
+            "course_confidence": row.get("course_confidence"),
+            "course_rounds": row.get("course_rounds"),
+            "weather_adjustment": row.get("weather_adjustment"),
+            "finish_state": finish_state,
+        }
+        details = row.get("details")
+        if details:
+            entry["details"] = details
+        rankings.append(entry)
         if rank >= limit:
             break
     return rankings
@@ -498,6 +505,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         "event_name": event_name,
         "course_name": live_result.get("course_name"),
         "field_size": live_result.get("field_size"),
+        "tournament_id": live_result.get("tournament_id"),
+        "course_num": live_result.get("course_num"),
         "rankings": _extract_rankings(
             live_result.get("composite_results") or [],
             finish_states=finish_states,

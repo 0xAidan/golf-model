@@ -1,0 +1,91 @@
+{
+  "headline": {
+    "wins": 39,
+    "losses": 22,
+    "pushes": 7,
+    "profit_units": 16.79,
+    "units_staked": 68,
+    "roi_pct": 24.7
+  },
+  "events": [
+    {
+      "name": "Arnold Palmer Invitational",
+      "dates": "Mar 4–8, 2026",
+      "course": "Arnold Palmer's Bay Hill Club & Lodge",
+      "record": { "wins": 10, "losses": 4, "pushes": 0 },
+      "profit_units": 6.47,
+      "picks": [
+        { "pick": "Shane Lowry", "opponent": "Sam Burns", "odds": "+103", "result": "win", "pl": 1.03 },
+        { "pick": "Collin Morikawa", "opponent": "Matt Fitzpatrick", "odds": "+118", "result": "win", "pl": 1.18 },
+        { "pick": "Taylor Moore", "opponent": "Denny McCarthy", "odds": "+115", "result": "win", "pl": 1.15 },
+        { "pick": "Jacob Bridgeman", "opponent": "Ben Griffin", "odds": "+114", "result": "win", "pl": 1.14 },
+        { "pick": "Jacob Bridgeman", "opponent": "Keegan Bradley", "odds": "-100", "result": "win", "pl": 1.0 },
+        { "pick": "Nicolai Højgaard", "opponent": "Corey Conners", "odds": "-116", "result": "win", "pl": 0.86 },
+        { "pick": "Adam Scott", "opponent": "Chris Gotterup", "odds": "+109", "result": "win", "pl": 1.09 },
+        { "pick": "Adam Scott", "opponent": "Ben Griffin", "odds": "+109", "result": "win", "pl": 1.09 },
+        { "pick": "Jacob Bridgeman", "opponent": "Corey Conners", "odds": "-111", "result": "win", "pl": 0.9 },
+        { "pick": "Akshay Bhatia", "opponent": "J.J. Spaun", "odds": "+113", "result": "win", "pl": 1.13 },
+        { "pick": "Rory McIlroy", "opponent": "Scottie Scheffler", "odds": "+182", "result": "loss", "pl": -1.0 },
+        { "pick": "Rory McIlroy", "opponent": "Scottie Scheffler", "odds": "+175", "result": "loss", "pl": -1.0 },
+        { "pick": "Jacob Bridgeman", "opponent": "Rickie Fowler", "odds": "+121", "result": "loss", "pl": -1.0 },
+        { "pick": "Collin Morikawa", "opponent": "Cameron Young", "odds": "-120", "result": "loss", "pl": -1.0 }
+      ]
+    },
+    {
+      "name": "Valspar Championship",
+      "dates": "Mar 16–18, 2026",
+      "course": "Innisbrook Resort (Copperhead)",
+      "record": { "wins": 9, "losses": 4, "pushes": 3 },
+      "profit_units": 3.41,
+      "picks": []
+    },
+    {
+      "name": "THE PLAYERS Championship",
+      "dates": "Mar 10–15, 2026",
+      "course": "TPC Sawgrass (Stadium Course)",
+      "record": { "wins": 7, "losses": 4, "pushes": 1 },
+      "profit_units": 1.93,
+      "picks": []
+    },
+    {
+      "name": "Cognizant Classic",
+      "dates": "Feb 26 – Mar 1, 2026",
+      "course": "PGA National Resort (Champion Course)",
+      "record": { "wins": 6, "losses": 7, "pushes": 2 },
+      "profit_units": 1.33,
+      "picks": [
+        { "pick": "Joel Dahmen", "opponent": "Steven Fisk", "odds": "-114", "result": "win", "pl": 0.88 },
+        { "pick": "Dan Brown", "opponent": "Kevin Yu", "odds": "+140", "result": "win", "pl": 1.4 },
+        { "pick": "Joel Dahmen", "opponent": "Jesper Svensson", "odds": "-109", "result": "win", "pl": 0.92 },
+        { "pick": "Ricky Castillo", "opponent": "Eric Cole", "odds": "-120", "result": "win", "pl": 0.83 },
+        { "pick": "Ricky Castillo", "opponent": "Max Homa", "odds": "-104", "result": "win", "pl": 0.96 },
+        { "pick": "Kristoffer Reitan", "opponent": "Rico Hoey", "odds": "+134", "result": "win", "pl": 1.34 },
+        { "pick": "Christiaan Bezuidenhout", "opponent": "Aaron Rai", "odds": "+113", "result": "loss", "pl": -1.0 },
+        { "pick": "John Parry", "opponent": "Garrick Higgo", "odds": "+100", "result": "loss", "pl": -1.0 },
+        { "pick": "Haotong Li", "opponent": "Brooks Koepka", "odds": "-115", "result": "loss", "pl": -1.0 },
+        { "pick": "Haotong Li", "opponent": "Nico Echavarria", "odds": "+110", "result": "loss", "pl": -1.0 },
+        { "pick": "Christiaan Bezuidenhout", "opponent": "Daniel Berger", "odds": "+107", "result": "loss", "pl": -1.0 },
+        { "pick": "Rasmus Neergaard-Petersen", "opponent": "Daniel Berger", "odds": "+117", "result": "loss", "pl": -1.0 },
+        { "pick": "Tom Kim", "opponent": "Matt Wallace", "odds": "+103", "result": "loss", "pl": -1.0 },
+        { "pick": "Kris Ventura", "opponent": "Vince Whaley", "odds": "+111", "result": "push", "pl": 0 },
+        { "pick": "Mac Meissner", "opponent": "Rico Hoey", "odds": "-104", "result": "push", "pl": 0 }
+      ]
+    },
+    {
+      "name": "Genesis Invitational",
+      "dates": "Feb 19–22, 2026",
+      "course": "Riviera Country Club",
+      "record": { "wins": 5, "losses": 2, "pushes": 1 },
+      "profit_units": 2.64,
+      "picks": []
+    },
+    {
+      "name": "Texas Children's Houston Open",
+      "dates": "Mar 23–25, 2026",
+      "course": "Memorial Park Golf Course",
+      "record": { "wins": 2, "losses": 1, "pushes": 0 },
+      "profit_units": 1.01,
+      "picks": []
+    }
+  ]
+}
