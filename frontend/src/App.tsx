@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Brain, CircleAlert, Clock3, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
+import { Brain, ChevronDown, CircleAlert, Clock3, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
 import { Route, Routes } from "react-router-dom"
 
 import { BarTrendChart, SparklineChart } from "@/components/charts"
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { useLocalStorageState } from "@/lib/storage"
+import trackRecordData from "@/data/trackRecord.json"
 import type {
   CompositePlayer,
   DashboardState,
@@ -19,7 +20,6 @@ import type {
   PlayerProfile,
   PredictionRunRequest,
   PredictionRunResponse,
-  ResearchProposal,
 } from "@/lib/types"
 
 const DEFAULT_REQUEST: PredictionRunRequest = {
@@ -54,10 +54,7 @@ function App() {
     queryKey: ["grading-history"],
     queryFn: api.getGradingHistory,
   })
-  const researchQuery = useQuery({
-    queryKey: ["research-proposals"],
-    queryFn: api.getResearchProposals,
-  })
+  
   const liveRefreshStatusQuery = useQuery({
     queryKey: ["live-refresh-status"],
     queryFn: api.getLiveRefreshStatus,
@@ -125,7 +122,6 @@ function App() {
 
   const secondaryBets = flattenSecondaryBets(effectivePredictionRun)
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
-  const proposals = researchQuery.data ?? []
   const dashboard = dashboardQuery.data as DashboardState | undefined
 
   useEffect(() => {
@@ -252,12 +248,8 @@ function App() {
           element={<GradingPage gradingHistory={gradingHistory} />}
         />
         <Route
-          path="/history"
-          element={<HistoryPage dashboard={dashboard} gradingHistory={gradingHistory} />}
-        />
-        <Route
-          path="/research"
-          element={<ResearchPage dashboard={dashboard} proposals={proposals} />}
+          path="/track-record"
+          element={<TrackRecordPage />}
         />
       </Routes>
     </CommandShell>
@@ -930,6 +922,14 @@ function PredictionWorkspacePage({
   )
 }
 
+const TREND_ARROW: Record<string, string> = { hot: "↑↑", warming: "↑", cooling: "↓", cold: "↓↓" }
+const TREND_COLOR: Record<string, string> = {
+  hot: "text-emerald-400",
+  warming: "text-emerald-300",
+  cooling: "text-amber-300",
+  cold: "text-red-400",
+}
+
 function PlayersPage({
   players,
   selectedPlayer,
@@ -941,109 +941,133 @@ function PlayersPage({
   selectedPlayerProfile?: PlayerProfile
   onPlayerSelect: (playerKey: string) => void
 }) {
+  const expandedKey = selectedPlayer?.player_key ?? null
   const recentTrend = (selectedPlayerProfile?.recent_rounds ?? []).map((round) => Number(round.sg_total ?? 0)).reverse()
   const momentumValues =
     recentTrend.length > 0
       ? recentTrend
-      : (selectedPlayer
-          ? [
-              selectedPlayer.course_fit,
-              selectedPlayer.form,
-              selectedPlayer.momentum,
-              selectedPlayer.composite,
-            ]
-          : [])
+      : selectedPlayer
+        ? [selectedPlayer.course_fit, selectedPlayer.form, selectedPlayer.momentum, selectedPlayer.composite]
+        : []
   const courseValues = selectedPlayerProfile?.course_history.map((round) => Number(round.sg_total ?? 0)).reverse() ?? []
 
   return (
-    <div className="grid gap-6 2xl:grid-cols-[0.92fr_1.08fr]">
-      <SurfaceCard>
-        <SectionTitle title="Projection ladder" description="Click any player to open a richer projection profile with score components and momentum context." />
-        <div className="space-y-2">
-          {players.length ? (
-            players.map((player) => (
-              <button
-                key={player.player_key}
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                onClick={() => onPlayerSelect(player.player_key)}
-              >
-                <div>
-                  <p className="font-medium text-white">{player.player_display}</p>
-                  <p className="text-xs text-slate-500">rank #{player.rank}</p>
-                </div>
-                <p className="text-sm font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</p>
-              </button>
-            ))
-          ) : (
-            <EmptyState message="No players available yet for this event context." />
-          )}
+    <SurfaceCard>
+      <SectionTitle title="Model Rankings" description="Click any player row to expand their full projection profile." />
+      {players.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm" role="grid">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                <th className="px-3 py-3 font-medium">Rank</th>
+                <th className="px-3 py-3 font-medium">Player</th>
+                <th className="px-3 py-3 font-medium text-right">Composite</th>
+                <th className="px-3 py-3 font-medium text-right">Course Fit</th>
+                <th className="px-3 py-3 font-medium text-right">Form</th>
+                <th className="px-3 py-3 font-medium text-right">Momentum</th>
+                <th className="px-3 py-3 font-medium text-center">Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {players.map((player) => {
+                const isExpanded = player.player_key === expandedKey
+                const dir = player.momentum_direction ?? ""
+                const arrow = TREND_ARROW[dir] ?? "—"
+                const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
+
+                return (
+                  <tr key={player.player_key} className="group">
+                    <td colSpan={7} className="p-0">
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        aria-label={`${player.player_display} ranked ${player.rank}`}
+                        tabIndex={0}
+                        className="flex w-full items-center transition hover:bg-white/5"
+                        onClick={() => onPlayerSelect(isExpanded ? "" : player.player_key)}
+                      >
+                        <span className="w-[calc(100%/7)] px-3 py-3 text-left text-slate-400">{player.rank}</span>
+                        <span className="flex w-[calc(100%/7)] items-center gap-2 px-3 py-3 text-left font-medium text-white">
+                          {player.player_display}
+                          <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition ${isExpanded ? "rotate-180" : ""}`} />
+                        </span>
+                        <span className="w-[calc(100%/7)] px-3 py-3 text-right font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</span>
+                        <span className="w-[calc(100%/7)] px-3 py-3 text-right text-slate-300">{formatNumber(player.course_fit, 1)}</span>
+                        <span className="w-[calc(100%/7)] px-3 py-3 text-right text-slate-300">{formatNumber(player.form, 1)}</span>
+                        <span className="w-[calc(100%/7)] px-3 py-3 text-right text-slate-300">{formatNumber(player.momentum, 1)}</span>
+                        <span className={`w-[calc(100%/7)] px-3 py-3 text-center text-lg ${trendColor}`}>{arrow}</span>
+                      </button>
+                      {isExpanded ? (
+                        <div className="border-t border-white/8 bg-white/3 px-4 py-5">
+                          <div className="space-y-5">
+                            <div className="grid gap-4 md:grid-cols-4">
+                              <MetricTile label="Composite" value={formatNumber(player.composite, 1)} />
+                              <MetricTile label="Course fit" value={formatNumber(player.course_fit, 1)} />
+                              <MetricTile label="Form" value={formatNumber(player.form, 1)} />
+                              <MetricTile label="Momentum" value={formatNumber(player.momentum, 1)} />
+                            </div>
+                            <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                              <div className="mb-2 flex items-center gap-2 text-slate-300">
+                                <TrendingUp className="h-4 w-4 text-cyan-200" />
+                                <span className="text-sm font-medium">Recent strokes-gained trend</span>
+                              </div>
+                              <SparklineChart values={momentumValues} color="#5eead4" />
+                            </div>
+                            {courseValues.length ? (
+                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                                <div className="mb-2 flex items-center gap-2 text-slate-300">
+                                  <Flag className="h-4 w-4 text-cyan-200" />
+                                  <span className="text-sm font-medium">Course-history trend</span>
+                                </div>
+                                <SparklineChart values={courseValues} color="#60a5fa" />
+                              </div>
+                            ) : null}
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <MetricTile label="Momentum direction" value={player.momentum_direction ?? "--"} />
+                              <MetricTile label="Course confidence" value={formatNumber(player.course_confidence, 2)} />
+                              <MetricTile label="Course rounds" value={String(player.course_rounds ?? 0)} />
+                              <MetricTile label="Weather adj." value={formatNumber(player.weather_adjustment, 1)} />
+                            </div>
+                            {selectedPlayerProfile?.linked_bets?.length ? (
+                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                                <h4 className="mb-3 text-sm font-semibold text-white">Linked bets</h4>
+                                <div className="space-y-3">
+                                  {selectedPlayerProfile.linked_bets.slice(0, 6).map((bet, index) => (
+                                    <div key={`${bet.bet_type}-${index}`} className="flex items-center justify-between gap-4 rounded-2xl border border-white/6 px-3 py-3">
+                                      <div>
+                                        <p className="text-sm font-medium text-white">{bet.bet_type ?? "bet"}</p>
+                                        <p className="text-xs text-slate-500">
+                                          {bet.player_display}
+                                          {bet.opponent_display ? ` vs ${bet.opponent_display}` : ""}
+                                        </p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-sm text-cyan-200">{bet.market_odds ?? "--"}</p>
+                                        <p className="text-xs text-slate-500">{bet.confidence ?? "quant"}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            <ComponentTable title="Course components" components={player.details?.course_components} />
+                            <ComponentTable title="Form components" components={player.details?.form_components} />
+                            <ComponentTable title="Momentum windows" components={player.details?.momentum_windows} />
+                            <MetricsCategoryTable title="Current market context" categories={selectedPlayerProfile?.current_metrics} />
+                          </div>
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
-      </SurfaceCard>
-      <SurfaceCard>
-        <SectionTitle title="Player profile" description="Current-week projection context, momentum, course confidence, and sub-score detail." />
-        {selectedPlayer ? (
-          <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-4">
-              <MetricTile label="Composite" value={formatNumber(selectedPlayer.composite, 1)} />
-              <MetricTile label="Course fit" value={formatNumber(selectedPlayer.course_fit, 1)} />
-              <MetricTile label="Form" value={formatNumber(selectedPlayer.form, 1)} />
-              <MetricTile label="Momentum" value={formatNumber(selectedPlayer.momentum, 1)} />
-            </div>
-            <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-              <div className="mb-2 flex items-center gap-2 text-slate-300">
-                <TrendingUp className="h-4 w-4 text-cyan-200" />
-                <span className="text-sm font-medium">Recent strokes-gained trend</span>
-              </div>
-              <SparklineChart values={momentumValues} color="#5eead4" />
-            </div>
-            {courseValues.length ? (
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <div className="mb-2 flex items-center gap-2 text-slate-300">
-                  <Flag className="h-4 w-4 text-cyan-200" />
-                  <span className="text-sm font-medium">Course-history trend</span>
-                </div>
-                <SparklineChart values={courseValues} color="#60a5fa" />
-              </div>
-            ) : null}
-            <div className="grid gap-4 md:grid-cols-2">
-              <MetricTile label="Momentum direction" value={selectedPlayer.momentum_direction ?? "--"} />
-              <MetricTile label="Course confidence" value={formatNumber(selectedPlayer.course_confidence, 2)} />
-              <MetricTile label="Course rounds" value={String(selectedPlayer.course_rounds ?? 0)} />
-              <MetricTile label="Weather adj." value={formatNumber(selectedPlayer.weather_adjustment, 1)} />
-            </div>
-            {selectedPlayerProfile?.linked_bets?.length ? (
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-white">Linked bets</h4>
-                <div className="space-y-3">
-                  {selectedPlayerProfile.linked_bets.slice(0, 6).map((bet, index) => (
-                    <div key={`${bet.bet_type}-${index}`} className="flex items-center justify-between gap-4 rounded-2xl border border-white/6 px-3 py-3">
-                      <div>
-                        <p className="text-sm font-medium text-white">{bet.bet_type ?? "bet"}</p>
-                        <p className="text-xs text-slate-500">
-                          {bet.player_display}
-                          {bet.opponent_display ? ` vs ${bet.opponent_display}` : ""}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-cyan-200">{bet.market_odds ?? "--"}</p>
-                        <p className="text-xs text-slate-500">{bet.confidence ?? "quant"}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <ComponentTable title="Course components" components={selectedPlayer.details?.course_components} />
-            <ComponentTable title="Form components" components={selectedPlayer.details?.form_components} />
-            <ComponentTable title="Momentum windows" components={selectedPlayer.details?.momentum_windows} />
-            <MetricsCategoryTable title="Current market context" categories={selectedPlayerProfile?.current_metrics} />
-          </div>
-        ) : (
-          <EmptyState message="Run a prediction to load player projections." />
-        )}
-      </SurfaceCard>
-    </div>
+      ) : (
+        <EmptyState message="No players available yet for this event context." />
+      )}
+    </SurfaceCard>
   )
 }
 
@@ -1218,86 +1242,104 @@ function GradingPage({ gradingHistory }: { gradingHistory: GradedTournamentSumma
   )
 }
 
-function HistoryPage({
-  dashboard,
-  gradingHistory,
-}: {
-  dashboard?: DashboardState
-  gradingHistory: GradedTournamentSummary[]
-}) {
-  const outputCards = [
-    dashboard?.latest_prediction_artifact,
-    dashboard?.latest_backtest_artifact,
-    dashboard?.latest_research_artifact,
-  ].filter(Boolean)
-
-  return (
-    <div className="grid gap-6 2xl:grid-cols-[1fr_0.95fr]">
-      <SurfaceCard>
-        <SectionTitle title="Artifact history" description="Recent prediction, backtest, and research artifacts with readable summaries for quick context." />
-        <div className="space-y-3">
-          {outputCards.map((artifact) => (
-            <div key={artifact?.path} className="rounded-2xl border border-white/8 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{artifact?.type ?? "artifact"}</p>
-              <p className="mt-2 font-medium text-white">{artifact?.path}</p>
-              <pre className="mt-3 whitespace-pre-wrap text-xs leading-6 text-slate-400">
-                {JSON.stringify(artifact?.summary ?? {}, null, 2)}
-              </pre>
-            </div>
-          ))}
-        </div>
-      </SurfaceCard>
-      <SurfaceCard>
-        <SectionTitle title="Performance snapshot" description="Fast answers to whether the system is trending up, flat, or under stress." />
-        <div className="grid gap-4 md:grid-cols-2">
-          <MetricTile label="Total profit" value={formatUnits(gradingHistory.reduce((sum, item) => sum + Number(item.total_profit ?? 0), 0))} />
-          <MetricTile label="Events tracked" value={String(gradingHistory.length)} />
-          <MetricTile label="Latest artifact" value={dashboard?.latest_prediction_artifact?.path ?? "--"} />
-          <MetricTile label="Latest completed event" value={dashboard?.latest_completed_event?.event_name ?? "--"} />
-        </div>
-      </SurfaceCard>
-    </div>
-  )
+type TrackRecordPick = { pick: string; opponent: string; odds: string; result: string; pl: number }
+type TrackRecordEvent = {
+  name: string
+  dates: string
+  course: string
+  record: { wins: number; losses: number; pushes: number }
+  profit_units: number
+  picks: TrackRecordPick[]
 }
 
-function ResearchPage({
-  dashboard,
-  proposals,
-}: {
-  dashboard?: DashboardState
-  proposals: ResearchProposal[]
-}) {
+function TrackRecordPage() {
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
+  const { headline, events } = trackRecordData as { headline: typeof trackRecordData.headline; events: TrackRecordEvent[] }
+  const totalBets = headline.wins + headline.losses + headline.pushes
+  const winRate = totalBets - headline.pushes > 0 ? ((headline.wins / (totalBets - headline.pushes)) * 100).toFixed(1) : "0"
+
   return (
-    <div className="grid gap-6 2xl:grid-cols-[0.92fr_1.08fr]">
+    <div className="space-y-6">
+      <div className="grid gap-4 xl:grid-cols-5">
+        <MetricTile label="Record" value={`${headline.wins}-${headline.losses}-${headline.pushes}`} />
+        <MetricTile label="Win rate" value={`${winRate}%`} tone="positive" />
+        <MetricTile label="Profit" value={`+${headline.profit_units.toFixed(2)}u`} tone="positive" />
+        <MetricTile label="ROI" value={`+${headline.roi_pct}%`} tone="positive" />
+        <MetricTile label="Events" value={String(events.length)} />
+      </div>
       <SurfaceCard>
-        <SectionTitle title="Autoresearch status" description="Powerful, but visually subordinate to prediction and grading so the operator flow stays clean." />
-        <div className="grid gap-4 md:grid-cols-2">
-          <MetricTile label="Runtime" value={dashboard?.autoresearch?.running ? "Running" : "Idle"} />
-          <MetricTile label="Run count" value={String(dashboard?.autoresearch?.run_count ?? 0)} />
-          <MetricTile label="Last finished" value={formatDateTime(dashboard?.autoresearch?.last_finished_at)} />
-          <MetricTile label="Latest research artifact" value={dashboard?.latest_research_artifact?.path ?? "--"} />
-        </div>
-      </SurfaceCard>
-      <SurfaceCard>
-        <SectionTitle title="Proposal queue" description="The lab lane remains accessible for hypothesis review without overwhelming the live betting workspace." />
-        <div className="space-y-3">
-          {proposals.length ? (
-            proposals.map((proposal) => (
-              <div key={proposal.id} className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-medium text-white">{proposal.title ?? proposal.hypothesis ?? `Proposal ${proposal.id}`}</p>
-                    <p className="text-xs text-slate-500">{proposal.status ?? "pending"}</p>
+        <SectionTitle title="Event-by-event results" description="2026 PGA Tour season. Matchup-focused betting record." />
+        <div className="space-y-2">
+          {events.map((event) => {
+            const isOpen = expandedEvent === event.name
+            const record = `${event.record.wins}-${event.record.losses}-${event.record.pushes}`
+            const profitSign = event.profit_units >= 0 ? "+" : ""
+            const profitTone = event.profit_units >= 0 ? "text-emerald-300" : "text-red-400"
+
+            return (
+              <div key={event.name} className="rounded-2xl border border-white/8 bg-black/20">
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  aria-label={`${event.name} record ${record}`}
+                  tabIndex={0}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-white/5"
+                  onClick={() => setExpandedEvent(isOpen ? null : event.name)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-white">{event.name}</p>
+                    <p className="text-xs text-slate-500">{event.dates} — {event.course}</p>
                   </div>
-                  <div className="rounded-full bg-fuchsia-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-fuchsia-200">
-                    {proposal.expected_edge ? `${proposal.expected_edge.toFixed(1)}%` : "watch"}
+                  <div className="flex items-center gap-5">
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-white">{record}</p>
+                      <p className={`text-xs font-medium ${profitTone}`}>{profitSign}{event.profit_units.toFixed(2)}u</p>
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-slate-500 transition ${isOpen ? "rotate-180" : ""}`} />
                   </div>
-                </div>
+                </button>
+                {isOpen ? (
+                  <div className="border-t border-white/8 px-5 py-4">
+                    {event.picks.length ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[480px] text-sm">
+                          <thead>
+                            <tr className="border-b border-white/10 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                              <th className="px-2 py-2 font-medium">Pick</th>
+                              <th className="px-2 py-2 font-medium">vs</th>
+                              <th className="px-2 py-2 font-medium text-right">Odds</th>
+                              <th className="px-2 py-2 font-medium text-center">Result</th>
+                              <th className="px-2 py-2 font-medium text-right">P/L</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {event.picks.map((p, i) => {
+                              const resultColor =
+                                p.result === "win" ? "text-emerald-400" : p.result === "loss" ? "text-red-400" : "text-slate-400"
+                              const plColor = p.pl > 0 ? "text-emerald-300" : p.pl < 0 ? "text-red-400" : "text-slate-400"
+                              return (
+                                <tr key={`${p.pick}-${p.opponent}-${i}`} className="border-b border-white/5">
+                                  <td className="px-2 py-2.5 text-white">{p.pick}</td>
+                                  <td className="px-2 py-2.5 text-slate-400">{p.opponent}</td>
+                                  <td className="px-2 py-2.5 text-right text-slate-300">{p.odds}</td>
+                                  <td className={`px-2 py-2.5 text-center font-medium uppercase ${resultColor}`}>{p.result}</td>
+                                  <td className={`px-2 py-2.5 text-right font-medium ${plColor}`}>
+                                    {p.pl > 0 ? "+" : ""}{p.pl.toFixed(2)}u
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-400">Individual pick details will be added after grading.</p>
+                    )}
+                  </div>
+                ) : null}
               </div>
-            ))
-          ) : (
-            <EmptyState message="No research proposals are queued yet." />
-          )}
+            )
+          })}
         </div>
       </SurfaceCard>
     </div>
@@ -1591,6 +1633,8 @@ function buildHydratedPredictionRun(
     event_name: source.event_name ?? "Event",
     course_name: source.course_name ?? "",
     field_size: source.field_size ?? rankings.length,
+    tournament_id: source.tournament_id,
+    course_num: source.course_num,
     composite_results: rankings.map((row) => ({
       player_key: row.player_key ?? normalize_name_for_ui(row.player),
       player_display: row.player,
@@ -1599,6 +1643,12 @@ function buildHydratedPredictionRun(
       course_fit: Number(row.course_fit ?? 0),
       form: Number(row.form ?? 0),
       momentum: Number(row.momentum ?? 0),
+      momentum_direction: row.momentum_direction,
+      momentum_trend: row.momentum_trend != null ? Number(row.momentum_trend) : undefined,
+      course_confidence: row.course_confidence != null ? Number(row.course_confidence) : undefined,
+      course_rounds: row.course_rounds != null ? Number(row.course_rounds) : undefined,
+      weather_adjustment: row.weather_adjustment != null ? Number(row.weather_adjustment) : undefined,
+      details: row.details,
     })),
     matchup_bets: matchups.map((row) => {
       const pickKey = row.player_key ?? normalize_name_for_ui(row.player)

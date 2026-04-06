@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom"
-import { Activity, BarChart3, BookOpen, Gauge, GraduationCap, LayoutDashboard, Route, Swords, Users } from "lucide-react"
+import { Activity, Gauge, GraduationCap, LayoutDashboard, Route, Swords, Trophy, Users } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { WorkspaceId } from "@/lib/types"
@@ -17,8 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "matchups", label: "Matchups", href: "/matchups", icon: Swords },
   { id: "course", label: "Course", href: "/course", icon: Route },
   { id: "grading", label: "Grading", href: "/grading", icon: GraduationCap },
-  { id: "history", label: "History", href: "/history", icon: BarChart3 },
-  { id: "research", label: "Research", href: "/research", icon: BookOpen },
+  { id: "track-record", label: "Track Record", href: "/track-record", icon: Trophy },
 ]
 
 export function CommandShell({

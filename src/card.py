@@ -104,7 +104,8 @@ def generate_card(tournament_name: str,
                   ai_decisions: dict = None,
                   matchup_bets: list[dict] = None,
                   strategy_meta: dict | None = None,
-                  mode: str = "full") -> str:
+                  mode: str = "full",
+                  ai_scores_adjusted: bool = True) -> str:
     """
     Generate a markdown betting card.
 
@@ -114,6 +115,7 @@ def generate_card(tournament_name: str,
     ai_pre_analysis: AI pre-tournament analysis (optional)
     ai_decisions: AI betting decisions (optional)
     matchup_bets: list of matchup value bets from matchup_value module (optional)
+    ai_scores_adjusted: False when AI narrative ran but composite scores were left unchanged.
 
     Returns the file path of the generated card.
     """
@@ -170,22 +172,6 @@ def generate_card(tournament_name: str,
     lines.append(f"## Top {getattr(config, 'BEST_BETS_COUNT', 5)} Matchup Plays")
     lines.append("")
 
-    if strategy_meta:
-        lines.append("## Baseline Provenance")
-        lines.append("")
-        runtime = strategy_meta.get("runtime_settings", {})
-        blend = runtime.get("blend_weights", {})
-        lines.append(
-            f"- Strategy source: `{strategy_meta.get('strategy_source', 'default')}`"
-        )
-        lines.append(
-            f"- Blend: course {blend.get('course_fit', 0):.0%}, "
-            f"form {blend.get('form', 0):.0%}, "
-            f"momentum {blend.get('momentum', 0):.0%}"
-        )
-        if runtime.get("ev_threshold") is not None:
-            lines.append(f"- EV threshold: {runtime['ev_threshold']:.0%}")
-        lines.append("")
     best_plays = _top_bets_for_summary(value_bets, matchup_bets)
     if best_plays:
         show_stake = is_enabled("kelly_sizing") or is_enabled("kelly_stakes")
@@ -209,6 +195,23 @@ def generate_card(tournament_name: str,
     else:
         lines.append("*No matchup value bets above threshold this week.*")
     lines.append("")
+
+    if strategy_meta:
+        lines.append("### Baseline snapshot")
+        lines.append("")
+        runtime = strategy_meta.get("runtime_settings", {})
+        blend = runtime.get("blend_weights", {})
+        lines.append(
+            f"- Strategy source: `{strategy_meta.get('strategy_source', 'default')}`"
+        )
+        lines.append(
+            f"- Blend: course {blend.get('course_fit', 0):.0%}, "
+            f"form {blend.get('form', 0):.0%}, "
+            f"momentum {blend.get('momentum', 0):.0%}"
+        )
+        if runtime.get("ev_threshold") is not None:
+            lines.append(f"- EV threshold: {runtime['ev_threshold']:.0%}")
+        lines.append("")
 
     # ── Sections 2+ (collapsible) ─────────────────────────────
     lines.append("<details>")
@@ -400,7 +403,14 @@ def generate_card(tournament_name: str,
 
     # ── Footer ────────────────────────────────────────────────
     lines.append("---")
-    ai_tag = " AI-adjusted." if ai_pre_analysis else ""
+    if ai_pre_analysis:
+        ai_tag = (
+            " AI course context (quant scores unchanged)."
+            if not ai_scores_adjusted
+            else " AI-adjusted."
+        )
+    else:
+        ai_tag = ""
     runtime = (strategy_meta or {}).get("runtime_settings", {})
     blend = runtime.get("blend_weights", {})
     lines.append(
