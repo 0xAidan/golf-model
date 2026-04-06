@@ -1103,87 +1103,97 @@ function PlayersPage({
 
 function MatchupsPage({
   matchups,
-  onMatchupSelect,
-  selectedMatchup,
 }: {
   matchups: MatchupBet[]
   onMatchupSelect: (key: string) => void
   selectedMatchup: MatchupBet | null
 }) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+
+  const handleToggle = (key: string) => {
+    setExpandedKey(expandedKey === key ? null : key)
+  }
+
   return (
-    <div className="grid gap-6 2xl:grid-cols-[1fr_0.9fr]">
-      <SurfaceCard>
-        <SectionTitle title="Matchup conviction map" description="Scan tier, edge, pricing, and momentum at a glance." />
-        <div className="grid gap-3 xl:grid-cols-2">
-          {matchups.length ? (
-            matchups.map((matchup) => (
-              <button
-                key={buildMatchupKey(matchup)}
-                type="button"
-                onClick={() => onMatchupSelect(buildMatchupKey(matchup))}
-                className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-medium text-white">{matchup.pick}</p>
-                    <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+    <SurfaceCard>
+      <SectionTitle title="Matchup conviction map" description="Scan tier, edge, pricing, and momentum at a glance. Click any row to expand." />
+      {matchups.length ? (
+        <div className="space-y-3">
+          {matchups.map((matchup) => {
+            const key = buildMatchupKey(matchup)
+            const isExpanded = expandedKey === key
+            return (
+              <div key={key} className="rounded-2xl border border-white/8 bg-black/20 transition">
+                <button
+                  type="button"
+                  aria-expanded={isExpanded}
+                  aria-label={`${matchup.pick} vs ${matchup.opponent}`}
+                  tabIndex={0}
+                  className={`flex w-full cursor-pointer items-center justify-between gap-4 p-4 text-left transition hover:bg-white/5 ${isExpanded ? "bg-white/3" : ""}`}
+                  onClick={() => handleToggle(key)}
+                >
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="min-w-0">
+                      <p className="font-medium text-white">{matchup.pick}</p>
+                      <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+                    </div>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getTierStyle(matchup.tier)}`}>
-                    {matchup.tier ?? "lean"}
-                  </span>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <p className="text-slate-500">Edge</p>
-                    <p className="font-semibold text-cyan-200">{matchup.ev_pct}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="hidden text-right sm:block">
+                      <p className="text-xs text-slate-500">Edge</p>
+                      <p className="text-sm font-semibold text-cyan-200">{matchup.ev_pct}</p>
+                    </div>
+                    <div className="hidden text-right sm:block">
+                      <p className="text-xs text-slate-500">Price</p>
+                      <p className="text-sm font-semibold text-white">{matchup.odds}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getTierStyle(matchup.tier)}`}>
+                      {matchup.tier ?? "lean"}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-slate-500 transition ${isExpanded ? "rotate-180" : ""}`} />
                   </div>
-                  <div>
-                    <p className="text-slate-500">Price</p>
-                    <p className="font-semibold text-white">{matchup.odds}</p>
+                </button>
+                {isExpanded ? (
+                  <div className="border-t border-white/8 bg-white/3 px-4 py-5">
+                    <div className="space-y-5">
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <MetricTile label="Edge" value={matchup.ev_pct} />
+                        <MetricTile label="Model prob" value={`${(matchup.model_win_prob * 100).toFixed(1)}%`} />
+                        <MetricTile label="Implied prob" value={`${(matchup.implied_prob * 100).toFixed(1)}%`} />
+                        <MetricTile label="Conviction" value={formatNumber(matchup.conviction, 0)} />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <MetricTile label="Composite gap" value={formatNumber(matchup.composite_gap, 1)} />
+                        <MetricTile label="Form gap" value={formatNumber(matchup.form_gap, 1)} />
+                        <MetricTile label="Course fit gap" value={formatNumber(matchup.course_fit_gap, 1)} />
+                        <MetricTile label="Momentum" value={matchup.momentum_aligned ? "Aligned" : "Mixed"} />
+                      </div>
+                      <BarTrendChart
+                        labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
+                        values={[
+                          matchup.composite_gap,
+                          matchup.form_gap,
+                          matchup.course_fit_gap,
+                          Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
+                          Number(matchup.conviction ?? 0),
+                        ]}
+                        color="#38bdf8"
+                      />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <MetricTile label="Book" value={matchup.book ?? "--"} />
+                        <MetricTile label="Price" value={matchup.odds} />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-slate-500">Conviction</p>
-                    <p className="font-semibold text-white">{formatNumber(matchup.conviction, 0)}</p>
-                  </div>
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className="xl:col-span-2">
-              <EmptyState message="No matchups available under the current filters." />
-            </div>
-          )}
+                ) : null}
+              </div>
+            )
+          })}
         </div>
-      </SurfaceCard>
-      <SurfaceCard>
-        <SectionTitle title="Detailed edge breakdown" description="Why the board picked this side, and how aggressive the edge really is." />
-        {selectedMatchup ? (
-          <div className="space-y-4">
-            <MetricTile label="Recommended side" value={selectedMatchup.pick} detail={`over ${selectedMatchup.opponent}`} />
-            <MetricTile label="Reason" value={selectedMatchup.reason} detail={selectedMatchup.book ? `book: ${selectedMatchup.book}` : undefined} />
-            <div className="grid gap-4 md:grid-cols-2">
-              <MetricTile label="Model probability" value={`${(selectedMatchup.model_win_prob * 100).toFixed(1)}%`} />
-              <MetricTile label="Implied probability" value={`${(selectedMatchup.implied_prob * 100).toFixed(1)}%`} />
-              <MetricTile label="Form gap" value={formatNumber(selectedMatchup.form_gap, 1)} />
-              <MetricTile label="Momentum pairing" value={selectedMatchup.momentum_aligned ? "Aligned" : "Mixed"} />
-            </div>
-            <BarTrendChart
-              labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
-              values={[
-                selectedMatchup.composite_gap,
-                selectedMatchup.form_gap,
-                selectedMatchup.course_fit_gap,
-                Number(selectedMatchup.pick_momentum ?? 0) - Number(selectedMatchup.opp_momentum ?? 0),
-                Number(selectedMatchup.conviction ?? 0),
-              ]}
-              color="#38bdf8"
-            />
-          </div>
-        ) : (
-          <EmptyState message="Select a matchup from the board to inspect it." />
-        )}
-      </SurfaceCard>
-    </div>
+      ) : (
+        <EmptyState message="No matchups available under the current filters." />
+      )}
+    </SurfaceCard>
   )
 }
 
