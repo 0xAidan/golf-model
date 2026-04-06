@@ -4,14 +4,14 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-03-15. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines.
+**Last verified:** 2026-04-06. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
 
 ---
 
 ## 1. Project Summary
 
 - **What it is:** Quantitative golf betting system. Data Golf API → round-level SG data, predictions, odds. Composite model (course fit + form + momentum) scores players; value layer compares model vs market for EV; AI layer does qualitative analysis and persistent memory. Post-tournament: grade picks, calibration, weight nudges, AI learnings. Autoresearch system proposes, backtests, and promotes strategy changes autonomously.
-- **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for web UI. No frontend framework — Jinja templates + vanilla JS + CSS (`templates/index.html`, `static/css/main.css`).
+- **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` and served by FastAPI at `/`. Legacy Jinja UI (`templates/index.html`) still exists but the React SPA is the primary dashboard.
 - **Key constraints:** Walk-forward backtesting only (no future data). Bootstrap phases (shadow → paper → cautious live → full live). Stopping rules and go-live gates in project charter. See section 8.
 - **CI:** GitHub Actions at `.github/workflows/ci.yml`.
 
@@ -41,6 +41,7 @@ golf-model/
 ├── pyproject.toml           # Project metadata
 ├── requirements.txt         # Python dependencies (pinned)
 ├── setup.py                 # Legacy setup script
+├── deploy.sh                # One-command VPS deployment (--setup, --update, --status)
 ├── .pre-commit-config.yaml  # Pre-commit hooks
 ├── .github/workflows/ci.yml # GitHub Actions CI
 ├── README.md                # Human-readable project overview
@@ -117,6 +118,8 @@ golf-model/
 │   ├── weighted_walkforward.py  # Weighted walk-forward evaluation (recency-weighted)
 │   ├── checkpoint_replay.py # Checkpoint-based strategy replay
 │   ├── optimizer_runtime.py # Optimizer runtime utilities
+│   ├── dashboard_runtime.py     # Live snapshot builder: _extract_rankings, _extract_matchups
+│   │                            #   Feeds LiveRefreshSnapshot to frontend via API
 │   ├── outlier_investigator.py  # Investigate prediction misses
 │   └── autoresearch_config.py   # Autoresearch configuration
 │
@@ -129,6 +132,8 @@ golf-model/
 ├── workers/
 │   ├── research_agent.py    # 6-thread daemon: data collector, hypothesis generator,
 │   │                        #   experiment runner, outlier analyst, optimizer, autoresearch loop
+│   ├── live_refresh_worker.py  # Always-on daemon: fetches DG data, computes live/upcoming
+│   │                           #   snapshots, serves via /api/live-refresh/snapshot
 │   └── intel_harvester.py   # Scrapes external intelligence sources
 │
 │ ── scripts/ (UTILITIES, 9 files) ─────────────────────────────
@@ -181,6 +186,30 @@ golf-model/
 │   ├── test_autoresearch_promotion_policy.py
 │   ├── test_autoresearch_rollback_policy.py
 │   └── test_autoresearch_runtime_ops.py
+│
+│ ── frontend/ (REACT DASHBOARD SPA) ──────────────────────────
+├── frontend/
+│   ├── package.json          # Dependencies: React 19, Vite, TanStack Query/Table,
+│   │                         #   echarts, framer-motion, lucide-react, shadcn/ui
+│   ├── tsconfig.json         # TypeScript config
+│   ├── vite.config.ts        # Vite config (proxies /api → FastAPI in dev)
+│   ├── tailwind.config.ts    # Tailwind CSS config
+│   ├── index.html            # Vite entry HTML
+│   └── src/
+│       ├── main.tsx          # React root mount
+│       ├── App.tsx           # Main app: dashboard, players, matchups, track record pages
+│       ├── lib/
+│       │   ├── api.ts        # API client (fetch wrappers for /api/* endpoints)
+│       │   ├── types.ts      # TypeScript types for all API responses and domain models
+│       │   ├── utils.ts      # shadcn cn() utility
+│       │   ├── format.ts     # Number/date formatting helpers
+│       │   └── storage.ts    # useLocalStorageState hook
+│       ├── components/
+│       │   ├── shell.tsx     # App shell layout (sidebar, header, nav)
+│       │   ├── charts.tsx    # Chart components (ECharts wrappers)
+│       │   └── ui/           # shadcn/ui primitives (button, etc.)
+│       └── data/
+│           └── trackRecord.json  # Static fallback for track record (API is primary source)
 │
 │ ── DATA / OUTPUT / DOCS ──────────────────────────────────────
 ├── data/
@@ -408,6 +437,13 @@ Notes:
 - **Explain simply:** User assumes minimal experience. Explain steps and decisions in plain terms, as if talking to a beginner.
 - **No guessing:** If you don't know the answer, say so rather than making something up.
 
+### Anti-Hallucination Rules (CRITICAL)
+
+- **NEVER fabricate IP addresses, hostnames, passwords, API keys, or deployment details.** If a value is not explicitly stored in this document, `.env`, or a config file in the repo, say "I don't have that value on file" and ask the user. The production server IP is `204.168.147.6` — use only this, do not invent alternatives.
+- **NEVER fabricate file paths, function names, or API endpoints.** Verify they exist before referencing them. Use `Grep` or `Read` to confirm.
+- **NEVER guess at data values** (e.g., field sizes, player names, tournament dates). If unsure, check the Data Golf API response or database.
+- **When providing deploy/server commands,** always reference the values in Section 11 of this document. Do not reconstruct them from memory or prior conversations.
+
 ---
 
 ## 8. Project Charter (Deployment and Strategy)
@@ -503,7 +539,52 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 ---
 
-## 11. Quick Reference: Where to Change What
+## 11. Deployment Infrastructure
+
+### Production Server
+
+- **Host:** `root@204.168.147.6` (VPS)
+- **Remote path:** `/opt/golf-model`
+- **Branch:** `main`
+- **Deploy command:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --update`
+- **First-time setup:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --setup`
+- **Status check:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --status`
+
+### What `--update` does
+
+1. Backs up the database
+2. `git pull origin main`
+3. `pip install -r requirements.txt`
+4. `cd frontend && npm ci && npm run build`
+5. Runs DB migrations (`init_db()`)
+6. `systemctl restart golf-dashboard golf-agent golf-live-refresh`
+
+### Systemd Services
+
+| Service | What it runs | Port |
+|---------|-------------|------|
+| `golf-dashboard` | `start.py dashboard --port 8000` | 8000 |
+| `golf-agent` | `start.py agent` | — |
+| `golf-live-refresh` | `workers/live_refresh_worker.py` | — |
+| `golf-backup.timer` | Nightly DB backup at 03:00 UTC | — |
+
+Useful commands on the server:
+```
+systemctl status golf-dashboard
+journalctl -u golf-live-refresh -f
+systemctl restart golf-live-refresh
+```
+
+### Frontend Build
+
+The React frontend builds to `frontend/dist/` and is served by FastAPI at `/`. On deploy, `npm ci && npm run build` runs automatically. For local development:
+```
+cd frontend && npm run dev   # Vite dev server with API proxy to :8000
+```
+
+---
+
+## 12. Quick Reference: Where to Change What
 
 | Change | Primary file(s) |
 |--------|------------------|
@@ -523,8 +604,12 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 | AI analysis logic | `src/ai_brain.py` |
 | DB schema/migrations | `src/db.py` |
 | Pipeline orchestration | `src/services/golf_model_service.py` |
-| Web UI routes (most) | `app.py` |
-| Web UI routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
+| Web API routes (most) | `app.py` |
+| Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
+| Frontend dashboard (React SPA) | `frontend/src/App.tsx` |
+| Frontend API client / types | `frontend/src/lib/api.ts`, `frontend/src/lib/types.ts` |
+| Frontend UI components | `frontend/src/components/` |
+| Frontend build config | `frontend/vite.config.ts`, `frontend/tailwind.config.ts` |
 | Backtest strategy replay | `backtester/strategy.py`, `backtester/pit_models.py` |
 | Experiment tracking / promotion | `backtester/experiments.py` |
 | Research cycle / proposals | `backtester/research_cycle.py`, `backtester/proposals.py` |
@@ -535,18 +620,20 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 | Course profiles | `data/courses/*.json`; extraction via `course.py` or `src/course_profile.py` |
 | Rolling stats computation | `src/rolling_stats.py` |
 | CI | `.github/workflows/ci.yml` |
-| Web UI template | `templates/index.html` |
-| Web UI styles | `static/css/main.css` |
+| Deployment | `deploy.sh` (see Section 11) |
+| Live refresh snapshot logic | `backtester/dashboard_runtime.py`, `workers/live_refresh_worker.py` |
+| Legacy Jinja UI (deprecated) | `templates/index.html`, `static/css/main.css` |
 
 ---
 
-## 12. Updating This Document
+## 13. Updating This Document
 
 - **When to update:** Adding entry points, config keys, DB tables, critical modules, new conventions, or deprecating behavior.
 - **Section 2 (layout):** Keep the tree accurate. Every `.py` file should be listed.
 - **Section 4 (config):** Add new env vars, feature flags, or config.py values with their defaults.
 - **Section 5 (DB tables):** Add new tables when they're created in `db.py`.
 - **Section 6 (conventions/debt):** Document new conventions under "Conventions"; new intentional oddities under "Tech Debt". Remove entries when debt is resolved.
-- **Section 11 (quick reference):** Keep aligned with actual file locations.
+- **Section 11 (deployment):** Keep server IP, deploy commands, and service names current.
+- **Section 12 (quick reference):** Keep aligned with actual file locations.
 - **Charter changes:** Update section 8 and keep `.cursor/rules/project-charter.mdc` in sync.
 - **Last verified line (top):** Update date, model version, test count, and app.py line count when you verify accuracy.
