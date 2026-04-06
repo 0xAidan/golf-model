@@ -217,11 +217,19 @@ class GolfModelService:
 
         # Step 10b: Matchups and 3-ball (live focus: plus-ROI areas)
         matchup_bets = []
+        matchup_diagnostics = {
+            "market_counts": {},
+            "selection_counts": {"selected_rows": 0},
+            "reason_codes": {},
+            "state": "not_requested",
+            "errors": [],
+        }
         if mode in ("full", "matchups-only", "round-matchups"):
-            matchup_bets = self._fetch_matchup_value_bets(composite, tid, mode=mode)
+            matchup_bets, matchup_diagnostics = self._fetch_matchup_value_bets(composite, tid, mode=mode)
             if matchup_bets:
                 print(f"    → {len(matchup_bets)} matchup value plays")
         result["matchup_bets"] = matchup_bets
+        result["matchup_diagnostics"] = matchup_diagnostics
         if mode in ("full", "matchups-only"):
             threeball_bets = self._fetch_3ball_value_bets(composite, tid)
             if threeball_bets:
@@ -546,17 +554,28 @@ class GolfModelService:
             value_bets[bt] = vb
         return value_bets
 
-    def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> list:
+    def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> tuple[list, dict]:
         """Fetch matchup value bets across all available books.
 
         **full** and **matchups-only**: 72-hole (tournament) matchups.
         **round-matchups**: per-round H2H first, with tournament fallback when books are sparse.
         """
         try:
-            from src.datagolf import fetch_matchup_odds
+            from src.datagolf import fetch_matchup_odds_with_diagnostics
             from src.matchup_value import find_matchup_value_bets
             from src import config
 
+            diagnostics = {
+                "market_counts": {},
+                "selection_counts": {
+                    "input_rows": 0,
+                    "selected_rows": 0,
+                },
+                "reason_codes": {},
+                "adaptation_state": "normal",
+                "state": "market_available_no_edges",
+                "errors": [],
+            }
             ev_threshold = self.strategy_config.get("matchup_ev_threshold") if self.strategy_config else None
             if ev_threshold is None:
                 ev_threshold = self.strategy_config.get("ev_threshold") if self.strategy_config else None
@@ -570,18 +589,29 @@ class GolfModelService:
             aggregated = []
             for market_key, label in markets:
                 try:
-                    odds = fetch_matchup_odds(market=market_key, tour=self.tour)
+                    odds, market_diag = fetch_matchup_odds_with_diagnostics(market=market_key, tour=self.tour)
+                    diagnostics["market_counts"][market_key] = {
+                        "raw_rows": len(odds),
+                        "reason_code": market_diag.get("reason_code"),
+                    }
                     if not odds:
                         continue
-                    bets = find_matchup_value_bets(
+                    bets, selection_diag = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
                         required_book=None, market_type=market_key,
+                        return_diagnostics=True,
                     )
+                    diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))
+                    diagnostics["selection_counts"]["selected_rows"] += int(selection_diag.get("selected_rows", 0))
+                    diagnostics["adaptation_state"] = selection_diag.get("adaptation_state", diagnostics["adaptation_state"])
+                    for reason, count in (selection_diag.get("reason_codes") or {}).items():
+                        diagnostics["reason_codes"][reason] = diagnostics["reason_codes"].get(reason, 0) + int(count)
                     for b in bets:
                         b["market_type"] = market_key
                     aggregated.extend(bets)
                 except Exception as e:
                     logger.warning("Matchup fetch %s: %s", label, e)
+                    diagnostics["errors"].append(f"{label}: {e}")
 
             # Deduplicate identical lines that can appear in both markets/fallbacks.
             deduped = {}
@@ -596,10 +626,28 @@ class GolfModelService:
                 current = deduped.get(key)
                 if current is None or float(bet.get("ev", 0)) > float(current.get("ev", 0)):
                     deduped[key] = bet
-            return sorted(deduped.values(), key=lambda x: x.get("ev", 0), reverse=True)
+            selected = sorted(deduped.values(), key=lambda x: x.get("ev", 0), reverse=True)
+            diagnostics["selection_counts"]["selected_rows"] = len(selected)
+            total_raw_rows = sum(int((entry or {}).get("raw_rows", 0)) for entry in diagnostics["market_counts"].values())
+            if diagnostics["errors"]:
+                diagnostics["state"] = "pipeline_error"
+            elif total_raw_rows == 0:
+                diagnostics["state"] = "no_market_posted_yet"
+            elif not selected:
+                diagnostics["state"] = "market_available_no_edges"
+            else:
+                diagnostics["state"] = "edges_available"
+            return selected, diagnostics
         except Exception as e:
             logger.warning("Matchup value bets failed: %s", e)
-            return []
+            return [], {
+                "market_counts": {},
+                "selection_counts": {"input_rows": 0, "selected_rows": 0},
+                "reason_codes": {},
+                "adaptation_state": "unknown",
+                "state": "pipeline_error",
+                "errors": [str(e)],
+            }
 
     def _fetch_3ball_value_bets(self, composite, tid) -> list:
         """Fetch 3-ball odds and return value bets (live focus; runs regardless of feature flag).

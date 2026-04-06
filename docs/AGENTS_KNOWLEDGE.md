@@ -260,6 +260,20 @@ detect event → backfill rounds (if enabled)
 
 All orchestration goes through `src.services.golf_model_service.GolfModelService.run_analysis()` for consistency across `run_predictions.py`, `app.py`, and `analyze.py --service`.
 
+### Live matchup diagnostics (operator decision tree)
+
+When matchups appear empty, inspect `GET /api/live-refresh/snapshot` and read `snapshot.<live|upcoming>_tournament.diagnostics.state`:
+
+- `no_market_posted_yet` → sportsbook rows are not posted yet (common early-week).
+- `market_available_no_edges` → rows exist, but model/EV filters rejected all.
+- `pipeline_error` → ingestion/model step failed; inspect `diagnostics.errors` and reason-code counters.
+- `edges_available` → rows exist; empty UI is likely user-side filtering (`book/search/min-edge`) or source selection.
+
+Use these fields to separate causes:
+- `diagnostics.market_counts.tournament_matchups.raw_rows` (raw posted rows)
+- `diagnostics.selection_counts.selected_rows` (post-filter rows)
+- `diagnostics.reason_codes` (where rows were excluded)
+
 ---
 
 ## 4. Configuration Reference
