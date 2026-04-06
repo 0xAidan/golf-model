@@ -323,12 +323,15 @@ function PredictionWorkspacePage({
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
   const selectedBookSet = new Set(selectedBooks)
+  const isLiveActive = Boolean(liveTournament?.active)
   const liveLabel = !liveSnapshot
     ? "Live status unavailable"
-    : liveTournament?.active
+    : isLiveActive
       ? "Live Event"
       : "Completed Event"
-  const liveRankings = (liveTournament?.rankings ?? []).filter((row) => !isCutFinishState(row.finish_state))
+  const liveRankings = isLiveActive
+    ? (liveTournament?.rankings ?? []).filter((row) => !isCutFinishState(row.finish_state))
+    : (liveTournament?.rankings ?? [])
   const liveMatchups = (liveTournament?.matchups ?? []).filter((row) => {
     const normalized = normalizeSportsbook(row.bookmaker)
     return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
@@ -404,7 +407,11 @@ function PredictionWorkspacePage({
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{liveLabel} leaderboard</p>
               <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "Waiting for event context..."}</p>
-              <p className="mt-1 text-xs text-slate-500">Cut and withdrawn players are hidden.</p>
+              {isLiveActive ? (
+                <p className="mt-1 text-xs text-slate-500">Cut and withdrawn players are hidden.</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">Pre-event model predictions. All players shown.</p>
+              )}
               <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
@@ -417,14 +424,25 @@ function PredictionWorkspacePage({
                   </thead>
                   <tbody>
                     {liveRankings.length ? (
-                      liveRankings.slice(0, 30).map((row) => (
-                        <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
-                          <td className="px-3 py-2">{row.rank}</td>
-                          <td className="px-3 py-2 text-white">{row.player}</td>
-                          <td className="px-3 py-2">{formatNumber(row.composite, 2)}</td>
-                          <td className="px-3 py-2">{formatNumber(row.form, 2)}</td>
-                        </tr>
-                      ))
+                      liveRankings.slice(0, 30).map((row) => {
+                        const isCut = isCutFinishState(row.finish_state)
+                        return (
+                          <tr
+                            key={`${row.player_key ?? row.player}-${row.rank}`}
+                            className={`border-t border-white/8 ${isCut ? "text-slate-500" : "text-slate-200"}`}
+                          >
+                            <td className="px-3 py-2">{row.rank}</td>
+                            <td className="px-3 py-2">
+                              <span className={isCut ? "text-slate-500" : "text-white"}>{row.player}</span>
+                              {isCut && row.finish_state && (
+                                <span className="ml-1.5 text-[10px] uppercase tracking-wider text-slate-600">{row.finish_state}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">{formatNumber(row.composite, 2)}</td>
+                            <td className="px-3 py-2">{formatNumber(row.form, 2)}</td>
+                          </tr>
+                        )
+                      })
                     ) : (
                       <tr>
                         <td className="px-3 py-3 text-slate-400" colSpan={4}>
@@ -437,9 +455,13 @@ function PredictionWorkspacePage({
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live matchups</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                {isLiveActive ? "Live matchups" : "Event matchups"}
+              </p>
               <p className="mt-2 text-sm text-slate-300">
-                Best currently surfaced opportunities from always-on scans.
+                {isLiveActive
+                  ? "Best currently surfaced opportunities from always-on scans."
+                  : "Matchup predictions from when this event was active."}
                 {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
               </p>
               <div className="mt-4 space-y-2">
