@@ -265,6 +265,31 @@ def test_output_latest_not_found(monkeypatch):
     assert r.json().get("not_found") is True
 
 
+def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {
+            "generated_at": "2026-04-06T00:00:00+00:00",
+            "live_tournament": {
+                "ranking_source": "current_event_model_fallback",
+                "diagnostics": {"state": "pipeline_error"},
+            },
+            "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/snapshot")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["stale_reason"] is not None
+    assert body["fallback_reason"] is not None
+
+
 def test_latest_completed_event_endpoint_prefers_completed_schedule_event(monkeypatch):
     """The dashboard should expose the most recently completed event, not the next upcoming one."""
     import app as app_module

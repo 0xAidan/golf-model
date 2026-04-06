@@ -1102,6 +1102,57 @@ def fetch_outright_odds(market: str = "win", tour: str = "pga",
     return results
 
 
+def fetch_matchup_odds_with_diagnostics(
+    market: str = "tournament_matchups",
+    tour: str = "pga",
+    odds_format: str = "american",
+) -> tuple[list[dict], dict]:
+    """
+    Fetch live matchup/3-ball odds plus a structured diagnostics envelope.
+
+    market: 'tournament_matchups', 'round_matchups', '3_balls'
+    Returns (match_list, diagnostics).
+    """
+    diagnostics = {
+        "market": market,
+        "tour": tour,
+        "raw_type": None,
+        "result_count": 0,
+        "reason_code": "unknown",
+    }
+    try:
+        raw = _call_api(
+            "betting-tools/matchups",
+            {
+                "tour": tour,
+                "market": market,
+                "odds_format": odds_format,
+            },
+        )
+    except Exception as exc:
+        diagnostics["reason_code"] = "api_error"
+        diagnostics["error"] = str(exc)
+        return [], diagnostics
+
+    diagnostics["raw_type"] = type(raw).__name__
+    if isinstance(raw, dict):
+        if "match_list" not in raw:
+            diagnostics["reason_code"] = "missing_match_list"
+            diagnostics["raw_keys"] = sorted(raw.keys())
+            return [], diagnostics
+        match_list = raw.get("match_list", [])
+        if isinstance(match_list, list):
+            diagnostics["result_count"] = len(match_list)
+            diagnostics["reason_code"] = "ok" if match_list else "empty_match_list"
+            return match_list, diagnostics
+        diagnostics["reason_code"] = "invalid_match_list_type"
+        diagnostics["match_list_type"] = type(match_list).__name__
+        return [], diagnostics
+
+    diagnostics["reason_code"] = "unexpected_payload_type"
+    return [], diagnostics
+
+
 def fetch_matchup_odds(market: str = "tournament_matchups", tour: str = "pga",
                         odds_format: str = "american") -> list[dict]:
     """
@@ -1110,17 +1161,12 @@ def fetch_matchup_odds(market: str = "tournament_matchups", tour: str = "pga",
     market: 'tournament_matchups', 'round_matchups', '3_balls'
     Returns list of matchup dicts.
     """
-    raw = _call_api("betting-tools/matchups", {
-        "tour": tour,
-        "market": market,
-        "odds_format": odds_format,
-    })
-
-    if isinstance(raw, dict):
-        match_list = raw.get("match_list", [])
-        if isinstance(match_list, list):
-            return match_list
-    return []
+    match_list, _ = fetch_matchup_odds_with_diagnostics(
+        market=market,
+        tour=tour,
+        odds_format=odds_format,
+    )
+    return match_list
 
 
 def fetch_all_outright_odds(tour: str = "pga") -> dict:

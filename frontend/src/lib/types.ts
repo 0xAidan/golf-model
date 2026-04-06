@@ -73,6 +73,7 @@ export type LiveTournamentSnapshot = {
   source_event_id?: string
   source_event_name?: string
   generated_from?: string
+  ranking_source?: string
   data_mode?: string
   course_name?: string
   field_size?: number
@@ -80,6 +81,18 @@ export type LiveTournamentSnapshot = {
   rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]
   card_path?: string | null
+  source_card_path?: string | null
+  diagnostics?: {
+    market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
+    selection_counts?: {
+      input_rows?: number
+      selected_rows?: number
+    }
+    adaptation_state?: string
+    reason_codes?: Record<string, number>
+    state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | string
+    errors?: string[]
+  }
 }
 
 export type LiveRefreshSnapshot = {
@@ -87,6 +100,11 @@ export type LiveRefreshSnapshot = {
   cadence_mode?: string
   live_tournament?: LiveTournamentSnapshot
   upcoming_tournament?: LiveTournamentSnapshot
+  diagnostics?: {
+    market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
+    live_state?: string
+    upcoming_state?: string
+  }
 }
 
 export type LiveRefreshStatusResponse = {
@@ -109,6 +127,7 @@ export type LiveRefreshSnapshotResponse = {
   snapshot: LiveRefreshSnapshot | null
   age_seconds?: number | null
   stale_reason?: string | null
+  fallback_reason?: string | null
 }
 
 export type OutputArtifact = {

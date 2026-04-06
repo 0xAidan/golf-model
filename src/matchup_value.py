@@ -234,7 +234,8 @@ def find_matchup_value_bets(composite_results: list[dict],
                              ev_threshold: float = 0.05,
                              tournament_id: int = None,
                              required_book: str | None = None,
-                             market_type: str = "tournament_matchups") -> list[dict]:
+                             market_type: str = "tournament_matchups",
+                             return_diagnostics: bool = False) -> list[dict] | tuple[list[dict], dict]:
     """
     Find value in real sportsbook matchups using model composite scores.
 
@@ -246,6 +247,21 @@ def find_matchup_value_bets(composite_results: list[dict],
 
     Returns list of matchup value bets sorted by EV descending.
     """
+    diagnostics = {
+        "input_rows": len(matchup_odds or []),
+        "selected_rows": 0,
+        "reason_codes": {
+            "missing_player_name": 0,
+            "missing_composite_player": 0,
+            "equal_composite_gap": 0,
+            "dg_model_disagreement": 0,
+            "invalid_implied_prob": 0,
+            "below_ev_threshold": 0,
+            "exposure_capped": 0,
+        },
+        "adaptation_state": "normal",
+        "ev_threshold_effective": ev_threshold,
+    }
     adaptation = None
     if tournament_id:
         try:
@@ -256,10 +272,16 @@ def find_matchup_value_bets(composite_results: list[dict],
             adaptation = None
 
     if adaptation and adaptation.get("suppress"):
+        diagnostics["adaptation_state"] = adaptation.get("state", "suppressed")
+        diagnostics["selection_state"] = "suppressed_by_adaptation"
+        if return_diagnostics:
+            return [], diagnostics
         return []
 
     if adaptation and adaptation.get("ev_threshold") is not None:
         ev_threshold = max(ev_threshold, adaptation["ev_threshold"])
+    diagnostics["adaptation_state"] = adaptation.get("state", "normal") if adaptation else "normal"
+    diagnostics["ev_threshold_effective"] = ev_threshold
 
     composite_lookup = {r["player_key"]: r for r in composite_results}
 
@@ -279,6 +301,7 @@ def find_matchup_value_bets(composite_results: list[dict],
         p2_name = matchup.get("p2_player_name") or matchup.get("player_2", {}).get("player_name", "")
 
         if not p1_name or not p2_name:
+            diagnostics["reason_codes"]["missing_player_name"] += 1
             continue
 
         p1_key = normalize_name(p1_name)
@@ -288,10 +311,12 @@ def find_matchup_value_bets(composite_results: list[dict],
         p2_data = composite_lookup.get(p2_key)
 
         if not p1_data or not p2_data:
+            diagnostics["reason_codes"]["missing_composite_player"] += 1
             continue
 
         composite_gap = p1_data["composite"] - p2_data["composite"]
         if composite_gap == 0:
+            diagnostics["reason_codes"]["equal_composite_gap"] += 1
             continue
 
         # Pick the player our model favors
@@ -323,6 +348,7 @@ def find_matchup_value_bets(composite_results: list[dict],
                 )
                 if config.REQUIRE_DG_MODEL_AGREEMENT:
                     if (dg_prob > 0.5) != (platt_win_prob > 0.5):
+                        diagnostics["reason_codes"]["dg_model_disagreement"] += 1
                         continue
 
         # Gaps from the pick's perspective
@@ -384,10 +410,12 @@ def find_matchup_value_bets(composite_results: list[dict],
             pick_odds = p1_odds if pick_side == "p1" else p2_odds
             implied_prob = american_to_implied_prob(pick_odds)
             if not implied_prob or implied_prob <= 0:
+                diagnostics["reason_codes"]["invalid_implied_prob"] += 1
                 continue
 
             ev = (model_win_prob / implied_prob) - 1.0
             if ev < ev_threshold:
+                diagnostics["reason_codes"]["below_ev_threshold"] += 1
                 continue
 
             ev_pct = ev * 100
@@ -457,6 +485,7 @@ def find_matchup_value_bets(composite_results: list[dict],
         pk = bet["pick_key"]
         ok = bet["opponent_key"]
         if player_counts.get(pk, 0) >= max_exposure or player_counts.get(ok, 0) >= max_exposure:
+            diagnostics["reason_codes"]["exposure_capped"] += 1
             continue
         player_counts[pk] = player_counts.get(pk, 0) + 1
         player_counts[ok] = player_counts.get(ok, 0) + 1
@@ -469,4 +498,13 @@ def find_matchup_value_bets(composite_results: list[dict],
         key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
         reverse=True,
     )
+    diagnostics["selected_rows"] = len(filtered)
+    if diagnostics["input_rows"] == 0:
+        diagnostics["selection_state"] = "no_market_rows"
+    elif diagnostics["selected_rows"] == 0:
+        diagnostics["selection_state"] = "market_available_no_edges"
+    else:
+        diagnostics["selection_state"] = "edges_available"
+    if return_diagnostics:
+        return filtered, diagnostics
     return filtered

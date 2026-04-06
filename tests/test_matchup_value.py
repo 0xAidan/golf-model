@@ -244,3 +244,56 @@ def test_find_matchup_value_bets_required_book_still_supported(monkeypatch):
     result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01, required_book="fanduel")
     assert result
     assert {row["book"] for row in result} == {"fanduel"}
+
+
+def test_find_matchup_value_bets_returns_diagnostics(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    composite = [
+        {
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "composite": 80.0,
+            "form": 76.0,
+            "course_fit": 70.0,
+            "momentum": 55.0,
+        },
+        {
+            "player_key": "player_b",
+            "player_display": "Player B",
+            "composite": 40.0,
+            "form": 42.0,
+            "course_fit": 45.0,
+            "momentum": 46.0,
+        },
+    ]
+    matchups = [
+        {
+            "p1_player_name": "Player A",
+            "p2_player_name": "Player B",
+            "odds": {"bet365": {"p1": 110, "p2": -130}},
+        }
+    ]
+    bets, diagnostics = find_matchup_value_bets(
+        composite,
+        matchups,
+        ev_threshold=0.01,
+        return_diagnostics=True,
+    )
+    assert bets
+    assert diagnostics["input_rows"] == 1
+    assert diagnostics["selected_rows"] >= 1
+    assert diagnostics["selection_state"] == "edges_available"
+
+
+def test_find_matchup_value_bets_diagnostics_for_no_edges(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+    composite = [
+        {"player_key": "player_a", "player_display": "Player A", "composite": 51.0, "form": 50.0, "course_fit": 50.0, "momentum": 50.0},
+        {"player_key": "player_b", "player_display": "Player B", "composite": 50.0, "form": 50.0, "course_fit": 50.0, "momentum": 50.0},
+    ]
+    matchups = [{"p1_player_name": "Player A", "p2_player_name": "Player B", "p1_odds": -110, "p2_odds": -110}]
+    bets, diagnostics = find_matchup_value_bets(composite, matchups, ev_threshold=0.40, return_diagnostics=True)
+    assert bets == []
+    assert diagnostics["selection_state"] == "market_available_no_edges"
+    assert diagnostics["reason_codes"]["below_ev_threshold"] >= 1

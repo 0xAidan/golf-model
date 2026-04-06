@@ -1260,6 +1260,19 @@ async def get_live_refresh_snapshot():
         "snapshot": snapshot,
         "generated_at": generated_at,
         "age_seconds": age_seconds,
+        "stale_reason": (
+            "Live snapshot indicates a degraded pipeline state."
+            if (
+                (snapshot.get("live_tournament", {}).get("diagnostics", {}).get("state") == "pipeline_error")
+                or (snapshot.get("upcoming_tournament", {}).get("diagnostics", {}).get("state") == "pipeline_error")
+            )
+            else None
+        ),
+        "fallback_reason": (
+            "Showing fallback rankings source."
+            if snapshot.get("live_tournament", {}).get("ranking_source") in {"current_event_model_fallback", "live_fallback"}
+            else None
+        ),
     }
 
 

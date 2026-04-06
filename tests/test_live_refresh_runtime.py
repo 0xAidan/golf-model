@@ -150,6 +150,13 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                     }
                 ],
                 "output_file": "output/next_event.md",
+                "matchup_diagnostics": {
+                    "market_counts": {"tournament_matchups": {"raw_rows": 4, "reason_code": "ok"}},
+                    "selection_counts": {"input_rows": 4, "selected_rows": 1},
+                    "reason_codes": {"below_ev_threshold": 3},
+                    "state": "edges_available",
+                    "errors": [],
+                },
             }
         return {
             "event_name": "Current Event",
@@ -178,6 +185,13 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                 }
             ],
             "output_file": "output/current_event.md",
+            "matchup_diagnostics": {
+                "market_counts": {"round_matchups": {"raw_rows": 2, "reason_code": "ok"}},
+                "selection_counts": {"input_rows": 2, "selected_rows": 1},
+                "reason_codes": {"below_ev_threshold": 1},
+                "state": "edges_available",
+                "errors": [],
+            },
         }
 
     monkeypatch.setattr(runtime, "run_snapshot_analysis", _fake_run_snapshot_analysis)
@@ -195,6 +209,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
             "live_event_active": True,
             "latest_completed_event_name": "Previous Event",
             "upcoming_event_row": {"event_id": "456", "event_name": "Next Event", "course": "Next Course"},
+            "market_counts": {"tournament_matchups": {"raw_rows": 3, "reason_code": "ok"}},
         },
     )
 
@@ -204,4 +219,70 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     assert calls[1]["tournament_name"] == "Next Event"
     assert snapshot["upcoming_tournament"]["event_name"] == "Next Event"
     assert snapshot["upcoming_tournament"]["generated_from"] == "upcoming_event_model"
+    assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model"
+    assert snapshot["upcoming_tournament"]["diagnostics"]["state"] == "edges_available"
+
+
+def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tmp_path):
+    from backtester import dashboard_runtime as runtime
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    card_path = output_dir / "valero_texas_open_20260405.md"
+    card_path.write_text(
+        "\n".join(
+            [
+                "# Valero Texas Open — Betting Card",
+                "## Model Rankings (Top 20)",
+                "| Rank | Player | Composite | Course Fit | Form | Momentum | Trend |",
+                "|------|--------|-----------|------------|------|----------|-------|",
+                "| 1 | Rory McIlroy | 84.2 | 79.0 | 82.1 | 77.4 | ↑ |",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(runtime, "_OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(
+        runtime,
+        "run_snapshot_analysis",
+        lambda **kwargs: {
+            "event_name": "Current Event",
+            "course_name": "Current Course",
+            "field_size": 70,
+            "composite_results": [],
+            "matchup_bets": [],
+            "output_file": "output/current_event.md",
+            "matchup_diagnostics": {
+                "market_counts": {"tournament_matchups": {"raw_rows": 0, "reason_code": "empty_match_list"}},
+                "selection_counts": {"input_rows": 0, "selected_rows": 0},
+                "reason_codes": {},
+                "state": "no_market_posted_yet",
+                "errors": [],
+            },
+        },
+    )
+    monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
+    monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+
+    snapshot = runtime._run_recompute(
+        "pga",
+        "off_window",
+        {
+            "event_name": "Current Event",
+            "event_id": "700",
+            "course": "Current Course",
+            "upcoming_event_names": ["Current Event"],
+            "live_event_active": False,
+            "latest_completed_event_name": "Valero Texas Open",
+            "latest_completed_event_id": "500",
+            "market_counts": {"tournament_matchups": {"raw_rows": 0, "reason_code": "empty_match_list"}},
+        },
+    )
+
+    live = snapshot["live_tournament"]
+    assert live["event_name"] == "Valero Texas Open"
+    assert live["ranking_source"] == "previous_card_snapshot"
+    assert live["source_card_path"] == str(card_path)
+    assert live["rankings"][0]["player"] == "Rory McIlroy"
 

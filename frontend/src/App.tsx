@@ -34,6 +34,10 @@ function App() {
   const queryClient = useQueryClient()
   const [predictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
   const [predictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
+  const [predictionDataSource, setPredictionDataSource] = useLocalStorageState<"snapshot_tab" | "stored_run">(
+    "golf-model.prediction-data-source",
+    "snapshot_tab",
+  )
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
@@ -70,8 +74,13 @@ function App() {
   const [predictionTab, setPredictionTab] = useState<"live" | "upcoming">("live")
   const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
-  const hydratedRun = useMemo(() => buildHydratedPredictionRun(liveSnapshot), [liveSnapshot])
-  const effectivePredictionRun = predictionRun ?? hydratedRun
+  const hydratedRun = useMemo(() => buildHydratedPredictionRun(liveSnapshot, predictionTab), [liveSnapshot, predictionTab])
+  const effectivePredictionRun = useMemo(() => {
+    if (predictionDataSource === "stored_run") {
+      return predictionRun ?? hydratedRun
+    }
+    return hydratedRun ?? predictionRun
+  }, [predictionDataSource, predictionRun, hydratedRun])
   const normalizedSelectedBooks = useMemo(
     () => selectedBooks.map((book) => normalizeSportsbook(book)).filter(Boolean),
     [selectedBooks],
@@ -183,6 +192,9 @@ function App() {
               liveRuntimeRunning={liveRuntimeRunning}
               predictionTab={predictionTab}
               onPredictionTabChange={setPredictionTab}
+              predictionDataSource={predictionDataSource}
+              onPredictionDataSourceChange={setPredictionDataSource}
+              hasStoredPredictionRun={Boolean(predictionRun)}
               availableBooks={availableBooks}
               selectedBooks={normalizedSelectedBooks}
               onSelectedBooksChange={setSelectedBooks}
@@ -258,6 +270,9 @@ function PredictionWorkspacePage({
   liveRuntimeRunning,
   predictionTab,
   onPredictionTabChange,
+  predictionDataSource,
+  onPredictionDataSourceChange,
+  hasStoredPredictionRun,
   availableBooks,
   selectedBooks,
   onSelectedBooksChange,
@@ -282,6 +297,9 @@ function PredictionWorkspacePage({
   liveRuntimeRunning: boolean
   predictionTab: "live" | "upcoming"
   onPredictionTabChange: (value: "live" | "upcoming") => void
+  predictionDataSource: "snapshot_tab" | "stored_run"
+  onPredictionDataSourceChange: (value: "snapshot_tab" | "stored_run") => void
+  hasStoredPredictionRun: boolean
   availableBooks: string[]
   selectedBooks: string[]
   onSelectedBooksChange: (value: string[]) => void
@@ -320,6 +338,15 @@ function PredictionWorkspacePage({
     const normalized = normalizeSportsbook(row.bookmaker)
     return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
   })
+  const selectedSnapshotSection = predictionTab === "live" ? liveTournament : upcomingTournament
+  const selectedSnapshotDiagnostics = selectedSnapshotSection?.diagnostics
+  const boardRawCount = predictionRun?.matchup_bets?.length ?? 0
+  const boardFilteredCount = filteredMatchups.length
+  const boardDiagnosticsMessage = getMatchupStateMessage({
+    state: selectedSnapshotDiagnostics?.state,
+    reasonCodes: selectedSnapshotDiagnostics?.reason_codes,
+    hasFilters: selectedBooks.length > 0 || Boolean(matchupSearch) || minEdge > 0.02,
+  })
 
   return (
     <div className="space-y-6">
@@ -347,6 +374,24 @@ function PredictionWorkspacePage({
             onClick={() => onPredictionTabChange("upcoming")}
           >
             Upcoming Event
+          </Button>
+        </div>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Board source</span>
+          <Button
+            size="sm"
+            variant={predictionDataSource === "snapshot_tab" ? "default" : "outline"}
+            onClick={() => onPredictionDataSourceChange("snapshot_tab")}
+          >
+            Active snapshot tab
+          </Button>
+          <Button
+            size="sm"
+            variant={predictionDataSource === "stored_run" ? "default" : "outline"}
+            onClick={() => onPredictionDataSourceChange("stored_run")}
+            disabled={!hasStoredPredictionRun}
+          >
+            Stored manual run
           </Button>
         </div>
         <BookFilterBar
@@ -410,7 +455,13 @@ function PredictionWorkspacePage({
                     </div>
                   ))
                 ) : (
-                  <EmptyState message="No live matchup edges yet." />
+                  <EmptyState
+                    message={getMatchupStateMessage({
+                      state: liveTournament?.diagnostics?.state,
+                      reasonCodes: liveTournament?.diagnostics?.reason_codes,
+                      hasFilters: selectedBooks.length > 0,
+                    })}
+                  />
                 )}
               </div>
             </div>
@@ -470,7 +521,13 @@ function PredictionWorkspacePage({
                     </div>
                   ))
                 ) : (
-                  <EmptyState message="No upcoming matchup edges yet." />
+                  <EmptyState
+                    message={getMatchupStateMessage({
+                      state: upcomingTournament?.diagnostics?.state,
+                      reasonCodes: upcomingTournament?.diagnostics?.reason_codes,
+                      hasFilters: selectedBooks.length > 0,
+                    })}
+                  />
                 )}
               </div>
             </div>
@@ -480,7 +537,11 @@ function PredictionWorkspacePage({
 
       <div className="grid gap-4 xl:grid-cols-4">
         <MetricTile label="Field size" value={String(predictionRun?.field_size ?? 0)} detail={predictionRun?.event_name ?? "No run loaded"} />
-        <MetricTile label="Matchups" value={String(filteredMatchups.length)} detail="Bread-and-butter board after live filters" />
+        <MetricTile
+          label="Matchups"
+          value={String(filteredMatchups.length)}
+          detail={`Filtered ${filteredMatchups.length} / ${boardRawCount} rows`}
+        />
         <MetricTile label="Secondary edges" value={String(secondaryBets.length)} detail="Placements, miss-cut, and adjacent markets" />
         <MetricTile label="Season P/L" value={formatUnits(totalProfit)} detail="From durable grading history" tone={totalProfit >= 0 ? "positive" : "warning"} />
       </div>
@@ -523,6 +584,10 @@ function PredictionWorkspacePage({
               </div>
             }
           />
+          <p className="mb-3 text-xs text-slate-500">
+            Raw rows: {boardRawCount} · After filters: {boardFilteredCount}
+            {selectedSnapshotDiagnostics?.state ? ` · Snapshot state: ${selectedSnapshotDiagnostics.state}` : ""}
+          </p>
           <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px]">
             <LabeledInput label="Search players" value={matchupSearch} onChange={onMatchupSearchChange} />
             <LabeledInput
@@ -576,7 +641,7 @@ function PredictionWorkspacePage({
                 ))
               ) : (
                 <div className="xl:col-span-2">
-                  <EmptyState message="No matchup rows match current search/EV/book filters." />
+                  <EmptyState message={boardDiagnosticsMessage} />
                 </div>
               )}
             </div>
@@ -622,7 +687,7 @@ function PredictionWorkspacePage({
                   </tbody>
                 </table>
               ) : (
-                <EmptyState message="No matchup rows match current search/EV/book filters." />
+                <EmptyState message={boardDiagnosticsMessage} />
               )}
             </div>
           ) : (
@@ -719,7 +784,7 @@ function PredictionWorkspacePage({
               ) : null}
             </div>
           ) : (
-            <EmptyState message="Run a prediction to inspect matchup explainability." />
+            <EmptyState message={boardDiagnosticsMessage} />
           )}
         </SurfaceCard>
       </div>
@@ -805,6 +870,20 @@ function PredictionWorkspacePage({
             <InfoRow icon={Flag} label="Latest completed event" value={dashboard?.latest_completed_event?.event_name ?? "--"} />
             <InfoRow icon={Clock3} label="Last graded tournament" value={dashboard?.latest_graded_tournament?.name ?? "--"} />
             <InfoRow icon={Brain} label="AI availability" value={dashboard?.ai_status?.available ? "Enabled" : "Unavailable"} />
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Data health</p>
+            <div className="mt-2 grid gap-2 text-sm text-slate-300">
+              <p>Snapshot state: {selectedSnapshotDiagnostics?.state ?? "unknown"}</p>
+              <p>
+                Tournament matchup rows posted:{" "}
+                {String(selectedSnapshotDiagnostics?.market_counts?.tournament_matchups?.raw_rows ?? 0)}
+              </p>
+              <p>
+                Selection rows after model filters:{" "}
+                {String(selectedSnapshotDiagnostics?.selection_counts?.selected_rows ?? 0)}
+              </p>
+            </div>
           </div>
           {predictionRun?.warnings?.length ? (
             <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4 text-sm text-amber-100">
@@ -1445,11 +1524,41 @@ function collectAvailableBooks(
   return Array.from(names).sort()
 }
 
-function buildHydratedPredictionRun(snapshot: LiveRefreshSnapshot | null): PredictionRunResponse | null {
+function getMatchupStateMessage({
+  state,
+  reasonCodes,
+  hasFilters,
+}: {
+  state?: string
+  reasonCodes?: Record<string, number>
+  hasFilters: boolean
+}) {
+  if (hasFilters) {
+    return "No matchup rows match current book/search/min-EV filters."
+  }
+  if (state === "no_market_posted_yet") {
+    return "No sportsbook matchup lines are posted yet for this context."
+  }
+  if (state === "market_available_no_edges") {
+    return "Markets are available, but no rows currently pass model and EV thresholds."
+  }
+  if (state === "pipeline_error") {
+    return "Matchup pipeline reported an error. Check runtime diagnostics."
+  }
+  if ((reasonCodes?.missing_composite_player ?? 0) > 0) {
+    return "Matchup rows were received, but player mapping to model scores failed."
+  }
+  return "No matchup rows are available yet."
+}
+
+function buildHydratedPredictionRun(
+  snapshot: LiveRefreshSnapshot | null,
+  tab: "live" | "upcoming",
+): PredictionRunResponse | null {
   if (!snapshot) {
     return null
   }
-  const source = snapshot.live_tournament ?? snapshot.upcoming_tournament
+  const source = tab === "live" ? (snapshot.live_tournament ?? snapshot.upcoming_tournament) : (snapshot.upcoming_tournament ?? snapshot.live_tournament)
   if (!source) {
     return null
   }
