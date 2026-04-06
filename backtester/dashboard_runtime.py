@@ -24,6 +24,7 @@ _thread: threading.Thread | None = None
 
 _SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "live_refresh_snapshot.json"
 _OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+_DOWNLOADS_DIR = Path.home() / "Downloads"
 
 
 def _default_state() -> dict[str, Any]:
@@ -182,18 +183,21 @@ def _event_slug(value: str | None) -> str:
 
 def _discover_event_card_path(event_name: str | None) -> str | None:
     slug = _event_slug(event_name)
-    if not slug or not _OUTPUT_DIR.exists():
+    if not slug:
         return None
     candidates: list[Path] = []
-    for path in _OUTPUT_DIR.glob("*.md"):
-        name = path.name
-        if "_methodology_" in name:
+    for root in (_OUTPUT_DIR, _DOWNLOADS_DIR):
+        if not root.exists():
             continue
-        if name.startswith("backtest") or name.startswith("research"):
-            continue
-        if slug not in path.stem:
-            continue
-        candidates.append(path)
+        for path in root.glob("*.md"):
+            name = path.name
+            if "_methodology_" in name:
+                continue
+            if name.startswith("backtest") or name.startswith("research"):
+                continue
+            if slug not in path.stem:
+                continue
+            candidates.append(path)
     if not candidates:
         return None
     latest = max(candidates, key=lambda entry: entry.stat().st_mtime)
@@ -283,52 +287,62 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     from src.datagolf import (
         fetch_matchup_odds_with_diagnostics,
         fetch_schedule,
-        get_current_event_info,
         get_latest_completed_event_info,
     )
 
-    event_info = get_current_event_info(tour) or {}
-    schedule = fetch_schedule(tour=tour, upcoming_only=True)
+    full_schedule = fetch_schedule(tour=tour, upcoming_only=False)
+    upcoming_schedule = fetch_schedule(tour=tour, upcoming_only=True)
     tournament_matchups, tournament_diag = fetch_matchup_odds_with_diagnostics(market="tournament_matchups", tour=tour)
     three_ball, three_ball_diag = fetch_matchup_odds_with_diagnostics(market="3_balls", tour=tour)
     now_date = _utc_now().date()
-    schedule_by_id = {str(row.get("event_id")): row for row in schedule if row.get("event_id")}
-    event_id = str(event_info.get("event_id") or "")
-    event_name = str(event_info.get("event_name") or "").strip()
-    current_row = schedule_by_id.get(event_id)
-    if current_row is None and event_name:
-        current_row = next(
-            (row for row in schedule if str(row.get("event_name") or "").strip().lower() == event_name.lower()),
+    live_row = next((row for row in full_schedule if _is_live_schedule_event(row, today=now_date)), None)
+    live_event_active = bool(live_row)
+    current_row = live_row if live_row else (upcoming_schedule[0] if upcoming_schedule else {})
+
+    def _is_future_event(row: dict[str, Any]) -> bool:
+        start = _parse_iso_date(row.get("start_date"))
+        if not start:
+            return False
+        return start > now_date
+
+    if live_event_active:
+        upcoming_row = next(
+            (
+                row
+                for row in full_schedule
+                if _is_future_event(row) and str(row.get("event_id") or "") != str((live_row or {}).get("event_id") or "")
+            ),
             None,
         )
-    current_idx = schedule.index(current_row) if current_row in schedule else None
-    active_row = current_row if current_row else (schedule[0] if schedule else {})
-    live_event_active = bool(active_row and _is_live_schedule_event(active_row, today=now_date))
-    if current_idx is None:
-        if live_event_active and len(schedule) > 1:
-            upcoming_row = schedule[1]
-        else:
-            upcoming_row = schedule[0] if schedule else None
     else:
-        if live_event_active:
-            next_idx = current_idx + 1
-            upcoming_row = schedule[next_idx] if next_idx < len(schedule) else None
-        else:
-            upcoming_row = schedule[current_idx]
+        upcoming_row = next((row for row in upcoming_schedule if _is_future_event(row)), None)
+        if upcoming_row is None:
+            upcoming_row = upcoming_schedule[0] if upcoming_schedule else None
 
     latest_completed = get_latest_completed_event_info(tour=tour, as_of=now_date) or {}
+    latest_completed_name = str(latest_completed.get("event_name") or "").strip()
+    if latest_completed_name and upcoming_row and str(upcoming_row.get("event_name") or "").strip().lower() == latest_completed_name.lower():
+        upcoming_row = next(
+            (
+                row
+                for row in upcoming_schedule
+                if str(row.get("event_name") or "").strip().lower() != latest_completed_name.lower()
+            ),
+            upcoming_row,
+        )
+    context_row = live_row if live_row else (upcoming_row or current_row or {})
     return {
-        "event_name": event_info.get("event_name"),
-        "event_id": event_info.get("event_id"),
-        "course": event_info.get("course"),
-        "schedule_count": len(schedule),
+        "event_name": context_row.get("event_name"),
+        "event_id": context_row.get("event_id"),
+        "course": context_row.get("course"),
+        "schedule_count": len(upcoming_schedule),
         "live_event_active": live_event_active,
         "current_event_row": current_row,
         "upcoming_event_row": upcoming_row,
         "latest_completed_event_name": latest_completed.get("event_name"),
         "latest_completed_event_id": latest_completed.get("event_id"),
         "latest_completed_event_course": latest_completed.get("course"),
-        "upcoming_event_names": [row.get("event_name") for row in schedule[:3] if row.get("event_name")],
+        "upcoming_event_names": [row.get("event_name") for row in upcoming_schedule[:3] if row.get("event_name")],
         "market_counts": {
             "tournament_matchups": {
                 "raw_rows": len(tournament_matchups),
