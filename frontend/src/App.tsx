@@ -34,10 +34,6 @@ function App() {
   const queryClient = useQueryClient()
   const [predictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
   const [predictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
-  const [predictionDataSource, setPredictionDataSource] = useLocalStorageState<"snapshot_tab" | "stored_run">(
-    "golf-model.prediction-data-source",
-    "snapshot_tab",
-  )
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
@@ -68,16 +64,16 @@ function App() {
     queryFn: api.getLiveRefreshSnapshot,
     refetchInterval: 10_000,
   })
-  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming">("live")
+  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming" | "completed">("upcoming")
   const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
-  const hydratedRun = useMemo(() => buildHydratedPredictionRun(liveSnapshot, predictionTab), [liveSnapshot, predictionTab])
+  const hydratedRun = useMemo(() => {
+    const snapshotTab = predictionTab === "completed" ? "live" : predictionTab
+    return buildHydratedPredictionRun(liveSnapshot, snapshotTab)
+  }, [liveSnapshot, predictionTab])
   const effectivePredictionRun = useMemo(() => {
-    if (predictionDataSource === "stored_run") {
-      return predictionRun ?? hydratedRun
-    }
     return hydratedRun ?? predictionRun
-  }, [predictionDataSource, predictionRun, hydratedRun])
+  }, [predictionRun, hydratedRun])
   const normalizedSelectedBooks = useMemo(
     () => selectedBooks.map((book) => normalizeSportsbook(book)).filter(Boolean),
     [selectedBooks],
@@ -188,9 +184,6 @@ function App() {
               liveRuntimeRunning={liveRuntimeRunning}
               predictionTab={predictionTab}
               onPredictionTabChange={setPredictionTab}
-              predictionDataSource={predictionDataSource}
-              onPredictionDataSourceChange={setPredictionDataSource}
-              hasStoredPredictionRun={Boolean(predictionRun)}
               availableBooks={availableBooks}
               selectedBooks={normalizedSelectedBooks}
               onSelectedBooksChange={setSelectedBooks}
@@ -261,9 +254,6 @@ function PredictionWorkspacePage({
   liveRuntimeRunning,
   predictionTab,
   onPredictionTabChange,
-  predictionDataSource,
-  onPredictionDataSourceChange,
-  hasStoredPredictionRun,
   availableBooks,
   selectedBooks,
   onSelectedBooksChange,
@@ -286,11 +276,8 @@ function PredictionWorkspacePage({
   dashboard?: DashboardState
   liveSnapshot: LiveRefreshSnapshot | null
   liveRuntimeRunning: boolean
-  predictionTab: "live" | "upcoming"
-  onPredictionTabChange: (value: "live" | "upcoming") => void
-  predictionDataSource: "snapshot_tab" | "stored_run"
-  onPredictionDataSourceChange: (value: "snapshot_tab" | "stored_run") => void
-  hasStoredPredictionRun: boolean
+  predictionTab: "live" | "upcoming" | "completed"
+  onPredictionTabChange: (value: "live" | "upcoming" | "completed") => void
   availableBooks: string[]
   selectedBooks: string[]
   onSelectedBooksChange: (value: string[]) => void
@@ -315,11 +302,6 @@ function PredictionWorkspacePage({
   const upcomingTournament = liveSnapshot?.upcoming_tournament
   const selectedBookSet = new Set(selectedBooks)
   const isLiveActive = Boolean(liveTournament?.active)
-  const liveLabel = !liveSnapshot
-    ? "Live status unavailable"
-    : isLiveActive
-      ? "Live Event"
-      : "Completed Event"
   const liveRankings = isLiveActive
     ? (liveTournament?.rankings ?? []).filter((row) => !isCutFinishState(row.finish_state))
     : (liveTournament?.rankings ?? [])
@@ -332,7 +314,7 @@ function PredictionWorkspacePage({
     const normalized = normalizeSportsbook(row.bookmaker)
     return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
   })
-  const selectedSnapshotSection = predictionTab === "live" ? liveTournament : upcomingTournament
+  const selectedSnapshotSection = predictionTab === "upcoming" ? upcomingTournament : liveTournament
   const selectedSnapshotDiagnostics = selectedSnapshotSection?.diagnostics
   const boardRawCount = predictionRun?.matchup_bets?.length ?? 0
   const boardFilteredCount = filteredMatchups.length
@@ -360,7 +342,10 @@ function PredictionWorkspacePage({
             variant={predictionTab === "live" ? "default" : "outline"}
             onClick={() => onPredictionTabChange("live")}
           >
-            {liveLabel}
+            <span className="flex items-center gap-1.5">
+              {isLiveActive ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> : null}
+              Live Event
+            </span>
           </Button>
           <Button
             size="sm"
@@ -369,23 +354,12 @@ function PredictionWorkspacePage({
           >
             Upcoming Event
           </Button>
-        </div>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Board source</span>
           <Button
             size="sm"
-            variant={predictionDataSource === "snapshot_tab" ? "default" : "outline"}
-            onClick={() => onPredictionDataSourceChange("snapshot_tab")}
+            variant={predictionTab === "completed" ? "default" : "outline"}
+            onClick={() => onPredictionTabChange("completed")}
           >
-            Active snapshot tab
-          </Button>
-          <Button
-            size="sm"
-            variant={predictionDataSource === "stored_run" ? "default" : "outline"}
-            onClick={() => onPredictionDataSourceChange("stored_run")}
-            disabled={!hasStoredPredictionRun}
-          >
-            Stored manual run
+            Completed Event
           </Button>
         </div>
         <BookFilterBar
@@ -394,92 +368,106 @@ function PredictionWorkspacePage({
           onSelectedBooksChange={onSelectedBooksChange}
         />
         {predictionTab === "live" ? (
-          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{liveLabel} leaderboard</p>
-              <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "Waiting for event context..."}</p>
-              {isLiveActive ? (
-                <p className="mt-1 text-xs text-slate-500">Cut and withdrawn players are hidden.</p>
-              ) : (
-                <p className="mt-1 text-xs text-slate-500">Pre-event model predictions. All players shown.</p>
-              )}
-              <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
-                    <tr>
-                      <th className="px-3 py-2 text-left">#</th>
-                      <th className="px-3 py-2 text-left">Player</th>
-                      <th className="px-3 py-2 text-left">Composite</th>
-                      <th className="px-3 py-2 text-left">Form</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {liveRankings.length ? (
-                      liveRankings.slice(0, 30).map((row) => {
-                        const isCut = isCutFinishState(row.finish_state)
-                        return (
-                          <tr
-                            key={`${row.player_key ?? row.player}-${row.rank}`}
-                            className={`border-t border-white/8 ${isCut ? "text-slate-500" : "text-slate-200"}`}
-                          >
-                            <td className="px-3 py-2">{row.rank}</td>
-                            <td className="px-3 py-2">
-                              <span className={isCut ? "text-slate-500" : "text-white"}>{row.player}</span>
-                              {isCut && row.finish_state && (
-                                <span className="ml-1.5 text-[10px] uppercase tracking-wider text-slate-600">{row.finish_state}</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2">{formatNumber(row.composite, 2)}</td>
-                            <td className="px-3 py-2">{formatNumber(row.form, 2)}</td>
-                          </tr>
-                        )
-                      })
-                    ) : (
+          isLiveActive ? (
+            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live leaderboard</p>
+                <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "Live event"}</p>
+                <p className="mt-1 text-xs text-slate-500">Cut and withdrawn players are hidden. Auto-refreshes as rounds progress.</p>
+                <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
+                  <table className="w-full min-w-[540px] border-collapse text-sm">
+                    <thead className="sticky top-0 bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
                       <tr>
-                        <td className="px-3 py-3 text-slate-400" colSpan={4}>
-                          No rankings yet. Runtime is still collecting data.
-                        </td>
+                        <th className="px-3 py-2 text-left font-medium">#</th>
+                        <th className="px-3 py-2 text-left font-medium">Player</th>
+                        <th className="px-3 py-2 text-right font-medium">Composite</th>
+                        <th className="px-3 py-2 text-right font-medium">Course</th>
+                        <th className="px-3 py-2 text-right font-medium">Form</th>
+                        <th className="px-3 py-2 text-right font-medium">Momentum</th>
+                        <th className="px-3 py-2 text-center font-medium">Trend</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {liveRankings.length ? (
+                        liveRankings.slice(0, 30).map((row) => {
+                          const isCut = isCutFinishState(row.finish_state)
+                          const dir = row.momentum_direction ?? ""
+                          const arrow = TREND_ARROW[dir] ?? "—"
+                          const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
+                          return (
+                            <tr
+                              key={`${row.player_key ?? row.player}-${row.rank}`}
+                              className={`border-t border-white/8 ${isCut ? "text-slate-500" : "text-slate-200"}`}
+                            >
+                              <td className="px-3 py-2 text-slate-400">{row.rank}</td>
+                              <td className="px-3 py-2">
+                                <span className={isCut ? "text-slate-500" : "font-medium text-white"}>{row.player}</span>
+                                {isCut && row.finish_state && (
+                                  <span className="ml-1.5 text-[10px] uppercase tracking-wider text-slate-600">{row.finish_state}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-cyan-200">{formatNumber(row.composite, 1)}</td>
+                              <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.course_fit, 1)}</td>
+                              <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.form, 1)}</td>
+                              <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.momentum, 1)}</td>
+                              <td className={`px-3 py-2 text-center text-lg ${trendColor}`}>{arrow}</td>
+                            </tr>
+                          )
+                        })
+                      ) : (
+                        <tr>
+                          <td className="px-3 py-3 text-slate-400" colSpan={7}>
+                            No live rankings yet. Runtime is still collecting data.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live matchups</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  Best currently surfaced opportunities from always-on scans.
+                  {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
+                </p>
+                <div className="mt-4 space-y-2">
+                  {liveMatchups.length ? (
+                    liveMatchups.slice(0, 20).map((row, index) => (
+                      <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
+                        <p className="text-sm font-medium text-white">
+                          {row.player} over {row.opponent}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyState
+                      message={getMatchupStateMessage({
+                        state: liveTournament?.diagnostics?.state,
+                        reasonCodes: liveTournament?.diagnostics?.reason_codes,
+                        hasFilters: selectedBooks.length > 0,
+                      })}
+                    />
+                  )}
+                </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                {isLiveActive ? "Live matchups" : "Event matchups"}
-              </p>
-              <p className="mt-2 text-sm text-slate-300">
-                {isLiveActive
-                  ? "Best currently surfaced opportunities from always-on scans."
-                  : "Matchup predictions from when this event was active."}
-                {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
-              </p>
-              <div className="mt-4 space-y-2">
-                {liveMatchups.length ? (
-                  liveMatchups.slice(0, 20).map((row, index) => (
-                    <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
-                      <p className="text-sm font-medium text-white">
-                        {row.player} over {row.opponent}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState
-                    message={getMatchupStateMessage({
-                      state: liveTournament?.diagnostics?.state,
-                      reasonCodes: liveTournament?.diagnostics?.reason_codes,
-                      hasFilters: selectedBooks.length > 0,
-                    })}
-                  />
-                )}
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Radar className="mb-4 h-10 w-10 text-slate-600" />
+                <p className="text-lg font-medium text-white">No event is live right now</p>
+                <p className="mt-2 max-w-md text-sm text-slate-400">
+                  Live rankings and matchup edges will populate automatically after the first tee-off.
+                  Check the <button type="button" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200" onClick={() => onPredictionTabChange("upcoming")}>Upcoming Event</button> tab for pre-tournament model projections.
+                </p>
               </div>
             </div>
-          </div>
-        ) : (
+          )
+        ) : predictionTab === "upcoming" ? (
           <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming board</p>
@@ -549,6 +537,84 @@ function PredictionWorkspacePage({
                     message={getMatchupStateMessage({
                       state: upcomingTournament?.diagnostics?.state,
                       reasonCodes: upcomingTournament?.diagnostics?.reason_codes,
+                      hasFilters: selectedBooks.length > 0,
+                    })}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Completed event leaderboard</p>
+              <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "No completed event data"}</p>
+              <p className="mt-1 text-xs text-slate-500">Final model rankings from the most recently completed event.</p>
+              <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
+                <table className="w-full min-w-[540px] border-collapse text-sm">
+                  <thead className="sticky top-0 bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">#</th>
+                      <th className="px-3 py-2 text-left font-medium">Player</th>
+                      <th className="px-3 py-2 text-right font-medium">Composite</th>
+                      <th className="px-3 py-2 text-right font-medium">Course</th>
+                      <th className="px-3 py-2 text-right font-medium">Form</th>
+                      <th className="px-3 py-2 text-right font-medium">Momentum</th>
+                      <th className="px-3 py-2 text-center font-medium">Trend</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(liveTournament?.rankings ?? []).length ? (
+                      (liveTournament?.rankings ?? []).slice(0, 30).map((row) => {
+                        const dir = row.momentum_direction ?? ""
+                        const arrow = TREND_ARROW[dir] ?? "—"
+                        const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
+                        return (
+                          <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
+                            <td className="px-3 py-2 text-slate-400">{row.rank}</td>
+                            <td className="px-3 py-2 font-medium text-white">{row.player}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-cyan-200">{formatNumber(row.composite, 1)}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.course_fit, 1)}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.form, 1)}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.momentum, 1)}</td>
+                            <td className={`px-3 py-2 text-center text-lg ${trendColor}`}>{arrow}</td>
+                          </tr>
+                        )
+                      })
+                    ) : (
+                      <tr>
+                        <td className="px-3 py-3 text-slate-400" colSpan={7}>
+                          No completed event rankings available.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Event matchups</p>
+              <p className="mt-2 text-sm text-slate-300">
+                Matchup predictions from when this event was active.
+                {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
+              </p>
+              <div className="mt-4 space-y-2">
+                {liveMatchups.length ? (
+                  liveMatchups.slice(0, 20).map((row, index) => (
+                    <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
+                      <p className="text-sm font-medium text-white">
+                        {row.player} over {row.opponent}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    message={getMatchupStateMessage({
+                      state: liveTournament?.diagnostics?.state,
+                      reasonCodes: liveTournament?.diagnostics?.reason_codes,
                       hasFilters: selectedBooks.length > 0,
                     })}
                   />
@@ -1303,7 +1369,6 @@ function useTrackRecordData(): { events: MergedEvent[]; totals: { wins: number; 
     const staticEvents = (trackRecordData as { events: Array<{ name: string; course: string; record: { wins: number; losses: number; pushes: number }; profit_units: number; picks: Array<{ pick: string; opponent: string; odds: string; result: string; pl: number }> }> }).events
     const apiEvents = trackRecordQuery.data?.events ?? []
 
-    const apiByName = new Map(apiEvents.map((e) => [e.name.toLowerCase().trim(), e]))
     const seen = new Set<string>()
 
     const merged: MergedEvent[] = []
@@ -1664,6 +1729,8 @@ function normalizeSportsbook(value?: string | null): string {
     .toLowerCase()
 }
 
+const NON_BOOK_SOURCES = new Set(["datagolf"])
+
 function collectAvailableBooks(
   predictionRun: PredictionRunResponse | null,
   liveSnapshot: LiveRefreshSnapshot | null,
@@ -1671,19 +1738,19 @@ function collectAvailableBooks(
   const names = new Set<string>()
   for (const matchup of predictionRun?.matchup_bets ?? []) {
     const normalized = normalizeSportsbook(matchup.book)
-    if (normalized) {
+    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
       names.add(normalized)
     }
   }
   for (const row of liveSnapshot?.live_tournament?.matchups ?? []) {
     const normalized = normalizeSportsbook(row.bookmaker)
-    if (normalized) {
+    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
       names.add(normalized)
     }
   }
   for (const row of liveSnapshot?.upcoming_tournament?.matchups ?? []) {
     const normalized = normalizeSportsbook(row.bookmaker)
-    if (normalized) {
+    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
       names.add(normalized)
     }
   }
