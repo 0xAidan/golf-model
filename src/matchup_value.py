@@ -85,19 +85,8 @@ def _parse_best_odds(matchup: dict) -> tuple[tuple[int, str] | None, tuple[int, 
             except (ValueError, TypeError):
                 pass
 
-    for field_p1, field_p2 in [("p1_odds", "p2_odds"), ("odds_p1", "odds_p2")]:
-        if matchup.get(field_p1) is not None and best_p1_odds is None:
-            try:
-                best_p1_odds = int(float(matchup[field_p1]))
-                best_p1_book = "datagolf"
-            except (ValueError, TypeError):
-                pass
-        if matchup.get(field_p2) is not None and best_p2_odds is None:
-            try:
-                best_p2_odds = int(float(matchup[field_p2]))
-                best_p2_book = "datagolf"
-            except (ValueError, TypeError):
-                pass
+    # NOTE: Flat fields (p1_odds/p2_odds, odds_p1/odds_p2) are DataGolf model
+    # odds, NOT real sportsbook lines.  Do not surface them as bettable.
 
     p1 = (best_p1_odds, best_p1_book) if best_p1_odds is not None else None
     p2 = (best_p2_odds, best_p2_book) if best_p2_odds is not None else None
@@ -158,18 +147,8 @@ def _iter_book_odds(matchup: dict) -> list[tuple[str, int, int]]:
             continue
         books.append((str(book_name), p1_val, p2_val))
 
-    # DataGolf fallback if nested books are unavailable.
-    if not books:
-        for field_p1, field_p2 in [("p1_odds", "p2_odds"), ("odds_p1", "odds_p2")]:
-            if matchup.get(field_p1) is None or matchup.get(field_p2) is None:
-                continue
-            try:
-                p1_val = int(float(matchup[field_p1]))
-                p2_val = int(float(matchup[field_p2]))
-            except (ValueError, TypeError):
-                continue
-            books.append(("datagolf", p1_val, p2_val))
-            break
+    # NOTE: Flat fields (p1_odds/p2_odds, odds_p1/odds_p2) are DataGolf model
+    # odds, NOT real sportsbook lines.  Skip — no fallback to non-bettable odds.
 
     # Deduplicate by normalized book key, keep first valid pair encountered.
     deduped: list[tuple[str, int, int]] = []

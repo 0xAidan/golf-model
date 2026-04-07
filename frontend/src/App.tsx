@@ -102,6 +102,7 @@ function App() {
     const sourceMatchups = effectivePredictionRun?.matchup_bets ?? []
     return sourceMatchups.filter((matchup) => {
       const matchupBook = normalizeSportsbook(matchup.book)
+      if (NON_BOOK_SOURCES.has(matchupBook)) return false
       const passesBook = selectedBookSet.size === 0 || selectedBookSet.has(matchupBook)
       const passesSearch = matchupSearch
         ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
@@ -307,11 +308,13 @@ function PredictionWorkspacePage({
     : (liveTournament?.rankings ?? [])
   const liveMatchups = (liveTournament?.matchups ?? []).filter((row) => {
     const normalized = normalizeSportsbook(row.bookmaker)
+    if (NON_BOOK_SOURCES.has(normalized)) return false
     return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
   })
   const upcomingRankings = upcomingTournament?.rankings ?? []
   const upcomingMatchups = (upcomingTournament?.matchups ?? []).filter((row) => {
     const normalized = normalizeSportsbook(row.bookmaker)
+    if (NON_BOOK_SOURCES.has(normalized)) return false
     return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
   })
   const selectedSnapshotSection = predictionTab === "upcoming" ? upcomingTournament : liveTournament
@@ -1796,7 +1799,9 @@ function buildHydratedPredictionRun(
     return null
   }
   const rankings = source.rankings ?? []
-  const matchups = source.matchups ?? []
+  const matchups = (source.matchups ?? []).filter(
+    (row) => !NON_BOOK_SOURCES.has(normalizeSportsbook(row.bookmaker)),
+  )
   return {
     status: "hydrated",
     event_name: source.event_name ?? "Event",
