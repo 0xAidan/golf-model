@@ -30,10 +30,11 @@ def test_parse_best_odds_nested():
 
 
 def test_parse_best_odds_top_level():
+    """Flat DG model odds (p1_odds/p2_odds) are NOT sportsbook lines — should return None."""
     matchup = {"p1_odds": 110, "p2_odds": -130}
     p1, p2 = _parse_best_odds(matchup)
-    assert p1 == (110, "datagolf")
-    assert p2 == (-130, "datagolf")
+    assert p1 is None
+    assert p2 is None
 
 
 def test_parse_best_odds_empty():
@@ -68,8 +69,7 @@ def test_find_matchup_value_bets_basic():
     matchups = [{
         "p1_player_name": "Scottie Scheffler",
         "p2_player_name": "Davis Thompson",
-        "p1_odds": 110,
-        "p2_odds": -130,
+        "odds": {"bet365": {"p1": 110, "p2": -130}},
     }]
     result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01)
     assert len(result) >= 1
@@ -90,8 +90,7 @@ def test_find_matchup_value_bets_picks_stronger_player():
     matchups = [{
         "p1_player_name": "Player A",
         "p2_player_name": "Player B",
-        "p1_odds": -130,
-        "p2_odds": 110,
+        "odds": {"fanduel": {"p1": -130, "p2": 110}},
     }]
     result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01)
     assert len(result) >= 1
@@ -159,8 +158,8 @@ def test_find_matchup_value_bets_sorted_by_ev():
         {"player_key": "d", "player_display": "D", "composite": 50.0, "form": 50.0, "course_fit": 50.0, "momentum": 50.0},
     ]
     matchups = [
-        {"p1_player_name": "C", "p2_player_name": "D", "p1_odds": 120, "p2_odds": -140},
-        {"p1_player_name": "A", "p2_player_name": "B", "p1_odds": 150, "p2_odds": -170},
+        {"p1_player_name": "C", "p2_player_name": "D", "odds": {"caesars": {"p1": 120, "p2": -140}}},
+        {"p1_player_name": "A", "p2_player_name": "B", "odds": {"caesars": {"p1": 150, "p2": -170}}},
     ]
     result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01)
     assert len(result) >= 2
@@ -292,7 +291,8 @@ def test_find_matchup_value_bets_diagnostics_for_no_edges(monkeypatch):
         {"player_key": "player_a", "player_display": "Player A", "composite": 51.0, "form": 50.0, "course_fit": 50.0, "momentum": 50.0},
         {"player_key": "player_b", "player_display": "Player B", "composite": 50.0, "form": 50.0, "course_fit": 50.0, "momentum": 50.0},
     ]
-    matchups = [{"p1_player_name": "Player A", "p2_player_name": "Player B", "p1_odds": -110, "p2_odds": -110}]
+    matchups = [{"p1_player_name": "Player A", "p2_player_name": "Player B",
+                 "odds": {"bet365": {"p1": -110, "p2": -110}}}]
     bets, diagnostics = find_matchup_value_bets(composite, matchups, ev_threshold=0.40, return_diagnostics=True)
     assert bets == []
     assert diagnostics["selection_state"] == "market_available_no_edges"

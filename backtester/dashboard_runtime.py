@@ -163,8 +163,15 @@ def _extract_rankings(
     return rankings
 
 
+_NON_BOOK_SOURCES = {"datagolf"}
+
+
 def _extract_matchups(matchups: list[dict], *, limit: int = 25) -> list[dict]:
-    sorted_rows = sorted(matchups or [], key=lambda item: item.get("ev", 0), reverse=True)
+    filtered = [
+        m for m in (matchups or [])
+        if str(m.get("bookmaker") or m.get("book") or "").strip().lower() not in _NON_BOOK_SOURCES
+    ]
+    sorted_rows = sorted(filtered, key=lambda item: item.get("ev", 0), reverse=True)
     rows: list[dict] = []
     for row in sorted_rows[:limit]:
         rows.append(
