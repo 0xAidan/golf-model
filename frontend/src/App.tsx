@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Brain, ChevronDown, CircleAlert, Clock3, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
-import { Route, Routes } from "react-router-dom"
+import { Brain, ChevronDown, CircleAlert, Clock3, Download, ExternalLink, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
+import { Link, Route, Routes } from "react-router-dom"
 
 import { BarTrendChart, SparklineChart } from "@/components/charts"
 import { CommandShell, MetricTile, SectionTitle, SurfaceCard } from "@/components/shell"
@@ -34,10 +34,9 @@ function App() {
   const queryClient = useQueryClient()
   const [predictionRequest] = useLocalStorageState<PredictionRunRequest>("golf-model.prediction-request", DEFAULT_REQUEST)
   const [predictionRun] = useLocalStorageState<PredictionRunResponse | null>("golf-model.latest-prediction-run", null)
-  const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
-  const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
+  const [matchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
+  const [minEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
-  const [predictionLayout, setPredictionLayout] = useLocalStorageState<"board" | "table" | "players">("golf-model.prediction-layout", "board")
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
   const [selectedMatchupKey, setSelectedMatchupKey] = useLocalStorageState("golf-model.selected-matchup", "")
 
@@ -64,11 +63,21 @@ function App() {
     queryFn: api.getLiveRefreshSnapshot,
     refetchInterval: 10_000,
   })
-  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming" | "completed">("upcoming")
   const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
+  const isLiveActive = Boolean(liveSnapshot?.live_tournament?.active)
+  const [predictionTab, setPredictionTab] = useState<"live" | "upcoming" | "past">(
+    isLiveActive ? "live" : "upcoming",
+  )
+  useEffect(() => {
+    if (isLiveActive && predictionTab === "upcoming") {
+      setPredictionTab("live")
+    } else if (!isLiveActive && predictionTab === "live") {
+      setPredictionTab("upcoming")
+    }
+  }, [isLiveActive]) // eslint-disable-line react-hooks/exhaustive-deps
   const hydratedRun = useMemo(() => {
-    const snapshotTab = predictionTab === "completed" ? "live" : predictionTab
+    const snapshotTab = predictionTab === "past" ? "live" : predictionTab
     return buildHydratedPredictionRun(liveSnapshot, snapshotTab)
   }, [liveSnapshot, predictionTab])
   const effectivePredictionRun = useMemo(() => {
@@ -111,7 +120,6 @@ function App() {
     })
   }, [effectivePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
 
-  const selectedPlayer = players.find((player) => player.player_key === selectedPlayerKey) ?? players[0] ?? null
   const selectedMatchup =
     filteredMatchups.find((matchup) => buildMatchupKey(matchup) === selectedMatchupKey) ??
     filteredMatchups[0] ??
@@ -190,19 +198,9 @@ function App() {
               onSelectedBooksChange={setSelectedBooks}
               filteredMatchups={filteredMatchups}
               gradingHistory={gradingHistory}
-              layout={predictionLayout}
-              minEdge={minEdge}
-              matchupSearch={matchupSearch}
-              onLayoutChange={setPredictionLayout}
-              onMinEdgeChange={setMinEdge}
-              onMatchupSearchChange={setMatchupSearch}
-              onPlayerSelect={setSelectedPlayerKey}
-              onMatchupSelect={setSelectedMatchupKey}
               players={players}
               predictionRun={effectivePredictionRun}
               secondaryBets={secondaryBets}
-              selectedPlayer={selectedPlayer}
-              selectedMatchup={selectedMatchup}
             />
           }
         />
@@ -260,86 +258,84 @@ function PredictionWorkspacePage({
   onSelectedBooksChange,
   filteredMatchups,
   gradingHistory,
-  layout,
-  minEdge,
-  matchupSearch,
-  onLayoutChange,
-  onMinEdgeChange,
-  onMatchupSearchChange,
-  onPlayerSelect,
-  onMatchupSelect,
   players,
   predictionRun,
   secondaryBets,
-  selectedPlayer,
-  selectedMatchup,
 }: {
   dashboard?: DashboardState
   liveSnapshot: LiveRefreshSnapshot | null
   liveRuntimeRunning: boolean
-  predictionTab: "live" | "upcoming" | "completed"
-  onPredictionTabChange: (value: "live" | "upcoming" | "completed") => void
+  predictionTab: "live" | "upcoming" | "past"
+  onPredictionTabChange: (value: "live" | "upcoming" | "past") => void
   availableBooks: string[]
   selectedBooks: string[]
   onSelectedBooksChange: (value: string[]) => void
   filteredMatchups: MatchupBet[]
   gradingHistory: GradedTournamentSummary[]
-  layout: "board" | "table" | "players"
-  minEdge: number
-  matchupSearch: string
-  onLayoutChange: (value: "board" | "table" | "players") => void
-  onMinEdgeChange: (value: number) => void
-  onMatchupSearchChange: (value: string) => void
-  onPlayerSelect: (value: string) => void
-  onMatchupSelect: (value: string) => void
   players: CompositePlayer[]
   predictionRun: PredictionRunResponse | null
   secondaryBets: Array<{ market: string; player: string; odds: string; ev: number; confidence?: string }>
-  selectedPlayer: CompositePlayer | null
-  selectedMatchup: MatchupBet | null
 }) {
-  const totalProfit = gradingHistory.reduce((sum, tournament) => sum + Number(tournament.total_profit ?? 0), 0)
+  const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
+  const [healthExpanded, setHealthExpanded] = useState(false)
+
+  const totalProfit = gradingHistory.reduce((sum, t) => sum + Number(t.total_profit ?? 0), 0)
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
-  const selectedBookSet = new Set(selectedBooks)
   const isLiveActive = Boolean(liveTournament?.active)
-  const liveRankings = isLiveActive
-    ? (liveTournament?.rankings ?? []).filter((row) => !isCutFinishState(row.finish_state))
-    : (liveTournament?.rankings ?? [])
-  const liveMatchups = (liveTournament?.matchups ?? []).filter((row) => {
-    const normalized = normalizeSportsbook(row.bookmaker)
-    if (NON_BOOK_SOURCES.has(normalized)) return false
-    return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
+
+  const activeSection = predictionTab === "upcoming" ? upcomingTournament : liveTournament
+  const eventName = activeSection?.event_name ?? predictionRun?.event_name ?? "No event loaded"
+  const courseName = activeSection?.course_name ?? predictionRun?.course_name ?? ""
+  const fieldSize = activeSection?.field_size ?? predictionRun?.field_size ?? 0
+  const diagnostics = activeSection?.diagnostics
+
+  const bestEdge = filteredMatchups.length > 0
+    ? Math.max(...filteredMatchups.map((m) => m.ev))
+    : 0
+
+  const diagnosticsMessage = getMatchupStateMessage({
+    state: diagnostics?.state,
+    reasonCodes: diagnostics?.reason_codes,
+    hasFilters: selectedBooks.length > 0,
   })
-  const upcomingRankings = upcomingTournament?.rankings ?? []
-  const upcomingMatchups = (upcomingTournament?.matchups ?? []).filter((row) => {
-    const normalized = normalizeSportsbook(row.bookmaker)
-    if (NON_BOOK_SOURCES.has(normalized)) return false
-    return selectedBookSet.size === 0 || selectedBookSet.has(normalized)
-  })
-  const selectedSnapshotSection = predictionTab === "upcoming" ? upcomingTournament : liveTournament
-  const selectedSnapshotDiagnostics = selectedSnapshotSection?.diagnostics
-  const boardRawCount = predictionRun?.matchup_bets?.length ?? 0
-  const boardFilteredCount = filteredMatchups.length
-  const boardDiagnosticsMessage = getMatchupStateMessage({
-    state: selectedSnapshotDiagnostics?.state,
-    reasonCodes: selectedSnapshotDiagnostics?.reason_codes,
-    hasFilters: selectedBooks.length > 0 || Boolean(matchupSearch) || minEdge > 0.02,
-  })
+
+  const handleExportMarkdown = () => {
+    if (!predictionRun?.card_content) return
+    const blob = new Blob([predictionRun.card_content], { type: "text/markdown;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `${predictionRun.event_name ?? "prediction"}.md`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-6">
+      {/* ── Zone 1: Tournament context header ── */}
       <SurfaceCard>
-        <SectionTitle
-          title="Prediction stream"
-          description="Always-on runtime auto-detects live, upcoming, and past event context."
-          action={
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${liveRuntimeRunning ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
-              {liveRuntimeRunning ? "Runtime active" : "Runtime booting"}
-            </span>
-          }
-        />
-        <div className="mb-4 flex gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+              {predictionTab === "live" ? "Live Event" : predictionTab === "upcoming" ? "Upcoming Event" : "Past Event"}
+            </p>
+            <h3 className="mt-1 text-2xl font-semibold tracking-tight text-white">{eventName}</h3>
+            {courseName ? <p className="mt-1 text-sm text-slate-400">{courseName}</p> : null}
+          </div>
+          <span className={`mt-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${liveRuntimeRunning ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
+            {liveRuntimeRunning ? "Runtime active" : "Runtime booting"}
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={predictionTab === "upcoming" ? "default" : "outline"}
+            onClick={() => onPredictionTabChange("upcoming")}
+          >
+            Upcoming
+          </Button>
           <Button
             size="sm"
             variant={predictionTab === "live" ? "default" : "outline"}
@@ -347,653 +343,374 @@ function PredictionWorkspacePage({
           >
             <span className="flex items-center gap-1.5">
               {isLiveActive ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> : null}
-              Live Event
+              Live
             </span>
           </Button>
           <Button
             size="sm"
-            variant={predictionTab === "upcoming" ? "default" : "outline"}
-            onClick={() => onPredictionTabChange("upcoming")}
+            variant={predictionTab === "past" ? "default" : "outline"}
+            onClick={() => onPredictionTabChange("past")}
           >
-            Upcoming Event
-          </Button>
-          <Button
-            size="sm"
-            variant={predictionTab === "completed" ? "default" : "outline"}
-            onClick={() => onPredictionTabChange("completed")}
-          >
-            Completed Event
+            Past Event
           </Button>
         </div>
-        <BookFilterBar
-          books={availableBooks}
-          selectedBooks={selectedBooks}
-          onSelectedBooksChange={onSelectedBooksChange}
-        />
-        {predictionTab === "live" ? (
-          isLiveActive ? (
-            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live leaderboard</p>
-                <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "Live event"}</p>
-                <p className="mt-1 text-xs text-slate-500">Cut and withdrawn players are hidden. Auto-refreshes as rounds progress.</p>
-                <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
-                  <table className="w-full min-w-[540px] border-collapse text-sm">
-                    <thead className="sticky top-0 bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium">#</th>
-                        <th className="px-3 py-2 text-left font-medium">Player</th>
-                        <th className="px-3 py-2 text-right font-medium">Composite</th>
-                        <th className="px-3 py-2 text-right font-medium">Course</th>
-                        <th className="px-3 py-2 text-right font-medium">Form</th>
-                        <th className="px-3 py-2 text-right font-medium">Momentum</th>
-                        <th className="px-3 py-2 text-center font-medium">Trend</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {liveRankings.length ? (
-                        liveRankings.slice(0, 30).map((row) => {
-                          const isCut = isCutFinishState(row.finish_state)
-                          const dir = row.momentum_direction ?? ""
-                          const arrow = TREND_ARROW[dir] ?? "—"
-                          const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
-                          return (
-                            <tr
-                              key={`${row.player_key ?? row.player}-${row.rank}`}
-                              className={`border-t border-white/8 ${isCut ? "text-slate-500" : "text-slate-200"}`}
-                            >
-                              <td className="px-3 py-2 text-slate-400">{row.rank}</td>
-                              <td className="px-3 py-2">
-                                <span className={isCut ? "text-slate-500" : "font-medium text-white"}>{row.player}</span>
-                                {isCut && row.finish_state && (
-                                  <span className="ml-1.5 text-[10px] uppercase tracking-wider text-slate-600">{row.finish_state}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-right font-semibold text-cyan-200">{formatNumber(row.composite, 1)}</td>
-                              <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.course_fit, 1)}</td>
-                              <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.form, 1)}</td>
-                              <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.momentum, 1)}</td>
-                              <td className={`px-3 py-2 text-center text-lg ${trendColor}`}>{arrow}</td>
-                            </tr>
-                          )
-                        })
-                      ) : (
-                        <tr>
-                          <td className="px-3 py-3 text-slate-400" colSpan={7}>
-                            No live rankings yet. Runtime is still collecting data.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Live matchups</p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Best currently surfaced opportunities from always-on scans.
-                  {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
-                </p>
-                <div className="mt-4 space-y-2">
-                  {liveMatchups.length ? (
-                    liveMatchups.slice(0, 20).map((row, index) => (
-                      <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
-                        <p className="text-sm font-medium text-white">
-                          {row.player} over {row.opponent}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
-                        </p>
-                      </div>
-                    ))
-                  ) : (
-                    <EmptyState
-                      message={getMatchupStateMessage({
-                        state: liveTournament?.diagnostics?.state,
-                        reasonCodes: liveTournament?.diagnostics?.reason_codes,
-                        hasFilters: selectedBooks.length > 0,
-                      })}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Radar className="mb-4 h-10 w-10 text-slate-600" />
-                <p className="text-lg font-medium text-white">No event is live right now</p>
-                <p className="mt-2 max-w-md text-sm text-slate-400">
-                  Live rankings and matchup edges will populate automatically after the first tee-off.
-                  Check the <button type="button" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200" onClick={() => onPredictionTabChange("upcoming")}>Upcoming Event</button> tab for pre-tournament model projections.
-                </p>
-              </div>
-            </div>
-          )
-        ) : predictionTab === "upcoming" ? (
-          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming board</p>
-              <p className="mt-2 text-sm text-slate-300">{upcomingTournament?.event_name ?? "Waiting for next event..."}</p>
-              <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
-                <table className="w-full min-w-[540px] border-collapse text-sm">
-                  <thead className="sticky top-0 bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">#</th>
-                      <th className="px-3 py-2 text-left font-medium">Player</th>
-                      <th className="px-3 py-2 text-right font-medium">Composite</th>
-                      <th className="px-3 py-2 text-right font-medium">Course</th>
-                      <th className="px-3 py-2 text-right font-medium">Form</th>
-                      <th className="px-3 py-2 text-right font-medium">Momentum</th>
-                      <th className="px-3 py-2 text-center font-medium">Trend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {upcomingRankings.length ? (
-                      upcomingRankings.slice(0, 30).map((row) => {
-                        const dir = row.momentum_direction ?? ""
-                        const arrow = TREND_ARROW[dir] ?? "—"
-                        const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
-                        return (
-                          <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
-                            <td className="px-3 py-2 text-slate-400">{row.rank}</td>
-                            <td className="px-3 py-2 font-medium text-white">{row.player}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-cyan-200">{formatNumber(row.composite, 1)}</td>
-                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.course_fit, 1)}</td>
-                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.form, 1)}</td>
-                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.momentum, 1)}</td>
-                            <td className={`px-3 py-2 text-center text-lg ${trendColor}`}>{arrow}</td>
-                          </tr>
-                        )
-                      })
-                    ) : (
-                      <tr>
-                        <td className="px-3 py-3 text-slate-400" colSpan={7}>
-                          No upcoming rankings yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Upcoming event matchups</p>
-              <p className="mt-2 text-sm text-slate-300">
-                Early lines for the next event as books publish more pairs.
-                {selectedBooks.length ? ` Showing ${upcomingMatchups.length} after book filter.` : ""}
-              </p>
-              <div className="mt-4 space-y-2">
-                {upcomingMatchups.length ? (
-                  upcomingMatchups.slice(0, 20).map((row, index) => (
-                    <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
-                      <p className="text-sm font-medium text-white">
-                        {row.player} over {row.opponent}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState
-                    message={getMatchupStateMessage({
-                      state: upcomingTournament?.diagnostics?.state,
-                      reasonCodes: upcomingTournament?.diagnostics?.reason_codes,
-                      hasFilters: selectedBooks.length > 0,
-                    })}
-                  />
-                )}
-              </div>
-            </div>
+
+        {predictionTab === "past" && gradingHistory.length > 0 ? (
+          <div className="mt-3">
+            <label className="block">
+              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">Browse past events</span>
+              <select
+                className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-400/30"
+                defaultValue=""
+                aria-label="Select past event"
+              >
+                <option value="" disabled>Most recent completed event</option>
+                {gradingHistory.map((event) => (
+                  <option key={`${event.event_id}-${event.year}`} value={event.event_id ?? ""}>
+                    {event.name}{event.year ? ` (${event.year})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Completed event leaderboard</p>
-              <p className="mt-2 text-sm text-slate-300">{liveTournament?.event_name ?? "No completed event data"}</p>
-              <p className="mt-1 text-xs text-slate-500">Final model rankings from the most recently completed event.</p>
-              <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-white/8">
-                <table className="w-full min-w-[540px] border-collapse text-sm">
-                  <thead className="sticky top-0 bg-white/6 text-xs uppercase tracking-[0.16em] text-slate-400">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">#</th>
-                      <th className="px-3 py-2 text-left font-medium">Player</th>
-                      <th className="px-3 py-2 text-right font-medium">Composite</th>
-                      <th className="px-3 py-2 text-right font-medium">Course</th>
-                      <th className="px-3 py-2 text-right font-medium">Form</th>
-                      <th className="px-3 py-2 text-right font-medium">Momentum</th>
-                      <th className="px-3 py-2 text-center font-medium">Trend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(liveTournament?.rankings ?? []).length ? (
-                      (liveTournament?.rankings ?? []).slice(0, 30).map((row) => {
-                        const dir = row.momentum_direction ?? ""
-                        const arrow = TREND_ARROW[dir] ?? "—"
-                        const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
-                        return (
-                          <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/8 text-slate-200">
-                            <td className="px-3 py-2 text-slate-400">{row.rank}</td>
-                            <td className="px-3 py-2 font-medium text-white">{row.player}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-cyan-200">{formatNumber(row.composite, 1)}</td>
-                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.course_fit, 1)}</td>
-                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.form, 1)}</td>
-                            <td className="px-3 py-2 text-right text-slate-300">{formatNumber(row.momentum, 1)}</td>
-                            <td className={`px-3 py-2 text-center text-lg ${trendColor}`}>{arrow}</td>
-                          </tr>
-                        )
-                      })
-                    ) : (
-                      <tr>
-                        <td className="px-3 py-3 text-slate-400" colSpan={7}>
-                          No completed event rankings available.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Event matchups</p>
-              <p className="mt-2 text-sm text-slate-300">
-                Matchup predictions from when this event was active.
-                {selectedBooks.length ? ` Showing ${liveMatchups.length} after book filter.` : ""}
-              </p>
-              <div className="mt-4 space-y-2">
-                {liveMatchups.length ? (
-                  liveMatchups.slice(0, 20).map((row, index) => (
-                    <div key={`${row.player}-${row.opponent}-${index}`} className="rounded-xl border border-white/8 bg-black/25 px-3 py-2">
-                      <p className="text-sm font-medium text-white">
-                        {row.player} over {row.opponent}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {row.market_odds ?? "--"} · {row.bookmaker ?? "book unknown"} · EV {formatNumber((row.ev ?? 0) * 100, 1)}%
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState
-                    message={getMatchupStateMessage({
-                      state: liveTournament?.diagnostics?.state,
-                      reasonCodes: liveTournament?.diagnostics?.reason_codes,
-                      hasFilters: selectedBooks.length > 0,
-                    })}
-                  />
-                )}
-              </div>
-            </div>
+        ) : null}
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Field</p>
+            <p className="mt-1 text-xl font-semibold text-white">{fieldSize}</p>
           </div>
-        )}
+          <div className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Edges found</p>
+            <p className="mt-1 text-xl font-semibold text-white">{filteredMatchups.length}</p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Best edge</p>
+            <p className="mt-1 text-xl font-semibold text-cyan-200">{bestEdge > 0 ? `${(bestEdge * 100).toFixed(1)}%` : "--"}</p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Season P/L</p>
+            <p className={`mt-1 text-xl font-semibold ${totalProfit >= 0 ? "text-emerald-300" : "text-amber-200"}`}>{formatUnits(totalProfit)}</p>
+          </div>
+        </div>
       </SurfaceCard>
 
-      <div className="grid gap-4 xl:grid-cols-4">
-        <MetricTile label="Field size" value={String(predictionRun?.field_size ?? 0)} detail={predictionRun?.event_name ?? "No run loaded"} />
-        <MetricTile
-          label="Matchups"
-          value={String(filteredMatchups.length)}
-          detail={`Filtered ${filteredMatchups.length} / ${boardRawCount} rows`}
+      {/* ── Zone 2: Featured plays ── */}
+      <SurfaceCard>
+        <SectionTitle
+          title="Top Plays"
+          description={predictionTab === "live" ? "Best edges from the live event." : predictionTab === "upcoming" ? "Highest-conviction matchup edges for the upcoming event." : "Matchups from the most recently completed event."}
+          action={
+            <Link to="/matchups" className="flex items-center gap-1.5 text-sm text-cyan-300 transition hover:text-cyan-200">
+              View all matchups <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          }
         />
-        <MetricTile label="Secondary edges" value={String(secondaryBets.length)} detail="Placements, miss-cut, and adjacent markets" />
-        <MetricTile label="Season P/L" value={formatUnits(totalProfit)} detail="From durable grading history" tone={totalProfit >= 0 ? "positive" : "warning"} />
-      </div>
 
-      <div className="grid gap-6 2xl:grid-cols-[1.35fr_minmax(380px,0.9fr)]">
-        <SurfaceCard className="min-w-0">
-          <SectionTitle
-            title="Matchup board"
-            description="Every recommended matchup is filterable and opens an explainability panel instead of a flat markdown line."
-            action={
-              <div className="flex flex-wrap gap-2">
-                {(["board", "table", "players"] as const).map((option) => (
-                  <Button
-                    key={option}
-                    size="sm"
-                    variant={layout === option ? "default" : "outline"}
-                    onClick={() => onLayoutChange(option)}
-                  >
-                    {option}
-                  </Button>
-                ))}
-                <Button
-                  size="sm"
-                  variant="outline"
+        {availableBooks.length > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Books</span>
+            {availableBooks.map((book) => {
+              const active = selectedBooks.includes(book)
+              return (
+                <button
+                  key={book}
+                  type="button"
+                  aria-pressed={active}
                   onClick={() => {
-                    if (!predictionRun?.card_content) {
-                      return
+                    if (active) {
+                      onSelectedBooksChange(selectedBooks.filter((b) => b !== book))
+                    } else {
+                      onSelectedBooksChange([...selectedBooks, book])
                     }
-                    const blob = new Blob([predictionRun.card_content], { type: "text/markdown;charset=utf-8" })
-                    const url = URL.createObjectURL(blob)
-                    const anchor = document.createElement("a")
-                    anchor.href = url
-                    anchor.download = `${predictionRun.event_name ?? "prediction"}.md`
-                    anchor.click()
-                    URL.revokeObjectURL(url)
                   }}
+                  className={`rounded-full border px-2.5 py-0.5 text-[10px] uppercase tracking-[0.14em] transition ${
+                    active
+                      ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-100"
+                      : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
+                  }`}
                 >
-                  Export markdown
-                </Button>
-              </div>
-            }
-          />
-          <p className="mb-3 text-xs text-slate-500">
-            Raw rows: {boardRawCount} · After filters: {boardFilteredCount}
-            {selectedSnapshotDiagnostics?.state ? ` · Snapshot state: ${selectedSnapshotDiagnostics.state}` : ""}
-          </p>
-          <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px]">
-            <LabeledInput label="Search players" value={matchupSearch} onChange={onMatchupSearchChange} />
-            <LabeledInput
-              label="Min EV"
-              value={String(minEdge)}
-              onChange={(value) => onMinEdgeChange(Number(value) || 0)}
-              type="number"
-            />
+                  {book}
+                </button>
+              )
+            })}
+            {selectedBooks.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onSelectedBooksChange([])}
+                className="text-[10px] uppercase tracking-[0.14em] text-slate-500 transition hover:text-slate-300"
+              >
+                Clear
+              </button>
+            ) : null}
           </div>
-          {layout === "board" ? (
-            <div className="grid gap-3 xl:grid-cols-2">
-              {filteredMatchups.length ? (
-                filteredMatchups.map((matchup) => (
+        ) : null}
+
+        {predictionTab === "live" && !isLiveActive ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Radar className="mb-3 h-8 w-8 text-slate-600" />
+              <p className="text-base font-medium text-white">No event is live right now</p>
+              <p className="mt-2 max-w-md text-sm text-slate-400">
+                Live edges will populate automatically after Thursday tee-off.
+                Check{" "}
+                <button type="button" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200" onClick={() => onPredictionTabChange("upcoming")}>
+                  Upcoming
+                </button>{" "}
+                for pre-tournament projections.
+              </p>
+            </div>
+          </div>
+        ) : filteredMatchups.length > 0 ? (
+          <div className="space-y-3">
+            {filteredMatchups.slice(0, 5).map((matchup) => {
+              const key = buildMatchupKey(matchup)
+              const isExpanded = expandedMatchupKey === key
+              return (
+                <div key={key} className="rounded-2xl border border-white/8 bg-black/20 transition">
                   <button
-                    key={buildMatchupKey(matchup)}
                     type="button"
-                    className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                    onClick={() => {
-                      onMatchupSelect(buildMatchupKey(matchup))
-                      onPlayerSelect(matchup.pick_key)
-                    }}
+                    aria-expanded={isExpanded}
+                    aria-label={`${matchup.pick} over ${matchup.opponent}, edge ${matchup.ev_pct}`}
+                    tabIndex={0}
+                    className={`flex w-full cursor-pointer items-center justify-between gap-4 p-4 text-left transition hover:bg-white/5 ${isExpanded ? "bg-white/3" : ""}`}
+                    onClick={() => setExpandedMatchupKey(isExpanded ? null : key)}
                   >
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white">{matchup.pick}</p>
-                        <p className="text-xs text-slate-500">vs {matchup.opponent}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-white">{matchup.pick} <span className="text-slate-500">over</span> {matchup.opponent}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{matchup.book ?? "book"} · {matchup.odds}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="hidden text-right sm:block">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Edge</p>
+                        <p className="text-sm font-semibold text-cyan-200">{matchup.ev_pct}</p>
                       </div>
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getTierStyle(matchup.tier)}`}>
                         {matchup.tier ?? "lean"}
                       </span>
-                    </div>
-                    <div className="mt-4 grid grid-cols-4 gap-3 text-sm">
-                      <div>
-                        <p className="text-slate-500">Edge</p>
-                        <p className="font-semibold text-cyan-200">{matchup.ev_pct}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Price</p>
-                        <p className="font-semibold text-white">{matchup.odds}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Gap</p>
-                        <p className="font-semibold text-white">{formatNumber(matchup.composite_gap, 1)}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Conviction</p>
-                        <p className="font-semibold text-white">{formatNumber(matchup.conviction, 0)}</p>
-                      </div>
+                      <ChevronDown className={`h-4 w-4 text-slate-500 transition ${isExpanded ? "rotate-180" : ""}`} />
                     </div>
                   </button>
-                ))
-              ) : (
-                <div className="xl:col-span-2">
-                  <EmptyState message={boardDiagnosticsMessage} />
-                </div>
-              )}
-            </div>
-          ) : layout === "table" ? (
-            <div className="overflow-hidden rounded-2xl border border-white/10">
-              {filteredMatchups.length ? (
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-white/6 text-xs uppercase tracking-[0.18em] text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3">Pick</th>
-                      <th className="px-4 py-3">Edge</th>
-                      <th className="px-4 py-3">Price</th>
-                      <th className="px-4 py-3">Model</th>
-                      <th className="px-4 py-3">Implied</th>
-                      <th className="px-4 py-3">Form gap</th>
-                      <th className="px-4 py-3">Course gap</th>
-                      <th className="px-4 py-3">Conviction</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMatchups.map((matchup) => (
-                      <tr
-                        key={buildMatchupKey(matchup)}
-                        className="cursor-pointer border-t border-white/6 text-slate-200 transition hover:bg-white/6"
-                        onClick={() => {
-                          onMatchupSelect(buildMatchupKey(matchup))
-                          onPlayerSelect(matchup.pick_key)
-                        }}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-white">{matchup.pick}</div>
-                          <div className="text-xs text-slate-500">vs {matchup.opponent}</div>
-                        </td>
-                        <td className="px-4 py-3 text-cyan-200">{matchup.ev_pct}</td>
-                        <td className="px-4 py-3">{matchup.odds}</td>
-                        <td className="px-4 py-3">{`${(matchup.model_win_prob * 100).toFixed(1)}%`}</td>
-                        <td className="px-4 py-3">{`${(matchup.implied_prob * 100).toFixed(1)}%`}</td>
-                        <td className="px-4 py-3">{formatNumber(matchup.form_gap, 1)}</td>
-                        <td className="px-4 py-3">{formatNumber(matchup.course_fit_gap, 1)}</td>
-                        <td className="px-4 py-3">{formatNumber(matchup.conviction, 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <EmptyState message={boardDiagnosticsMessage} />
-              )}
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {players.length ? (
-                players.slice(0, 12).map((player) => (
-                  <button
-                    key={player.player_key}
-                    type="button"
-                    className="rounded-2xl border border-white/8 bg-black/20 p-4 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                    onClick={() => onPlayerSelect(player.player_key)}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white">
-                          #{player.rank} {player.player_display}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          composite {formatNumber(player.composite, 1)} • momentum {formatNumber(player.momentum, 1)}
-                        </p>
+                  {isExpanded ? (
+                    <div className="border-t border-white/8 bg-white/3 px-4 py-5">
+                      <div className="space-y-4">
+                        <p className="text-sm leading-6 text-slate-300">{matchup.reason}</p>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <MetricTile label="Model probability" value={`${(matchup.model_win_prob * 100).toFixed(1)}%`} />
+                          <MetricTile label="Implied probability" value={`${(matchup.implied_prob * 100).toFixed(1)}%`} />
+                          <MetricTile label="Composite gap" value={formatNumber(matchup.composite_gap, 1)} />
+                          <MetricTile label="Conviction" value={formatNumber(matchup.conviction, 0)} />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <MetricTile label="Form gap" value={formatNumber(matchup.form_gap, 1)} />
+                          <MetricTile label="Course-fit gap" value={formatNumber(matchup.course_fit_gap, 1)} />
+                          <MetricTile label="Momentum" value={matchup.momentum_aligned ? "Aligned" : "Mixed"} />
+                          <MetricTile label="Stake multiplier" value={formatNumber(matchup.stake_multiplier, 2)} />
+                        </div>
+                        <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                          <div className="mb-2 flex items-center gap-2 text-slate-300">
+                            <ChartColumnIcon />
+                            <span className="text-sm font-medium">Confidence drivers</span>
+                          </div>
+                          <BarTrendChart
+                            labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
+                            values={[
+                              matchup.composite_gap,
+                              matchup.form_gap,
+                              matchup.course_fit_gap,
+                              Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
+                              Number(matchup.conviction ?? 0),
+                            ]}
+                            color="#22d3ee"
+                          />
+                        </div>
                       </div>
-                      <span className="rounded-full bg-white/6 px-3 py-1 text-xs uppercase tracking-[0.16em] text-slate-300">
-                        {player.momentum_direction ?? "steady"}
-                      </span>
                     </div>
-                  </button>
-                ))
-              ) : (
-                <EmptyState message="No players are loaded for this context yet." />
-              )}
-            </div>
-          )}
-        </SurfaceCard>
+                  ) : null}
+                </div>
+              )
+            })}
+            {filteredMatchups.length > 5 ? (
+              <p className="text-center text-sm text-slate-500">
+                Showing top 5 of {filteredMatchups.length} edges.{" "}
+                <Link to="/matchups" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">View all</Link>
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyState message={diagnosticsMessage} />
+        )}
+      </SurfaceCard>
 
-        <SurfaceCard>
-          <SectionTitle
-            title="Selected matchup intelligence"
-            description="Edge, pricing gap, score component deltas, and portfolio context in one place."
-          />
-          {selectedMatchup ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/10 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Current play</p>
-                    <h4 className="mt-2 text-xl font-semibold text-white">
-                      {selectedMatchup.pick} over {selectedMatchup.opponent}
-                    </h4>
-                  </div>
-                  <div className="rounded-2xl bg-black/25 px-3 py-2 text-right">
-                    <p className="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Model edge</p>
-                    <p className="mt-1 text-lg font-semibold text-cyan-200">{selectedMatchup.ev_pct}</p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-slate-200">{selectedMatchup.reason}</p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <MetricTile label="Model win probability" value={`${(selectedMatchup.model_win_prob * 100).toFixed(1)}%`} />
-                <MetricTile label="Market implied" value={`${(selectedMatchup.implied_prob * 100).toFixed(1)}%`} />
-                <MetricTile label="Composite gap" value={formatNumber(selectedMatchup.composite_gap, 1)} />
-                <MetricTile label="Momentum alignment" value={selectedMatchup.momentum_aligned ? "Aligned" : "Mixed"} />
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <MetricTile label="Form gap" value={formatNumber(selectedMatchup.form_gap, 1)} />
-                <MetricTile label="Course-fit gap" value={formatNumber(selectedMatchup.course_fit_gap, 1)} />
-                <MetricTile label="Stake multiplier" value={formatNumber(selectedMatchup.stake_multiplier, 2)} />
-                <MetricTile label="Book" value={selectedMatchup.book ?? "--"} />
-              </div>
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <div className="mb-2 flex items-center gap-2 text-slate-300">
-                  <ChartColumnIcon />
-                  <span className="text-sm font-medium">Confidence drivers</span>
-                </div>
-                <BarTrendChart
-                  labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
-                  values={[
-                    selectedMatchup.composite_gap,
-                    selectedMatchup.form_gap,
-                    selectedMatchup.course_fit_gap,
-                    Number(selectedMatchup.pick_momentum ?? 0) - Number(selectedMatchup.opp_momentum ?? 0),
-                    Number(selectedMatchup.conviction ?? 0),
-                  ]}
-                  color="#22d3ee"
-                />
-              </div>
-              {selectedPlayer ? (
-                <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected player context</p>
-                  <p className="mt-2 text-lg font-semibold text-white">{selectedPlayer.player_display}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    Composite {formatNumber(selectedPlayer.composite, 1)} with form {formatNumber(selectedPlayer.form, 1)}, course fit {formatNumber(selectedPlayer.course_fit, 1)}, and momentum {formatNumber(selectedPlayer.momentum, 1)}.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <EmptyState message={boardDiagnosticsMessage} />
-          )}
-        </SurfaceCard>
-      </div>
-
+      {/* ── Zone 3: Rankings + secondary intel ── */}
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SurfaceCard>
           <SectionTitle
-            title="Player ladder"
-            description="The operator list keeps the top of the board visible while letting you pivot into player drill-downs."
+            title="Power Rankings"
+            description="Top 10 model projections for this event context."
+            action={
+              <Link to="/players" className="flex items-center gap-1.5 text-sm text-cyan-300 transition hover:text-cyan-200">
+                Full rankings <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            }
           />
-          <div className="space-y-2">
-            {players.length ? (
-              players.slice(0, 12).map((player) => (
-                <button
-                  key={player.player_key}
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-left transition hover:border-cyan-400/25 hover:bg-white/5"
-                  onClick={() => onPlayerSelect(player.player_key)}
-                >
-                  <div>
-                    <p className="font-medium text-white">
-                      #{player.rank} {player.player_display}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      form {formatNumber(player.form, 1)} • course {formatNumber(player.course_fit, 1)} • momentum {formatNumber(player.momentum, 1)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</p>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">composite</p>
-                  </div>
-                </button>
-              ))
-            ) : (
-              <EmptyState message="No player ladder is available yet. Run is still warming up." />
-            )}
-          </div>
+          {players.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] text-sm" role="grid">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                    <th className="px-3 py-2 font-medium">#</th>
+                    <th className="px-3 py-2 font-medium">Player</th>
+                    <th className="px-3 py-2 text-right font-medium">Composite</th>
+                    <th className="px-3 py-2 text-right font-medium">Form</th>
+                    <th className="px-3 py-2 text-right font-medium">Course</th>
+                    <th className="px-3 py-2 text-center font-medium">Trend</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {players.slice(0, 10).map((player) => {
+                    const dir = player.momentum_direction ?? ""
+                    const arrow = TREND_ARROW[dir] ?? "—"
+                    const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
+                    return (
+                      <tr key={player.player_key} className="border-t border-white/6 transition hover:bg-white/5">
+                        <td className="px-3 py-2.5 text-slate-500">{player.rank}</td>
+                        <td className="px-3 py-2.5">
+                          <Link to="/players" className="font-medium text-white transition hover:text-cyan-200">
+                            {player.player_display}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-cyan-200">{formatNumber(player.composite, 1)}</td>
+                        <td className="px-3 py-2.5 text-right text-slate-300">{formatNumber(player.form, 1)}</td>
+                        <td className="px-3 py-2.5 text-right text-slate-300">{formatNumber(player.course_fit, 1)}</td>
+                        <td className={`px-3 py-2.5 text-center text-base ${trendColor}`}>{arrow}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState message="No rankings available yet for this event context." />
+          )}
         </SurfaceCard>
 
         <SurfaceCard>
           <SectionTitle
-            title="Secondary market rail"
-            description="Placements and adjacent angles stay visible without overwhelming the matchup-first workflow."
+            title="Market Intel"
+            description="Secondary edges across placement and adjacent markets."
           />
-          <div className="space-y-3">
-            {secondaryBets.length ? (
-              secondaryBets.slice(0, 8).map((bet) => (
-                <div key={`${bet.market}-${bet.player}-${bet.odds}`} className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{bet.player}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
-                          {bet.market}
-                        </span>
-                        <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200">
-                          {secondaryBadgeLabel(bet.market)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-cyan-200">{formatNumber(bet.ev * 100, 1)}% EV</p>
-                      <p className="text-xs text-slate-500">{bet.odds}</p>
+          {secondaryBets.length > 0 ? (
+            <div className="space-y-2">
+              {secondaryBets.slice(0, 6).map((bet) => (
+                <div key={`${bet.market}-${bet.player}-${bet.odds}`} className="flex items-center justify-between gap-4 rounded-xl border border-white/8 bg-black/20 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white">{bet.player}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className="rounded-full bg-white/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                        {bet.market}
+                      </span>
+                      <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                        {secondaryBadgeLabel(bet.market)}
+                      </span>
                     </div>
                   </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-cyan-200">{formatNumber(bet.ev * 100, 1)}%</p>
+                    <p className="text-xs text-slate-500">{bet.odds}</p>
+                  </div>
                 </div>
-              ))
-            ) : (
-              <EmptyState message="No secondary market edges surfaced on the current run." />
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState message="No secondary market edges surfaced yet." />
+          )}
         </SurfaceCard>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+      {/* ── Zone 4: Season performance + model health ── */}
+      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <SurfaceCard>
-          <SectionTitle
-            title="Coverage and run health"
-            description="Major-week LIV coverage, run quality, and export provenance stay visible before you trust the board."
-          />
-          <div className="space-y-3">
-            <InfoRow icon={ShieldAlert} label="Field validation" value={predictionRun?.field_validation?.has_cross_tour_field_risk ? "Review warnings" : "Healthy"} />
-            <InfoRow icon={Flag} label="Latest completed event" value={dashboard?.latest_completed_event?.event_name ?? "--"} />
-            <InfoRow icon={Clock3} label="Last graded tournament" value={dashboard?.latest_graded_tournament?.name ?? "--"} />
-            <InfoRow icon={Brain} label="AI availability" value={dashboard?.ai_status?.available ? "Enabled" : "Unavailable"} />
-          </div>
-          <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Data health</p>
-            <div className="mt-2 grid gap-2 text-sm text-slate-300">
-              <p>Snapshot state: {selectedSnapshotDiagnostics?.state ?? "unknown"}</p>
-              <p>
-                Tournament matchup rows posted:{" "}
-                {String(selectedSnapshotDiagnostics?.market_counts?.tournament_matchups?.raw_rows ?? 0)}
-              </p>
-              <p>
-                Selection rows after model filters:{" "}
-                {String(selectedSnapshotDiagnostics?.selection_counts?.selected_rows ?? 0)}
-              </p>
-            </div>
-          </div>
-          {predictionRun?.warnings?.length ? (
-            <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4 text-sm text-amber-100">
-              {predictionRun.warnings.join(" ")}
-            </div>
-          ) : null}
+          <SectionTitle title="Season Performance" description="Recent graded tournaments and running P/L." />
+          {gradingHistory.length > 0 ? (
+            <>
+              <div className="mb-4">
+                <SparklineChart
+                  values={gradingHistory.slice(0, 8).reverse().map((t) => Number(t.total_profit ?? 0))}
+                  color="#34d399"
+                />
+              </div>
+              <div className="space-y-2">
+                {gradingHistory.slice(0, 5).map((event) => {
+                  const profit = Number(event.total_profit ?? 0)
+                  return (
+                    <div key={`${event.event_id}-${event.year}`} className="flex items-center justify-between gap-4 rounded-xl border border-white/6 bg-black/15 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-white">{event.name}</p>
+                        <p className="text-xs text-slate-500">{event.hits ?? 0}/{event.graded_pick_count ?? 0} hits</p>
+                      </div>
+                      <p className={`text-sm font-semibold ${profit >= 0 ? "text-emerald-300" : "text-red-400"}`}>
+                        {formatUnits(profit)}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+              <Link to="/track-record" className="mt-3 flex items-center gap-1.5 text-sm text-cyan-300 transition hover:text-cyan-200">
+                Full track record <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            </>
+          ) : (
+            <EmptyState message="Grade a tournament to see season performance." />
+          )}
         </SurfaceCard>
 
         <SurfaceCard>
           <SectionTitle
-            title="Markdown export preview"
-            description="Markdown remains available as an export mode rather than the primary operating surface."
+            title="Model Health"
+            description="Runtime status, data diagnostics, and export."
+            action={
+              <button
+                type="button"
+                aria-expanded={healthExpanded}
+                onClick={() => setHealthExpanded(!healthExpanded)}
+                className="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-200"
+              >
+                {healthExpanded ? "Collapse" : "Details"}
+                <ChevronDown className={`h-3.5 w-3.5 transition ${healthExpanded ? "rotate-180" : ""}`} />
+              </button>
+            }
           />
-          <div className="max-h-[320px] overflow-auto rounded-2xl border border-white/10 bg-black/30 p-4">
-            <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-300">
-              {predictionRun?.card_content ?? "Run a prediction to generate a fresh markdown artifact."}
-            </pre>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <InfoRow icon={ShieldAlert} label="Field validation" value={predictionRun?.field_validation?.has_cross_tour_field_risk ? "Review warnings" : "Healthy"} />
+            <InfoRow icon={Brain} label="AI availability" value={dashboard?.ai_status?.available ? "Enabled" : "Unavailable"} />
+            <InfoRow icon={Flag} label="Latest completed" value={dashboard?.latest_completed_event?.event_name ?? "--"} />
+            <InfoRow icon={Clock3} label="Last graded" value={dashboard?.latest_graded_tournament?.name ?? "--"} />
+          </div>
+
+          {healthExpanded ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Data diagnostics</p>
+                <div className="mt-2 grid gap-1.5 text-sm text-slate-300">
+                  <p>Snapshot state: {diagnostics?.state ?? "unknown"}</p>
+                  <p>Matchup rows posted: {String(diagnostics?.market_counts?.tournament_matchups?.raw_rows ?? 0)}</p>
+                  <p>Selection rows: {String(diagnostics?.selection_counts?.selected_rows ?? 0)}</p>
+                </div>
+              </div>
+              {predictionRun?.warnings?.length ? (
+                <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+                  {predictionRun.warnings.join(" ")}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="mt-4">
+            <Button size="sm" variant="outline" onClick={handleExportMarkdown} disabled={!predictionRun?.card_content}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export markdown
+            </Button>
           </div>
         </SurfaceCard>
       </div>
@@ -1577,30 +1294,6 @@ function MetricsCategoryTable({
   )
 }
 
-function LabeledInput({
-  label,
-  onChange,
-  type = "text",
-  value,
-}: {
-  label: string
-  onChange: (value: string) => void
-  type?: string
-  value: string
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30"
-      />
-    </label>
-  )
-}
-
 function EmptyState({ message }: { message: string }) {
   return <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-slate-400">{message}</div>
 }
@@ -1629,69 +1322,6 @@ function InfoRow({
 
 function ChartColumnIcon() {
   return <div className="h-4 w-4 rounded-full bg-cyan-300/80" aria-hidden="true" />
-}
-
-function BookFilterBar({
-  books,
-  selectedBooks,
-  onSelectedBooksChange,
-}: {
-  books: string[]
-  selectedBooks: string[]
-  onSelectedBooksChange: (value: string[]) => void
-}) {
-  return (
-    <div className="mb-4 rounded-2xl border border-white/8 bg-black/20 p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Book filter</p>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => onSelectedBooksChange([])}>
-            All books
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onSelectedBooksChange(books)}>
-            Select all
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onSelectedBooksChange([])}>
-            Clear
-          </Button>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {books.length ? (
-          books.map((book) => {
-            const active = selectedBooks.includes(book)
-            return (
-              <button
-                key={book}
-                type="button"
-                onClick={() => {
-                  if (active) {
-                    onSelectedBooksChange(selectedBooks.filter((entry) => entry !== book))
-                  } else {
-                    onSelectedBooksChange([...selectedBooks, book])
-                  }
-                }}
-                className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] transition ${
-                  active
-                    ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-100"
-                    : "border-white/10 bg-white/5 text-slate-300 hover:border-white/30"
-                }`}
-              >
-                {book}
-              </button>
-            )
-          })
-        ) : (
-          <p className="text-sm text-slate-400">No sportsbook rows detected yet.</p>
-        )}
-      </div>
-      <p className="mt-2 text-xs text-slate-500">
-        {selectedBooks.length === 0
-          ? "Showing all books."
-          : `Showing ${selectedBooks.length} selected book${selectedBooks.length === 1 ? "" : "s"}.`}
-      </p>
-    </div>
-  )
 }
 
 function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
@@ -1863,14 +1493,6 @@ function normalize_name_for_ui(value?: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
-}
-
-function isCutFinishState(finishState?: string | null) {
-  if (!finishState) {
-    return false
-  }
-  const normalized = finishState.trim().toUpperCase()
-  return normalized === "CUT" || normalized === "MDF" || normalized === "WD" || normalized === "DQ" || normalized === "DNS"
 }
 
 export default App
