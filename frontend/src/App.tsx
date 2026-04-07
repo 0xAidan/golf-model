@@ -290,8 +290,25 @@ function PredictionWorkspacePage({
   const fieldSize = activeSection?.field_size ?? predictionRun?.field_size ?? 0
   const diagnostics = activeSection?.diagnostics
 
-  const bestEdge = filteredMatchups.length > 0
-    ? Math.max(...filteredMatchups.map((m) => m.ev))
+  const topPlays = useMemo(() => {
+    const TIER_RANK: Record<string, number> = { STRONG: 0, GOOD: 1, LEAN: 2 }
+    const deduped = new Map<string, MatchupBet>()
+    for (const m of filteredMatchups) {
+      const pairKey = `${m.pick_key}::${m.opponent_key}`
+      const existing = deduped.get(pairKey)
+      if (!existing || m.ev > existing.ev) {
+        deduped.set(pairKey, m)
+      }
+    }
+    return Array.from(deduped.values()).sort((a, b) => {
+      const tierDiff = (TIER_RANK[a.tier ?? "LEAN"] ?? 2) - (TIER_RANK[b.tier ?? "LEAN"] ?? 2)
+      if (tierDiff !== 0) return tierDiff
+      return b.ev - a.ev
+    })
+  }, [filteredMatchups])
+
+  const bestEdge = topPlays.length > 0
+    ? topPlays[0].ev
     : 0
 
   const diagnosticsMessage = getMatchupStateMessage({
@@ -382,7 +399,7 @@ function PredictionWorkspacePage({
           </div>
           <div className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
             <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Edges found</p>
-            <p className="mt-1 text-xl font-semibold text-white">{filteredMatchups.length}</p>
+            <p className="mt-1 text-xl font-semibold text-white">{topPlays.length}</p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
             <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Best edge</p>
@@ -461,9 +478,9 @@ function PredictionWorkspacePage({
               </p>
             </div>
           </div>
-        ) : filteredMatchups.length > 0 ? (
+        ) : topPlays.length > 0 ? (
           <div className="space-y-3">
-            {filteredMatchups.slice(0, 5).map((matchup) => {
+            {topPlays.slice(0, 5).map((matchup) => {
               const key = buildMatchupKey(matchup)
               const isExpanded = expandedMatchupKey === key
               return (
@@ -530,9 +547,9 @@ function PredictionWorkspacePage({
                 </div>
               )
             })}
-            {filteredMatchups.length > 5 ? (
+            {topPlays.length > 5 ? (
               <p className="text-center text-sm text-slate-500">
-                Showing top 5 of {filteredMatchups.length} edges.{" "}
+                Showing top 5 of {topPlays.length} unique edges.{" "}
                 <Link to="/matchups" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">View all</Link>
               </p>
             ) : null}
