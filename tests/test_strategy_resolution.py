@@ -75,3 +75,17 @@ def test_map_strategy_to_runtime_settings_blend_matches_weights():
     rt = map_strategy_to_runtime_settings(s)
     assert rt["blend_weights"]["course_fit"] == pytest.approx(0.5)
     assert rt["ev_threshold"] == pytest.approx(0.05)
+
+
+def test_map_strategy_to_runtime_settings_keeps_matchup_threshold():
+    s = StrategyConfig(
+        w_sub_course_fit=0.45,
+        w_sub_form=0.45,
+        w_sub_momentum=0.10,
+        min_ev=0.08,
+        matchup_ev_threshold=0.05,
+    )
+
+    rt = map_strategy_to_runtime_settings(s)
+
+    assert rt["matchup_ev_threshold"] == pytest.approx(0.05)

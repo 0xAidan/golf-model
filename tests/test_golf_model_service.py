@@ -101,3 +101,154 @@ def test_data_sources_handles_missing_total_rounds():
     )
 
     assert any("2019-2026 (0 total rounds)" in line for line in lines)
+
+
+def test_fetch_matchup_value_bets_uses_preferred_book_and_matchup_threshold(monkeypatch):
+    service = GolfModelService(
+        tour="pga",
+        strategy_config={"matchup_ev_threshold": 0.05},
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        "src.datagolf.fetch_matchup_odds_with_diagnostics",
+        lambda market, tour="pga": (
+            [
+                {
+                    "p1_player_name": "Player A",
+                    "p2_player_name": "Player B",
+                    "odds": {"bet365": {"p1": 110, "p2": -130}},
+                }
+            ],
+            {"reason_code": "ok"},
+        ),
+    )
+    monkeypatch.setattr("src.odds.get_preferred_book", lambda: "bet365")
+
+    def _fake_find_matchup_value_bets(composite, odds, **kwargs):
+        captured["kwargs"] = kwargs
+        return ([], {"input_rows": len(odds), "selected_rows": 0, "reason_codes": {}, "adaptation_state": "normal"})
+
+    monkeypatch.setattr(
+        "src.matchup_value.find_matchup_value_bets",
+        _fake_find_matchup_value_bets,
+    )
+
+    service._fetch_matchup_value_bets(
+        composite=[{"player_key": "player_a", "player_display": "Player A", "composite": 70.0}],
+        tid=9,
+        mode="full",
+    )
+
+    assert captured["kwargs"]["ev_threshold"] == 0.05
+    assert captured["kwargs"]["required_book"] == "bet365"
+
+
+def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatch):
+    service = GolfModelService(tour="pga")
+    logged = {"placements": 0, "matchups": 0}
+
+    monkeypatch.setattr("src.services.golf_model_service.db.get_or_create_tournament", lambda tournament_name, course_name: 7)
+    monkeypatch.setattr("src.services.golf_model_service.db.get_all_players", lambda tid: ["player_a", "player_b"])
+    monkeypatch.setattr("src.services.golf_model_service.db.get_rounds_count", lambda: 24)
+    monkeypatch.setattr(
+        GolfModelService,
+        "_sync_tournament_data",
+        lambda self, tid: {"decompositions_raw": None},
+    )
+    monkeypatch.setattr(GolfModelService, "_sync_skill_data", lambda self, tid, field_keys: None)
+    monkeypatch.setattr(
+        GolfModelService,
+        "_validate_field_data",
+        lambda self, tid, tournament_name, field_keys: {"has_cross_tour_field_risk": False},
+    )
+    monkeypatch.setattr(GolfModelService, "_compute_rolling_stats", lambda self, tid, field_keys, course_num: {})
+    monkeypatch.setattr(GolfModelService, "_load_course_profile", lambda self, course_name, decompositions_raw=None: {})
+    monkeypatch.setattr(GolfModelService, "_get_weights", lambda self, course_num: {})
+    monkeypatch.setattr(
+        GolfModelService,
+        "_run_composite",
+        lambda self, tid, weights, course_name: [
+            {
+                "player_key": "player_a",
+                "player_display": "Player A",
+                "composite": 70.0,
+                "form": 68.0,
+                "course_fit": 66.0,
+                "momentum": 55.0,
+            },
+            {
+                "player_key": "player_b",
+                "player_display": "Player B",
+                "composite": 62.0,
+                "form": 60.0,
+                "course_fit": 58.0,
+                "momentum": 45.0,
+            },
+        ],
+    )
+    monkeypatch.setattr(GolfModelService, "_fetch_odds", lambda self: {"outrights": [{"player": "Player A"}]})
+    monkeypatch.setattr(
+        GolfModelService,
+        "_compute_value_bets",
+        lambda self, composite, all_odds, tid: {
+            "outright": [
+                {
+                    "pick": "Player A",
+                    "ev": 0.85,
+                    "is_value": False,
+                    "suspicious": False,
+                    "ev_capped": False,
+                    "needs_review": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr("src.portfolio.enforce_diversification", lambda bets: bets)
+    monkeypatch.setattr(
+        GolfModelService,
+        "_fetch_matchup_value_bets",
+        lambda self, composite, tid, mode="full": (
+            [
+                {
+                    "pick": "Player A",
+                    "pick_key": "player_a",
+                    "opponent": "Player B",
+                    "opponent_key": "player_b",
+                    "model_win_prob": 0.55,
+                    "implied_prob": 0.5,
+                    "ev": 0.1,
+                    "ev_pct": "10.0%",
+                }
+            ],
+            {
+                "state": "edges_available",
+                "errors": [],
+                "selection_counts": {"selected_rows": 1},
+                "reason_codes": {},
+            },
+        ),
+    )
+    monkeypatch.setattr(GolfModelService, "_fetch_3ball_value_bets", lambda self, composite, tid: [])
+    monkeypatch.setattr(
+        "src.value.compute_run_quality",
+        lambda value_bets: {"score": 0.99, "issues": ["Average |EV| = 85%"], "pass": False},
+    )
+    monkeypatch.setattr(GolfModelService, "_log_predictions", lambda self, tid, value_bets: logged.__setitem__("placements", logged["placements"] + 1))
+    monkeypatch.setattr(GolfModelService, "_log_matchup_predictions", lambda self, tid, matchup_bets: logged.__setitem__("matchups", logged["matchups"] + 1))
+    monkeypatch.setattr(GolfModelService, "_generate_card", lambda self, *args, **kwargs: "/tmp/card.md")
+    monkeypatch.setattr(GolfModelService, "_log_run", lambda self, tid, result: None)
+
+    result = service.run_analysis(
+        tournament_name="Masters Tournament",
+        course_name="Augusta National Golf Club",
+        enable_ai=False,
+        enable_backfill=False,
+        include_methodology=False,
+        mode="full",
+        strategy_source="config",
+    )
+
+    assert result["status"] == "complete"
+    assert logged["placements"] == 0
+    assert logged["matchups"] == 1

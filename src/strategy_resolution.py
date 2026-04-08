@@ -93,6 +93,7 @@ def map_strategy_to_runtime_settings(strategy: StrategyConfig) -> dict[str, Any]
             "momentum": float(strategy.w_sub_momentum),
         },
         "ev_threshold": float(strategy.min_ev),
+        "matchup_ev_threshold": float(strategy.matchup_ev_threshold),
         "kelly_fraction": float(strategy.kelly_fraction),
         "allowed_markets": allowed_markets or {"outright", "top5", "top10", "top20"},
     }

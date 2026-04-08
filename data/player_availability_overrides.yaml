@@ -1,0 +1,11 @@
+# Masters-week manual overrides for confirmed injuries, withdrawals, or operator flags.
+# Keys can be raw names or normalized player keys.
+#
+# Example:
+# players:
+#   collin_morikawa:
+#     status: injury_watch
+#     score_adjustment: -4.0
+#     note: Manual Masters-week watchlist until form returns.
+
+players: {}
