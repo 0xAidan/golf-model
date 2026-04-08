@@ -596,7 +596,6 @@ class GolfModelService:
             from src.datagolf import fetch_matchup_odds_with_diagnostics
             from src.matchup_value import find_matchup_value_bets
             from src import config
-            from src.odds import get_preferred_book
 
             diagnostics = {
                 "market_counts": {},
@@ -631,7 +630,7 @@ class GolfModelService:
                         continue
                     bets, selection_diag = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
-                        required_book=get_preferred_book(), market_type=market_key,
+                        market_type=market_key,
                         return_diagnostics=True,
                     )
                     diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))
@@ -683,19 +682,16 @@ class GolfModelService:
             }
 
     def _fetch_3ball_value_bets(self, composite, tid) -> list:
-        """Fetch 3-ball odds and return value bets (live focus; runs regardless of feature flag).
-        Only includes groups where the preferred book (e.g. bet365) has odds for all three players."""
+        """Fetch 3-ball odds and return value bets across all available books."""
         try:
             from src.datagolf import fetch_matchup_odds
             from src.value import find_3ball_value_bets
-            from src.odds import get_preferred_book
 
             odds = fetch_matchup_odds(market="3_balls", tour=self.tour)
             if not odds:
                 return []
             return find_3ball_value_bets(
                 composite, odds, tournament_id=tid, enable_for_live=True,
-                required_book=get_preferred_book(),
             )
         except Exception as e:
             logger.warning("3-ball value bets failed: %s", e)

@@ -211,6 +211,45 @@ def test_find_matchup_value_bets_returns_all_qualifying_books(monkeypatch):
     assert "draftkings" in books
 
 
+def test_find_matchup_value_bets_skips_datagolf_as_display_book(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    composite = [
+        {
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "composite": 82.0,
+            "form": 78.0,
+            "course_fit": 75.0,
+            "momentum": 58.0,
+        },
+        {
+            "player_key": "player_b",
+            "player_display": "Player B",
+            "composite": 48.0,
+            "form": 45.0,
+            "course_fit": 44.0,
+            "momentum": 42.0,
+        },
+    ]
+    matchups = [
+        {
+            "p1_player_name": "Player A",
+            "p2_player_name": "Player B",
+            "odds": {
+                "bet365": {"p1": 150, "p2": -170},
+                "datagolf": {"p1": -150, "p2": 130},
+            },
+        }
+    ]
+
+    result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01, required_book=None)
+
+    books = {row["book"] for row in result}
+    assert "bet365" in books
+    assert "datagolf" not in books
+
+
 def test_find_matchup_value_bets_required_book_still_supported(monkeypatch):
     """Legacy required_book mode should continue to work for scoped callers."""
     monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
