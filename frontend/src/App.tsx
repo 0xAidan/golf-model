@@ -125,7 +125,14 @@ function App() {
     filteredMatchups[0] ??
     null
 
-  const secondaryBets = flattenSecondaryBets(effectivePredictionRun)
+  const secondaryBets = useMemo(() => {
+    return flattenSecondaryBets(effectivePredictionRun).filter((bet) => {
+      const betBook = normalizeSportsbook(bet.book)
+      if (betBook && NON_BOOK_SOURCES.has(betBook)) return false
+      if (selectedBookSet.size === 0) return true
+      return betBook ? selectedBookSet.has(betBook) : false
+    })
+  }, [effectivePredictionRun, selectedBookSet])
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const dashboard = dashboardQuery.data as DashboardState | undefined
 
@@ -274,7 +281,7 @@ function PredictionWorkspacePage({
   gradingHistory: GradedTournamentSummary[]
   players: CompositePlayer[]
   predictionRun: PredictionRunResponse | null
-  secondaryBets: Array<{ market: string; player: string; odds: string; ev: number; confidence?: string }>
+  secondaryBets: Array<{ market: string; player: string; odds: string; ev: number; confidence?: string; book?: string }>
 }) {
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [healthExpanded, setHealthExpanded] = useState(false)
@@ -634,7 +641,9 @@ function PredictionWorkspacePage({
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-cyan-200">{formatNumber(bet.ev * 100, 1)}%</p>
-                    <p className="text-xs text-slate-500">{bet.odds}</p>
+                    <p className="text-xs text-slate-500">
+                      {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -1349,10 +1358,11 @@ function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
         .filter((bet) => bet.is_value)
         .map((bet) => ({
           market,
-          player: bet.player,
+          player: bet.player_display ?? bet.player ?? "Unknown player",
           odds: bet.odds,
           ev: bet.ev,
           confidence: bet.confidence,
+          book: normalizeSportsbook(bet.book ?? bet.best_book),
         })),
     )
     .sort((left, right) => right.ev - left.ev)
@@ -1390,6 +1400,15 @@ function collectAvailableBooks(
     const normalized = normalizeSportsbook(matchup.book)
     if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
       names.add(normalized)
+    }
+  }
+  for (const bets of Object.values(predictionRun?.value_bets ?? {})) {
+    for (const bet of bets) {
+      if (!bet.is_value) continue
+      const normalized = normalizeSportsbook(bet.book ?? bet.best_book)
+      if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
+        names.add(normalized)
+      }
     }
   }
   for (const row of liveSnapshot?.live_tournament?.matchups ?? []) {

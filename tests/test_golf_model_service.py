@@ -103,7 +103,7 @@ def test_data_sources_handles_missing_total_rounds():
     assert any("2019-2026 (0 total rounds)" in line for line in lines)
 
 
-def test_fetch_matchup_value_bets_uses_preferred_book_and_matchup_threshold(monkeypatch):
+def test_fetch_matchup_value_bets_uses_all_books_and_matchup_threshold(monkeypatch):
     service = GolfModelService(
         tour="pga",
         strategy_config={"matchup_ev_threshold": 0.05},
@@ -141,7 +141,7 @@ def test_fetch_matchup_value_bets_uses_preferred_book_and_matchup_threshold(monk
     )
 
     assert captured["kwargs"]["ev_threshold"] == 0.05
-    assert captured["kwargs"]["required_book"] == "bet365"
+    assert captured["kwargs"].get("required_book") is None
 
 
 def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatch):

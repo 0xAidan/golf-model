@@ -58,7 +58,7 @@ from src.datagolf import (
 from src.rolling_stats import compute_rolling_metrics
 from src.models.composite import compute_composite
 from src.course_profile import load_course_profile, course_to_model_weights
-from src.odds import get_best_odds, get_preferred_book
+from src.odds import get_best_odds
 from src.value import find_value_bets
 from src.card import generate_card
 from src.methodology import generate_methodology
@@ -997,7 +997,7 @@ def main():
     from src.odds import _get_preferred_book
     _pbook = _get_preferred_book()
     print_header("Step 7: Fetching Live Sportsbook Odds")
-    print(f"  Primary book: {_pbook} (EV calculated against {_pbook} odds)")
+    print(f"  Preferred book: {_pbook} (used as a hint only; all books remain available)")
     print("  Also tracking: DraftKings, FanDuel, BetMGM, Pinnacle, + 10 others")
 
     all_odds_by_market = safe_api_call("outright odds", fetch_all_outright_odds, "pga")
@@ -1065,7 +1065,6 @@ def main():
                     matchup_odds,
                     tournament_id=tid,
                     ev_threshold=runtime_settings["matchup_ev_threshold"],
-                    required_book=get_preferred_book(),
                     market_type=market_key,
                 )
                 for bet in market_bets:
@@ -1090,7 +1089,6 @@ def main():
             if threeball_odds:
                 threeball_bets = find_3ball_value_bets(
                     composite, threeball_odds, tournament_id=tid,
-                    required_book=get_preferred_book(),
                 )
                 for bet in threeball_bets:
                     bet["market_type"] = "3_balls"
@@ -1163,7 +1161,6 @@ def main():
               f"{trend:>5}  {win_str:>7}  {t10_str:>7}")
 
     # ── Value bets with real sportsbook odds ──────────────────
-    PREFERRED_BOOK = _get_preferred_book()
     for bt_label, bt_key in [("OUTRIGHT WINNER", "outright"),
                               ("TOP 5 FINISH", "top5"),
                               ("TOP 10 FINISH", "top10"),
@@ -1175,16 +1172,16 @@ def main():
             continue
 
         print()
-        print_header(f"VALUE BETS: {bt_label} ({PREFERRED_BOOK})")
-        print(f"  {'Player':<25} {'Rank':>4}  {'Odds':>10} "
+        print_header(f"VALUE BETS: {bt_label} (all books)")
+        print(f"  {'Player':<25} {'Rank':>4}  {'Book':<12} {'Odds':>8} "
               f"{'Model%':>7} {'Market%':>8} {'EV':>7}  Better Elsewhere?")
-        print("  " + "─" * 85)
+        print("  " + "─" * 98)
         for v in value_only[:10]:
             odds_str = f"+{v['best_odds']}" if v["best_odds"] > 0 else str(v["best_odds"])
             better = v.get("better_odds_note", "")
             if better:
                 better = f"→ {better}"
-            print(f"  {v['player_display']:<25} #{v['rank']:>2}  {odds_str:>10} "
+            print(f"  {v['player_display']:<25} #{v['rank']:>2}  {str(v.get('book') or v.get('best_book') or '—'):<12} {odds_str:>8} "
                   f"{v['model_prob']:>6.1%} {v['market_prob']:>7.1%} "
                   f"{v['ev']:>+6.1%}  {better}")
 

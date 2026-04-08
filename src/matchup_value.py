@@ -154,6 +154,8 @@ def _iter_book_odds(matchup: dict) -> list[tuple[str, int, int]]:
     for book_name, book_odds in books_data.items():
         if not isinstance(book_odds, dict):
             continue
+        if str(book_name).strip().lower() == "datagolf":
+            continue
         p1_price = book_odds.get("p1") or book_odds.get("odds_1") or book_odds.get("player_1")
         p2_price = book_odds.get("p2") or book_odds.get("odds_2") or book_odds.get("player_2")
         try:
