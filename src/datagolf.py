@@ -318,7 +318,7 @@ def backfill_rounds(tours: list[str] = None, years: list[int] = None) -> dict:
     Returns: {(tour, year): {"rounds_fetched": N, "rounds_new": N}}
     """
     if tours is None:
-        tours = ["pga"]
+        tours = ["pga", "liv"]
     if years is None:
         years = [2024, 2025, 2026]
 
@@ -663,20 +663,24 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     }
 
     # 0. Auto-update rounds for current year (fast — skips existing data)
+    #    Includes LIV rounds so rolling stats cover dual-tour players at majors.
     try:
         current_year = _dt.now().year
-        print(f"  Updating {tour.upper()} {current_year} round data...")
-        raw = fetch_historical_rounds(tour=tour, event_id="all", year=current_year)
-        rows = _parse_rounds_response(raw, tour, current_year)
-        before = db.get_rounds_count()
-        db.store_rounds(rows)
-        after = db.get_rounds_count()
-        new_rounds = after - before
-        summary["rounds_updated"] = new_rounds
-        if new_rounds > 0:
-            print(f"    → {new_rounds} new rounds added")
-        else:
-            print(f"    → Already up to date")
+        total_new = 0
+        for sync_tour in [tour, "liv"] if tour != "liv" else [tour]:
+            print(f"  Updating {sync_tour.upper()} {current_year} round data...")
+            raw = fetch_historical_rounds(tour=sync_tour, event_id="all", year=current_year)
+            rows = _parse_rounds_response(raw, sync_tour, current_year)
+            before = db.get_rounds_count()
+            db.store_rounds(rows)
+            after = db.get_rounds_count()
+            new_rounds = after - before
+            total_new += new_rounds
+            if new_rounds > 0:
+                print(f"    → {new_rounds} new {sync_tour.upper()} rounds added")
+            else:
+                print(f"    → {sync_tour.upper()} already up to date")
+        summary["rounds_updated"] = total_new
     except Exception as e:
         summary["errors"].append(f"rounds_update: {e}")
         print(f"    → Round update error (non-fatal): {e}")
