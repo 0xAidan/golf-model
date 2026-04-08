@@ -114,6 +114,112 @@ def test_extract_matchups_normalizes_pick_schema():
     assert rows[0]["model_prob"] == 0.58
 
 
+def test_extract_board_matchup_bets_preserves_all_books_and_filters_non_books():
+    from backtester import dashboard_runtime as runtime
+
+    rows = runtime._extract_board_matchup_bets(
+        [
+            {
+                "pick": "Player A",
+                "pick_key": "player_a",
+                "opponent": "Player B",
+                "opponent_key": "player_b",
+                "book": "bet365",
+                "odds": "+112",
+                "model_win_prob": 0.58,
+                "implied_prob": 0.47,
+                "ev": 0.09,
+                "ev_pct": "9.0%",
+                "reason": "Strong form edge",
+            },
+            {
+                "pick": "Player A",
+                "pick_key": "player_a",
+                "opponent": "Player B",
+                "opponent_key": "player_b",
+                "book": "bovada",
+                "odds": "+118",
+                "model_win_prob": 0.58,
+                "implied_prob": 0.46,
+                "ev": 0.11,
+                "ev_pct": "11.0%",
+                "reason": "Best number posted",
+            },
+            {
+                "pick": "Player A",
+                "pick_key": "player_a",
+                "opponent": "Player B",
+                "opponent_key": "player_b",
+                "book": "datagolf",
+                "odds": "+120",
+                "model_win_prob": 0.58,
+                "implied_prob": 0.45,
+                "ev": 0.12,
+                "ev_pct": "12.0%",
+                "reason": "Non-bettable reference",
+            },
+        ]
+    )
+
+    assert [row["book"] for row in rows] == ["bovada", "bet365"]
+    assert [row["ev"] for row in rows] == [0.11, 0.09]
+
+
+def test_extract_board_value_bets_keeps_value_rows_across_books():
+    from backtester import dashboard_runtime as runtime
+
+    rows = runtime._extract_board_value_bets(
+        {
+            "top10": [
+                {
+                    "player_display": "Player A",
+                    "player_key": "player_a",
+                    "bet_type": "top10",
+                    "odds": "+175",
+                    "book": "betonline",
+                    "ev": 0.14,
+                    "ev_pct": "14.0%",
+                    "is_value": True,
+                },
+                {
+                    "player_display": "Player A",
+                    "player_key": "player_a",
+                    "bet_type": "top10",
+                    "odds": "+170",
+                    "book": "bet365",
+                    "ev": 0.12,
+                    "ev_pct": "12.0%",
+                    "is_value": True,
+                },
+                {
+                    "player_display": "Player A",
+                    "player_key": "player_a",
+                    "bet_type": "top10",
+                    "odds": "+190",
+                    "book": "datagolf",
+                    "ev": 0.18,
+                    "ev_pct": "18.0%",
+                    "is_value": True,
+                },
+                {
+                    "player_display": "Player B",
+                    "player_key": "player_b",
+                    "bet_type": "top10",
+                    "odds": "+220",
+                    "book": "fanduel",
+                    "ev": 0.01,
+                    "ev_pct": "1.0%",
+                    "is_value": False,
+                },
+            ]
+        }
+    )
+
+    assert list(rows) == ["top10"]
+    assert [row["book"] for row in rows["top10"]] == ["betonline", "bet365"]
+    assert [row["ev"] for row in rows["top10"]] == [0.14, 0.12]
+
+
 def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     from backtester import dashboard_runtime as runtime
 
@@ -147,13 +253,37 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                         "odds": "+110",
                         "model_win_prob": 0.56,
                         "ev": 0.07,
-                    }
+                    },
+                    {
+                        "pick": "Next Player",
+                        "pick_key": "n_player",
+                        "opponent": "Opp Player",
+                        "opponent_key": "opp_player",
+                        "book": "betonline",
+                        "odds": "+118",
+                        "model_win_prob": 0.56,
+                        "ev": 0.09,
+                    },
                 ],
+                "value_bets": {
+                    "top10": [
+                        {
+                            "player_display": "Next Player",
+                            "player_key": "n_player",
+                            "bet_type": "top10",
+                            "odds": "+200",
+                            "book": "bovada",
+                            "ev": 0.13,
+                            "ev_pct": "13.0%",
+                            "is_value": True,
+                        }
+                    ]
+                },
                 "output_file": "output/next_event.md",
                 "matchup_diagnostics": {
                     "market_counts": {"tournament_matchups": {"raw_rows": 4, "reason_code": "ok"}},
-                    "selection_counts": {"input_rows": 4, "selected_rows": 1},
-                    "reason_codes": {"below_ev_threshold": 3},
+                    "selection_counts": {"input_rows": 4, "selected_rows": 2},
+                    "reason_codes": {"below_ev_threshold": 2},
                     "state": "edges_available",
                     "errors": [],
                 },
@@ -184,6 +314,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                     "ev": 0.05,
                 }
             ],
+            "value_bets": {"top20": []},
             "output_file": "output/current_event.md",
             "matchup_diagnostics": {
                 "market_counts": {"round_matchups": {"raw_rows": 2, "reason_code": "ok"}},
@@ -221,6 +352,8 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     assert snapshot["upcoming_tournament"]["generated_from"] == "upcoming_event_model"
     assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model"
     assert snapshot["upcoming_tournament"]["diagnostics"]["state"] == "edges_available"
+    assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets"]] == ["betonline", "draftkings"]
+    assert snapshot["upcoming_tournament"]["value_bets"]["top10"][0]["book"] == "bovada"
 
 
 def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tmp_path):
@@ -237,6 +370,11 @@ def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tm
                 "| Rank | Player | Composite | Course Fit | Form | Momentum | Trend |",
                 "|------|--------|-----------|------------|------|----------|-------|",
                 "| 1 | Rory McIlroy | 84.2 | 79.0 | 82.1 | 77.4 | ↑ |",
+                "",
+                "## Matchup Value Bets",
+                "| Pick | vs | Odds | Model Win% | EV | Conviction | Tier | Book | Why |",
+                "|------|----|------|------------|----|------------|------|------|-----|",
+                "| **Rory McIlroy** | Scottie Scheffler | +110 | 56.0% | 7.0% | 21 | GOOD | fanduel | Better number |",
             ]
         ),
         encoding="utf-8",
@@ -285,6 +423,9 @@ def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tm
     assert live["ranking_source"] == "previous_card_snapshot"
     assert live["source_card_path"] == str(card_path)
     assert live["rankings"][0]["player"] == "Rory McIlroy"
+    assert live["matchups"][0]["bookmaker"] == "fanduel"
+    assert live["matchup_bets"][0]["book"] == "fanduel"
+    assert live["matchup_bets"][0]["pick"] == "Rory McIlroy"
 
 
 def test_run_recompute_completed_event_never_equals_upcoming_when_completed_missing(monkeypatch, tmp_path):
