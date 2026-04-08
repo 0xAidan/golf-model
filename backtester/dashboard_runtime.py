@@ -166,10 +166,14 @@ def _extract_rankings(
 _NON_BOOK_SOURCES = {"datagolf"}
 
 
+def _is_non_book_source(value: Any) -> bool:
+    return str(value or "").strip().lower() in _NON_BOOK_SOURCES
+
+
 def _extract_matchups(matchups: list[dict], *, limit: int = 25) -> list[dict]:
     filtered = [
         m for m in (matchups or [])
-        if str(m.get("bookmaker") or m.get("book") or "").strip().lower() not in _NON_BOOK_SOURCES
+        if not _is_non_book_source(m.get("bookmaker") or m.get("book"))
     ]
     sorted_rows = sorted(filtered, key=lambda item: item.get("ev", 0), reverse=True)
     rows: list[dict] = []
@@ -196,6 +200,47 @@ def _extract_matchups(matchups: list[dict], *, limit: int = 25) -> list[dict]:
             }
         )
     return rows
+
+
+def _extract_board_matchup_bets(matchups: list[dict]) -> list[dict]:
+    filtered = [
+        dict(row)
+        for row in (matchups or [])
+        if not _is_non_book_source(row.get("book") or row.get("bookmaker"))
+    ]
+    filtered.sort(key=lambda item: item.get("ev", 0), reverse=True)
+
+    for row in filtered:
+        if not row.get("pick") and row.get("player"):
+            row["pick"] = row.get("player")
+        if not row.get("pick_key") and row.get("player_key"):
+            row["pick_key"] = row.get("player_key")
+        if row.get("book") is None and row.get("bookmaker") is not None:
+            row["book"] = row.get("bookmaker")
+        if row.get("odds") is None and row.get("market_odds") is not None:
+            row["odds"] = row.get("market_odds")
+        if row.get("model_win_prob") is None and row.get("model_prob") is not None:
+            row["model_win_prob"] = row.get("model_prob")
+        if row.get("ev_pct") is None and row.get("ev") is not None:
+            row["ev_pct"] = f"{float(row['ev']) * 100:.1f}%"
+        if not row.get("reason"):
+            row["reason"] = "Hydrated from always-on snapshot"
+
+    return filtered
+
+
+def _extract_board_value_bets(value_bets: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    extracted: dict[str, list[dict]] = {}
+    for market, bets in (value_bets or {}).items():
+        filtered = [
+            dict(bet)
+            for bet in bets
+            if bet.get("is_value") and not _is_non_book_source(bet.get("book") or bet.get("best_book"))
+        ]
+        filtered.sort(key=lambda item: item.get("ev", 0), reverse=True)
+        if filtered:
+            extracted[market] = filtered
+    return extracted
 
 
 def _event_slug(value: str | None) -> str:
@@ -528,6 +573,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             exclude_cut_players=False,
         ),
         "matchups": _extract_matchups(live_result.get("matchup_bets") or []),
+        "matchup_bets": _extract_board_matchup_bets(live_result.get("matchup_bets") or []),
+        "value_bets": _extract_board_value_bets(live_result.get("value_bets") or {}),
         "card_path": live_result.get("output_file") or live_result.get("card_filepath"),
         "source_card_path": live_result.get("output_file") or live_result.get("card_filepath"),
     }
@@ -603,6 +650,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "field_size": upcoming_result.get("field_size"),
             "rankings": _extract_rankings(upcoming_result.get("composite_results") or [], exclude_cut_players=False),
             "matchups": _extract_matchups(upcoming_result.get("matchup_bets") or []),
+            "matchup_bets": _extract_board_matchup_bets(upcoming_result.get("matchup_bets") or []),
+            "value_bets": _extract_board_value_bets(upcoming_result.get("value_bets") or {}),
             "card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
             "source_event_id": str(upcoming_row.get("event_id") or ""),
             "source_event_name": upcoming_event_name,
@@ -652,6 +701,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_ranking_source = "current_event_model"
     live_source_card_path = base_section.get("source_card_path")
     live_matchups = base_section.get("matchups") or []
+    live_board_matchup_bets = base_section.get("matchup_bets") or []
     if not live_is_active and previous_event_rankings:
         live_rankings = previous_event_rankings
         live_ranking_source = "previous_card_snapshot"
@@ -663,6 +713,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         card_matchups = _parse_matchups_from_card(previous_event_card_path)
         if card_matchups:
             live_matchups = card_matchups
+            live_board_matchup_bets = _extract_board_matchup_bets(card_matchups)
 
     snapshot = {
         "generated_at": generated_at,
@@ -681,6 +732,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "active": live_is_active,
             "rankings": live_rankings,
             "matchups": live_matchups,
+            "matchup_bets": live_board_matchup_bets,
             "source_event_id": str(
                 ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
             ),

@@ -8,6 +8,7 @@ import { CommandShell, MetricTile, SectionTitle, SurfaceCard } from "@/component
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
+import { buildHydratedPredictionRun, collectAvailableBooks, flattenSecondaryBets, NON_BOOK_SOURCES, normalizeSportsbook } from "@/lib/prediction-board"
 import { useLocalStorageState } from "@/lib/storage"
 import trackRecordData from "@/data/trackRecord.json"
 import type {
@@ -89,8 +90,8 @@ function App() {
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
   const availableBooks = useMemo(
-    () => collectAvailableBooks(effectivePredictionRun, liveSnapshot),
-    [effectivePredictionRun, liveSnapshot],
+    () => collectAvailableBooks(effectivePredictionRun),
+    [effectivePredictionRun],
   )
   const playerProfileQuery = useQuery({
     queryKey: ["player-profile", selectedPlayerKey, effectivePredictionRun?.tournament_id, effectivePredictionRun?.course_num],
@@ -1350,24 +1351,6 @@ function ChartColumnIcon() {
   return <div className="h-4 w-4 rounded-full bg-cyan-300/80" aria-hidden="true" />
 }
 
-function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
-  const entries = Object.entries(predictionRun?.value_bets ?? {})
-  return entries
-    .flatMap(([market, bets]) =>
-      bets
-        .filter((bet) => bet.is_value)
-        .map((bet) => ({
-          market,
-          player: bet.player_display ?? bet.player ?? "Unknown player",
-          odds: bet.odds,
-          ev: bet.ev,
-          confidence: bet.confidence,
-          book: normalizeSportsbook(bet.book ?? bet.best_book),
-        })),
-    )
-    .sort((left, right) => right.ev - left.ev)
-}
-
 function buildMatchupKey(matchup: MatchupBet) {
   return `${matchup.pick_key}-${matchup.opponent_key}-${matchup.market_type ?? "matchup"}`
 }
@@ -1381,49 +1364,6 @@ function secondaryBadgeLabel(market: string) {
     return "placement"
   }
   return "mispriced"
-}
-
-function normalizeSportsbook(value?: string | null): string {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-}
-
-const NON_BOOK_SOURCES = new Set(["datagolf"])
-
-function collectAvailableBooks(
-  predictionRun: PredictionRunResponse | null,
-  liveSnapshot: LiveRefreshSnapshot | null,
-): string[] {
-  const names = new Set<string>()
-  for (const matchup of predictionRun?.matchup_bets ?? []) {
-    const normalized = normalizeSportsbook(matchup.book)
-    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
-      names.add(normalized)
-    }
-  }
-  for (const bets of Object.values(predictionRun?.value_bets ?? {})) {
-    for (const bet of bets) {
-      if (!bet.is_value) continue
-      const normalized = normalizeSportsbook(bet.book ?? bet.best_book)
-      if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
-        names.add(normalized)
-      }
-    }
-  }
-  for (const row of liveSnapshot?.live_tournament?.matchups ?? []) {
-    const normalized = normalizeSportsbook(row.bookmaker)
-    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
-      names.add(normalized)
-    }
-  }
-  for (const row of liveSnapshot?.upcoming_tournament?.matchups ?? []) {
-    const normalized = normalizeSportsbook(row.bookmaker)
-    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
-      names.add(normalized)
-    }
-  }
-  return Array.from(names).sort()
 }
 
 function getMatchupStateMessage({
@@ -1451,84 +1391,6 @@ function getMatchupStateMessage({
     return "Matchup rows were received, but player mapping to model scores failed."
   }
   return "No matchup rows are available yet."
-}
-
-function buildHydratedPredictionRun(
-  snapshot: LiveRefreshSnapshot | null,
-  tab: "live" | "upcoming",
-): PredictionRunResponse | null {
-  if (!snapshot) {
-    return null
-  }
-  const source = tab === "live" ? (snapshot.live_tournament ?? snapshot.upcoming_tournament) : (snapshot.upcoming_tournament ?? snapshot.live_tournament)
-  if (!source) {
-    return null
-  }
-  const rankings = source.rankings ?? []
-  const matchups = (source.matchups ?? []).filter(
-    (row) => !NON_BOOK_SOURCES.has(normalizeSportsbook(row.bookmaker)),
-  )
-  return {
-    status: "hydrated",
-    event_name: source.event_name ?? "Event",
-    course_name: source.course_name ?? "",
-    field_size: source.field_size ?? rankings.length,
-    tournament_id: source.tournament_id,
-    course_num: source.course_num,
-    composite_results: rankings.map((row) => ({
-      player_key: row.player_key ?? normalize_name_for_ui(row.player),
-      player_display: row.player,
-      rank: Number(row.rank ?? 0),
-      composite: Number(row.composite ?? 0),
-      course_fit: Number(row.course_fit ?? 0),
-      form: Number(row.form ?? 0),
-      momentum: Number(row.momentum ?? 0),
-      momentum_direction: row.momentum_direction,
-      momentum_trend: row.momentum_trend != null ? Number(row.momentum_trend) : undefined,
-      course_confidence: row.course_confidence != null ? Number(row.course_confidence) : undefined,
-      course_rounds: row.course_rounds != null ? Number(row.course_rounds) : undefined,
-      weather_adjustment: row.weather_adjustment != null ? Number(row.weather_adjustment) : undefined,
-      details: row.details,
-    })),
-    matchup_bets: matchups.map((row) => {
-      const pickKey = row.player_key ?? normalize_name_for_ui(row.player)
-      const opponentKey = row.opponent_key ?? normalize_name_for_ui(row.opponent)
-      const ev = Number(row.ev ?? 0)
-      const impliedProb = Number(row.model_prob ?? 0.5) > 0 ? 1 / (1 + ev / Number(row.model_prob ?? 0.5)) : 0.5
-      return {
-        pick: row.player,
-        pick_key: pickKey,
-        opponent: row.opponent,
-        opponent_key: opponentKey,
-        odds: String(row.market_odds ?? "--"),
-        book: normalizeSportsbook(row.bookmaker) || "unknown",
-        model_win_prob: Number(row.model_prob ?? 0.5),
-        implied_prob: impliedProb,
-        ev,
-        ev_pct: `${(ev * 100).toFixed(1)}%`,
-        composite_gap: Number(row.composite_gap ?? 0),
-        form_gap: Number(row.form_gap ?? 0),
-        course_fit_gap: Number(row.course_fit_gap ?? 0),
-        reason: "Hydrated from always-on snapshot",
-        tier: row.tier,
-        conviction: row.conviction != null ? Number(row.conviction) : undefined,
-        pick_momentum: row.pick_momentum != null ? Number(row.pick_momentum) : undefined,
-        opp_momentum: row.opp_momentum != null ? Number(row.opp_momentum) : undefined,
-        momentum_aligned: row.momentum_aligned,
-        market_type: row.market_type,
-      }
-    }),
-    value_bets: {},
-    warnings: ["Hydrated from live snapshot. Run a manual prediction for full model details."],
-  }
-}
-
-function normalize_name_for_ui(value?: string): string {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
 }
 
 export default App

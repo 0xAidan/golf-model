@@ -99,6 +99,8 @@ export type LiveTournamentSnapshot = {
   active?: boolean
   rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]
+  matchup_bets?: MatchupBet[]
+  value_bets?: Record<string, SecondaryBet[]>
   card_path?: string | null
   source_card_path?: string | null
   diagnostics?: {
