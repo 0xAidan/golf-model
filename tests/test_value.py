@@ -1,12 +1,14 @@
-"""Tests for src/value.py probability normalization and odds validation."""
+"""Tests for src/value.py probability normalization, odds validation, and value rows."""
 
 import math
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.value import model_score_to_prob, MAX_REASONABLE_ODDS
+from src.value import MAX_REASONABLE_ODDS, find_value_bets, model_score_to_prob
 from src.odds import is_reasonable_odds
 
 
@@ -142,3 +144,65 @@ def test_is_reasonable_odds_defaults_for_unknown_market():
     """Unknown bet types should fall back to the outright max (30000)."""
     assert is_reasonable_odds(30000, "some_new_market")
     assert not is_reasonable_odds(30001, "some_new_market")
+
+
+def test_find_value_bets_returns_all_qualifying_books_for_same_player(monkeypatch):
+    monkeypatch.setattr(
+        "src.value.model_score_to_prob",
+        lambda score, all_scores, bet_type, field_strength="average": 0.6 if score > 70 else 0.08,
+    )
+    monkeypatch.setattr("src.value.get_calibration_correction", lambda prob: 1.0)
+
+    composite_results = [
+        {
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "rank": 1,
+            "composite": 82.0,
+            "course_fit": 75.0,
+            "form": 78.0,
+            "momentum": 58.0,
+        },
+        {
+            "player_key": "player_b",
+            "player_display": "Player B",
+            "rank": 2,
+            "composite": 48.0,
+            "course_fit": 45.0,
+            "form": 44.0,
+            "momentum": 42.0,
+        },
+    ]
+    odds_by_player = {
+        "player a": {
+            "player": "Player A",
+            "best_price": 140,
+            "best_book": "fanduel",
+            "implied_prob": 0.4167,
+            "preferred_price": 120,
+            "preferred_book": "bet365",
+            "preferred_implied_prob": 0.4545,
+            "market": "top20",
+            "all_books": [
+                {"bookmaker": "bet365", "price": 120, "implied_prob": 0.4545},
+                {"bookmaker": "fanduel", "price": 140, "implied_prob": 0.4167},
+            ],
+            "dg_model_prices": [],
+        }
+    }
+
+    result = find_value_bets(
+        composite_results,
+        odds_by_player,
+        bet_type="top20",
+        ev_threshold=0.01,
+    )
+
+    player_rows = [row for row in result if row["player_display"] == "Player A"]
+    books = {row["book"] for row in player_rows}
+
+    assert books == {"bet365", "fanduel"}
+    assert {row["best_book"] for row in player_rows} == {"bet365", "fanduel"}
+    assert {row["best_odds"] for row in player_rows} == {120, 140}
+    assert player_rows[0]["ev"] == pytest.approx(0.3248, abs=0.01)
+    assert player_rows[0]["ev"] > player_rows[1]["ev"]

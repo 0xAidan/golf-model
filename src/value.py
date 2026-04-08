@@ -384,7 +384,8 @@ def find_value_bets(composite_results: list[dict],
       2. DG baseline model probs
       3. Softmax approximation from composite scores
 
-    Returns list of value bets sorted by EV (best first).
+    Returns list of value bets sorted by EV (best first), with one row per
+    qualifying sportsbook line so the frontend can filter by book.
     """
     if ev_threshold is None:
         ev_threshold = MARKET_EV_THRESHOLDS.get(bet_type, DEFAULT_EV_THRESHOLD)
@@ -499,7 +500,6 @@ def find_value_bets(composite_results: list[dict],
         corrected_prob = max(0.001, min(0.999, corrected_prob))
         calibration_applied = abs(correction - 1.0) > 1e-6
 
-        market_prob = odds_entry["implied_prob"]
         # Placement markets: apply dead heat discount to prob before EV (conservative).
         # Use calibration-corrected prob for EV so value reflects empirical accuracy.
         prob_for_ev = corrected_prob
@@ -509,7 +509,6 @@ def find_value_bets(composite_results: list[dict],
             prob_for_ev = corrected_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP10)
         elif bet_type == "top20":
             prob_for_ev = corrected_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP20)
-        ev = compute_ev(prob_for_ev, odds_entry["best_price"])
 
         # Comparison logging: dg_only, model_only, blended (for isolation when changing blend/model)
         dg_only_prob = dg_prob_raw if dg_prob_raw is not None else None
@@ -520,78 +519,108 @@ def find_value_bets(composite_results: list[dict],
         )
         dg_prob_for_log = dg_only_prob
 
-        # Check if better odds exist at another book
-        best_available_price = odds_entry.get("best_price")
-        best_available_book = odds_entry.get("best_book")
-        better_odds_note = None
-
-        # Find the actual best across all books (might differ from preferred)
-        all_books = odds_entry.get("all_books", [])
-        for ab in all_books:
-            if ab["price"] > best_available_price:
-                best_available_price = ab["price"]
-                best_available_book = ab["bookmaker"]
-
-        if best_available_price > odds_entry["best_price"]:
-            better_price_str = f"+{best_available_price}" if best_available_price > 0 else str(best_available_price)
-            better_odds_note = f"{better_price_str} @ {best_available_book}"
-
-        # Hard gate: phantom EV filter -- >100% EV is miscalibration, not edge
-        if ev > config.PHANTOM_EV_THRESHOLD:
-            logger.warning(
-                "Phantom EV filtered: %s %s ev=%.1f%% (model_prob=%.4f vs market_prob=%.4f)",
-                pdisp, bet_type, ev * 100, model_prob, market_prob,
-            )
+        all_books = odds_entry.get("all_books") or []
+        book_rows = [
+            {
+                "bookmaker": str(book.get("bookmaker") or "").strip(),
+                "price": book.get("price"),
+                "implied_prob": book.get("implied_prob"),
+            }
+            for book in all_books
+            if str(book.get("bookmaker") or "").strip()
+            and book.get("price") is not None
+            and book.get("implied_prob") is not None
+        ]
+        if not book_rows and odds_entry.get("best_price") is not None and odds_entry.get("implied_prob") is not None:
+            book_rows = [{
+                "bookmaker": str(odds_entry.get("best_book") or "market").strip() or "market",
+                "price": odds_entry.get("best_price"),
+                "implied_prob": odds_entry.get("implied_prob"),
+            }]
+        if not book_rows:
             continue
 
-        # Cap EV at a credible maximum — anything higher is data error
-        if ev > MAX_CREDIBLE_EV:
-            ev = MAX_CREDIBLE_EV
-            ev_capped = True
-        else:
-            ev_capped = False
+        best_available = max(book_rows, key=lambda row: row["price"])
+        best_available_price = best_available["price"]
+        best_available_book = best_available["bookmaker"]
 
-        # Soft gate: model_prob > 2x market_prob -> speculative
-        prob_ratio = model_prob / max(market_prob, 0.0001)
-        speculative = prob_ratio > config.MODEL_MARKET_DISCREPANCY_THRESHOLD
+        for book_row in book_rows:
+            book_price = book_row["price"]
+            market_prob = book_row["implied_prob"]
+            book_name = book_row["bookmaker"]
 
-        # Flag if model prob is wildly different from market prob
-        # (>10x difference suggests one side has bad data)
-        suspicious = prob_ratio > 10.0 or prob_ratio < 0.1
+            # Skip entries with invalid/extreme odds for this market type
+            if not is_valid_odds(book_price, bet_type=bet_type):
+                continue
 
-        value_bets.append({
-            "player_key": pkey,
-            "player_display": pdisp,
-            "rank": r["rank"],
-            "composite": r["composite"],
-            "course_fit": r["course_fit"],
-            "form": r["form"],
-            "momentum": r["momentum"],
-            "model_prob": round(model_prob, 4),
-            "dg_prob": round(dg_prob_for_log, 4) if dg_prob_for_log else None,
-            "dg_only_prob": round(dg_only_prob, 4) if dg_only_prob is not None else None,
-            "model_only_prob": round(model_only_prob, 4),
-            "blended_prob": round(blended_prob, 4),
-            "market_prob": round(market_prob, 4),
-            "best_odds": odds_entry["best_price"],
-            "best_book": odds_entry["best_book"],
-            "best_available_odds": best_available_price,
-            "best_available_book": best_available_book,
-            "better_odds_note": better_odds_note,
-            "ev": round(ev, 4),
-            "ev_pct": f"{ev * 100:.1f}%",
-            "ev_capped": ev_capped,
-            "is_value": ev >= ev_threshold and not ev_capped and not speculative,
-            "speculative": speculative,
-            "needs_review": ev > 1.0,
-            "suspicious": suspicious,
-            "prob_source": prob_source,
-            "adaptation_state": adaptation["state"] if adaptation else "normal",
-            "stake_multiplier": adaptation["stake_multiplier"] if adaptation else 1.0,
-            "blend_dg_used": DG_BLEND_WEIGHT,
-            "blend_model_used": MODEL_BLEND_WEIGHT,
-            "calibration_applied": calibration_applied,
-        })
+            # Skip entries where market probability is suspiciously low
+            # (indicates bad/stale odds data, not a real opportunity)
+            if market_prob < MIN_MARKET_PROB:
+                continue
+
+            ev = compute_ev(prob_for_ev, book_price)
+            better_odds_note = None
+            if best_available_price > book_price:
+                better_price_str = f"+{best_available_price}" if best_available_price > 0 else str(best_available_price)
+                better_odds_note = f"{better_price_str} @ {best_available_book}"
+
+            # Hard gate: phantom EV filter -- >100% EV is miscalibration, not edge
+            if ev > config.PHANTOM_EV_THRESHOLD:
+                logger.warning(
+                    "Phantom EV filtered: %s %s ev=%.1f%% (model_prob=%.4f vs market_prob=%.4f)",
+                    pdisp, bet_type, ev * 100, model_prob, market_prob,
+                )
+                continue
+
+            # Cap EV at a credible maximum — anything higher is data error
+            if ev > MAX_CREDIBLE_EV:
+                ev = MAX_CREDIBLE_EV
+                ev_capped = True
+            else:
+                ev_capped = False
+
+            # Soft gate: model_prob > 2x market_prob -> speculative
+            prob_ratio = model_prob / max(market_prob, 0.0001)
+            speculative = prob_ratio > config.MODEL_MARKET_DISCREPANCY_THRESHOLD
+
+            # Flag if model prob is wildly different from market prob
+            # (>10x difference suggests one side has bad data)
+            suspicious = prob_ratio > 10.0 or prob_ratio < 0.1
+
+            value_bets.append({
+                "player_key": pkey,
+                "player_display": pdisp,
+                "rank": r["rank"],
+                "composite": r["composite"],
+                "course_fit": r["course_fit"],
+                "form": r["form"],
+                "momentum": r["momentum"],
+                "book": book_name,
+                "model_prob": round(model_prob, 4),
+                "dg_prob": round(dg_prob_for_log, 4) if dg_prob_for_log else None,
+                "dg_only_prob": round(dg_only_prob, 4) if dg_only_prob is not None else None,
+                "model_only_prob": round(model_only_prob, 4),
+                "blended_prob": round(blended_prob, 4),
+                "market_prob": round(market_prob, 4),
+                "best_odds": book_price,
+                "best_book": book_name,
+                "best_available_odds": best_available_price,
+                "best_available_book": best_available_book,
+                "better_odds_note": better_odds_note,
+                "ev": round(ev, 4),
+                "ev_pct": f"{ev * 100:.1f}%",
+                "ev_capped": ev_capped,
+                "is_value": ev >= ev_threshold and not ev_capped and not speculative,
+                "speculative": speculative,
+                "needs_review": ev > 1.0,
+                "suspicious": suspicious,
+                "prob_source": prob_source,
+                "adaptation_state": adaptation["state"] if adaptation else "normal",
+                "stake_multiplier": adaptation["stake_multiplier"] if adaptation else 1.0,
+                "blend_dg_used": DG_BLEND_WEIGHT,
+                "blend_model_used": MODEL_BLEND_WEIGHT,
+                "calibration_applied": calibration_applied,
+            })
 
     # Sort by EV descending
     value_bets.sort(key=lambda x: x["ev"], reverse=True)

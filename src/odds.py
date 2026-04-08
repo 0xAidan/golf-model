@@ -164,9 +164,8 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
     """
     For each player, find the best actionable odds.
 
-    If preferred_book is set, uses that book's odds for the primary price
-    (since that's where the user actually bets), and includes best-available
-    across all books as a reference.
+    If preferred_book is set, track that book's price as a hint/reference while
+    still keeping the best actionable line across all books as the primary price.
 
     DG model prices (DG-CH, DG-Base) are stored as reference but excluded
     from the "best odds" since you can't actually bet at those prices.
@@ -215,6 +214,7 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
             by_player[name]["all_books"].append({
                 "bookmaker": o["bookmaker"],
                 "price": o["price"],
+                "implied_prob": o["implied_prob"],
             })
             # Track best across all books
             if (by_player[name]["best_price"] is None
@@ -229,22 +229,11 @@ def get_best_odds(odds_list: list[dict], preferred_book: str = None) -> dict:
                 by_player[name]["preferred_price"] = o["price"]
                 by_player[name]["preferred_implied_prob"] = o["implied_prob"]
 
-    # When preferred book has odds, use those as primary (actionable) price.
-    # Fall back to best across all books if preferred book doesn't list that player.
-    for name, entry in by_player.items():
-        if entry["preferred_price"] is not None:
-            # User can bet at their preferred book
-            entry["best_price"] = entry["preferred_price"]
-            entry["best_book"] = preferred_book
-            entry["implied_prob"] = entry["preferred_implied_prob"]
-
     if filtered_count > 0:
         print(f"  ⚠ Filtered {filtered_count} odds entries with unreasonable values (>{MAX_REASONABLE_ODDS})")
 
-    # Remove players that have no real sportsbook odds
+    # Remove players that have no real sportsbook odds.
+    # Keep preferred-book prices as a hint, but do not gate or override the
+    # returned market rows so the frontend can filter across all books.
     out = {k: v for k, v in by_player.items() if v["best_price"] is not None}
-    # Only return players available at the preferred book (so we only output bettable lines there)
-    preferred_only = os.environ.get("PREFERRED_BOOK_ONLY", "true").lower() in ("1", "true", "yes")
-    if preferred_only and preferred_book:
-        out = {k: v for k, v in out.items() if v.get("preferred_price") is not None}
     return out
