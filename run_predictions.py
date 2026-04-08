@@ -1106,7 +1106,7 @@ def main():
 
     # AI betting decisions are disabled — bet selection is purely quantitative.
     # See ai_brain.make_betting_decisions() for rationale.
-            print(f"  Value bets still shown below without AI portfolio optimization")
+    print("  Value bets still shown below without AI portfolio optimization")
 
     # ── Exposure filtering (Phase 4A) ──────────────────────────
     try:
