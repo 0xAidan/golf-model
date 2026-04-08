@@ -15,8 +15,14 @@ Inputs (from metrics where data_mode = 'recent_form'):
 Output: per-player form_score (0-100, higher = better form)
 """
 
+from __future__ import annotations
+
+import os
+from datetime import date, datetime
+
 from src import db
 from src import config
+from src.player_normalizer import normalize_name
 
 
 def _rank_to_score(rank: float, field_size: int) -> float:
@@ -92,6 +98,169 @@ def _sample_size_confidence(rounds_used: int, threshold: int = 8) -> float:
     if rounds_used is None or rounds_used <= 0:
         return 0.0
     return min(1.0, rounds_used / threshold)
+
+
+def _coerce_date(value: str | date | datetime | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text[:10]).date()
+    except ValueError:
+        return None
+
+
+def _get_tournament_date(tournament_id: int) -> date | None:
+    conn = db.get_conn()
+    row = conn.execute(
+        "SELECT date FROM tournaments WHERE id = ?",
+        (tournament_id,),
+    ).fetchone()
+    conn.close()
+    return _coerce_date(row["date"] if row else None)
+
+
+def _load_manual_availability_overrides() -> dict[str, dict]:
+    path = getattr(config, "PLAYER_AVAILABILITY_OVERRIDES_PATH", "")
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        import yaml
+    except ImportError:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle) or {}
+    except OSError:
+        return {}
+
+    players = raw.get("players") if isinstance(raw, dict) else {}
+    if not isinstance(players, dict):
+        return {}
+
+    normalized: dict[str, dict] = {}
+    for player_key, payload in players.items():
+        normalized_key = normalize_name(player_key)
+        if not normalized_key or not isinstance(payload, dict):
+            continue
+        normalized[normalized_key] = payload
+    return normalized
+
+
+def _compute_availability_adjustment(
+    *,
+    player_key: str,
+    recent_rounds: list[dict],
+    tournament_date: str | date | datetime | None,
+    manual_overrides: dict[str, dict] | None,
+) -> dict:
+    """Conservative ranking-only penalty for layoffs, thin samples, and manual watchlists."""
+    tournament_day = _coerce_date(tournament_date)
+    override = (manual_overrides or {}).get(player_key, {})
+
+    latest_round_day = None
+    for round_row in recent_rounds or []:
+        round_day = _coerce_date(round_row.get("event_completed"))
+        if round_day and (latest_round_day is None or round_day > latest_round_day):
+            latest_round_day = round_day
+
+    days_since_last_round = None
+    if tournament_day and latest_round_day:
+        days_since_last_round = max(0, (tournament_day - latest_round_day).days)
+
+    layoff_adjustment = 0.0
+    flags: list[str] = []
+    notes: list[str] = []
+
+    if days_since_last_round is not None:
+        if days_since_last_round >= config.RANKING_LAYOFF_WARNING_DAYS:
+            flags.append("layoff_watch")
+            notes.append(f"last competitive round {days_since_last_round} days ago")
+        if days_since_last_round >= config.RANKING_LAYOFF_PENALTY_DAYS:
+            flags.append("layoff_risk")
+            days_over = max(0, days_since_last_round - config.RANKING_LAYOFF_PENALTY_DAYS)
+            layoff_adjustment = -min(
+                config.RANKING_LAYOFF_MAX_PENALTY,
+                getattr(config, "RANKING_LAYOFF_BASE_PENALTY", 4.0)
+                + (
+                    max(
+                        0.0,
+                        config.RANKING_LAYOFF_MAX_PENALTY
+                        - getattr(config, "RANKING_LAYOFF_BASE_PENALTY", 4.0),
+                    )
+                    * (
+                        days_over
+                        / max(1, config.RANKING_LAYOFF_MAX_DAYS - config.RANKING_LAYOFF_PENALTY_DAYS)
+                    )
+                ),
+            )
+
+    recent_rounds_count = len(recent_rounds or [])
+    comparable_tours = {
+        str(tour).strip().lower()
+        for tour in getattr(config, "RANKING_COMPARABLE_TOURS", ("pga", "liv", "euro"))
+    }
+    comparable_recent_rounds = sum(
+        1
+        for round_row in (recent_rounds or [])
+        if str(round_row.get("tour") or "").strip().lower() in comparable_tours
+    )
+
+    coverage_adjustment = 0.0
+    low_coverage_gap = max(0, config.RANKING_LOW_COVERAGE_ROUNDS - recent_rounds_count)
+    comparable_gap = max(0, config.RANKING_COMPARABLE_RECENT_ROUNDS_MIN - comparable_recent_rounds)
+    if low_coverage_gap or comparable_gap:
+        coverage_penalty_units = max(
+            low_coverage_gap / max(1, config.RANKING_LOW_COVERAGE_ROUNDS),
+            comparable_gap / max(1, config.RANKING_COMPARABLE_RECENT_ROUNDS_MIN),
+        )
+        coverage_adjustment = -min(
+            config.RANKING_LOW_COVERAGE_MAX_PENALTY,
+            config.RANKING_LOW_COVERAGE_MAX_PENALTY * coverage_penalty_units,
+        )
+        flags.append("low_coverage")
+        notes.append(
+            f"{recent_rounds_count} recent rounds on file, {comparable_recent_rounds} on comparable tours"
+        )
+
+    manual_adjustment = 0.0
+    if override:
+        try:
+            manual_adjustment = float(override.get("score_adjustment") or 0.0)
+        except (TypeError, ValueError):
+            manual_adjustment = 0.0
+        status = str(override.get("status") or "").strip()
+        if status:
+            flags.append(status)
+        note = str(override.get("note") or "").strip()
+        if note:
+            notes.append(note)
+
+    seen_flags: set[str] = set()
+    ordered_flags: list[str] = []
+    for flag in flags:
+        if flag and flag not in seen_flags:
+            seen_flags.add(flag)
+            ordered_flags.append(flag)
+
+    return {
+        "score_adjustment": round(layoff_adjustment + coverage_adjustment + manual_adjustment, 2),
+        "layoff_adjustment": round(layoff_adjustment, 2),
+        "coverage_adjustment": round(coverage_adjustment, 2),
+        "manual_adjustment": round(manual_adjustment, 2),
+        "days_since_last_round": days_since_last_round,
+        "last_round_date": latest_round_day.isoformat() if latest_round_day else None,
+        "recent_rounds_count": recent_rounds_count,
+        "comparable_recent_rounds": comparable_recent_rounds,
+        "flags": ordered_flags,
+        "notes": notes,
+    }
 
 
 def _get_player_round_counts(tournament_id: int) -> dict:
@@ -231,6 +400,8 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
 
     # Get actual round counts per player for sample size adjustment
     player_round_counts = _get_player_round_counts(tournament_id)
+    tournament_date = _get_tournament_date(tournament_id)
+    manual_overrides = _load_manual_availability_overrides()
 
     # Collect all players
     all_players = set()
@@ -500,11 +671,34 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
             component_scores = {"sim": sim_score}
 
         score = sum(norm_weights[k] * component_scores[k] for k in norm_weights)
+        recent_rounds = db.get_player_recent_rounds_by_key(
+            pk,
+            limit=getattr(config, "RANKING_RECENT_ROUNDS_LOOKBACK", 24),
+        )
+        availability = _compute_availability_adjustment(
+            player_key=pk,
+            recent_rounds=recent_rounds,
+            tournament_date=tournament_date,
+            manual_overrides=manual_overrides,
+        )
+        score = max(0.0, min(100.0, score + availability["score_adjustment"]))
+        components["availability_adjustment"] = availability["score_adjustment"]
+        components["layoff_adjustment"] = availability["layoff_adjustment"]
+        components["coverage_adjustment"] = availability["coverage_adjustment"]
+        if availability["manual_adjustment"]:
+            components["manual_adjustment"] = availability["manual_adjustment"]
+        if availability["days_since_last_round"] is not None:
+            components["days_since_last_round"] = float(availability["days_since_last_round"])
+        components["recent_rounds_count"] = float(availability["recent_rounds_count"])
+        components["comparable_recent_rounds"] = float(availability["comparable_recent_rounds"])
 
         results[pk] = {
             "score": round(score, 2),
             "components": {k: round(v, 2) for k, v in components.items()},
             "windows_used": windows_used,
+            "flags": availability["flags"],
+            "notes": availability["notes"],
+            "availability": availability,
         }
 
     return results

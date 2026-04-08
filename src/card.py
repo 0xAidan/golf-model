@@ -95,6 +95,23 @@ def _reason(r: dict) -> str:
     return "; ".join(parts) if parts else "composite edge"
 
 
+def _write_ranking_flags(lines: list[str], composite_results: list[dict]) -> None:
+    flagged_rows = [
+        row for row in (composite_results or [])[:20]
+        if row.get("form_flags") or row.get("form_notes")
+    ]
+    if not flagged_rows:
+        return
+
+    lines.append("### Ranking flags")
+    lines.append("")
+    for row in flagged_rows:
+        flags = ", ".join(row.get("form_flags") or []) or "watch"
+        notes = "; ".join(row.get("form_notes") or []) or "flagged for review"
+        lines.append(f"- **{row['player_display']}** — {flags}: {notes}")
+    lines.append("")
+
+
 def generate_card(tournament_name: str,
                   course_name: str,
                   composite_results: list[dict],
@@ -238,6 +255,7 @@ def generate_card(tournament_name: str,
             f"| {r['course_fit']:.1f} | {r['form']:.1f} | {r['momentum']:.1f} | {trend_symbol} |"
         )
     lines.append("")
+    _write_ranking_flags(lines, composite_results)
     lines.append("</details>")
     lines.append("")
 

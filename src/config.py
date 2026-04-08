@@ -163,6 +163,23 @@ MOMENTUM_ENABLED = True
 # AI brain: cap adjustments to +/-3 (tightened from +/-5)
 AI_ADJUSTMENT_CAP = 3.0
 
+# Ranking trust hardening: conservative layoff / low-coverage penalties
+RANKING_LAYOFF_WARNING_DAYS = 28
+RANKING_LAYOFF_PENALTY_DAYS = 31
+RANKING_LAYOFF_MAX_DAYS = 49
+RANKING_LAYOFF_BASE_PENALTY = 4.0
+RANKING_LAYOFF_MAX_PENALTY = 8.0
+RANKING_LOW_COVERAGE_ROUNDS = 8
+RANKING_LOW_COVERAGE_MAX_PENALTY = 4.0
+RANKING_COMPARABLE_RECENT_ROUNDS_MIN = 4
+RANKING_RECENT_ROUNDS_LOOKBACK = 24
+RANKING_COMPARABLE_TOURS = ("pga", "liv", "euro")
+PLAYER_AVAILABILITY_OVERRIDES_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "data",
+    "player_availability_overrides.yaml",
+)
+
 # ---------------------------------------------------------------------------
 # Weather (from models/weather.py)
 # ---------------------------------------------------------------------------

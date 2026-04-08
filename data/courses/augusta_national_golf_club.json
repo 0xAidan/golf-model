@@ -1,0 +1,33 @@
+{
+  "course_facts": {
+    "tournament": "Masters Tournament",
+    "course_name": "Augusta National Golf Club",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": [
+      "Muirfield Village",
+      "East Lake Golf Club",
+      "Quail Hollow Club"
+    ]
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.3604,
+    "app_impact": 0.226,
+    "arg_impact": 0.1842,
+    "putt_impact": 0.1488,
+    "total_fit_spread": 0.3105,
+    "sg_category_spread": 0.4959
+  },
+  "characteristics": {
+    "grass": "bentgrass",
+    "climate": "southeast",
+    "sg_ott_emphasis": "average",
+    "sg_app_emphasis": "very_difficult",
+    "scoring": "difficult"
+  }
+}

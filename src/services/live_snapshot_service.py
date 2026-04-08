@@ -37,6 +37,8 @@ def run_snapshot_analysis(
         include_methodology=False,
         mode=mode,
         strategy_source="config",
+        strategy_meta_override=strategy_meta,
+        apply_ai_adjustments=False,
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]

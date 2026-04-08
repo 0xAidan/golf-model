@@ -93,3 +93,39 @@ def test_foreign_keys_enabled():
     fk = conn.execute("PRAGMA foreign_keys").fetchone()
     conn.close()
     assert fk[0] == 1, "Foreign keys should be ON"
+
+
+def test_get_player_display_names_prefers_human_readable_name():
+    tid = db.get_or_create_tournament("Display Name Priority", year=2026)
+    db.store_metrics(
+        [
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "fifa_laopakdee",
+                "player_display": "fifa_laopakdee",
+                "metric_category": "strokes_gained",
+                "data_mode": "recent_form",
+                "round_window": "8",
+                "metric_name": "SG:TOT",
+                "metric_value": 42.0,
+                "metric_text": None,
+            },
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "fifa_laopakdee",
+                "player_display": "Fifa Laopakdee",
+                "metric_category": "sim",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "Win %",
+                "metric_value": 0.2,
+                "metric_text": None,
+            },
+        ]
+    )
+
+    display_names = db.get_player_display_names(tid)
+
+    assert display_names["fifa_laopakdee"] == "Fifa Laopakdee"

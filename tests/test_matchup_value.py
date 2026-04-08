@@ -1,7 +1,11 @@
 """Tests for real matchup value calculator."""
 import pytest
 from src.odds import american_to_implied_prob
-from src.matchup_value import find_matchup_value_bets, _parse_best_odds
+from src.matchup_value import (
+    _extract_dg_prob_from_matchup,
+    _parse_best_odds,
+    find_matchup_value_bets,
+)
 
 
 def test_american_to_implied_prob_positive():
@@ -297,3 +301,59 @@ def test_find_matchup_value_bets_diagnostics_for_no_edges(monkeypatch):
     assert bets == []
     assert diagnostics["selection_state"] == "market_available_no_edges"
     assert diagnostics["reason_codes"]["below_ev_threshold"] >= 1
+
+
+def test_extract_dg_prob_from_matchup_uses_nested_datagolf_prices():
+    matchup = {
+        "odds": {
+            "bet365": {"p1": -110, "p2": -110},
+            "datagolf": {"p1": -125, "p2": 105},
+        }
+    }
+
+    p1_prob = _extract_dg_prob_from_matchup(matchup, "p1")
+    p2_prob = _extract_dg_prob_from_matchup(matchup, "p2")
+
+    assert p1_prob == pytest.approx(0.533, abs=0.01)
+    assert p2_prob == pytest.approx(0.467, abs=0.01)
+
+
+def test_find_matchup_value_bets_falls_back_to_nested_datagolf_prices(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    composite = [
+        {
+            "player_key": "patrick_cantlay",
+            "player_display": "Patrick Cantlay",
+            "composite": 74.0,
+            "form": 75.0,
+            "course_fit": 70.0,
+            "momentum": 58.0,
+        },
+        {
+            "player_key": "jake_knapp",
+            "player_display": "Jake Knapp",
+            "composite": 60.0,
+            "form": 60.0,
+            "course_fit": 55.0,
+            "momentum": 40.0,
+        },
+    ]
+    matchups = [
+        {
+            "p1_player_name": "Cantlay, Patrick",
+            "p2_player_name": "Knapp, Jake",
+            "odds": {
+                "bet365": {"p1": -110, "p2": -110},
+                "datagolf": {"p1": -125, "p2": 105},
+            },
+        }
+    ]
+
+    result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01, required_book="bet365")
+
+    assert result
+    assert result[0]["pick"] == "Patrick Cantlay"
+    assert result[0]["dg_win_prob"] == pytest.approx(0.533, abs=0.01)
+    assert result[0]["platt_win_prob"] == pytest.approx(0.668, abs=0.01)
+    assert result[0]["model_win_prob"] == pytest.approx(0.566, abs=0.02)

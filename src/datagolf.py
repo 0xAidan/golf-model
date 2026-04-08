@@ -22,6 +22,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from src import db
+from src.field_selection import extract_field_player_keys, normalize_field_entries
 from src.player_normalizer import normalize_name, display_name
 
 logger = logging.getLogger(__name__)
@@ -318,7 +319,7 @@ def backfill_rounds(tours: list[str] = None, years: list[int] = None) -> dict:
     Returns: {(tour, year): {"rounds_fetched": N, "rounds_new": N}}
     """
     if tours is None:
-        tours = ["pga"]
+        tours = ["pga", "liv"]
     if years is None:
         years = [2024, 2025, 2026]
 
@@ -550,46 +551,28 @@ def fetch_field_updates(tour: str = "pga") -> list[dict]:
 def _store_field_as_metrics(field_data: list | dict,
                             tournament_id: int) -> int:
     """Store field updates (salaries, tee times) as meta metrics."""
-    if isinstance(field_data, list):
-        player_list = field_data
-    elif isinstance(field_data, dict):
-        player_list = []
-        for key in ["field", "data", "players"]:
-            if key in field_data and isinstance(field_data[key], list):
-                player_list = field_data[key]
-                break
-        if not player_list and "player_name" in field_data:
-            player_list = [field_data]
-    else:
-        return 0
-
-    if not player_list:
+    player_entries = normalize_field_entries(field_data)
+    if not player_entries:
         return 0
 
     import_id = db.log_csv_import(
         tournament_id, "datagolf_field_updates", "meta",
-        "recent_form", "all", len(player_list), source="datagolf"
+        "recent_form", "all", len(player_entries), source="datagolf"
     )
 
     metric_rows = []
-    for p in player_list:
-        if not isinstance(p, dict):
-            continue
-        raw_name = p.get("player_name", "")
-        pkey = normalize_name(raw_name)
-        pdisp = display_name(raw_name)
-        if not pkey:
-            continue
+    for entry in player_entries:
+        pkey = entry["player_key"]
+        pdisp = entry["player_display"]
 
         meta_fields = {
-            "draftkings": p.get("dk_salary") or p.get("draftkings_salary"),
-            "fanduel": p.get("fd_salary") or p.get("fanduel_salary"),
-            "teetime": None,  # stored as text
+            "draftkings": entry.get("draftkings"),
+            "fanduel": entry.get("fanduel"),
         }
-        tee_time_text = p.get("tee_time") or p.get("teetime")
 
         for metric_name, value in meta_fields.items():
-            if metric_name == "teetime" and tee_time_text:
+            fval = _safe_float(value)
+            if fval is not None:
                 metric_rows.append({
                     "tournament_id": tournament_id,
                     "csv_import_id": import_id,
@@ -598,28 +581,40 @@ def _store_field_as_metrics(field_data: list | dict,
                     "metric_category": "meta",
                     "data_mode": "recent_form",
                     "round_window": "all",
-                    "metric_name": "teetime",
-                    "metric_value": None,
-                    "metric_text": str(tee_time_text),
+                    "metric_name": metric_name,
+                    "metric_value": fval,
+                    "metric_text": None,
                 })
-            else:
-                fval = _safe_float(value)
-                if fval is not None:
-                    metric_rows.append({
-                        "tournament_id": tournament_id,
-                        "csv_import_id": import_id,
-                        "player_key": pkey,
-                        "player_display": pdisp,
-                        "metric_category": "meta",
-                        "data_mode": "recent_form",
-                        "round_window": "all",
-                        "metric_name": metric_name,
-                        "metric_value": fval,
-                        "metric_text": None,
-                    })
+
+        if entry.get("teetime"):
+            metric_rows.append({
+                "tournament_id": tournament_id,
+                "csv_import_id": import_id,
+                "player_key": pkey,
+                "player_display": pdisp,
+                "metric_category": "meta",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "teetime",
+                "metric_value": None,
+                "metric_text": str(entry["teetime"]),
+            })
+
+        metric_rows.append({
+            "tournament_id": tournament_id,
+            "csv_import_id": import_id,
+            "player_key": pkey,
+            "player_display": pdisp,
+            "metric_category": "meta",
+            "data_mode": "recent_form",
+            "round_window": "all",
+            "metric_name": "field_status",
+            "metric_value": None,
+            "metric_text": "confirmed",
+        })
 
         # Store dg_id as meta for cross-referencing
-        dg_id_val = _safe_float(p.get("dg_id"))
+        dg_id_val = _safe_float(entry.get("dg_id"))
         if dg_id_val is not None:
             metric_rows.append({
                 "tournament_id": tournament_id,
@@ -657,26 +652,31 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     summary = {
         "predictions": 0,
         "decompositions": 0,
+        "decompositions_raw": None,
         "field": 0,
         "rounds_updated": 0,
         "errors": [],
     }
 
     # 0. Auto-update rounds for current year (fast — skips existing data)
+    #    Includes LIV rounds so rolling stats cover dual-tour players at majors.
     try:
         current_year = _dt.now().year
-        print(f"  Updating {tour.upper()} {current_year} round data...")
-        raw = fetch_historical_rounds(tour=tour, event_id="all", year=current_year)
-        rows = _parse_rounds_response(raw, tour, current_year)
-        before = db.get_rounds_count()
-        db.store_rounds(rows)
-        after = db.get_rounds_count()
-        new_rounds = after - before
-        summary["rounds_updated"] = new_rounds
-        if new_rounds > 0:
-            print(f"    → {new_rounds} new rounds added")
-        else:
-            print(f"    → Already up to date")
+        total_new = 0
+        for sync_tour in [tour, "liv"] if tour != "liv" else [tour]:
+            print(f"  Updating {sync_tour.upper()} {current_year} round data...")
+            raw = fetch_historical_rounds(tour=sync_tour, event_id="all", year=current_year)
+            rows = _parse_rounds_response(raw, sync_tour, current_year)
+            before = db.get_rounds_count()
+            db.store_rounds(rows)
+            after = db.get_rounds_count()
+            new_rounds = after - before
+            total_new += new_rounds
+            if new_rounds > 0:
+                print(f"    → {new_rounds} new {sync_tour.upper()} rounds added")
+            else:
+                print(f"    → {sync_tour.upper()} already up to date")
+        summary["rounds_updated"] = total_new
     except Exception as e:
         summary["errors"].append(f"rounds_update: {e}")
         print(f"    → Round update error (non-fatal): {e}")
@@ -696,6 +696,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     try:
         print("  Fetching DG player decompositions...")
         decomps = fetch_decompositions(tour)
+        summary["decompositions_raw"] = decomps
         n = _store_decompositions_as_metrics(decomps, tournament_id)
         summary["decompositions"] = n
         print(f"    → {n} decomposition metrics stored")
@@ -709,6 +710,8 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
         field = fetch_field_updates(tour)
         n = _store_field_as_metrics(field, tournament_id)
         summary["field"] = n
+        summary["field_player_keys"] = extract_field_player_keys(field)
+        summary["field_player_count"] = len(summary["field_player_keys"])
         print(f"    → {n} field metrics stored")
     except Exception as e:
         summary["errors"].append(f"field: {e}")

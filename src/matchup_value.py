@@ -120,6 +120,25 @@ def _parse_book_odds(matchup: dict, book: str) -> tuple[int | None, int | None]:
     return (None, None)
 
 
+def _extract_dg_prob_from_matchup(matchup: dict, pick_side: str) -> float | None:
+    """Fallback DG probability from nested `datagolf` prices in the matchup payload."""
+    p1_odds, p2_odds = _parse_book_odds(matchup, "datagolf")
+    if p1_odds is None or p2_odds is None:
+        return None
+    p1_prob = american_to_implied_prob(p1_odds)
+    p2_prob = american_to_implied_prob(p2_odds)
+    if p1_prob <= 0 or p2_prob <= 0:
+        return None
+    total = p1_prob + p2_prob
+    if total <= 0:
+        return None
+    if pick_side == "p1":
+        return p1_prob / total
+    if pick_side == "p2":
+        return p2_prob / total
+    return None
+
+
 def _iter_book_odds(matchup: dict) -> list[tuple[str, int, int]]:
     """Return all books that have valid two-sided prices for a matchup."""
     books: list[tuple[str, int, int]] = []
@@ -313,6 +332,7 @@ def find_matchup_value_bets(composite_results: list[dict],
 
         # Blend with DG's own matchup model probability if available
         model_win_prob = platt_win_prob
+        dg_prob = None
         if dg_pairings:
             dg_pair = dg_pairings.get((pick_data["player_key"], opp_data["player_key"]))
             if not dg_pair:
@@ -321,14 +341,17 @@ def find_matchup_value_bets(composite_results: list[dict],
                     dg_pair = {"p1_win_prob": dg_pair_rev["p2_win_prob"], "p2_win_prob": dg_pair_rev["p1_win_prob"]}
             if dg_pair:
                 dg_prob = dg_pair["p1_win_prob"]
-                model_win_prob = (
-                    config.DG_MATCHUP_BLEND_WEIGHT * dg_prob
-                    + config.MODEL_MATCHUP_BLEND_WEIGHT * platt_win_prob
-                )
-                if config.REQUIRE_DG_MODEL_AGREEMENT:
-                    if (dg_prob > 0.5) != (platt_win_prob > 0.5):
-                        diagnostics["reason_codes"]["dg_model_disagreement"] += 1
-                        continue
+        if dg_prob is None:
+            dg_prob = _extract_dg_prob_from_matchup(matchup, pick_side)
+        if dg_prob is not None:
+            model_win_prob = (
+                config.DG_MATCHUP_BLEND_WEIGHT * dg_prob
+                + config.MODEL_MATCHUP_BLEND_WEIGHT * platt_win_prob
+            )
+            if config.REQUIRE_DG_MODEL_AGREEMENT:
+                if (dg_prob > 0.5) != (platt_win_prob > 0.5):
+                    diagnostics["reason_codes"]["dg_model_disagreement"] += 1
+                    continue
 
         # Gaps from the pick's perspective
         pick_form = pick_data.get("form", 50)
@@ -358,7 +381,9 @@ def find_matchup_value_bets(composite_results: list[dict],
                 reasons.append(f"opp {opp_dir}")
 
         dg_prob_for_conviction = None
-        if dg_pairings:
+        if dg_prob is not None:
+            dg_prob_for_conviction = dg_prob
+        elif dg_pairings:
             dg_pair_check = dg_pairings.get((pick_data["player_key"], opp_data["player_key"]))
             if not dg_pair_check:
                 dg_pair_rev_check = dg_pairings.get((opp_data["player_key"], pick_data["player_key"]))
@@ -412,6 +437,8 @@ def find_matchup_value_bets(composite_results: list[dict],
                 "opponent_key": opp_data["player_key"],
                 "odds": pick_odds,
                 "book": str(book_name).strip().lower(),
+                "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
+                "platt_win_prob": round(platt_win_prob, 4),
                 "model_win_prob": round(model_win_prob, 4),
                 "implied_prob": round(implied_prob, 4),
                 "ev": round(ev, 4),
@@ -422,6 +449,8 @@ def find_matchup_value_bets(composite_results: list[dict],
                 "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
                 "adaptation_state": adaptation["state"] if adaptation else "normal",
                 "stake_multiplier": stake_mult,
+                "blend_dg_used": getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0),
+                "blend_model_used": getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 0.0),
                 "tier": tier,
                 "pick_momentum": round(pick_momentum, 1),
                 "opp_momentum": round(opp_momentum, 1),

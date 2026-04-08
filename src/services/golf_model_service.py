@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Optional
 
 from src import db
+from src.field_selection import filter_rows_to_field
 from src.player_normalizer import normalize_name, display_name
 from src.strategy_resolution import build_pipeline_strategy_config
 
@@ -51,6 +52,7 @@ class GolfModelService:
         include_methodology: bool = True,
         strategy_source: str = "registry",
         apply_ai_adjustments: bool = True,
+        strategy_meta_override: dict | None = None,
     ) -> dict:
         """
         Run the complete prediction pipeline.
@@ -148,14 +150,27 @@ class GolfModelService:
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
         elif strategy_source == "config" and self.strategy_config:
-            result["strategy_meta"] = self._strategy_meta_from_pipeline(self.strategy_config)
+            pipeline_meta = self._strategy_meta_from_pipeline(self.strategy_config)
+            if strategy_meta_override:
+                merged_meta = dict(strategy_meta_override)
+                merged_meta.setdefault("runtime_settings", pipeline_meta.get("runtime_settings"))
+                result["strategy_meta"] = merged_meta
+            else:
+                result["strategy_meta"] = pipeline_meta
 
         # Step 8: Run composite model
         print("  Running composite model...")
         weights = self._get_weights(course_num)
         result["pipeline_weights"] = weights
         composite = self._run_composite(tid, weights, course_name)
+        composite, composite_field_audit = self._filter_composite_to_field(composite, field_keys)
         result["composite_results"] = composite
+        field_validation.update({
+            "scored_players": len(composite),
+            "score_extras": composite_field_audit.get("extra_player_keys", []),
+            "score_missing": composite_field_audit.get("missing_player_keys", []),
+        })
+        result["field_validation"] = field_validation
 
         if not composite:
             result["status"] = "error"
@@ -182,6 +197,7 @@ class GolfModelService:
             if ai_pre_analysis:
                 if apply_ai_adjustments:
                     composite = self._apply_ai_adjustments(composite, ai_pre_analysis)
+                    composite, _ = self._filter_composite_to_field(composite, field_keys)
                     result["composite_results"] = composite
                     print("    → AI adjustments applied")
                 else:
@@ -242,9 +258,9 @@ class GolfModelService:
 
         run_quality = compute_run_quality(value_bets)
         result["run_quality"] = run_quality
-        picks_allowed = run_quality["pass"]
+        placement_logging_allowed = run_quality["pass"]
 
-        if not picks_allowed:
+        if not placement_logging_allowed:
             print(f"  ⚠️  Run quality check FAILED: {', '.join(run_quality['issues'])}")
             print("      Picks will NOT be logged to avoid corrupting track record.")
             print(f"      Quality score: {run_quality['score']}")
@@ -257,12 +273,18 @@ class GolfModelService:
         result["ai_decisions"] = ai_decisions
 
         # Step 12: Log predictions for calibration (skipped if quality check fails)
-        if value_bets and picks_allowed:
+        if value_bets and placement_logging_allowed:
             self._log_predictions(tid, value_bets)
-        elif value_bets and not picks_allowed:
+        elif value_bets and not placement_logging_allowed:
             logger.warning("Skipping prediction logging — run quality check failed")
-        if matchup_bets and picks_allowed:
+        matchup_logging_allowed = (
+            (matchup_diagnostics or {}).get("state") != "pipeline_error"
+            and not (matchup_diagnostics or {}).get("errors")
+        )
+        if matchup_bets and matchup_logging_allowed:
             self._log_matchup_predictions(tid, matchup_bets)
+        elif matchup_bets and not matchup_logging_allowed:
+            logger.warning("Skipping matchup logging — matchup diagnostics reported an error")
 
         # Step 13: Generate card
         print("  Generating betting card...")
@@ -471,6 +493,16 @@ class GolfModelService:
             return merged
         return base
 
+    def _filter_composite_to_field(self, composite: list[dict], field_keys: list[str]) -> tuple[list[dict], dict]:
+        """Drop phantom players so rankings and bets use the strict confirmed field."""
+        filtered, audit = filter_rows_to_field(composite, field_keys)
+        if audit.get("extra_player_keys"):
+            logger.warning(
+                "Removed %d non-field players from composite output",
+                len(audit["extra_player_keys"]),
+            )
+        return filtered, audit
+
     def _run_composite(self, tournament_id: int, weights: dict,
                         course_name: str = None) -> list[dict]:
         """Run the composite model; weights already include strategy blend from _get_weights."""
@@ -564,6 +596,7 @@ class GolfModelService:
             from src.datagolf import fetch_matchup_odds_with_diagnostics
             from src.matchup_value import find_matchup_value_bets
             from src import config
+            from src.odds import get_preferred_book
 
             diagnostics = {
                 "market_counts": {},
@@ -598,7 +631,7 @@ class GolfModelService:
                         continue
                     bets, selection_diag = find_matchup_value_bets(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
-                        required_book=None, market_type=market_key,
+                        required_book=get_preferred_book(), market_type=market_key,
                         return_diagnostics=True,
                     )
                     diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))

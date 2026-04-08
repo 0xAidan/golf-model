@@ -64,6 +64,7 @@ from src.card import generate_card
 from src.methodology import generate_methodology
 from src.portfolio import enforce_diversification
 from src.confidence import get_field_strength
+from src.field_selection import filter_rows_to_field
 from src.player_normalizer import normalize_name, display_name
 from src.ai_brain import (
     is_ai_available,
@@ -899,6 +900,12 @@ def main():
         tid, weights, course_name=primary_course,
         weather_adjustments=weather_adjustments,
     )
+    composite, composite_field_audit = filter_rows_to_field(composite, field_players)
+    if composite_field_audit.get("extra_player_keys"):
+        extras = composite_field_audit["extra_player_keys"]
+        print("  Removed non-field players from rankings: " + ", ".join(extras[:10]))
+        if len(extras) > 10:
+            print(f"  ... plus {len(extras) - 10} more")
     print(f"  Scored {len(composite)} players")
     _run_data_integrity_gates(tid, len(composite), composite_results=composite)
 
@@ -1057,7 +1064,7 @@ def main():
                     composite,
                     matchup_odds,
                     tournament_id=tid,
-                    ev_threshold=runtime_settings["ev_threshold"],
+                    ev_threshold=runtime_settings["matchup_ev_threshold"],
                     required_book=get_preferred_book(),
                     market_type=market_key,
                 )
@@ -1099,7 +1106,7 @@ def main():
 
     # AI betting decisions are disabled — bet selection is purely quantitative.
     # See ai_brain.make_betting_decisions() for rationale.
-            print(f"  Value bets still shown below without AI portfolio optimization")
+    print("  Value bets still shown below without AI portfolio optimization")
 
     # ── Exposure filtering (Phase 4A) ──────────────────────────
     try:

@@ -1,11 +1,11 @@
-"""Tests for src/models/form.py weight normalization and score scaling."""
+"""Tests for src/models/form.py availability logic and score scaling."""
 
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.models.form import _pct_to_score, _rank_to_score
+from src.models.form import _compute_availability_adjustment, _pct_to_score, _rank_to_score
 
 
 def test_pct_to_score_zero():
@@ -75,3 +75,81 @@ def test_sim_score_all_pct_to_score():
     ]
     for i, s in enumerate(scores):
         assert 0.0 <= s <= 100.0, f"Sim component {i} out of range: {s}"
+
+
+def test_compute_availability_adjustment_flags_month_off_player():
+    adjustment = _compute_availability_adjustment(
+        player_key="collin_morikawa",
+        recent_rounds=[
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+        ],
+        tournament_date="2026-04-10",
+        manual_overrides={},
+    )
+
+    assert adjustment["days_since_last_round"] == 33
+    assert adjustment["score_adjustment"] <= -4.0
+    assert "layoff_risk" in adjustment["flags"]
+
+
+def test_compute_availability_adjustment_skips_normal_masters_rest_gap():
+    adjustment = _compute_availability_adjustment(
+        player_key="scottie_scheffler",
+        recent_rounds=[
+            {"event_completed": "2026-03-15", "tour": "pga"},
+            {"event_completed": "2026-03-15", "tour": "pga"},
+            {"event_completed": "2026-03-15", "tour": "pga"},
+            {"event_completed": "2026-03-15", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+        ],
+        tournament_date="2026-04-09",
+        manual_overrides={},
+    )
+
+    assert adjustment["days_since_last_round"] == 25
+    assert adjustment["score_adjustment"] == 0.0
+    assert adjustment["flags"] == []
+
+
+def test_compute_availability_adjustment_applies_manual_override():
+    adjustment = _compute_availability_adjustment(
+        player_key="collin_morikawa",
+        recent_rounds=[
+            {"event_completed": "2026-03-08", "tour": "pga"},
+            {"event_completed": "2026-03-08", "tour": "pga"},
+        ],
+        tournament_date="2026-04-10",
+        manual_overrides={
+            "collin_morikawa": {
+                "status": "injury_watch",
+                "score_adjustment": -4.0,
+                "note": "Manual Masters-week watchlist.",
+            }
+        },
+    )
+
+    assert adjustment["manual_adjustment"] == -4.0
+    assert "injury_watch" in adjustment["flags"]
+    assert "Manual Masters-week watchlist." in adjustment["notes"]
+
+
+def test_compute_availability_adjustment_flags_low_coverage_samples():
+    adjustment = _compute_availability_adjustment(
+        player_key="major_amateur",
+        recent_rounds=[
+            {"event_completed": "2026-04-02", "tour": "alt"},
+            {"event_completed": "2026-04-02", "tour": "alt"},
+            {"event_completed": "2026-04-02", "tour": "alt"},
+        ],
+        tournament_date="2026-04-10",
+        manual_overrides={},
+    )
+
+    assert adjustment["coverage_adjustment"] < 0
+    assert "low_coverage" in adjustment["flags"]

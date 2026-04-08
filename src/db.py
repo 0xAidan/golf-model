@@ -1027,18 +1027,36 @@ def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> li
     """Return player_key list for this tournament.
 
     When confirmed_field_only=True (default), only returns players that appear
-    in the confirmed field (metric_category='meta' from DG field updates).
-    This prevents phantom players from predictions/decompositions who are
-    not in the actual field. When no field data exists, returns all players
+    in the explicit confirmed field rows from DG field updates
+    (`metric_name='field_status'`, `metric_text='confirmed'`).
+    Falls back to legacy `metric_category='meta'` rows when older tournaments
+    predate the stricter marker. When no field data exists, returns all players
     in metrics so the pipeline still runs.
     """
     conn = get_conn()
-    # Check if we have field (meta) data for this tournament
-    has_field = conn.execute(
+    has_explicit_field = conn.execute(
+        """SELECT 1 FROM metrics
+           WHERE tournament_id = ?
+             AND metric_category = 'meta'
+             AND metric_name = 'field_status'
+             AND metric_text = 'confirmed'
+           LIMIT 1""",
+        (tournament_id,),
+    ).fetchone()
+    has_legacy_field = conn.execute(
         "SELECT 1 FROM metrics WHERE tournament_id = ? AND metric_category = 'meta' LIMIT 1",
         (tournament_id,),
     ).fetchone()
-    if confirmed_field_only and has_field:
+    if confirmed_field_only and has_explicit_field:
+        rows = conn.execute(
+            """SELECT DISTINCT player_key FROM metrics
+               WHERE tournament_id = ?
+                 AND metric_category = 'meta'
+                 AND metric_name = 'field_status'
+                 AND metric_text = 'confirmed'""",
+            (tournament_id,),
+        ).fetchall()
+    elif confirmed_field_only and has_legacy_field:
         rows = conn.execute(
             """SELECT DISTINCT player_key FROM metrics
                WHERE tournament_id = ? AND metric_category = 'meta'""",
@@ -1078,7 +1096,21 @@ def get_player_display_names(tournament_id: int) -> dict:
         (tournament_id,),
     ).fetchall()
     conn.close()
-    return {r["player_key"]: r["player_display"] for r in rows}
+
+    def _display_quality(player_key: str, player_display: str) -> tuple[int, int]:
+        display = str(player_display or "").strip()
+        key_like = display.lower() == str(player_key or "").strip().lower()
+        has_space = " " in display
+        return (0 if key_like else 1, 1 if has_space else 0)
+
+    best: dict[str, str] = {}
+    for row in rows:
+        player_key = row["player_key"]
+        player_display = row["player_display"]
+        current = best.get(player_key)
+        if current is None or _display_quality(player_key, player_display) > _display_quality(player_key, current):
+            best[player_key] = player_display
+    return best
 
 
 # ── Picks / results helpers ─────────────────────────────────────────
