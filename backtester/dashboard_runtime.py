@@ -552,6 +552,89 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     }
 
 
+def _build_section_eligibility(
+    analysis_result: dict[str, Any],
+    *,
+    source_event_id: str | None,
+    tour: str,
+) -> dict[str, Any]:
+    field_validation = analysis_result.get("field_validation") or {}
+    verification_error = analysis_result.get("verification_error") or {}
+    failed_invariants = list(
+        field_validation.get("failed_invariants")
+        or verification_error.get("failed_invariants")
+        or []
+    )
+    status = str(analysis_result.get("status") or "").strip().lower()
+    strict_field_verified = bool(field_validation.get("strict_field_verified"))
+    has_rows = bool(analysis_result.get("composite_results"))
+    verified = bool(status == "complete" and strict_field_verified and has_rows)
+    if status != "complete" and "analysis_not_complete" not in failed_invariants:
+        failed_invariants.append("analysis_not_complete")
+    if not strict_field_verified and "strict_field_not_verified" not in failed_invariants:
+        failed_invariants.append("strict_field_not_verified")
+    if not has_rows and "no_rankings_rows" not in failed_invariants:
+        failed_invariants.append("no_rankings_rows")
+
+    if verified:
+        summary = "Field verified for this event. Rankings are eligible for display."
+        details = (
+            "All displayed players are validated against the confirmed event field feed."
+        )
+        action = None
+        code = "field_verified"
+        retryable = False
+    else:
+        summary = verification_error.get("summary") or "Field verification failed; rankings withheld."
+        details = verification_error.get("details") or (
+            "The current run could not prove that rankings match the confirmed event field."
+        )
+        action = verification_error.get("action") or (
+            "Retry refresh after the event field feed is available and event context matches."
+        )
+        code = verification_error.get("code") or "field_verification_failed"
+        retryable = bool(verification_error.get("retryable", True))
+
+    return {
+        "verified": verified,
+        "field_event_id": str(field_validation.get("expected_event_id") or source_event_id or ""),
+        "field_player_count": int(analysis_result.get("field_size") or 0),
+        "field_source": str(field_validation.get("field_source") or analysis_result.get("field_source") or "unknown"),
+        "failed_invariants": failed_invariants,
+        "summary": summary,
+        "details": details,
+        "action": action,
+        "code": code,
+        "retryable": retryable,
+        "major_event": bool(field_validation.get("major_event")),
+        "cross_tour_backfill_used": bool(field_validation.get("cross_tour_backfill_used")),
+        "observed_tour": tour,
+    }
+
+
+def _load_verified_section_fallback(
+    previous_snapshot: dict[str, Any],
+    *,
+    section_key: str,
+    expected_event_id: str | None,
+    expected_tour: str,
+) -> dict[str, Any] | None:
+    section = (previous_snapshot or {}).get(section_key) or {}
+    if not section:
+        return None
+    eligibility = section.get("eligibility") or {}
+    if not eligibility.get("verified"):
+        return None
+    prev_tour = str(((previous_snapshot or {}).get("event_context") or {}).get("tour") or "").strip().lower()
+    if prev_tour and prev_tour != str(expected_tour or "").strip().lower():
+        return None
+    current_event_id = str(expected_event_id or "").strip()
+    section_event_id = str(section.get("source_event_id") or eligibility.get("field_event_id") or "").strip()
+    if current_event_id and section_event_id and current_event_id != section_event_id:
+        return None
+    return section
+
+
 def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any]) -> dict[str, Any]:
     mode = "full" if cadence_mode != "live_window" else "round-matchups"
     live_course = str(ingest_summary.get("course") or "").split(";")[0].strip() or None
@@ -566,10 +649,12 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     )
     generated_at = _iso_now()
     event_name = live_result.get("event_name") or ingest_summary.get("event_name")
+    live_event_id = str(ingest_summary.get("event_id") or "")
     finish_states = _load_finish_state_map(
         ingest_summary.get("event_id"),
         year=ingest_summary.get("event_year"),
     )
+    previous_snapshot = read_snapshot()
     base_section = {
         "event_name": event_name,
         "course_name": live_result.get("course_name"),
@@ -586,47 +671,25 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         "value_bets": _extract_board_value_bets(live_result.get("value_bets") or {}),
         "card_path": live_result.get("output_file") or live_result.get("card_filepath"),
         "source_card_path": live_result.get("output_file") or live_result.get("card_filepath"),
+        "eligibility": _build_section_eligibility(
+            live_result,
+            source_event_id=live_event_id,
+            tour=tour,
+        ),
+        "verification_error": live_result.get("verification_error"),
     }
     schedule_names = ingest_summary.get("upcoming_event_names") or []
     live_is_active = bool(ingest_summary.get("live_event_active"))
     upcoming_row = ingest_summary.get("upcoming_event_row") or {}
     upcoming_event_name = str(upcoming_row.get("event_name") or "").strip()
+    upcoming_event_id = str(upcoming_row.get("event_id") or "")
     upcoming_course = str(upcoming_row.get("course") or "").split(";")[0].strip() or None
     if not upcoming_event_name:
         upcoming_event_name = schedule_names[1] if live_is_active and len(schedule_names) > 1 else (schedule_names[0] if schedule_names else event_name)
 
-    resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or "").strip()
-    resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
+    resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or event_name or "").strip()
+    resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or live_event_id or "").strip()
     resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip()
-
-    # Guardrail: completed event must never silently mirror upcoming.
-    if (not resolved_completed_event_name) or (
-        upcoming_event_name and resolved_completed_event_name.lower() == upcoming_event_name.lower()
-    ):
-        fallback_card_path = _discover_latest_card_path_excluding(upcoming_event_name)
-        fallback_event_name = _extract_event_name_from_card(fallback_card_path)
-        if fallback_event_name and (not upcoming_event_name or fallback_event_name.lower() != upcoming_event_name.lower()):
-            resolved_completed_event_name = fallback_event_name
-            previous_event_card_path = fallback_card_path
-        else:
-            previous_event_card_path = _discover_event_card_path(resolved_completed_event_name or event_name)
-    else:
-        previous_event_card_path = _discover_event_card_path(resolved_completed_event_name)
-
-    # Final fallback: if resolved card still points to upcoming event, force non-upcoming latest card.
-    if previous_event_card_path:
-        resolved_card_event_name = _extract_event_name_from_card(previous_event_card_path)
-        if (
-            resolved_card_event_name
-            and upcoming_event_name
-            and resolved_card_event_name.strip().lower() == upcoming_event_name.strip().lower()
-        ):
-            non_upcoming_card = _discover_latest_card_path_excluding(upcoming_event_name)
-            non_upcoming_event_name = _extract_event_name_from_card(non_upcoming_card)
-            if non_upcoming_card and non_upcoming_event_name:
-                previous_event_card_path = non_upcoming_card
-                resolved_completed_event_name = non_upcoming_event_name
-    previous_event_rankings = _parse_rankings_from_card(previous_event_card_path)
     live_event_name = event_name if live_is_active else (resolved_completed_event_name or event_name)
 
     upcoming_result = {}
@@ -642,58 +705,144 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 enable_backfill=False,
             )
         except Exception as exc:
-            _logger.warning("Upcoming snapshot recompute failed; falling back to live section: %s", exc)
+            _logger.warning("Upcoming snapshot recompute failed; attempting verified snapshot fallback: %s", exc)
             upcoming_result = {}
 
     if upcoming_result:
         upcoming_diag = upcoming_result.get("matchup_diagnostics") or {}
         upcoming_selected_rows = int((upcoming_diag.get("selection_counts") or {}).get("selected_rows", 0))
+        upcoming_eligibility = _build_section_eligibility(
+            upcoming_result,
+            source_event_id=upcoming_event_id,
+            tour=tour,
+        )
         upcoming_state = _classify_matchup_state(
             market_counts=ingest_summary.get("market_counts"),
             diagnostics_state=upcoming_diag.get("state"),
             selected_rows=upcoming_selected_rows,
             errors=upcoming_diag.get("errors"),
         )
+        if not upcoming_eligibility.get("verified"):
+            upcoming_state = "eligibility_failed"
         upcoming_section = {
             "event_name": upcoming_result.get("event_name") or upcoming_event_name,
             "course_name": upcoming_result.get("course_name"),
             "field_size": upcoming_result.get("field_size"),
-            "rankings": _extract_rankings(upcoming_result.get("composite_results") or [], exclude_cut_players=False),
-            "matchups": _extract_matchups(upcoming_result.get("matchup_bets") or []),
-            "matchup_bets": _extract_board_matchup_bets(upcoming_result.get("matchup_bets") or []),
-            "value_bets": _extract_board_value_bets(upcoming_result.get("value_bets") or {}),
+            "rankings": (
+                _extract_rankings(upcoming_result.get("composite_results") or [], exclude_cut_players=False)
+                if upcoming_eligibility.get("verified")
+                else []
+            ),
+            "matchups": (
+                _extract_matchups(upcoming_result.get("matchup_bets") or [])
+                if upcoming_eligibility.get("verified")
+                else []
+            ),
+            "matchup_bets": (
+                _extract_board_matchup_bets(upcoming_result.get("matchup_bets") or [])
+                if upcoming_eligibility.get("verified")
+                else []
+            ),
+            "value_bets": (
+                _extract_board_value_bets(upcoming_result.get("value_bets") or {})
+                if upcoming_eligibility.get("verified")
+                else {}
+            ),
             "card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
             "source_event_id": str(upcoming_row.get("event_id") or ""),
             "source_event_name": upcoming_event_name,
             "generated_from": "upcoming_event_model",
             "source_card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
             "ranking_source": "upcoming_event_model",
+            "eligibility": upcoming_eligibility,
+            "verification_error": upcoming_result.get("verification_error"),
             "diagnostics": {
                 "market_counts": ingest_summary.get("market_counts") or {},
                 "selection_counts": upcoming_diag.get("selection_counts") or {},
                 "adaptation_state": upcoming_diag.get("adaptation_state", "normal"),
                 "reason_codes": upcoming_diag.get("reason_codes") or {},
                 "state": upcoming_state,
-                "errors": upcoming_diag.get("errors") or [],
+                "errors": (
+                    (upcoming_diag.get("errors") or [])
+                    + (
+                        []
+                        if upcoming_eligibility.get("verified")
+                        else [
+                            upcoming_eligibility.get("summary"),
+                            upcoming_eligibility.get("action"),
+                        ]
+                    )
+                ),
             },
         }
     else:
-        upcoming_section = {
-            **base_section,
-            "event_name": upcoming_event_name,
-            "source_event_id": str(upcoming_row.get("event_id") or ""),
-            "source_event_name": upcoming_event_name,
-            "generated_from": "live_fallback",
-            "ranking_source": "live_fallback",
-            "diagnostics": {
-                "market_counts": ingest_summary.get("market_counts") or {},
-                "selection_counts": {"selected_rows": len(base_section.get("matchups") or [])},
-                "adaptation_state": "unknown",
-                "reason_codes": {},
-                "state": "pipeline_error",
-                "errors": ["Upcoming model unavailable; using live fallback."],
-            },
-        }
+        upcoming_fallback = _load_verified_section_fallback(
+            previous_snapshot,
+            section_key="upcoming_tournament",
+            expected_event_id=upcoming_event_id,
+            expected_tour=tour,
+        )
+        if upcoming_fallback:
+            upcoming_section = {
+                **upcoming_fallback,
+                "generated_from": "verified_snapshot_fallback",
+                "ranking_source": "verified_snapshot_fallback",
+            }
+            fallback_errors = ((upcoming_section.get("diagnostics") or {}).get("errors") or [])
+            upcoming_section.setdefault("diagnostics", {})
+            upcoming_section["diagnostics"]["state"] = "pipeline_error"
+            upcoming_section["diagnostics"]["errors"] = fallback_errors + [
+                "Upcoming recompute unavailable; serving last verified snapshot for the same event.",
+            ]
+        else:
+            upcoming_section = {
+                **base_section,
+                "event_name": upcoming_event_name,
+                "source_event_id": str(upcoming_row.get("event_id") or ""),
+                "source_event_name": upcoming_event_name,
+                "generated_from": "upcoming_event_model_unavailable",
+                "ranking_source": "eligibility_failed",
+                "rankings": [],
+                "matchups": [],
+                "matchup_bets": [],
+                "value_bets": {},
+                "eligibility": {
+                    "verified": False,
+                    "field_event_id": upcoming_event_id,
+                    "field_player_count": 0,
+                    "field_source": "unavailable",
+                    "failed_invariants": ["analysis_unavailable"],
+                    "summary": "Upcoming field verification unavailable; rankings withheld.",
+                    "details": "Upcoming model run did not return a verifiable snapshot.",
+                    "action": "Retry refresh after Data Golf updates are available.",
+                    "code": "upcoming_analysis_unavailable",
+                    "retryable": True,
+                    "major_event": False,
+                    "cross_tour_backfill_used": False,
+                    "observed_tour": tour,
+                },
+                "verification_error": {
+                    "code": "upcoming_analysis_unavailable",
+                    "summary": "Upcoming event recompute unavailable.",
+                    "details": "Could not produce a verifiable upcoming snapshot in this cycle.",
+                    "action": "Retry refresh once upstream data is available.",
+                    "retryable": True,
+                    "observed_event_id": upcoming_event_id,
+                    "observed_tour": tour,
+                },
+                "diagnostics": {
+                    "market_counts": ingest_summary.get("market_counts") or {},
+                    "selection_counts": {"selected_rows": 0},
+                    "adaptation_state": "unknown",
+                    "reason_codes": {},
+                    "state": "eligibility_failed",
+                    "errors": ["Upcoming model unavailable and no verified fallback exists."],
+                },
+            }
+        if upcoming_fallback:
+            upcoming_section["source_event_id"] = str(upcoming_section.get("source_event_id") or upcoming_event_id)
+            upcoming_section["source_event_name"] = str(upcoming_section.get("source_event_name") or upcoming_event_name)
+            upcoming_section["event_name"] = str(upcoming_section.get("event_name") or upcoming_event_name)
 
     live_diag = live_result.get("matchup_diagnostics") or {}
     live_selected_rows = int((live_diag.get("selection_counts") or {}).get("selected_rows", 0))
@@ -703,6 +852,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         selected_rows=live_selected_rows,
         errors=live_diag.get("errors"),
     )
+    live_eligibility = base_section.get("eligibility") or {}
     live_rankings = _extract_rankings(
         live_result.get("composite_results") or [],
         finish_states=finish_states,
@@ -712,23 +862,55 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_source_card_path = base_section.get("source_card_path")
     live_matchups = base_section.get("matchups") or []
     live_board_matchup_bets = base_section.get("matchup_bets") or []
-    if not live_is_active and previous_event_rankings:
-        live_rankings = previous_event_rankings
-        live_ranking_source = "previous_card_snapshot"
-        live_source_card_path = previous_event_card_path
+    live_value_bets = base_section.get("value_bets") or {}
+    live_verification_error = base_section.get("verification_error")
+
+    if not live_eligibility.get("verified"):
+        live_state = "eligibility_failed"
+        live_rankings = []
+        live_matchups = []
+        live_board_matchup_bets = []
+        live_value_bets = {}
+        live_ranking_source = "eligibility_failed"
+        fallback_live = _load_verified_section_fallback(
+            previous_snapshot,
+            section_key="live_tournament",
+            expected_event_id=live_event_id,
+            expected_tour=tour,
+        )
+        if fallback_live:
+            live_rankings = fallback_live.get("rankings") or []
+            live_matchups = fallback_live.get("matchups") or []
+            live_board_matchup_bets = fallback_live.get("matchup_bets") or []
+            live_value_bets = fallback_live.get("value_bets") or {}
+            live_eligibility = fallback_live.get("eligibility") or live_eligibility
+            live_verification_error = fallback_live.get("verification_error") or live_verification_error
+            live_ranking_source = "verified_snapshot_fallback"
+            live_source_card_path = fallback_live.get("source_card_path") or live_source_card_path
+            live_state = "pipeline_error"
+            live_diag = {
+                **(live_diag or {}),
+                "errors": (
+                    (live_diag.get("errors") or [])
+                    + ["Current recompute failed verification; serving last verified same-event snapshot."]
+                ),
+            }
     elif not live_is_active:
+        # Non-live windows should still use current event model context, not older card parsing.
         live_ranking_source = "current_event_model_fallback"
 
-    if not live_is_active:
-        card_matchups = _parse_matchups_from_card(previous_event_card_path)
-        if card_matchups:
-            live_matchups = card_matchups
-            live_board_matchup_bets = _extract_board_matchup_bets(card_matchups)
+    live_diag_errors = live_diag.get("errors") or []
+    if not live_eligibility.get("verified"):
+        live_diag_errors = live_diag_errors + [
+            live_eligibility.get("summary"),
+            live_eligibility.get("action"),
+        ]
 
     snapshot = {
         "generated_at": generated_at,
         "cadence_mode": cadence_mode,
         "event_context": {
+            "tour": tour,
             "event_name": event_name,
             "event_id": ingest_summary.get("event_id"),
             "course": ingest_summary.get("course"),
@@ -743,6 +925,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "rankings": live_rankings,
             "matchups": live_matchups,
             "matchup_bets": live_board_matchup_bets,
+            "value_bets": live_value_bets,
             "source_event_id": str(
                 ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
             ),
@@ -752,13 +935,15 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "source_card_path": live_source_card_path,
             "ranking_source": live_ranking_source,
             "generated_from": "current_event_model" if live_is_active else live_ranking_source,
+            "eligibility": live_eligibility,
+            "verification_error": live_verification_error,
             "diagnostics": {
                 "market_counts": ingest_summary.get("market_counts") or {},
                 "selection_counts": live_diag.get("selection_counts") or {},
                 "adaptation_state": live_diag.get("adaptation_state", "normal"),
                 "reason_codes": live_diag.get("reason_codes") or {},
                 "state": live_state,
-                "errors": live_diag.get("errors") or [],
+                "errors": [err for err in live_diag_errors if err],
             },
         },
         "upcoming_tournament": {
@@ -775,6 +960,28 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         },
     }
     _write_snapshot(snapshot)
+    return snapshot
+
+
+def generate_snapshot_once(*, tour: str = "pga") -> dict[str, Any]:
+    """Run one ingest+recompute cycle synchronously and return the snapshot."""
+    from src.autoresearch_settings import get_settings
+
+    settings = get_settings().get("live_refresh", {})
+    cadence = resolve_cadence(settings)
+    ingest_summary = _run_ingest(tour)
+    snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
+    with _state_lock:
+        _state["tour"] = tour
+        _state["cadence_mode"] = cadence.mode
+        _state["ingest_seconds"] = cadence.ingest_seconds
+        _state["recompute_seconds"] = cadence.recompute_seconds
+        _state["run_count"] += 1
+        _state["last_started_at"] = _iso_now()
+        _state["last_finished_at"] = _iso_now()
+        _state["last_error"] = None
+        _state["last_ingest_summary"] = ingest_summary
+        _state["last_snapshot_generated_at"] = snapshot.get("generated_at")
     return snapshot
 
 

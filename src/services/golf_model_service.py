@@ -113,17 +113,43 @@ class GolfModelService:
         result["sync"] = sync_result
         result["event_id"] = event_id
 
-        # Step 5: Fetch DG skill ratings, rankings, approach skill
-        field_keys = db.get_all_players(tid)
+        # Step 5: Resolve strict verified field keys for this event
+        field_keys, field_source = self._resolve_field_keys(tid, sync_result)
         result["field_size"] = len(field_keys)
+        result["field_source"] = field_source
         print(f"  Field size: {len(field_keys)} players")
 
         if field_keys:
             print("  Fetching DG skill ratings & rankings...")
             self._sync_skill_data(tid, field_keys)
 
-        field_validation = self._validate_field_data(tid, tournament_name, field_keys)
+        field_validation = self._validate_field_data(
+            tid,
+            tournament_name,
+            field_keys,
+            field_source=field_source,
+            expected_event_id=event_id,
+        )
         result["field_validation"] = field_validation
+        result["eligibility"] = {
+            "verified": bool(field_validation.get("strict_field_verified")),
+            "field_source": field_source,
+            "field_event_id": str(event_id or ""),
+            "field_player_count": len(field_keys),
+            "failed_invariants": field_validation.get("failed_invariants", []),
+            "summary": field_validation.get("summary"),
+        }
+
+        if not field_validation.get("strict_field_verified"):
+            result["status"] = "error"
+            result["verification_error"] = self._build_field_verification_error(
+                event_id=event_id,
+                field_source=field_source,
+                failed_invariants=field_validation.get("failed_invariants", []),
+            )
+            result["errors"].append(result["verification_error"]["summary"])
+            return result
+
         if field_validation.get("has_cross_tour_field_risk"):
             warning = (
                 "Field data coverage warning: "
@@ -178,7 +204,17 @@ class GolfModelService:
 
         if not composite:
             result["status"] = "error"
-            result["errors"].append("No players scored")
+            result["verification_error"] = {
+                "code": "no_players_scored_after_field_filter",
+                "summary": "No players remained after strict field filtering.",
+                "details": (
+                    "The model ran, but no composite rows passed confirmed field eligibility. "
+                    "This prevents unverified rankings from being displayed."
+                ),
+                "action": "Check Data Golf field-updates availability and event_id alignment, then rerun refresh.",
+                "retryable": True,
+            }
+            result["errors"].append(result["verification_error"]["summary"])
             return result
 
         print(f"    → {len(composite)} players scored")
@@ -421,6 +457,66 @@ class GolfModelService:
             logger.warning(f"Sync error: {e}")
             return {"errors": [str(e)]}
 
+    def _resolve_field_keys(self, tournament_id: int, sync_result: dict | None) -> tuple[list[str], str]:
+        """Resolve canonical field keys with strict source priority."""
+        sync_field_keys = [
+            str(player_key).strip().lower()
+            for player_key in (sync_result or {}).get("field_player_keys", [])
+            if str(player_key).strip()
+        ]
+        if sync_field_keys:
+            # Preserve order while deduping.
+            return list(dict.fromkeys(sync_field_keys)), "datagolf_field_updates"
+
+        db_field_keys = [
+            str(player_key).strip().lower()
+            for player_key in db.get_all_players(tournament_id, confirmed_field_only=True)
+            if str(player_key).strip()
+        ]
+        if db_field_keys:
+            return list(dict.fromkeys(db_field_keys)), "db_confirmed_field_cache"
+        return [], "missing_confirmed_field"
+
+    def _build_field_verification_error(
+        self,
+        *,
+        event_id: str | None,
+        field_source: str,
+        failed_invariants: list[str] | None,
+    ) -> dict:
+        failed = failed_invariants or ["strict_field_missing"]
+        if "strict_field_missing" in failed:
+            summary = "Field verification failed: no confirmed tournament field available."
+            details = (
+                "Rankings were withheld to prevent showing players who are not confirmed in this event. "
+                "This usually means Data Golf has not published field-updates for the selected event yet."
+            )
+            action = (
+                "Wait for Data Golf field-updates to post for this event (or confirm event_id), then refresh again."
+            )
+            code = "field_unavailable"
+            retryable = True
+        else:
+            summary = "Field verification failed due to event integrity mismatch."
+            details = (
+                "The ranking event context did not match verified field metadata, so rankings were withheld."
+            )
+            action = "Verify event_id/tour context and refresh once the field feed aligns."
+            code = "field_integrity_mismatch"
+            retryable = True
+
+        return {
+            "code": code,
+            "summary": summary,
+            "details": details,
+            "action": action,
+            "retryable": retryable,
+            "observed_event_id": str(event_id or ""),
+            "observed_tour": self.tour,
+            "field_source": field_source,
+            "failed_invariants": failed,
+        }
+
     def _sync_skill_data(self, tournament_id: int, field_keys: list[str]):
         """Fetch and store DG skill ratings, rankings, approach skill."""
         from src.datagolf import (
@@ -451,10 +547,24 @@ class GolfModelService:
             logger.warning(f"Rolling stats error: {e}")
             return {"error": str(e)}
 
-    def _validate_field_data(self, tournament_id: int, tournament_name: str | None, field_keys: list[str]) -> dict:
+    def _validate_field_data(
+        self,
+        tournament_id: int,
+        tournament_name: str | None,
+        field_keys: list[str],
+        *,
+        field_source: str,
+        expected_event_id: str | None,
+    ) -> dict:
         """Summarize whether field players have enough recent data, especially in majors."""
         thin_rounds = []
         missing_skill = []
+        failed_invariants: list[str] = []
+
+        if not field_keys:
+            failed_invariants.append("strict_field_missing")
+        if expected_event_id is None or not str(expected_event_id).strip():
+            failed_invariants.append("event_id_missing")
 
         for player_key in field_keys:
             pretty_name = " ".join(part.capitalize() for part in player_key.split("_") if part)
@@ -468,6 +578,7 @@ class GolfModelService:
             if not has_dg_skill and not has_dg_ranking:
                 missing_skill.append(pretty_name)
 
+        strict_field_verified = "strict_field_missing" not in failed_invariants
         return {
             "major_event": self._is_major_event(tournament_name),
             "cross_tour_backfill_used": "alt" in self._backfill_tours_for_event(tournament_name),
@@ -475,6 +586,15 @@ class GolfModelService:
             "players_with_thin_rounds": thin_rounds,
             "players_missing_dg_skill": missing_skill,
             "has_cross_tour_field_risk": bool(thin_rounds or missing_skill),
+            "field_source": field_source,
+            "expected_event_id": str(expected_event_id or ""),
+            "strict_field_verified": strict_field_verified,
+            "failed_invariants": failed_invariants,
+            "summary": (
+                "Field verified via confirmed event field."
+                if strict_field_verified
+                else "Field verification failed; rankings are withheld to preserve trust."
+            ),
         }
 
     def _harvest_intel(self, field_keys: list[str],

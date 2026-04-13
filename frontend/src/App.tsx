@@ -131,6 +131,22 @@ function App() {
       setUiAlert("Grading failed. Check backend logs and retry.")
     },
   })
+  const refreshSnapshotMutation = useMutation({
+    mutationFn: () => api.refreshLiveSnapshot(),
+    onSuccess: (payload) => {
+      if (payload.ok) {
+        const generated = payload.generated_at ? formatDateTime(payload.generated_at) : "just now"
+        setUiAlert(`Snapshot refreshed (${generated}).`)
+      } else {
+        setUiAlert(payload.stale_reason ?? "Manual refresh did not return a snapshot.")
+      }
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-status"] })
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
+    },
+    onError: () => {
+      setUiAlert("Manual refresh failed. Check runtime logs and try again.")
+    },
+  })
 
   const players = effectivePredictionRun?.composite_results ?? []
   const filteredMatchups = useMemo(() => {
@@ -201,12 +217,14 @@ function App() {
           <Button
             size="lg"
             variant="outline"
-            onClick={() => {
-              void queryClient.invalidateQueries({ queryKey: ["live-refresh-status"] })
-              void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
-            }}
+            onClick={() => refreshSnapshotMutation.mutate()}
+            disabled={refreshSnapshotMutation.isPending}
           >
-            {liveRuntimeRunning ? "Refresh live board" : "Check runtime"}
+            {refreshSnapshotMutation.isPending
+              ? "Refreshing..."
+              : liveRuntimeRunning
+                ? "Refresh now"
+                : "Start + refresh"}
           </Button>
         </>
       }

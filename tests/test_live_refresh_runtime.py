@@ -45,7 +45,9 @@ def test_live_refresh_snapshot_endpoint_handles_missing_snapshot(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: {})
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": {})
 
     client = TestClient(app_module.app)
     response = client.get("/api/live-refresh/snapshot")
@@ -53,6 +55,47 @@ def test_live_refresh_snapshot_endpoint_handles_missing_snapshot(monkeypatch):
     body = response.json()
     assert body["ok"] is False
     assert body["snapshot"] is None
+
+
+def test_live_refresh_snapshot_endpoint_generates_snapshot_on_demand(monkeypatch):
+    import app as app_module
+
+    generated_snapshot = {
+        "generated_at": "2099-01-01T00:00:00+00:00",
+        "live_tournament": {"event_name": "Future Open", "diagnostics": {"state": "edges_available"}},
+        "upcoming_tournament": {"event_name": "Future Open", "diagnostics": {"state": "edges_available"}},
+    }
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
+    monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: {})
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": generated_snapshot)
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/snapshot")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["snapshot"]["live_tournament"]["event_name"] == "Future Open"
+
+
+def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):
+    import app as app_module
+
+    generated_snapshot = {
+        "generated_at": "2099-01-01T00:00:00+00:00",
+        "live_tournament": {"event_name": "Force Refresh Open", "diagnostics": {"state": "edges_available"}},
+        "upcoming_tournament": {"event_name": "Force Refresh Open", "diagnostics": {"state": "edges_available"}},
+    }
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": generated_snapshot)
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/live-refresh/refresh")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["snapshot"]["live_tournament"]["event_name"] == "Force Refresh Open"
 
 
 def test_live_refresh_start_and_stop_endpoints(monkeypatch):
@@ -230,9 +273,18 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
         event_name = kwargs.get("tournament_name") or "Current Event"
         if event_name == "Next Event":
             return {
+                "status": "complete",
                 "event_name": "Next Event",
                 "course_name": "Next Course",
                 "field_size": 70,
+                "field_validation": {
+                    "strict_field_verified": True,
+                    "field_source": "datagolf_field_updates",
+                    "expected_event_id": "456",
+                    "failed_invariants": [],
+                    "major_event": False,
+                    "cross_tour_backfill_used": False,
+                },
                 "composite_results": [
                     {
                         "player_key": "n_player",
@@ -289,9 +341,18 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                 },
             }
         return {
+            "status": "complete",
             "event_name": "Current Event",
             "course_name": "Current Course",
             "field_size": 80,
+            "field_validation": {
+                "strict_field_verified": True,
+                "field_source": "datagolf_field_updates",
+                "expected_event_id": "123",
+                "failed_invariants": [],
+                "major_event": False,
+                "cross_tour_backfill_used": False,
+            },
             "composite_results": [
                 {
                     "player_key": "c_player",
@@ -328,6 +389,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     monkeypatch.setattr(runtime, "run_snapshot_analysis", _fake_run_snapshot_analysis)
     monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -356,7 +418,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     assert snapshot["upcoming_tournament"]["value_bets"]["top10"][0]["book"] == "bovada"
 
 
-def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tmp_path):
+def test_run_recompute_withholds_unverified_rankings_when_not_live(monkeypatch, tmp_path):
     from backtester import dashboard_runtime as runtime
 
     output_dir = tmp_path / "output"
@@ -402,6 +464,7 @@ def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tm
     )
     monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -419,16 +482,15 @@ def test_run_recompute_uses_previous_card_rankings_when_not_live(monkeypatch, tm
     )
 
     live = snapshot["live_tournament"]
-    assert live["event_name"] == "Valero Texas Open"
-    assert live["ranking_source"] == "previous_card_snapshot"
-    assert live["source_card_path"] == str(card_path)
-    assert live["rankings"][0]["player"] == "Rory McIlroy"
-    assert live["matchups"][0]["bookmaker"] == "fanduel"
-    assert live["matchup_bets"][0]["book"] == "fanduel"
-    assert live["matchup_bets"][0]["pick"] == "Rory McIlroy"
+    assert live["ranking_source"] == "eligibility_failed"
+    assert live["rankings"] == []
+    assert live["matchups"] == []
+    assert live["matchup_bets"] == []
+    assert live["eligibility"]["verified"] is False
+    assert "field" in live["eligibility"]["summary"].lower()
 
 
-def test_run_recompute_completed_event_never_equals_upcoming_when_completed_missing(monkeypatch, tmp_path):
+def test_run_recompute_completed_event_withholds_when_event_context_unverified(monkeypatch, tmp_path):
     from backtester import dashboard_runtime as runtime
 
     downloads_dir = tmp_path / "Downloads"
@@ -470,6 +532,7 @@ def test_run_recompute_completed_event_never_equals_upcoming_when_completed_miss
     )
     monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -487,12 +550,13 @@ def test_run_recompute_completed_event_never_equals_upcoming_when_completed_miss
         },
     )
 
-    assert snapshot["live_tournament"]["event_name"] == "Valero Texas Open"
-    assert snapshot["upcoming_tournament"]["event_name"] == "Masters Tournament"
-    assert snapshot["live_tournament"]["event_name"] != snapshot["upcoming_tournament"]["event_name"]
+    live = snapshot["live_tournament"]
+    assert live["rankings"] == []
+    assert live["eligibility"]["verified"] is False
+    assert live["diagnostics"]["state"] == "eligibility_failed"
 
 
-def test_run_recompute_excludes_upcoming_card_when_selecting_completed(monkeypatch, tmp_path):
+def test_run_recompute_does_not_use_markdown_card_rankings_for_live_surface(monkeypatch, tmp_path):
     from backtester import dashboard_runtime as runtime
 
     downloads_dir = tmp_path / "Downloads"
@@ -545,6 +609,7 @@ def test_run_recompute_excludes_upcoming_card_when_selecting_completed(monkeypat
     )
     monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -562,6 +627,8 @@ def test_run_recompute_excludes_upcoming_card_when_selecting_completed(monkeypat
         },
     )
 
-    assert snapshot["live_tournament"]["event_name"] == "Valero Texas Open"
-    assert "valero_texas_open" in (snapshot["live_tournament"]["source_card_path"] or "")
+    live = snapshot["live_tournament"]
+    assert live["ranking_source"] == "eligibility_failed"
+    assert live["rankings"] == []
+    assert live["source_card_path"] == "output/current_event.md"
 

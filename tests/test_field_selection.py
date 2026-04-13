@@ -116,6 +116,58 @@ def test_get_all_players_prefers_explicit_confirmed_field_rows(tmp_db):
     }
 
 
+def test_get_all_players_strict_includes_all_confirmed_major_field_players(tmp_db):
+    tid = tmp_db.get_or_create_tournament("US Open", year=2026)
+
+    tmp_db.store_metrics(
+        [
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "scottie_scheffler",
+                "player_display": "Scottie Scheffler",
+                "metric_category": "meta",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "field_status",
+                "metric_value": None,
+                "metric_text": "confirmed",
+            },
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "jon_rahm",
+                "player_display": "Jon Rahm",
+                "metric_category": "meta",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "field_status",
+                "metric_value": None,
+                "metric_text": "confirmed",
+            },
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "brooks_koepka",
+                "player_display": "Brooks Koepka",
+                "metric_category": "meta",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "field_status",
+                "metric_value": None,
+                "metric_text": "confirmed",
+            },
+        ]
+    )
+
+    strict_players = tmp_db.get_all_players(tid, confirmed_field_only=True)
+    assert set(strict_players) == {
+        "scottie_scheffler",
+        "jon_rahm",
+        "brooks_koepka",
+    }
+
+
 def test_filter_rows_to_field_reports_missing_and_extra_players():
     from src.field_selection import filter_rows_to_field
 
@@ -184,6 +236,56 @@ def test_get_all_players_strict_mode_fails_closed_with_legacy_meta_only(tmp_db):
 
     assert strict_players == []
     assert loose_players == ["legacy_player"]
+
+
+def test_get_all_players_strict_mode_rejects_proxy_when_field_markers_missing(tmp_db):
+    tid = tmp_db.get_or_create_tournament("DG Proxy Field", year=2026)
+    tmp_db.store_metrics(
+        [
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "proxy_player",
+                "player_display": "Proxy Player",
+                "metric_category": "sim",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "Win %",
+                "metric_value": 1.1,
+                "metric_text": None,
+            },
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "proxy_player",
+                "player_display": "Proxy Player",
+                "metric_category": "dg_decomposition",
+                "data_mode": "course_specific",
+                "round_window": "all",
+                "metric_name": "adj_skill",
+                "metric_value": 0.5,
+                "metric_text": None,
+            },
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "sim_only_player",
+                "player_display": "Sim Only Player",
+                "metric_category": "sim",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "Win %",
+                "metric_value": 0.9,
+                "metric_text": None,
+            },
+        ]
+    )
+
+    strict_players = tmp_db.get_all_players(tid, confirmed_field_only=True)
+    loose_players = tmp_db.get_all_players(tid, confirmed_field_only=False)
+
+    assert strict_players == []
+    assert set(loose_players) == {"proxy_player", "sim_only_player"}
 
 
 def test_filter_rows_to_field_drops_rows_with_missing_player_key():

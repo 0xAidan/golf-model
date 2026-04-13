@@ -27,6 +27,18 @@ def _collect_blend_by_market(value_bets: dict[str, list[dict[str, Any]]] | None)
     return output
 
 
+def _json_safe(value: Any) -> Any:
+    """Normalize nested payloads to JSON-safe types."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, set):
+        # Keep deterministic order for repeatable artifacts.
+        return sorted(_json_safe(v) for v in value)
+    return value
+
+
 def write_run_provenance(
     *,
     event_name: str,
@@ -51,5 +63,5 @@ def write_run_provenance(
         "blend_by_market": _collect_blend_by_market(value_bets),
         "matchup_diagnostics": matchup_diagnostics or {},
     }
-    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    output_path.write_text(json.dumps(_json_safe(payload), indent=2), encoding="utf-8")
     return str(output_path)
