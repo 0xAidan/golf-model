@@ -58,6 +58,8 @@ def test_validate_field_data_flags_players_with_thin_rounds_and_missing_skill(mo
         tournament_id=7,
         tournament_name="Masters Tournament",
         field_keys=["jon_rahm", "ludvig_aberg"],
+        field_source="datagolf_field_updates",
+        expected_event_id="401155460",
     )
 
     assert validation["major_event"] is True
@@ -127,10 +129,20 @@ def test_fetch_matchup_value_bets_uses_all_books_and_matchup_threshold(monkeypat
 
     def _fake_find_matchup_value_bets(composite, odds, **kwargs):
         captured["kwargs"] = kwargs
-        return ([], {"input_rows": len(odds), "selected_rows": 0, "reason_codes": {}, "adaptation_state": "normal"})
+        return (
+            [],
+            [],
+            {
+                "input_rows": len(odds),
+                "selected_rows": 0,
+                "all_qualifying_rows": 0,
+                "reason_codes": {},
+                "adaptation_state": "normal",
+            },
+        )
 
     monkeypatch.setattr(
-        "src.matchup_value.find_matchup_value_bets",
+        "src.matchup_value.find_matchup_value_bets_with_all_books",
         _fake_find_matchup_value_bets,
     )
 
@@ -149,18 +161,26 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
     logged = {"placements": 0, "matchups": 0}
 
     monkeypatch.setattr("src.services.golf_model_service.db.get_or_create_tournament", lambda tournament_name, course_name: 7)
-    monkeypatch.setattr("src.services.golf_model_service.db.get_all_players", lambda tid: ["player_a", "player_b"])
+    monkeypatch.setattr(
+        "src.services.golf_model_service.db.get_all_players",
+        lambda tid, confirmed_field_only=False: ["player_a", "player_b"],
+    )
     monkeypatch.setattr("src.services.golf_model_service.db.get_rounds_count", lambda: 24)
     monkeypatch.setattr(
         GolfModelService,
         "_sync_tournament_data",
-        lambda self, tid: {"decompositions_raw": None},
+        lambda self, tid, event_id=None: {"decompositions_raw": None},
     )
     monkeypatch.setattr(GolfModelService, "_sync_skill_data", lambda self, tid, field_keys: None)
     monkeypatch.setattr(
         GolfModelService,
         "_validate_field_data",
-        lambda self, tid, tournament_name, field_keys: {"has_cross_tour_field_risk": False},
+        lambda self, tid, tournament_name, field_keys, field_source="unknown", expected_event_id=None: {
+            "has_cross_tour_field_risk": False,
+            "strict_field_verified": True,
+            "failed_invariants": [],
+            "summary": "Field verified for this event.",
+        },
     )
     monkeypatch.setattr(GolfModelService, "_compute_rolling_stats", lambda self, tid, field_keys, course_num: {})
     monkeypatch.setattr(GolfModelService, "_load_course_profile", lambda self, course_name, decompositions_raw=None: {})
@@ -204,7 +224,7 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
             ]
         },
     )
-    monkeypatch.setattr("src.portfolio.enforce_diversification", lambda bets: bets)
+    monkeypatch.setattr("src.portfolio.enforce_diversification", lambda bets, field_strength=None: bets)
     monkeypatch.setattr(
         GolfModelService,
         "_fetch_matchup_value_bets",
@@ -221,10 +241,23 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
                     "ev_pct": "10.0%",
                 }
             ],
+            [
+                {
+                    "pick": "Player A",
+                    "pick_key": "player_a",
+                    "opponent": "Player B",
+                    "opponent_key": "player_b",
+                    "book": "bet365",
+                    "model_win_prob": 0.55,
+                    "implied_prob": 0.5,
+                    "ev": 0.1,
+                    "ev_pct": "10.0%",
+                }
+            ],
             {
                 "state": "edges_available",
                 "errors": [],
-                "selection_counts": {"selected_rows": 1},
+                "selection_counts": {"selected_rows": 1, "all_qualifying_rows": 1},
                 "reason_codes": {},
             },
         ),
@@ -250,5 +283,6 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
     )
 
     assert result["status"] == "complete"
+    assert len(result["matchup_bets_all_books"]) == 1
     assert logged["placements"] == 0
     assert logged["matchups"] == 1

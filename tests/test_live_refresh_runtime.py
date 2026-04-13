@@ -317,6 +317,38 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                         "ev": 0.09,
                     },
                 ],
+                "matchup_bets_all_books": [
+                    {
+                        "pick": "Next Player",
+                        "pick_key": "n_player",
+                        "opponent": "Opp Player",
+                        "opponent_key": "opp_player",
+                        "book": "betonline",
+                        "odds": "+118",
+                        "model_win_prob": 0.56,
+                        "ev": 0.09,
+                    },
+                    {
+                        "pick": "Next Player",
+                        "pick_key": "n_player",
+                        "opponent": "Opp Player",
+                        "opponent_key": "opp_player",
+                        "book": "draftkings",
+                        "odds": "+110",
+                        "model_win_prob": 0.56,
+                        "ev": 0.07,
+                    },
+                    {
+                        "pick": "Next Player",
+                        "pick_key": "n_player",
+                        "opponent": "Opp Player",
+                        "opponent_key": "opp_player",
+                        "book": "fanduel",
+                        "odds": "+108",
+                        "model_win_prob": 0.56,
+                        "ev": 0.06,
+                    },
+                ],
                 "value_bets": {
                     "top10": [
                         {
@@ -334,7 +366,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                 "output_file": "output/next_event.md",
                 "matchup_diagnostics": {
                     "market_counts": {"tournament_matchups": {"raw_rows": 4, "reason_code": "ok"}},
-                    "selection_counts": {"input_rows": 4, "selected_rows": 2},
+                    "selection_counts": {"input_rows": 4, "selected_rows": 2, "all_qualifying_rows": 3},
                     "reason_codes": {"below_ev_threshold": 2},
                     "state": "edges_available",
                     "errors": [],
@@ -375,11 +407,33 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
                     "ev": 0.05,
                 }
             ],
+            "matchup_bets_all_books": [
+                {
+                    "pick": "Current Player",
+                    "pick_key": "c_player",
+                    "opponent": "Opp Current",
+                    "opponent_key": "opp_current",
+                    "book": "bet365",
+                    "odds": "-105",
+                    "model_win_prob": 0.55,
+                    "ev": 0.05,
+                },
+                {
+                    "pick": "Current Player",
+                    "pick_key": "c_player",
+                    "opponent": "Opp Current",
+                    "opponent_key": "opp_current",
+                    "book": "fanduel",
+                    "odds": "+100",
+                    "model_win_prob": 0.55,
+                    "ev": 0.04,
+                },
+            ],
             "value_bets": {"top20": []},
             "output_file": "output/current_event.md",
             "matchup_diagnostics": {
                 "market_counts": {"round_matchups": {"raw_rows": 2, "reason_code": "ok"}},
-                "selection_counts": {"input_rows": 2, "selected_rows": 1},
+                "selection_counts": {"input_rows": 2, "selected_rows": 1, "all_qualifying_rows": 2},
                 "reason_codes": {"below_ev_threshold": 1},
                 "state": "edges_available",
                 "errors": [],
@@ -415,6 +469,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model"
     assert snapshot["upcoming_tournament"]["diagnostics"]["state"] == "edges_available"
     assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets"]] == ["betonline", "draftkings"]
+    assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets_all_books"]] == ["betonline", "draftkings", "fanduel"]
     assert snapshot["upcoming_tournament"]["value_bets"]["top10"][0]["book"] == "bovada"
 
 

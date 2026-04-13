@@ -249,7 +249,7 @@ golf-model/
 
 | Layer | File(s) | What it controls |
 |-------|---------|------------------|
-| Secrets/API | `.env` | API keys, `AI_BRAIN_PROVIDER`, `EV_THRESHOLD`, `MATCHUP_EV_THRESHOLD`, `PREFERRED_BOOK` |
+| Secrets/API | `.env` | API keys, `AI_BRAIN_PROVIDER`, `EV_THRESHOLD`, `MATCHUP_EV_THRESHOLD`, optional `PREFERRED_BOOK` metadata |
 | Feature toggles | `feature_flags.yaml` | `kelly_sizing`, `clv_tracking`, `exposure_caps`, `dynamic_blend`, `dead_heat_adjustment`, `3ball`, `use_confirmed_field_only` |
 | Run profiles | `profiles.yaml` | `tour`, `enable_ai`, `enable_backfill`, `backfill_years`, `output_dir` (profiles: default, quick, full) |
 | Model tuning | `src/config.py` | EV thresholds, blend weights, adaptation states, matchup params, default weights, weather/confidence/integrity constants |
@@ -264,7 +264,7 @@ golf-model/
 | Intent | Command | Notes |
 |--------|---------|-------|
 | Full prediction pipeline | `python run_predictions.py` | Primary entry. Auto-detects current DG event, runs full pipeline. Uses GolfModelService. |
-| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups only at preferred book; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
+| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups are the default card mode; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
 | First-time setup | `python setup_wizard.py` | Backfills data, initializes DB. Run once. |
 | Unified launcher | `python start.py` | Interactive menu routing to pipeline, backtester, etc. |
 | CLI analysis | `python analyze.py --tournament "Name" --course "Name" --sync` | Own pipeline by default. Add `--service` to use GolfModelService. `--ai` for AI. `--calibration` for dashboard. |
@@ -300,7 +300,8 @@ When matchups appear empty, inspect `GET /api/live-refresh/snapshot` and read `s
 
 Use these fields to separate causes:
 - `diagnostics.market_counts.tournament_matchups.raw_rows` (raw posted rows)
-- `diagnostics.selection_counts.selected_rows` (post-filter rows)
+- `diagnostics.selection_counts.all_qualifying_rows` (rows that pass model/EV before card caps)
+- `diagnostics.selection_counts.selected_rows` (card-curated rows after exposure/pair caps)
 - `diagnostics.reason_codes` (where rows were excluded)
 
 ---
@@ -325,8 +326,8 @@ Use these fields to separate causes:
 | `AUTORESEARCH_GUARDRAIL_MAX_CLV_REGRESSION` | No | `0.02` | Max allowed CLV drop vs baseline (ignored when mode=loose) |
 | `AUTORESEARCH_GUARDRAIL_MAX_CALIBRATION_REGRESSION` | No | `0.03` | Max allowed calibration error increase vs baseline (ignored when mode=loose) |
 | `AUTORESEARCH_GUARDRAIL_MAX_DRAWDOWN_REGRESSION` | No | `10.0` | Max allowed drawdown increase vs baseline (ignored when mode=loose) |
-| `PREFERRED_BOOK` | No | `bet365` | Target sportsbook for live card |
-| `PREFERRED_BOOK_ONLY` | No | `true` | Only show plays at preferred book |
+| `PREFERRED_BOOK` | No | `bet365` | Optional preferred-book metadata shown alongside best-line pricing (no filtering) |
+| `PREFERRED_BOOK_ONLY` | No | `false` | Deprecated legacy toggle (not used by current pipelines) |
 
 ### `feature_flags.yaml` (booleans, read by `src/feature_flags.py`)
 
@@ -591,7 +592,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | EV thresholds, blend weights, adaptation thresholds | `src/config.py` |
 | Feature toggles (Kelly, CLV, exposure, 3ball) | `feature_flags.yaml` |
 | Run profile (AI on/off, backfill years) | `profiles.yaml` |
-| API keys, provider, preferred book | `.env` |
+| API keys, provider, preferred-book metadata | `.env` |
 | Model weights (course_fit/form/momentum, SG sub-weights) | `src/config.py` `DEFAULT_WEIGHTS`; or DB `weight_sets` |
 | Card layout or content | `src/card.py` |
 | Methodology doc content | `src/methodology.py` |

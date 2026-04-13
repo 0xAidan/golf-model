@@ -67,6 +67,56 @@ test("buildHydratedPredictionRun preserves full snapshot board payloads", () => 
           reason: "Still qualifies",
         },
       ],
+      matchup_bets_all_books: [
+        {
+          pick: "Scottie Scheffler",
+          pick_key: "scottie_scheffler",
+          opponent: "Rory McIlroy",
+          opponent_key: "rory_mcilroy",
+          odds: "+118",
+          book: "betonline",
+          model_win_prob: 0.58,
+          implied_prob: 0.46,
+          ev: 0.11,
+          ev_pct: "11.0%",
+          composite_gap: 3.1,
+          form_gap: 2.4,
+          course_fit_gap: 2.2,
+          reason: "Best number posted",
+        },
+        {
+          pick: "Scottie Scheffler",
+          pick_key: "scottie_scheffler",
+          opponent: "Rory McIlroy",
+          opponent_key: "rory_mcilroy",
+          odds: "+112",
+          book: "bet365",
+          model_win_prob: 0.58,
+          implied_prob: 0.47,
+          ev: 0.09,
+          ev_pct: "9.0%",
+          composite_gap: 3.1,
+          form_gap: 2.4,
+          course_fit_gap: 2.2,
+          reason: "Still qualifies",
+        },
+        {
+          pick: "Scottie Scheffler",
+          pick_key: "scottie_scheffler",
+          opponent: "Rory McIlroy",
+          opponent_key: "rory_mcilroy",
+          odds: "+108",
+          book: "draftkings",
+          model_win_prob: 0.58,
+          implied_prob: 0.48,
+          ev: 0.08,
+          ev_pct: "8.0%",
+          composite_gap: 3.1,
+          form_gap: 2.4,
+          course_fit_gap: 2.2,
+          reason: "Additional qualifying line",
+        },
+      ],
       value_bets: {
         top10: [
           {
@@ -112,10 +162,14 @@ test("buildHydratedPredictionRun preserves full snapshot board payloads", () => 
     ["betonline", "bet365"],
   )
   assert.deepEqual(
+    hydrated.matchup_bets_all_books?.map((row) => row.book),
+    ["betonline", "bet365", "draftkings"],
+  )
+  assert.deepEqual(
     hydrated.value_bets?.top10?.map((row) => row.book),
     ["bovada", "bet365"],
   )
-  assert.deepEqual(collectAvailableBooks(hydrated), ["bet365", "betonline", "bovada"])
+  assert.deepEqual(collectAvailableBooks(hydrated), ["bet365", "betonline", "bovada", "draftkings"])
   assert.deepEqual(
     flattenSecondaryBets(hydrated).map((row) => row.book),
     ["bovada", "bet365"],

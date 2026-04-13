@@ -128,6 +128,7 @@ export type LiveTournamentSnapshot = {
   rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]
   matchup_bets?: MatchupBet[]
+  matchup_bets_all_books?: MatchupBet[]
   value_bets?: Record<string, SecondaryBet[]>
   card_path?: string | null
   source_card_path?: string | null
@@ -138,9 +139,14 @@ export type LiveTournamentSnapshot = {
     selection_counts?: {
       input_rows?: number
       selected_rows?: number
+      all_qualifying_rows?: number
     }
     adaptation_state?: string
     reason_codes?: Record<string, number>
+    books_seen?: string[]
+    books_with_qualifying_edges?: string[]
+    books_after_card_caps?: string[]
+    book_stats?: Record<string, { lines_seen?: number; qualifying_edges?: number; card_rows?: number }>
     state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | string
     errors?: string[]
   }
@@ -344,6 +350,7 @@ export type PredictionRunResponse = {
   output_file?: string | null
   composite_results?: CompositePlayer[]
   matchup_bets?: MatchupBet[]
+  matchup_bets_all_books?: MatchupBet[]
   value_bets?: Record<string, SecondaryBet[]>
   field_validation?: FieldValidation
   strategy_meta?: {

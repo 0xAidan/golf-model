@@ -150,7 +150,10 @@ function App() {
 
   const players = effectivePredictionRun?.composite_results ?? []
   const filteredMatchups = useMemo(() => {
-    const sourceMatchups = effectivePredictionRun?.matchup_bets ?? []
+    const sourceMatchups =
+      effectivePredictionRun?.matchup_bets_all_books
+      ?? effectivePredictionRun?.matchup_bets
+      ?? []
     return sourceMatchups.filter((matchup) => {
       const matchupBook = normalizeSportsbook(matchup.book)
       if (NON_BOOK_SOURCES.has(matchupBook)) return false
@@ -160,7 +163,7 @@ function App() {
         : true
       return passesBook && passesSearch && matchup.ev >= minEdge
     })
-  }, [effectivePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
+  }, [effectivePredictionRun?.matchup_bets_all_books, effectivePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
 
   const secondaryBets = useMemo(() => {
     return flattenSecondaryBets(effectivePredictionRun).filter((bet) => {
@@ -365,15 +368,7 @@ function PredictionWorkspacePage({
 
   const topPlays = useMemo(() => {
     const TIER_RANK: Record<string, number> = { STRONG: 0, GOOD: 1, LEAN: 2 }
-    const deduped = new Map<string, MatchupBet>()
-    for (const m of matchupSource) {
-      const pairKey = `${m.pick_key}::${m.opponent_key}`
-      const existing = deduped.get(pairKey)
-      if (!existing || m.ev > existing.ev) {
-        deduped.set(pairKey, m)
-      }
-    }
-    return Array.from(deduped.values()).sort((a, b) => {
+    return matchupSource.slice().sort((a, b) => {
       const tierDiff = (TIER_RANK[a.tier ?? "LEAN"] ?? 2) - (TIER_RANK[b.tier ?? "LEAN"] ?? 2)
       if (tierDiff !== 0) return tierDiff
       return b.ev - a.ev
@@ -641,7 +636,7 @@ function PredictionWorkspacePage({
             })}
             {topPlays.length > 5 ? (
               <p className="text-center text-sm text-slate-500">
-                Showing top 5 of {topPlays.length} unique edges.{" "}
+                Showing top 5 of {topPlays.length} qualifying lines.{" "}
                 <Link to="/matchups" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">View all</Link>
               </p>
             ) : null}
@@ -1434,7 +1429,13 @@ function ChartColumnIcon() {
 }
 
 function buildMatchupKey(matchup: MatchupBet) {
-  return `${matchup.pick_key}-${matchup.opponent_key}-${matchup.market_type ?? "matchup"}`
+  return [
+    matchup.pick_key,
+    matchup.opponent_key,
+    matchup.market_type ?? "matchup",
+    normalizeSportsbook(matchup.book) || "book",
+    String(matchup.odds ?? "--"),
+  ].join("-")
 }
 
 function secondaryBadgeLabel(market: string) {

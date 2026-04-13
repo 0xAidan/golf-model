@@ -668,6 +668,9 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         ),
         "matchups": _extract_matchups(live_result.get("matchup_bets") or []),
         "matchup_bets": _extract_board_matchup_bets(live_result.get("matchup_bets") or []),
+        "matchup_bets_all_books": _extract_board_matchup_bets(
+            live_result.get("matchup_bets_all_books") or live_result.get("matchup_bets") or []
+        ),
         "value_bets": _extract_board_value_bets(live_result.get("value_bets") or {}),
         "card_path": live_result.get("output_file") or live_result.get("card_filepath"),
         "source_card_path": live_result.get("output_file") or live_result.get("card_filepath"),
@@ -710,7 +713,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
 
     if upcoming_result:
         upcoming_diag = upcoming_result.get("matchup_diagnostics") or {}
-        upcoming_selected_rows = int((upcoming_diag.get("selection_counts") or {}).get("selected_rows", 0))
+        upcoming_selection_counts = upcoming_diag.get("selection_counts") or {}
+        upcoming_selected_rows = int(
+            upcoming_selection_counts.get("all_qualifying_rows", upcoming_selection_counts.get("selected_rows", 0))
+        )
         upcoming_eligibility = _build_section_eligibility(
             upcoming_result,
             source_event_id=upcoming_event_id,
@@ -740,6 +746,13 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             ),
             "matchup_bets": (
                 _extract_board_matchup_bets(upcoming_result.get("matchup_bets") or [])
+                if upcoming_eligibility.get("verified")
+                else []
+            ),
+            "matchup_bets_all_books": (
+                _extract_board_matchup_bets(
+                    upcoming_result.get("matchup_bets_all_books") or upcoming_result.get("matchup_bets") or []
+                )
                 if upcoming_eligibility.get("verified")
                 else []
             ),
@@ -805,6 +818,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "rankings": [],
                 "matchups": [],
                 "matchup_bets": [],
+                "matchup_bets_all_books": [],
                 "value_bets": {},
                 "eligibility": {
                     "verified": False,
@@ -832,7 +846,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 },
                 "diagnostics": {
                     "market_counts": ingest_summary.get("market_counts") or {},
-                    "selection_counts": {"selected_rows": 0},
+                    "selection_counts": {"selected_rows": 0, "all_qualifying_rows": 0},
                     "adaptation_state": "unknown",
                     "reason_codes": {},
                     "state": "eligibility_failed",
@@ -843,9 +857,15 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             upcoming_section["source_event_id"] = str(upcoming_section.get("source_event_id") or upcoming_event_id)
             upcoming_section["source_event_name"] = str(upcoming_section.get("source_event_name") or upcoming_event_name)
             upcoming_section["event_name"] = str(upcoming_section.get("event_name") or upcoming_event_name)
+            upcoming_section["matchup_bets_all_books"] = (
+                upcoming_section.get("matchup_bets_all_books")
+                or upcoming_section.get("matchup_bets")
+                or []
+            )
 
     live_diag = live_result.get("matchup_diagnostics") or {}
-    live_selected_rows = int((live_diag.get("selection_counts") or {}).get("selected_rows", 0))
+    live_selection_counts = live_diag.get("selection_counts") or {}
+    live_selected_rows = int(live_selection_counts.get("all_qualifying_rows", live_selection_counts.get("selected_rows", 0)))
     live_state = _classify_matchup_state(
         market_counts=ingest_summary.get("market_counts"),
         diagnostics_state=live_diag.get("state"),
@@ -862,6 +882,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_source_card_path = base_section.get("source_card_path")
     live_matchups = base_section.get("matchups") or []
     live_board_matchup_bets = base_section.get("matchup_bets") or []
+    live_board_matchup_bets_all_books = (
+        base_section.get("matchup_bets_all_books")
+        or base_section.get("matchup_bets")
+        or []
+    )
     live_value_bets = base_section.get("value_bets") or {}
     live_verification_error = base_section.get("verification_error")
 
@@ -870,6 +895,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         live_rankings = []
         live_matchups = []
         live_board_matchup_bets = []
+        live_board_matchup_bets_all_books = []
         live_value_bets = {}
         live_ranking_source = "eligibility_failed"
         fallback_live = _load_verified_section_fallback(
@@ -882,6 +908,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             live_rankings = fallback_live.get("rankings") or []
             live_matchups = fallback_live.get("matchups") or []
             live_board_matchup_bets = fallback_live.get("matchup_bets") or []
+            live_board_matchup_bets_all_books = (
+                fallback_live.get("matchup_bets_all_books")
+                or fallback_live.get("matchup_bets")
+                or []
+            )
             live_value_bets = fallback_live.get("value_bets") or {}
             live_eligibility = fallback_live.get("eligibility") or live_eligibility
             live_verification_error = fallback_live.get("verification_error") or live_verification_error
@@ -925,6 +956,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "rankings": live_rankings,
             "matchups": live_matchups,
             "matchup_bets": live_board_matchup_bets,
+            "matchup_bets_all_books": live_board_matchup_bets_all_books,
             "value_bets": live_value_bets,
             "source_event_id": str(
                 ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id

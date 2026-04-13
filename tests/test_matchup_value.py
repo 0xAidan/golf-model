@@ -5,6 +5,7 @@ from src.matchup_value import (
     _extract_dg_prob_from_matchup,
     _parse_best_odds,
     find_matchup_value_bets,
+    find_matchup_value_bets_with_all_books,
 )
 
 
@@ -286,6 +287,64 @@ def test_find_matchup_value_bets_required_book_still_supported(monkeypatch):
     result = find_matchup_value_bets(composite, matchups, ev_threshold=0.01, required_book="fanduel")
     assert result
     assert {row["book"] for row in result} == {"fanduel"}
+
+
+def test_find_matchup_value_bets_with_all_books_reports_card_vs_all_rows(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    composite = [
+        {
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "composite": 86.0,
+            "form": 82.0,
+            "course_fit": 80.0,
+            "momentum": 62.0,
+        },
+        {
+            "player_key": "player_b",
+            "player_display": "Player B",
+            "composite": 44.0,
+            "form": 45.0,
+            "course_fit": 46.0,
+            "momentum": 40.0,
+        },
+        {
+            "player_key": "player_c",
+            "player_display": "Player C",
+            "composite": 43.0,
+            "form": 44.0,
+            "course_fit": 45.0,
+            "momentum": 41.0,
+        },
+        {
+            "player_key": "player_d",
+            "player_display": "Player D",
+            "composite": 42.0,
+            "form": 43.0,
+            "course_fit": 44.0,
+            "momentum": 42.0,
+        },
+    ]
+    matchups = [
+        {"p1_player_name": "Player A", "p2_player_name": "Player B", "odds": {"bet365": {"p1": 115, "p2": -135}}},
+        {"p1_player_name": "Player A", "p2_player_name": "Player C", "odds": {"fanduel": {"p1": 112, "p2": -132}}},
+        {"p1_player_name": "Player A", "p2_player_name": "Player D", "odds": {"draftkings": {"p1": 110, "p2": -130}}},
+    ]
+
+    curated, all_books, diagnostics = find_matchup_value_bets_with_all_books(
+        composite,
+        matchups,
+        ev_threshold=0.01,
+        return_diagnostics=True,
+    )
+
+    assert len(all_books) >= len(curated)
+    assert diagnostics["all_qualifying_rows"] == len(all_books)
+    assert diagnostics["selected_rows"] == len(curated)
+    assert set(diagnostics["books_with_qualifying_edges"]) == {"bet365", "fanduel", "draftkings"}
+    assert set(diagnostics["books_after_card_caps"]).issubset(set(diagnostics["books_with_qualifying_edges"]))
+    assert diagnostics["book_stats"]["bet365"]["qualifying_edges"] >= 1
 
 
 def test_find_matchup_value_bets_returns_diagnostics(monkeypatch):

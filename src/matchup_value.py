@@ -229,27 +229,18 @@ def compute_conviction_score(
     return round(raw * 100)
 
 
-def find_matchup_value_bets(composite_results: list[dict],
-                             matchup_odds: list[dict],
-                             ev_threshold: float = 0.05,
-                             tournament_id: int = None,
-                             required_book: str | None = None,
-                             market_type: str = "tournament_matchups",
-                             return_diagnostics: bool = False) -> list[dict] | tuple[list[dict], dict]:
-    """
-    Find value in real sportsbook matchups using model composite scores.
-
-    composite_results: from composite.compute_composite() — sorted list with
-        player_key, player_display, composite, form, course_fit, momentum
-    matchup_odds: from datagolf.fetch_matchup_odds() — list of matchup dicts
-    ev_threshold: minimum EV to flag as value
-    tournament_id: for adaptation state lookup
-
-    Returns list of matchup value bets sorted by EV descending.
-    """
+def _find_matchup_value_bets_core(
+    composite_results: list[dict],
+    matchup_odds: list[dict],
+    ev_threshold: float = 0.05,
+    tournament_id: int = None,
+    required_book: str | None = None,
+    market_type: str = "tournament_matchups",
+) -> tuple[list[dict], list[dict], dict]:
     diagnostics = {
         "input_rows": len(matchup_odds or []),
         "selected_rows": 0,
+        "all_qualifying_rows": 0,
         "reason_codes": {
             "missing_player_name": 0,
             "missing_composite_player": 0,
@@ -261,11 +252,16 @@ def find_matchup_value_bets(composite_results: list[dict],
         },
         "adaptation_state": "normal",
         "ev_threshold_effective": ev_threshold,
+        "books_seen": [],
+        "books_with_qualifying_edges": [],
+        "books_after_card_caps": [],
+        "book_stats": {},
     }
     adaptation = None
     if tournament_id:
         try:
             from src.adaptation import get_adaptation_state
+
             adaptation = get_adaptation_state("matchup")
         except Exception as e:
             logger.warning("Adaptation state unavailable for matchup: %s", e)
@@ -274,9 +270,7 @@ def find_matchup_value_bets(composite_results: list[dict],
     if adaptation and adaptation.get("suppress"):
         diagnostics["adaptation_state"] = adaptation.get("state", "suppressed")
         diagnostics["selection_state"] = "suppressed_by_adaptation"
-        if return_diagnostics:
-            return [], diagnostics
-        return []
+        return [], [], diagnostics
 
     if adaptation and adaptation.get("ev_threshold") is not None:
         ev_threshold = max(ev_threshold, adaptation["ev_threshold"])
@@ -288,13 +282,26 @@ def find_matchup_value_bets(composite_results: list[dict],
     dg_pairings = {}
     try:
         from src.datagolf import fetch_dg_matchup_all_pairings
+
         dg_pairings = fetch_dg_matchup_all_pairings()
         if dg_pairings:
             logger.info("Loaded %d DG matchup pairings for blending", len(dg_pairings))
     except Exception as e:
         logger.warning("DG matchup pairings unavailable (using model-only): %s", e)
 
-    value_bets = []
+    all_qualifying_bets: list[dict] = []
+    books_seen: set[str] = set()
+    books_with_qualifying_edges: set[str] = set()
+    books_after_card_caps: set[str] = set()
+    book_stats: dict[str, dict[str, int]] = {}
+
+    def _book_stats(book: str) -> dict[str, int]:
+        key = str(book or "").strip().lower()
+        entry = book_stats.get(key)
+        if entry is None:
+            entry = {"lines_seen": 0, "qualifying_edges": 0, "card_rows": 0}
+            book_stats[key] = entry
+        return entry
 
     for matchup in matchup_odds:
         p1_name = matchup.get("p1_player_name") or matchup.get("player_1", {}).get("player_name", "")
@@ -413,6 +420,11 @@ def find_matchup_value_bets(composite_results: list[dict],
             book_lines = _iter_book_odds(matchup)
 
         for book_name, p1_odds, p2_odds in book_lines:
+            normalized_book = str(book_name).strip().lower()
+            if normalized_book:
+                books_seen.add(normalized_book)
+                _book_stats(normalized_book)["lines_seen"] += 1
+
             pick_odds = p1_odds if pick_side == "p1" else p2_odds
             implied_prob = american_to_implied_prob(pick_odds)
             if not implied_prob or implied_prob <= 0:
@@ -424,6 +436,10 @@ def find_matchup_value_bets(composite_results: list[dict],
                 diagnostics["reason_codes"]["below_ev_threshold"] += 1
                 continue
 
+            if normalized_book:
+                books_with_qualifying_edges.add(normalized_book)
+                _book_stats(normalized_book)["qualifying_edges"] += 1
+
             ev_pct = ev * 100
             if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT and gap > config.MATCHUP_TIER_STRONG_GAP:
                 tier = "STRONG"
@@ -432,13 +448,13 @@ def find_matchup_value_bets(composite_results: list[dict],
             else:
                 tier = "LEAN"
 
-            value_bets.append({
+            all_qualifying_bets.append({
                 "pick": pick_data["player_display"],
                 "pick_key": pick_data["player_key"],
                 "opponent": opp_data["player_display"],
                 "opponent_key": opp_data["player_key"],
                 "odds": pick_odds,
-                "book": str(book_name).strip().lower(),
+                "book": normalized_book,
                 "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
                 "platt_win_prob": round(platt_win_prob, 4),
                 "model_win_prob": round(model_win_prob, 4),
@@ -460,7 +476,7 @@ def find_matchup_value_bets(composite_results: list[dict],
                 "conviction": conviction,
             })
 
-    value_bets.sort(
+    all_qualifying_bets.sort(
         key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
         reverse=True,
     )
@@ -470,6 +486,7 @@ def find_matchup_value_bets(composite_results: list[dict],
         max_exposure = getattr(config, "MATCHUP_TOURNAMENT_MAX_PLAYER_EXPOSURE", 2)
     else:
         max_exposure = getattr(config, "MATCHUP_MAX_PLAYER_EXPOSURE", 3)
+
     def _pair_key(bet: dict) -> tuple[str, str, str]:
         return (
             str(bet.get("pick_key") or ""),
@@ -478,7 +495,7 @@ def find_matchup_value_bets(composite_results: list[dict],
         )
 
     best_by_pair: dict[tuple[str, str, str], dict] = {}
-    for bet in value_bets:
+    for bet in all_qualifying_bets:
         key = _pair_key(bet)
         current = best_by_pair.get(key)
         if current is None or float(bet.get("ev", 0.0)) > float(current.get("ev", 0.0)):
@@ -503,18 +520,80 @@ def find_matchup_value_bets(composite_results: list[dict],
         if len(allowed_pairs) >= config.MATCHUP_CAP:
             break
 
-    filtered = [bet for bet in value_bets if _pair_key(bet) in allowed_pairs]
-    filtered.sort(
+    curated_bets = [bet for bet in all_qualifying_bets if _pair_key(bet) in allowed_pairs]
+    curated_bets.sort(
         key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
         reverse=True,
     )
-    diagnostics["selected_rows"] = len(filtered)
+
+    for bet in curated_bets:
+        normalized_book = str(bet.get("book") or "").strip().lower()
+        if not normalized_book:
+            continue
+        books_after_card_caps.add(normalized_book)
+        _book_stats(normalized_book)["card_rows"] += 1
+
+    diagnostics["selected_rows"] = len(curated_bets)
+    diagnostics["all_qualifying_rows"] = len(all_qualifying_bets)
+    diagnostics["books_seen"] = sorted(books_seen)
+    diagnostics["books_with_qualifying_edges"] = sorted(books_with_qualifying_edges)
+    diagnostics["books_after_card_caps"] = sorted(books_after_card_caps)
+    diagnostics["book_stats"] = {book: stats for book, stats in sorted(book_stats.items())}
     if diagnostics["input_rows"] == 0:
         diagnostics["selection_state"] = "no_market_rows"
-    elif diagnostics["selected_rows"] == 0:
+    elif diagnostics["all_qualifying_rows"] == 0:
         diagnostics["selection_state"] = "market_available_no_edges"
     else:
         diagnostics["selection_state"] = "edges_available"
+
+    return curated_bets, all_qualifying_bets, diagnostics
+
+
+def find_matchup_value_bets_with_all_books(
+    composite_results: list[dict],
+    matchup_odds: list[dict],
+    ev_threshold: float = 0.05,
+    tournament_id: int = None,
+    required_book: str | None = None,
+    market_type: str = "tournament_matchups",
+    return_diagnostics: bool = False,
+) -> tuple[list[dict], list[dict]] | tuple[list[dict], list[dict], dict]:
+    """Return both card-curated and all-book qualifying matchup edges."""
+    curated_bets, all_qualifying_bets, diagnostics = _find_matchup_value_bets_core(
+        composite_results=composite_results,
+        matchup_odds=matchup_odds,
+        ev_threshold=ev_threshold,
+        tournament_id=tournament_id,
+        required_book=required_book,
+        market_type=market_type,
+    )
     if return_diagnostics:
-        return filtered, diagnostics
-    return filtered
+        return curated_bets, all_qualifying_bets, diagnostics
+    return curated_bets, all_qualifying_bets
+
+
+def find_matchup_value_bets(
+    composite_results: list[dict],
+    matchup_odds: list[dict],
+    ev_threshold: float = 0.05,
+    tournament_id: int = None,
+    required_book: str | None = None,
+    market_type: str = "tournament_matchups",
+    return_diagnostics: bool = False,
+) -> list[dict] | tuple[list[dict], dict]:
+    """
+    Find value in real sportsbook matchups using model composite scores.
+
+    Returns card-curated rows by default for backward compatibility.
+    """
+    curated_bets, _, diagnostics = _find_matchup_value_bets_core(
+        composite_results=composite_results,
+        matchup_odds=matchup_odds,
+        ev_threshold=ev_threshold,
+        tournament_id=tournament_id,
+        required_book=required_book,
+        market_type=market_type,
+    )
+    if return_diagnostics:
+        return curated_bets, diagnostics
+    return curated_bets

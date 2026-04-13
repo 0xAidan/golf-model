@@ -262,18 +262,26 @@ class GolfModelService:
 
         # Step 10a: Matchups and 3-ball (live focus: plus-ROI areas)
         matchup_bets = []
+        matchup_bets_all_books = []
         matchup_diagnostics = {
             "market_counts": {},
-            "selection_counts": {"selected_rows": 0},
+            "selection_counts": {"selected_rows": 0, "all_qualifying_rows": 0},
             "reason_codes": {},
             "state": "not_requested",
             "errors": [],
         }
         if mode in ("full", "matchups-only", "round-matchups"):
-            matchup_bets, matchup_diagnostics = self._fetch_matchup_value_bets(composite, tid, mode=mode)
-            if matchup_bets:
-                print(f"    → {len(matchup_bets)} matchup value plays")
+            matchup_bets, matchup_bets_all_books, matchup_diagnostics = self._fetch_matchup_value_bets(
+                composite, tid, mode=mode
+            )
+            if matchup_bets_all_books:
+                print(
+                    "    → "
+                    f"{len(matchup_bets_all_books)} qualifying matchup lines "
+                    f"({len(matchup_bets)} card-curated)"
+                )
         result["matchup_bets"] = matchup_bets
+        result["matchup_bets_all_books"] = matchup_bets_all_books
         result["matchup_diagnostics"] = matchup_diagnostics
         if mode in ("full", "matchups-only"):
             threeball_bets = self._fetch_3ball_value_bets(composite, tid)
@@ -739,7 +747,7 @@ class GolfModelService:
             value_bets[bt] = vb
         return value_bets
 
-    def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> tuple[list, dict]:
+    def _fetch_matchup_value_bets(self, composite, tid, mode: str = "full") -> tuple[list, list, dict]:
         """Fetch matchup value bets across all available books.
 
         **full** and **matchups-only**: 72-hole (tournament) matchups.
@@ -747,7 +755,7 @@ class GolfModelService:
         """
         try:
             from src.datagolf import fetch_matchup_odds_with_diagnostics
-            from src.matchup_value import find_matchup_value_bets
+            from src.matchup_value import find_matchup_value_bets_with_all_books
             from src import config
 
             diagnostics = {
@@ -755,8 +763,13 @@ class GolfModelService:
                 "selection_counts": {
                     "input_rows": 0,
                     "selected_rows": 0,
+                    "all_qualifying_rows": 0,
                 },
                 "reason_codes": {},
+                "books_seen": [],
+                "books_with_qualifying_edges": [],
+                "books_after_card_caps": [],
+                "book_stats": {},
                 "adaptation_state": "normal",
                 "state": "market_available_no_edges",
                 "errors": [],
@@ -771,7 +784,11 @@ class GolfModelService:
                 markets = [("round_matchups", "round"), ("tournament_matchups", "72-hole fallback")]
             else:
                 markets = [("tournament_matchups", "72-hole")]
-            aggregated = []
+            aggregated_card = []
+            aggregated_all_books = []
+            books_seen: set[str] = set()
+            books_with_qualifying_edges: set[str] = set()
+            books_after_card_caps: set[str] = set()
             for market_key, label in markets:
                 try:
                     odds, market_diag = fetch_matchup_odds_with_diagnostics(market=market_key, tour=self.tour)
@@ -781,26 +798,49 @@ class GolfModelService:
                     }
                     if not odds:
                         continue
-                    bets, selection_diag = find_matchup_value_bets(
+                    card_bets, all_book_bets, selection_diag = find_matchup_value_bets_with_all_books(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
                         market_type=market_key,
                         return_diagnostics=True,
                     )
                     diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))
                     diagnostics["selection_counts"]["selected_rows"] += int(selection_diag.get("selected_rows", 0))
+                    diagnostics["selection_counts"]["all_qualifying_rows"] += int(
+                        selection_diag.get("all_qualifying_rows", 0)
+                    )
                     diagnostics["adaptation_state"] = selection_diag.get("adaptation_state", diagnostics["adaptation_state"])
                     for reason, count in (selection_diag.get("reason_codes") or {}).items():
                         diagnostics["reason_codes"][reason] = diagnostics["reason_codes"].get(reason, 0) + int(count)
-                    for b in bets:
+                    books_seen.update(str(book).strip().lower() for book in selection_diag.get("books_seen", []))
+                    books_with_qualifying_edges.update(
+                        str(book).strip().lower() for book in selection_diag.get("books_with_qualifying_edges", [])
+                    )
+                    books_after_card_caps.update(
+                        str(book).strip().lower() for book in selection_diag.get("books_after_card_caps", [])
+                    )
+                    for book, stats in (selection_diag.get("book_stats") or {}).items():
+                        key = str(book or "").strip().lower()
+                        if not key:
+                            continue
+                        merged = diagnostics["book_stats"].setdefault(
+                            key,
+                            {"lines_seen": 0, "qualifying_edges": 0, "card_rows": 0},
+                        )
+                        for stat_key in ("lines_seen", "qualifying_edges", "card_rows"):
+                            merged[stat_key] = int(merged.get(stat_key, 0)) + int(stats.get(stat_key, 0))
+                    for b in card_bets:
                         b["market_type"] = market_key
-                    aggregated.extend(bets)
+                    for b in all_book_bets:
+                        b["market_type"] = market_key
+                    aggregated_card.extend(card_bets)
+                    aggregated_all_books.extend(all_book_bets)
                 except Exception as e:
                     logger.warning("Matchup fetch %s: %s", label, e)
                     diagnostics["errors"].append(f"{label}: {e}")
 
             # Deduplicate identical lines that can appear in both markets/fallbacks.
-            deduped = {}
-            for bet in aggregated:
+            deduped_card = {}
+            for bet in aggregated_card:
                 key = (
                     bet.get("pick_key"),
                     bet.get("opponent_key"),
@@ -808,27 +848,50 @@ class GolfModelService:
                     str(bet.get("odds")),
                     bet.get("market_type"),
                 )
-                current = deduped.get(key)
+                current = deduped_card.get(key)
                 if current is None or float(bet.get("ev", 0)) > float(current.get("ev", 0)):
-                    deduped[key] = bet
-            selected = sorted(deduped.values(), key=lambda x: x.get("ev", 0), reverse=True)
-            diagnostics["selection_counts"]["selected_rows"] = len(selected)
+                    deduped_card[key] = bet
+
+            deduped_all_books = {}
+            for bet in aggregated_all_books:
+                key = (
+                    bet.get("pick_key"),
+                    bet.get("opponent_key"),
+                    str(bet.get("book") or "").strip().lower(),
+                    str(bet.get("odds")),
+                    bet.get("market_type"),
+                )
+                current = deduped_all_books.get(key)
+                if current is None or float(bet.get("ev", 0)) > float(current.get("ev", 0)):
+                    deduped_all_books[key] = bet
+
+            selected_card = sorted(deduped_card.values(), key=lambda x: x.get("ev", 0), reverse=True)
+            selected_all_books = sorted(deduped_all_books.values(), key=lambda x: x.get("ev", 0), reverse=True)
+            diagnostics["selection_counts"]["selected_rows"] = len(selected_card)
+            diagnostics["selection_counts"]["all_qualifying_rows"] = len(selected_all_books)
+            diagnostics["books_seen"] = sorted(book for book in books_seen if book)
+            diagnostics["books_with_qualifying_edges"] = sorted(book for book in books_with_qualifying_edges if book)
+            diagnostics["books_after_card_caps"] = sorted(book for book in books_after_card_caps if book)
             total_raw_rows = sum(int((entry or {}).get("raw_rows", 0)) for entry in diagnostics["market_counts"].values())
             if diagnostics["errors"]:
                 diagnostics["state"] = "pipeline_error"
             elif total_raw_rows == 0:
                 diagnostics["state"] = "no_market_posted_yet"
-            elif not selected:
+            elif not selected_all_books:
                 diagnostics["state"] = "market_available_no_edges"
             else:
                 diagnostics["state"] = "edges_available"
-            return selected, diagnostics
+            return selected_card, selected_all_books, diagnostics
         except Exception as e:
             logger.warning("Matchup value bets failed: %s", e)
-            return [], {
+            return [], [], {
                 "market_counts": {},
-                "selection_counts": {"input_rows": 0, "selected_rows": 0},
+                "selection_counts": {"input_rows": 0, "selected_rows": 0, "all_qualifying_rows": 0},
                 "reason_codes": {},
+                "books_seen": [],
+                "books_with_qualifying_edges": [],
+                "books_after_card_caps": [],
+                "book_stats": {},
                 "adaptation_state": "unknown",
                 "state": "pipeline_error",
                 "errors": [str(e)],
