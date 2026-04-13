@@ -222,13 +222,48 @@ def test_sync_tournament_returns_raw_decompositions_for_profile_fallback(monkeyp
     monkeypatch.setattr("src.datagolf._parse_rounds_response", lambda raw, tour, year: [])
     monkeypatch.setattr("src.db.get_rounds_count", lambda: 0)
     monkeypatch.setattr("src.db.store_rounds", lambda rows: None)
-    monkeypatch.setattr("src.datagolf.fetch_pre_tournament", lambda tour: [])
+    monkeypatch.setattr("src.datagolf.fetch_pre_tournament", lambda tour, event_id=None: [])
     monkeypatch.setattr("src.datagolf._store_predictions_as_metrics", lambda preds, tournament_id: 0)
-    monkeypatch.setattr("src.datagolf.fetch_decompositions", lambda tour: [{"player_name": "Scottie Scheffler"}])
+    monkeypatch.setattr("src.datagolf.fetch_decompositions", lambda tour, event_id=None: [{"player_name": "Scottie Scheffler"}])
     monkeypatch.setattr("src.datagolf._store_decompositions_as_metrics", lambda decomps, tournament_id: 1)
-    monkeypatch.setattr("src.datagolf.fetch_field_updates", lambda tour: [])
+    monkeypatch.setattr("src.datagolf.fetch_field_updates", lambda tour, event_id=None: [])
     monkeypatch.setattr("src.datagolf._store_field_as_metrics", lambda field, tournament_id: 0)
 
     summary = sync_tournament(7, tour="pga")
 
     assert summary["decompositions_raw"] == [{"player_name": "Scottie Scheffler"}]
+
+
+def test_sync_tournament_forwards_event_id_to_datagolf_calls(monkeypatch):
+    from src.datagolf import sync_tournament
+
+    calls = {"preds": None, "decomp": None, "field": None}
+    monkeypatch.setattr("src.datagolf.fetch_historical_rounds", lambda tour, event_id, year: [])
+    monkeypatch.setattr("src.datagolf._parse_rounds_response", lambda raw, tour, year: [])
+    monkeypatch.setattr("src.db.get_rounds_count", lambda: 0)
+    monkeypatch.setattr("src.db.store_rounds", lambda rows: None)
+
+    def _preds(tour, event_id=None):
+        calls["preds"] = event_id
+        return []
+
+    def _decomp(tour, event_id=None):
+        calls["decomp"] = event_id
+        return []
+
+    def _field(tour, event_id=None):
+        calls["field"] = event_id
+        return []
+
+    monkeypatch.setattr("src.datagolf.fetch_pre_tournament", _preds)
+    monkeypatch.setattr("src.datagolf._store_predictions_as_metrics", lambda preds, tournament_id: 0)
+    monkeypatch.setattr("src.datagolf.fetch_decompositions", _decomp)
+    monkeypatch.setattr("src.datagolf._store_decompositions_as_metrics", lambda decomps, tournament_id: 0)
+    monkeypatch.setattr("src.datagolf.fetch_field_updates", _field)
+    monkeypatch.setattr("src.datagolf._store_field_as_metrics", lambda field, tournament_id: 0)
+
+    sync_tournament(10, tour="pga", event_id="12")
+
+    assert calls["preds"] == "12"
+    assert calls["decomp"] == "12"
+    assert calls["field"] == "12"

@@ -109,8 +109,9 @@ class GolfModelService:
             self._backfill_rounds(backfill_years, tournament_name=tournament_name)
 
         # Step 4: Sync DG predictions, decompositions, field
-        sync_result = self._sync_tournament_data(tid)
+        sync_result = self._sync_tournament_data(tid, event_id=event_id)
         result["sync"] = sync_result
+        result["event_id"] = event_id
 
         # Step 5: Fetch DG skill ratings, rankings, approach skill
         field_keys = db.get_all_players(tid)
@@ -411,11 +412,11 @@ class GolfModelService:
                     except Exception as e:
                         logger.warning(f"Backfill error for {tour.upper()} {year}: {e}")
 
-    def _sync_tournament_data(self, tournament_id: int) -> dict:
+    def _sync_tournament_data(self, tournament_id: int, event_id: str | None = None) -> dict:
         """Sync predictions, decompositions, field from DG."""
         try:
             from src.datagolf import sync_tournament
-            return sync_tournament(tournament_id, tour=self.tour)
+            return sync_tournament(tournament_id, tour=self.tour, event_id=event_id)
         except Exception as e:
             logger.warning(f"Sync error: {e}")
             return {"errors": [str(e)]}
