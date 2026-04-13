@@ -61,14 +61,8 @@ function hydrateLegacyMatchups(matchups: LiveMatchupRow[] | undefined): MatchupB
   })
 }
 
-export function hydrateSnapshotMatchups(source: LiveTournamentSnapshot): MatchupBet[] {
-  const seededRows = Array.isArray(source.matchup_bets)
-    ? source.matchup_bets
-    : source.matchup_bets === null
-      ? []
-      : hydrateLegacyMatchups(source.matchups)
-
-  return seededRows
+function normalizeSnapshotMatchupRows(rows: MatchupBet[]): MatchupBet[] {
+  return rows
     .filter((row) => isDisplayBook(row.book))
     .map((row) => {
       const ev = Number(row.ev ?? 0)
@@ -103,6 +97,30 @@ export function hydrateSnapshotMatchups(source: LiveTournamentSnapshot): Matchup
       }
     })
     .sort((left, right) => right.ev - left.ev)
+}
+
+export function hydrateSnapshotMatchups(source: LiveTournamentSnapshot): MatchupBet[] {
+  const seededRows = Array.isArray(source.matchup_bets)
+    ? source.matchup_bets
+    : source.matchup_bets === null
+      ? []
+      : hydrateLegacyMatchups(source.matchups)
+
+  return normalizeSnapshotMatchupRows(seededRows)
+}
+
+export function hydrateSnapshotMatchupsAllBooks(source: LiveTournamentSnapshot): MatchupBet[] {
+  const seededRows = Array.isArray(source.matchup_bets_all_books)
+    ? source.matchup_bets_all_books
+    : source.matchup_bets_all_books === null
+      ? []
+      : Array.isArray(source.matchup_bets)
+        ? source.matchup_bets
+        : source.matchup_bets === null
+          ? []
+          : hydrateLegacyMatchups(source.matchups)
+
+  return normalizeSnapshotMatchupRows(seededRows)
 }
 
 export function hydrateSnapshotValueBets(source: LiveTournamentSnapshot): Record<string, SecondaryBet[]> {
@@ -144,8 +162,9 @@ export function hydrateSnapshotValueBets(source: LiveTournamentSnapshot): Record
 
 export function collectAvailableBooks(predictionRun: PredictionRunResponse | null): string[] {
   const names = new Set<string>()
+  const matchupBookSource = predictionRun?.matchup_bets_all_books ?? predictionRun?.matchup_bets ?? []
 
-  for (const matchup of predictionRun?.matchup_bets ?? []) {
+  for (const matchup of matchupBookSource) {
     const normalized = normalizeSportsbook(matchup.book)
     if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
       names.add(normalized)
@@ -226,6 +245,7 @@ export function buildHydratedPredictionRun(
 
   const rankings = source.rankings ?? []
   const matchupBets = hydrateSnapshotMatchups(source)
+  const matchupBetsAllBooks = hydrateSnapshotMatchupsAllBooks(source)
   const valueBets = hydrateSnapshotValueBets(source)
 
   return {
@@ -251,6 +271,7 @@ export function buildHydratedPredictionRun(
       details: row.details,
     })),
     matchup_bets: matchupBets,
+    matchup_bets_all_books: matchupBetsAllBooks,
     value_bets: valueBets,
     warnings: ["Hydrated from live snapshot. Manual runs are still required for card export and full provenance details."],
   }
