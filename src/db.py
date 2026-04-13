@@ -1043,10 +1043,6 @@ def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> li
            LIMIT 1""",
         (tournament_id,),
     ).fetchone()
-    has_legacy_field = conn.execute(
-        "SELECT 1 FROM metrics WHERE tournament_id = ? AND metric_category = 'meta' LIMIT 1",
-        (tournament_id,),
-    ).fetchone()
     if confirmed_field_only and has_explicit_field:
         rows = conn.execute(
             """SELECT DISTINCT player_key FROM metrics
@@ -1054,12 +1050,6 @@ def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> li
                  AND metric_category = 'meta'
                  AND metric_name = 'field_status'
                  AND metric_text = 'confirmed'""",
-            (tournament_id,),
-        ).fetchall()
-    elif confirmed_field_only and has_legacy_field:
-        rows = conn.execute(
-            """SELECT DISTINCT player_key FROM metrics
-               WHERE tournament_id = ? AND metric_category = 'meta'""",
             (tournament_id,),
         ).fetchall()
     else:
