@@ -431,12 +431,30 @@ def generate_card(tournament_name: str,
         ai_tag = ""
     runtime = (strategy_meta or {}).get("runtime_settings", {})
     blend = runtime.get("blend_weights", {})
+    dg_blend = None
+    model_blend = None
+    for market_bets in (value_bets or {}).values():
+        if not market_bets:
+            continue
+        sample = next((bet for bet in market_bets if isinstance(bet, dict)), None)
+        if not sample:
+            continue
+        if sample.get("blend_dg_used") is not None:
+            dg_blend = float(sample.get("blend_dg_used"))
+        if sample.get("blend_model_used") is not None:
+            model_blend = float(sample.get("blend_model_used"))
+        if dg_blend is not None or model_blend is not None:
+            break
+    if dg_blend is None:
+        dg_blend = 0.95
+    if model_blend is None:
+        model_blend = 0.05
     lines.append(
         f"*Model v{config.MODEL_VERSION}: {len(composite_results)} players scored. "
         f"Course data: {'Yes' if any(r.get('course_rounds', 0) > 0 for r in composite_results) else 'No'}."
         f"{ai_tag} Weights: {blend.get('course_fit', 0.45):.0%} course fit / "
         f"{blend.get('form', 0.45):.0%} form / {blend.get('momentum', 0.10):.0%} momentum."
-        f" DG blend: 95% DG / 5% model.*"
+        f" DG blend: {dg_blend:.0%} DG / {model_blend:.0%} model.*"
     )
 
     os.makedirs(output_dir, exist_ok=True)

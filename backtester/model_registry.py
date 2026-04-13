@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +11,8 @@ from typing import Any
 from backtester.experiments import get_active_strategy
 from backtester.strategy import StrategyConfig
 from src import db
+
+logger = logging.getLogger("backtester.model_registry")
 
 
 @dataclass
@@ -37,6 +40,7 @@ def _strategy_from_json(strategy_config_json: str | None) -> StrategyConfig | No
     try:
         return StrategyConfig.from_json(strategy_config_json)
     except Exception:
+        logger.warning("Failed to parse strategy_config_json from model registry", exc_info=True)
         return None
 
 

@@ -528,6 +528,7 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     return {
         "event_name": context_row.get("event_name"),
         "event_id": context_row.get("event_id"),
+        "event_year": context_row.get("year"),
         "course": context_row.get("course"),
         "schedule_count": len(upcoming_schedule),
         "live_event_active": live_event_active,
@@ -535,6 +536,7 @@ def _run_ingest(tour: str) -> dict[str, Any]:
         "upcoming_event_row": upcoming_row,
         "latest_completed_event_name": latest_completed.get("event_name"),
         "latest_completed_event_id": latest_completed.get("event_id"),
+        "latest_completed_event_year": latest_completed.get("year"),
         "latest_completed_event_course": latest_completed.get("course"),
         "upcoming_event_names": [row.get("event_name") for row in upcoming_schedule[:3] if row.get("event_name")],
         "market_counts": {
@@ -552,15 +554,21 @@ def _run_ingest(tour: str) -> dict[str, Any]:
 
 def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any]) -> dict[str, Any]:
     mode = "full" if cadence_mode != "live_window" else "round-matchups"
+    live_course = str(ingest_summary.get("course") or "").split(";")[0].strip() or None
     live_result = run_snapshot_analysis(
         tour=tour,
+        tournament_name=str(ingest_summary.get("event_name") or "").strip() or None,
+        course_name=live_course,
         mode=mode,
         enable_ai=False,
         enable_backfill=False,
     )
     generated_at = _iso_now()
     event_name = live_result.get("event_name") or ingest_summary.get("event_name")
-    finish_states = _load_finish_state_map(ingest_summary.get("event_id"))
+    finish_states = _load_finish_state_map(
+        ingest_summary.get("event_id"),
+        year=ingest_summary.get("event_year"),
+    )
     base_section = {
         "event_name": event_name,
         "course_name": live_result.get("course_name"),

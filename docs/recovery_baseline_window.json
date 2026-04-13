@@ -1,0 +1,50 @@
+{
+  "window_name": "best_recent_window_v1",
+  "description": "Reference events and cards used to benchmark recovery quality before cutover.",
+  "events": [
+    {
+      "event": "Arnold Palmer Invitational",
+      "label": "arnold_archive_matchup_positive",
+      "card_path": "output/archive/arnold_palmer_invitational_presented_by_mastercard_20260304.md",
+      "methodology_path": "output/arnold_palmer_invitational_presented_by_mastercard_methodology_20260304.md",
+      "expected": {
+        "focus": "matchups",
+        "record": "10-4",
+        "roi_pct": 46.2
+      }
+    },
+    {
+      "event": "Cognizant Classic",
+      "label": "cognizant_archive_matchup_positive",
+      "card_path": "output/archive/cognizant_classic_20260226.md",
+      "methodology_path": "output/archive/cognizant_classic_methodology_20260226.md",
+      "expected": {
+        "focus": "matchups",
+        "record": "6-7-2",
+        "roi_pct": 8.9
+      }
+    },
+    {
+      "event": "AT&T Pebble Beach Pro-Am",
+      "label": "pebble_archive_positive",
+      "card_path": "output/archive/at&t_pebble_beach_pro-am_20260211.md",
+      "methodology_path": null,
+      "expected": {
+        "focus": "placements",
+        "record": "1-2",
+        "roi_pct": 55.6
+      }
+    },
+    {
+      "event": "Valero Texas Open",
+      "label": "valero_recent_local_good",
+      "card_path": "output/archive/valero_texas_open_20260331.md",
+      "methodology_path": null,
+      "expected": {
+        "focus": "mixed",
+        "record": null,
+        "roi_pct": null
+      }
+    }
+  ]
+}

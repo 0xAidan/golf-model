@@ -327,16 +327,18 @@ def promote_strategy(experiment_id: int, scope: str = "global") -> bool:
 def get_active_strategy(scope: str = "global") -> Optional[StrategyConfig]:
     """Get the currently active strategy for a scope."""
     conn = db.get_conn()
-    row = conn.execute("""
-        SELECT strategy_config_json FROM active_strategy WHERE scope = ?
-    """, (scope,)).fetchone()
-
-    if row and row[0]:
-        try:
-            return StrategyConfig.from_json(row[0])
-        except Exception:
-            pass
-    return StrategyConfig()  # Return default
+    try:
+        row = conn.execute("""
+            SELECT strategy_config_json FROM active_strategy WHERE scope = ?
+        """, (scope,)).fetchone()
+        if row and row[0]:
+            try:
+                return StrategyConfig.from_json(row[0])
+            except Exception:
+                logger.warning("Failed to parse active strategy JSON for scope=%s", scope, exc_info=True)
+        return StrategyConfig()  # Return default
+    finally:
+        conn.close()
 
 
 def get_experiment_leaderboard(scope: str = "global",

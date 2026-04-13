@@ -134,6 +134,46 @@ def test_filter_rows_to_field_reports_missing_and_extra_players():
     assert audit["missing_player_keys"] == ["rory_mcilroy"]
 
 
+def test_get_all_players_strict_mode_fails_closed_without_field_markers(tmp_db):
+    tid = tmp_db.get_or_create_tournament("No Field Markers", year=2026)
+    tmp_db.store_metrics(
+        [
+            {
+                "tournament_id": tid,
+                "csv_import_id": None,
+                "player_key": "phantom_player",
+                "player_display": "Phantom Player",
+                "metric_category": "sim",
+                "data_mode": "recent_form",
+                "round_window": "all",
+                "metric_name": "Win %",
+                "metric_value": 1.5,
+                "metric_text": None,
+            }
+        ]
+    )
+
+    strict_players = tmp_db.get_all_players(tid, confirmed_field_only=True)
+    loose_players = tmp_db.get_all_players(tid, confirmed_field_only=False)
+
+    assert strict_players == []
+    assert loose_players == ["phantom_player"]
+
+
+def test_filter_rows_to_field_drops_rows_with_missing_player_key():
+    from src.field_selection import filter_rows_to_field
+
+    rows = [
+        {"player_key": "", "player_display": "Missing Key Player"},
+        {"player_key": "scottie_scheffler", "player_display": "Scottie Scheffler"},
+    ]
+
+    filtered, audit = filter_rows_to_field(rows, ["scottie_scheffler"])
+
+    assert [row["player_key"] for row in filtered] == ["scottie_scheffler"]
+    assert "<missing_player_key>" in audit["extra_player_keys"]
+
+
 def test_sync_tournament_returns_raw_decompositions_for_profile_fallback(monkeypatch):
     from src.datagolf import sync_tournament
 

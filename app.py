@@ -52,7 +52,10 @@ async def _lifespan(_app: FastAPI):
     from backtester.dashboard_runtime import start_live_refresh, stop_live_refresh
 
     settings = get_settings().get("live_refresh", {})
-    if settings.get("enabled") and settings.get("autostart"):
+    embedded_autostart_enabled = os.environ.get("LIVE_REFRESH_EMBEDDED_AUTOSTART", "1").strip().lower() not in {
+        "0", "false", "off", "no"
+    }
+    if embedded_autostart_enabled and settings.get("enabled") and settings.get("autostart"):
         start_live_refresh(tour=str(settings.get("tour", "pga")))
     try:
         yield

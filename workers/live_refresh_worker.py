@@ -8,6 +8,11 @@ import logging
 import signal
 import time
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional dependency in some environments
+    load_dotenv = None
+
 from backtester.dashboard_runtime import start_live_refresh, stop_live_refresh
 from src.autoresearch_settings import get_settings
 from src.db import ensure_initialized
@@ -22,6 +27,8 @@ def _handle_signal(signum, _frame):
 
 
 def main() -> int:
+    if load_dotenv:
+        load_dotenv()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
