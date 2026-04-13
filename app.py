@@ -1374,14 +1374,11 @@ async def get_live_refresh_snapshot():
     upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
     has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
     fallback_sources = {
-        "current_event_model_fallback",
         "live_fallback",
         "verified_snapshot_fallback",
     }
-    fallback_active = (
-        (live_section.get("ranking_source") in fallback_sources)
-        or (upcoming_section.get("ranking_source") in fallback_sources)
-    )
+    active_section = live_section if live_section.get("active") else upcoming_section
+    fallback_active = active_section.get("ranking_source") in fallback_sources
     return {
         "ok": True,
         "snapshot": snapshot,
