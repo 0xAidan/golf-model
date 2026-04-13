@@ -17,6 +17,7 @@ def _sanitize_tour(tour: str | None) -> str:
 def run_snapshot_analysis(
     *,
     tour: str = "pga",
+    event_id: str | None = None,
     tournament_name: str | None = None,
     course_name: str | None = None,
     mode: str = "full",
@@ -30,6 +31,7 @@ def run_snapshot_analysis(
     pipeline_cfg = build_pipeline_strategy_config(strategy)
     service = GolfModelService(tour=_sanitize_tour(tour), strategy_config=pipeline_cfg)
     result = service.run_analysis(
+        event_id=event_id,
         tournament_name=tournament_name,
         course_name=course_name,
         enable_ai=enable_ai,

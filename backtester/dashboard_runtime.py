@@ -557,6 +557,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_course = str(ingest_summary.get("course") or "").split(";")[0].strip() or None
     live_result = run_snapshot_analysis(
         tour=tour,
+        event_id=str(ingest_summary.get("event_id") or "") or None,
         tournament_name=str(ingest_summary.get("event_name") or "").strip() or None,
         course_name=live_course,
         mode=mode,
@@ -633,6 +634,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         try:
             upcoming_result = run_snapshot_analysis(
                 tour=tour,
+                event_id=str(upcoming_row.get("event_id") or "") or None,
                 tournament_name=upcoming_event_name,
                 course_name=upcoming_course,
                 mode="full",

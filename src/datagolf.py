@@ -353,7 +353,7 @@ def backfill_rounds(tours: list[str] = None, years: list[int] = None) -> dict:
 #  Pre-Tournament Predictions
 # ═══════════════════════════════════════════════════════════════════
 
-def fetch_pre_tournament(tour: str = "pga") -> list[dict]:
+def fetch_pre_tournament(tour: str = "pga", event_id: str | None = None) -> list[dict]:
     """
     Fetch pre-tournament predictions (baseline + course-history models).
 
@@ -361,10 +361,13 @@ def fetch_pre_tournament(tour: str = "pga") -> list[dict]:
       dg_id, player_name, win (baseline), win_course_history,
       top_5, top_10, top_20, make_cut, etc.
     """
-    return _call_api("preds/pre-tournament", {
+    params = {
         "tour": tour,
         "odds_format": "percent",
-    })
+    }
+    if event_id:
+        params["event_id"] = str(event_id)
+    return _call_api("preds/pre-tournament", params)
 
 
 def _store_predictions_as_metrics(predictions: list | dict,
@@ -462,11 +465,14 @@ def _store_predictions_as_metrics(predictions: list | dict,
 #  Player Skill Decompositions
 # ═══════════════════════════════════════════════════════════════════
 
-def fetch_decompositions(tour: str = "pga") -> list[dict]:
+def fetch_decompositions(tour: str = "pga", event_id: str | None = None) -> list[dict]:
     """
     Fetch player skill decompositions (course-adjusted SG predictions).
     """
-    return _call_api("preds/player-decompositions", {"tour": tour})
+    params = {"tour": tour}
+    if event_id:
+        params["event_id"] = str(event_id)
+    return _call_api("preds/player-decompositions", params)
 
 
 def _store_decompositions_as_metrics(decompositions: list | dict,
@@ -543,9 +549,12 @@ def _store_decompositions_as_metrics(decompositions: list | dict,
 #  Field Updates
 # ═══════════════════════════════════════════════════════════════════
 
-def fetch_field_updates(tour: str = "pga") -> list[dict]:
+def fetch_field_updates(tour: str = "pga", event_id: str | None = None) -> list[dict]:
     """Fetch current field with tee times, salaries, WDs."""
-    return _call_api("field-updates", {"tour": tour})
+    params = {"tour": tour}
+    if event_id:
+        params["event_id"] = str(event_id)
+    return _call_api("field-updates", params)
 
 
 def _store_field_as_metrics(field_data: list | dict,
@@ -637,7 +646,7 @@ def _store_field_as_metrics(field_data: list | dict,
 #  Orchestrators
 # ═══════════════════════════════════════════════════════════════════
 
-def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
+def sync_tournament(tournament_id: int, tour: str = "pga", event_id: str | None = None) -> dict:
     """
     Full tournament sync: fetch predictions, decompositions, and field updates
     from Data Golf and store in the metrics table.
@@ -684,7 +693,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     # 1. Pre-tournament predictions
     try:
         print("  Fetching DG pre-tournament predictions...")
-        preds = fetch_pre_tournament(tour)
+        preds = fetch_pre_tournament(tour, event_id=event_id)
         n = _store_predictions_as_metrics(preds, tournament_id)
         summary["predictions"] = n
         print(f"    → {n} prediction metrics stored")
@@ -695,7 +704,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     # 2. Player decompositions
     try:
         print("  Fetching DG player decompositions...")
-        decomps = fetch_decompositions(tour)
+        decomps = fetch_decompositions(tour, event_id=event_id)
         summary["decompositions_raw"] = decomps
         n = _store_decompositions_as_metrics(decomps, tournament_id)
         summary["decompositions"] = n
@@ -707,7 +716,7 @@ def sync_tournament(tournament_id: int, tour: str = "pga") -> dict:
     # 3. Field updates
     try:
         print("  Fetching DG field updates...")
-        field = fetch_field_updates(tour)
+        field = fetch_field_updates(tour, event_id=event_id)
         n = _store_field_as_metrics(field, tournament_id)
         summary["field"] = n
         summary["field_player_keys"] = extract_field_player_keys(field)
