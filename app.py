@@ -1304,6 +1304,17 @@ async def get_live_refresh_snapshot():
             age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
         except ValueError:
             age_seconds = None
+    # Trust guard: never serve stale snapshot payloads as current rankings.
+    # Returning stale rows can leak invalid players from prior events.
+    if age_seconds is not None and age_seconds > 900:
+        return {
+            "ok": False,
+            "snapshot": None,
+            "generated_at": generated_at,
+            "age_seconds": age_seconds,
+            "stale_reason": "Snapshot is stale (>15 minutes); waiting for a fresh recompute.",
+            "fallback_reason": None,
+        }
     return {
         "ok": True,
         "snapshot": snapshot,
