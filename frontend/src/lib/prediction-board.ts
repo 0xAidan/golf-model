@@ -200,6 +200,30 @@ export function buildHydratedPredictionRun(
     return null
   }
 
+  const eligibility = source.eligibility
+  if (eligibility && eligibility.verified === false) {
+    const warning = [
+      eligibility.summary ?? "Rankings withheld: field eligibility not verified.",
+      eligibility.action ?? "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+    return {
+      status: "hydrated",
+      event_name: source.event_name ?? "Event",
+      course_name: source.course_name ?? "",
+      field_size: source.field_size ?? 0,
+      tournament_id: source.tournament_id,
+      course_num: source.course_num,
+      composite_results: [],
+      matchup_bets: [],
+      value_bets: {},
+      errors: [warning],
+      warnings: [warning],
+    }
+  }
+
   const rankings = source.rankings ?? []
   const matchupBets = hydrateSnapshotMatchups(source)
   const valueBets = hydrateSnapshotValueBets(source)

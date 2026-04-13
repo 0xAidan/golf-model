@@ -1030,8 +1030,8 @@ def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> li
     in the explicit confirmed field rows from DG field updates
     (`metric_name='field_status'`, `metric_text='confirmed'`).
     Falls back to legacy `metric_category='meta'` rows when older tournaments
-    predate the stricter marker. When no field data exists, returns all players
-    in metrics so the pipeline still runs.
+    predate the stricter marker. In strict mode, if no confirmed field exists,
+    returns an empty list (fail closed) to avoid ranking non-participants.
     """
     conn = get_conn()
     has_explicit_field = conn.execute(
@@ -1054,10 +1054,10 @@ def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> li
         ).fetchall()
     else:
         # Fail closed for strict field integrity when no explicit field exists.
-        # A broad metrics fallback can include players not actually in the event.
+        # Any proxy based on stats can include players not actually in the event.
         if confirmed_field_only:
             _logger.warning(
-                "No explicit field rows found for tournament_id=%s; returning empty field list",
+                "No explicit confirmed field rows found for tournament_id=%s; returning empty field list",
                 tournament_id,
             )
             rows = []

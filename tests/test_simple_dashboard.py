@@ -269,6 +269,7 @@ def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr(
         "backtester.dashboard_runtime.read_snapshot",
         lambda: {
@@ -280,14 +281,50 @@ def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
             "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
         },
     )
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": {})
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/snapshot")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert body["snapshot"] is None
+    assert body["stale_reason"] is not None
+    assert body["fallback_reason"] is None
+
+
+def test_live_refresh_snapshot_endpoint_surfaces_field_verification_error(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {
+            "generated_at": "2099-01-01T00:00:00+00:00",
+            "live_tournament": {
+                "ranking_source": "eligibility_failed",
+                "eligibility": {
+                    "verified": False,
+                    "summary": "Field verification failed: no confirmed tournament field available.",
+                    "action": "Wait for Data Golf field updates.",
+                },
+                "diagnostics": {"state": "eligibility_failed"},
+            },
+            "upcoming_tournament": {
+                "diagnostics": {"state": "edges_available"},
+            },
+        },
+    )
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": {})
 
     client = TestClient(app_module.app)
     response = client.get("/api/live-refresh/snapshot")
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["stale_reason"] is not None
-    assert body["fallback_reason"] is not None
+    assert "Field verification failed" in (body["stale_reason"] or "")
+    assert body["fallback_reason"] is None
 
 
 def test_latest_completed_event_endpoint_prefers_completed_schedule_event(monkeypatch):
@@ -298,7 +335,7 @@ def test_latest_completed_event_endpoint_prefers_completed_schedule_event(monkey
         "src.datagolf._call_api",
         lambda endpoint, params=None: {
             "schedule": [
-                {"event_id": "501", "event_name": "Masters Tournament", "start_date": "2026-04-09", "end_date": "2026-04-12"},
+                {"event_id": "501", "event_name": "Masters Tournament", "start_date": "2099-04-09", "end_date": "2099-04-12"},
                 {"event_id": "500", "event_name": "Valero Texas Open", "start_date": "2026-04-02", "end_date": "2026-04-05"},
                 {"event_id": "499", "event_name": "Texas Children's Houston Open", "start_date": "2026-03-26", "end_date": "2026-03-29"},
             ]

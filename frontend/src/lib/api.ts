@@ -37,6 +37,12 @@ export const api = {
   getAutoresearchStatus: () => request<Record<string, unknown>>("/api/autoresearch/status"),
   getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
   getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
+  refreshLiveSnapshot: () =>
+    request<LiveRefreshSnapshotResponse>("/api/live-refresh/refresh", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({}),
+    }),
   startLiveRefresh: (payload?: { tour?: string; live_refresh?: Record<string, unknown> }) =>
     request<Record<string, unknown>>("/api/live-refresh/start", {
       method: "POST",

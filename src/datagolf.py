@@ -659,6 +659,8 @@ def sync_tournament(tournament_id: int, tour: str = "pga", event_id: str | None 
     from datetime import datetime as _dt
 
     summary = {
+        "requested_tour": tour,
+        "requested_event_id": str(event_id) if event_id is not None else "",
         "predictions": 0,
         "decompositions": 0,
         "decompositions_raw": None,

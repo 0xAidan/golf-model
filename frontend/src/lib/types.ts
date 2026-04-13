@@ -85,6 +85,34 @@ export type LiveMatchupRow = {
   momentum_aligned?: boolean
 }
 
+export type VerificationError = {
+  code?: string
+  summary?: string
+  details?: string
+  action?: string
+  retryable?: boolean
+  observed_event_id?: string
+  observed_tour?: string
+  field_source?: string
+  failed_invariants?: string[]
+}
+
+export type EligibilityInfo = {
+  verified?: boolean
+  field_event_id?: string
+  field_player_count?: number
+  field_source?: string
+  failed_invariants?: string[]
+  summary?: string
+  details?: string
+  action?: string | null
+  code?: string
+  retryable?: boolean
+  major_event?: boolean
+  cross_tour_backfill_used?: boolean
+  observed_tour?: string
+}
+
 export type LiveTournamentSnapshot = {
   event_name?: string
   source_event_id?: string
@@ -103,6 +131,8 @@ export type LiveTournamentSnapshot = {
   value_bets?: Record<string, SecondaryBet[]>
   card_path?: string | null
   source_card_path?: string | null
+  eligibility?: EligibilityInfo
+  verification_error?: VerificationError
   diagnostics?: {
     market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
     selection_counts?: {
@@ -146,7 +176,9 @@ export type LiveRefreshStatusResponse = {
 export type LiveRefreshSnapshotResponse = {
   ok: boolean
   snapshot: LiveRefreshSnapshot | null
+  generated_at?: string | null
   age_seconds?: number | null
+  stale_after_seconds?: number | null
   stale_reason?: string | null
   fallback_reason?: string | null
 }

@@ -11,6 +11,7 @@ import sys
 import json
 import re
 import asyncio
+import logging
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
@@ -44,6 +45,8 @@ from src.scoring import determine_outcome
 
 import pandas as pd
 from fastapi.staticfiles import StaticFiles
+
+_logger = logging.getLogger("golf.app")
 
 
 @asynccontextmanager
@@ -1288,9 +1291,32 @@ async def get_live_refresh_snapshot():
     """Return latest always-on snapshot for Live/Upcoming dashboard tabs."""
     from src.db import ensure_initialized
     ensure_initialized()
-    from backtester.dashboard_runtime import read_snapshot
+    from src.autoresearch_settings import get_settings
+    from src.live_refresh_policy import resolve_cadence
+    from backtester.dashboard_runtime import (
+        generate_snapshot_once,
+        get_live_refresh_status,
+        read_snapshot,
+        start_live_refresh,
+    )
+    settings = (get_settings().get("live_refresh") or {})
+    cadence = resolve_cadence(settings)
+    stale_after_seconds = max(900, int(cadence.recompute_seconds) + 120)
+
+    def _attempt_fresh_snapshot() -> dict:
+        tour = str(settings.get("tour", "pga"))
+        status = get_live_refresh_status()
+        if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+            start_live_refresh(tour=tour)
+        return generate_snapshot_once(tour=tour)
 
     snapshot = read_snapshot()
+    if not snapshot:
+        try:
+            snapshot = _attempt_fresh_snapshot()
+        except Exception as exc:
+            _logger.warning("On-demand live snapshot generation failed: %s", exc)
+            snapshot = {}
     if not snapshot:
         return {
             "ok": False,
@@ -1306,33 +1332,117 @@ async def get_live_refresh_snapshot():
             age_seconds = None
     # Trust guard: never serve stale snapshot payloads as current rankings.
     # Returning stale rows can leak invalid players from prior events.
-    if age_seconds is not None and age_seconds > 900:
-        return {
-            "ok": False,
-            "snapshot": None,
-            "generated_at": generated_at,
-            "age_seconds": age_seconds,
-            "stale_reason": "Snapshot is stale (>15 minutes); waiting for a fresh recompute.",
-            "fallback_reason": None,
-        }
+    if age_seconds is not None and age_seconds > stale_after_seconds:
+        try:
+            refreshed = _attempt_fresh_snapshot()
+        except Exception as exc:
+            _logger.warning("Stale snapshot refresh failed: %s", exc)
+            refreshed = {}
+        if refreshed:
+            snapshot = refreshed
+            generated_at = snapshot.get("generated_at")
+            age_seconds = None
+            if generated_at:
+                try:
+                    age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
+                except ValueError:
+                    age_seconds = None
+        if age_seconds is not None and age_seconds > stale_after_seconds:
+            return {
+                "ok": False,
+                "snapshot": None,
+                "generated_at": generated_at,
+                "age_seconds": age_seconds,
+                "stale_after_seconds": stale_after_seconds,
+                "stale_reason": (
+                    f"Snapshot is stale (>{stale_after_seconds // 60} minutes); "
+                    "waiting for a fresh recompute."
+                ),
+                "fallback_reason": None,
+            }
+    live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
+    upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
+    verification_messages: list[str] = []
+    for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
+        eligibility = (section or {}).get("eligibility") or {}
+        if eligibility.get("verified") is False:
+            summary = str(eligibility.get("summary") or "Field verification failed").strip()
+            action = str(eligibility.get("action") or "").strip()
+            verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
+
+    live_state = (live_section.get("diagnostics") or {}).get("state")
+    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
+    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
+    fallback_sources = {
+        "current_event_model_fallback",
+        "live_fallback",
+        "verified_snapshot_fallback",
+    }
+    fallback_active = (
+        (live_section.get("ranking_source") in fallback_sources)
+        or (upcoming_section.get("ranking_source") in fallback_sources)
+    )
     return {
         "ok": True,
         "snapshot": snapshot,
         "generated_at": generated_at,
         "age_seconds": age_seconds,
+        "stale_after_seconds": stale_after_seconds,
         "stale_reason": (
-            "Live snapshot indicates a degraded pipeline state."
-            if (
-                (snapshot.get("live_tournament", {}).get("diagnostics", {}).get("state") == "pipeline_error")
-                or (snapshot.get("upcoming_tournament", {}).get("diagnostics", {}).get("state") == "pipeline_error")
+            " | ".join(verification_messages)
+            if verification_messages
+            else (
+                "Live snapshot indicates a degraded pipeline state."
+                if has_pipeline_degradation
+                else None
             )
-            else None
         ),
         "fallback_reason": (
             "Showing fallback rankings source."
-            if snapshot.get("live_tournament", {}).get("ranking_source") in {"current_event_model_fallback", "live_fallback"}
+            if fallback_active
             else None
         ),
+    }
+
+
+@app.post("/api/live-refresh/refresh")
+async def refresh_live_refresh_snapshot():
+    """Force an immediate ingest + recompute cycle."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from src.autoresearch_settings import get_settings
+    from backtester.dashboard_runtime import generate_snapshot_once, get_live_refresh_status, start_live_refresh
+
+    settings = (get_settings().get("live_refresh") or {})
+    tour = str(settings.get("tour", "pga"))
+    status = get_live_refresh_status()
+    if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+        start_live_refresh(tour=tour)
+    try:
+        snapshot = generate_snapshot_once(tour=tour)
+    except Exception as exc:
+        _logger.warning("Manual live snapshot refresh failed: %s", exc)
+        return {
+            "ok": False,
+            "snapshot": None,
+            "stale_reason": "Manual refresh failed. Check live-refresh worker logs.",
+            "fallback_reason": None,
+        }
+
+    generated_at = snapshot.get("generated_at")
+    age_seconds = None
+    if generated_at:
+        try:
+            age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
+        except ValueError:
+            age_seconds = None
+    return {
+        "ok": True,
+        "snapshot": snapshot,
+        "generated_at": generated_at,
+        "age_seconds": age_seconds,
+        "stale_reason": None,
+        "fallback_reason": None,
     }
 
 
