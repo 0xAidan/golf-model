@@ -174,6 +174,21 @@ def test_filter_rows_to_field_drops_rows_with_missing_player_key():
     assert "<missing_player_key>" in audit["extra_player_keys"]
 
 
+def test_filter_rows_to_field_fails_closed_when_field_missing():
+    from src.field_selection import filter_rows_to_field
+
+    rows = [
+        {"player_key": "scottie_scheffler", "player_display": "Scottie Scheffler"},
+        {"player_key": "jon_rahm", "player_display": "Jon Rahm"},
+    ]
+
+    filtered, audit = filter_rows_to_field(rows, [])
+
+    assert filtered == []
+    assert audit["strict_field_missing"] is True
+    assert audit["kept_rows"] == 0
+
+
 def test_sync_tournament_returns_raw_decompositions_for_profile_fallback(monkeypatch):
     from src.datagolf import sync_tournament
 

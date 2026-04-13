@@ -97,11 +97,14 @@ def filter_rows_to_field(
     """Filter ranked/value rows to the strict confirmed field."""
     normalized_field = sorted({str(key).strip().lower() for key in (field_keys or []) if str(key).strip()})
     if not normalized_field:
-        return list(rows or []), {
+        # Fail closed: if we do not have a strict field list, do not surface
+        # unvalidated players in rankings/value outputs.
+        return [], {
             "field_size": 0,
-            "kept_rows": len(rows or []),
+            "kept_rows": 0,
             "extra_player_keys": [],
             "missing_player_keys": [],
+            "strict_field_missing": True,
         }
 
     field_set = set(normalized_field)
