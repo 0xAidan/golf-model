@@ -39,7 +39,6 @@ function App() {
   const [minEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
-  const [selectedMatchupKey, setSelectedMatchupKey] = useLocalStorageState("golf-model.selected-matchup", "")
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
@@ -64,23 +63,45 @@ function App() {
     queryFn: api.getLiveRefreshSnapshot,
     refetchInterval: 10_000,
   })
-  const liveSnapshot = (liveSnapshotQuery.data?.snapshot ?? null) as LiveRefreshSnapshot | null
+  const liveSnapshotEnvelope = liveSnapshotQuery.data
+  const liveSnapshot = (liveSnapshotEnvelope?.snapshot ?? null) as LiveRefreshSnapshot | null
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
+  const [uiAlert, setUiAlert] = useState<string | null>(null)
+  const runtimeStatus = useMemo(() => {
+    if (liveRefreshStatusQuery.isError || liveSnapshotQuery.isError) {
+      return { label: "Runtime error", tone: "bad" as const }
+    }
+    if (!liveRuntimeRunning) {
+      return { label: "Runtime offline", tone: "warn" as const }
+    }
+    if (liveSnapshotEnvelope?.stale_reason) {
+      return { label: "Snapshot degraded", tone: "warn" as const }
+    }
+    return { label: "Runtime active", tone: "good" as const }
+  }, [
+    liveRefreshStatusQuery.isError,
+    liveSnapshotQuery.isError,
+    liveRuntimeRunning,
+    liveSnapshotEnvelope?.stale_reason,
+  ])
+  const snapshotNotice =
+    liveSnapshotQuery.isError
+      ? "Live snapshot request failed. Retry after checking API health."
+      : liveSnapshotEnvelope?.stale_reason ?? liveSnapshotEnvelope?.fallback_reason ?? uiAlert
   const isLiveActive = Boolean(liveSnapshot?.live_tournament?.active)
   const [predictionTab, setPredictionTab] = useState<"live" | "upcoming" | "past">(
     isLiveActive ? "live" : "upcoming",
   )
-  useEffect(() => {
-    if (isLiveActive && predictionTab === "upcoming") {
-      setPredictionTab("live")
-    } else if (!isLiveActive && predictionTab === "live") {
-      setPredictionTab("upcoming")
-    }
-  }, [isLiveActive]) // eslint-disable-line react-hooks/exhaustive-deps
+  const effectivePredictionTab: "live" | "upcoming" | "past" =
+    isLiveActive && predictionTab === "upcoming"
+      ? "live"
+      : !isLiveActive && predictionTab === "live"
+        ? "upcoming"
+        : predictionTab
   const hydratedRun = useMemo(() => {
-    const snapshotTab = predictionTab === "past" ? "live" : predictionTab
+    const snapshotTab = effectivePredictionTab === "past" ? "live" : effectivePredictionTab
     return buildHydratedPredictionRun(liveSnapshot, snapshotTab)
-  }, [liveSnapshot, predictionTab])
+  }, [liveSnapshot, effectivePredictionTab])
   const effectivePredictionRun = useMemo(() => {
     return hydratedRun ?? predictionRun
   }, [predictionRun, hydratedRun])
@@ -102,8 +123,12 @@ function App() {
   const gradeMutation = useMutation({
     mutationFn: () => api.gradeLatestTournament(dashboardQuery.data?.latest_completed_event ?? undefined),
     onSuccess: () => {
+      setUiAlert(null)
       void queryClient.invalidateQueries({ queryKey: ["dashboard-state"] })
       void queryClient.invalidateQueries({ queryKey: ["grading-history"] })
+    },
+    onError: () => {
+      setUiAlert("Grading failed. Check backend logs and retry.")
     },
   })
 
@@ -120,11 +145,6 @@ function App() {
       return passesBook && passesSearch && matchup.ev >= minEdge
     })
   }, [effectivePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
-
-  const selectedMatchup =
-    filteredMatchups.find((matchup) => buildMatchupKey(matchup) === selectedMatchupKey) ??
-    filteredMatchups[0] ??
-    null
 
   const secondaryBets = useMemo(() => {
     return flattenSecondaryBets(effectivePredictionRun).filter((bet) => {
@@ -158,7 +178,7 @@ function App() {
           })
         }
       } catch {
-        // Keep UI rendering even if bootstrap check fails.
+        setUiAlert("Could not verify live runtime automatically. Use 'Check runtime' and inspect status.")
       }
     }
     void ensureAlwaysOnRuntime()
@@ -198,8 +218,10 @@ function App() {
             <PredictionWorkspacePage
               dashboard={dashboard}
               liveSnapshot={liveSnapshot}
-              liveRuntimeRunning={liveRuntimeRunning}
-              predictionTab={predictionTab}
+              runtimeStatus={runtimeStatus}
+              snapshotNotice={snapshotNotice}
+              snapshotAgeSeconds={liveSnapshotEnvelope?.age_seconds ?? null}
+              predictionTab={effectivePredictionTab}
               onPredictionTabChange={setPredictionTab}
               availableBooks={availableBooks}
               selectedBooks={normalizedSelectedBooks}
@@ -227,8 +249,6 @@ function App() {
           element={
             <MatchupsPage
               matchups={filteredMatchups}
-              onMatchupSelect={setSelectedMatchupKey}
-              selectedMatchup={selectedMatchup}
             />
           }
         />
@@ -258,7 +278,9 @@ function App() {
 function PredictionWorkspacePage({
   dashboard,
   liveSnapshot,
-  liveRuntimeRunning,
+  runtimeStatus,
+  snapshotNotice,
+  snapshotAgeSeconds,
   predictionTab,
   onPredictionTabChange,
   availableBooks,
@@ -272,7 +294,9 @@ function PredictionWorkspacePage({
 }: {
   dashboard?: DashboardState
   liveSnapshot: LiveRefreshSnapshot | null
-  liveRuntimeRunning: boolean
+  runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
+  snapshotNotice: string | null
+  snapshotAgeSeconds: number | null
   predictionTab: "live" | "upcoming" | "past"
   onPredictionTabChange: (value: "live" | "upcoming" | "past") => void
   availableBooks: string[]
@@ -286,22 +310,45 @@ function PredictionWorkspacePage({
 }) {
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [healthExpanded, setHealthExpanded] = useState(false)
+  const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
 
   const totalProfit = gradingHistory.reduce((sum, t) => sum + Number(t.total_profit ?? 0), 0)
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
   const isLiveActive = Boolean(liveTournament?.active)
 
-  const activeSection = predictionTab === "upcoming" ? upcomingTournament : liveTournament
-  const eventName = activeSection?.event_name ?? predictionRun?.event_name ?? "No event loaded"
-  const courseName = activeSection?.course_name ?? predictionRun?.course_name ?? ""
-  const fieldSize = activeSection?.field_size ?? predictionRun?.field_size ?? 0
+  const selectedPastEvent = useMemo(() => {
+    if (!selectedPastEventKey) return gradingHistory[0]
+    return gradingHistory.find((event) => String(event.event_id ?? "") === selectedPastEventKey) ?? gradingHistory[0]
+  }, [gradingHistory, selectedPastEventKey])
+  const activeSection =
+    predictionTab === "upcoming"
+      ? upcomingTournament
+      : predictionTab === "live"
+        ? liveTournament
+        : null
+  const eventName =
+    predictionTab === "past"
+      ? selectedPastEvent?.name ?? "Past event snapshot unavailable"
+      : activeSection?.event_name ?? predictionRun?.event_name ?? "No event loaded"
+  const courseName =
+    predictionTab === "past"
+      ? ""
+      : activeSection?.course_name ?? predictionRun?.course_name ?? ""
+  const fieldSize =
+    predictionTab === "past"
+      ? 0
+      : activeSection?.field_size ?? predictionRun?.field_size ?? 0
   const diagnostics = activeSection?.diagnostics
+  const matchupSource = useMemo(
+    () => (predictionTab === "past" ? [] : filteredMatchups),
+    [filteredMatchups, predictionTab],
+  )
 
   const topPlays = useMemo(() => {
     const TIER_RANK: Record<string, number> = { STRONG: 0, GOOD: 1, LEAN: 2 }
     const deduped = new Map<string, MatchupBet>()
-    for (const m of filteredMatchups) {
+    for (const m of matchupSource) {
       const pairKey = `${m.pick_key}::${m.opponent_key}`
       const existing = deduped.get(pairKey)
       if (!existing || m.ev > existing.ev) {
@@ -313,7 +360,7 @@ function PredictionWorkspacePage({
       if (tierDiff !== 0) return tierDiff
       return b.ev - a.ev
     })
-  }, [filteredMatchups])
+  }, [matchupSource])
 
   const bestEdge = topPlays.length > 0
     ? topPlays[0].ev
@@ -348,10 +395,25 @@ function PredictionWorkspacePage({
             <h3 className="mt-1 text-2xl font-semibold tracking-tight text-white">{eventName}</h3>
             {courseName ? <p className="mt-1 text-sm text-slate-400">{courseName}</p> : null}
           </div>
-          <span className={`mt-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${liveRuntimeRunning ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
-            {liveRuntimeRunning ? "Runtime active" : "Runtime booting"}
+          <span
+            className={`mt-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+              runtimeStatus.tone === "good"
+                ? "bg-emerald-500/15 text-emerald-200"
+                : runtimeStatus.tone === "bad"
+                  ? "bg-rose-500/15 text-rose-200"
+                  : "bg-amber-500/15 text-amber-200"
+            }`}
+          >
+            {runtimeStatus.label}
           </span>
         </div>
+
+        {snapshotNotice ? (
+          <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            {snapshotNotice}
+            {snapshotAgeSeconds !== null ? ` (snapshot age: ${snapshotAgeSeconds}s)` : ""}
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
@@ -386,10 +448,11 @@ function PredictionWorkspacePage({
               <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">Browse past events</span>
               <select
                 className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-400/30"
-                defaultValue=""
+                value={selectedPastEventKey}
+                onChange={(event) => setSelectedPastEventKey(event.target.value)}
                 aria-label="Select past event"
               >
-                <option value="" disabled>Most recent completed event</option>
+                <option value="">Most recent completed event</option>
                 {gradingHistory.map((event) => (
                   <option key={`${event.event_id}-${event.year}`} value={event.event_id ?? ""}>
                     {event.name}{event.year ? ` (${event.year})` : ""}
@@ -397,6 +460,9 @@ function PredictionWorkspacePage({
                 ))}
               </select>
             </label>
+            <p className="mt-2 text-xs text-slate-400">
+              Past-event board replay is not yet available; use the Grading tab for audited results.
+            </p>
           </div>
         ) : null}
 
@@ -918,8 +984,6 @@ function MatchupsPage({
   matchups,
 }: {
   matchups: MatchupBet[]
-  onMatchupSelect: (key: string) => void
-  selectedMatchup: MatchupBet | null
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
@@ -1042,8 +1106,8 @@ function CoursePage({
           <SectionTitle title="Course risk notes" description="Macro course context and field quality warnings that matter before a wager goes live." />
           <div className="space-y-3">
             <InfoRow icon={Radar} label="Major event handling" value={predictionRun?.field_validation?.major_event ? "Major-week cross-tour coverage active" : "Standard PGA event"} />
-            <InfoRow icon={ShieldAlert} label="Thin-round players" value={String(predictionRun?.field_validation?.players_with_thin_rounds.length ?? 0)} />
-            <InfoRow icon={CircleAlert} label="Missing DG skill" value={String(predictionRun?.field_validation?.players_missing_dg_skill.length ?? 0)} />
+            <InfoRow icon={ShieldAlert} label="Thin-round players" value={String(predictionRun?.field_validation?.players_with_thin_rounds?.length ?? 0)} />
+            <InfoRow icon={CircleAlert} label="Missing DG skill" value={String(predictionRun?.field_validation?.players_missing_dg_skill?.length ?? 0)} />
             <InfoRow icon={NotebookPen} label="Prediction artifact" value={dashboard?.latest_prediction_artifact?.path ?? "--"} />
           </div>
         </SurfaceCard>

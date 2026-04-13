@@ -1063,10 +1063,19 @@ def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> li
             (tournament_id,),
         ).fetchall()
     else:
-        rows = conn.execute(
-            "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
-            (tournament_id,),
-        ).fetchall()
+        # Fail closed for strict field integrity when no explicit field exists.
+        # A broad metrics fallback can include players not actually in the event.
+        if confirmed_field_only:
+            _logger.warning(
+                "No explicit field rows found for tournament_id=%s; returning empty field list",
+                tournament_id,
+            )
+            rows = []
+        else:
+            rows = conn.execute(
+                "SELECT DISTINCT player_key FROM metrics WHERE tournament_id = ?",
+                (tournament_id,),
+            ).fetchall()
     conn.close()
     return [r["player_key"] for r in rows]
 

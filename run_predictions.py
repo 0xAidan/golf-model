@@ -74,6 +74,7 @@ from src.ai_brain import (
 )
 from backtester.strategy import StrategyConfig
 from src.strategy_resolution import map_strategy_to_runtime_settings, resolve_runtime_strategy
+from src.run_provenance import write_run_provenance
 
 
 logger = logging.getLogger(__name__)
@@ -1219,13 +1220,32 @@ def main():
             print(f"    {r['player_display']:<25} momentum={r['momentum']:.1f}  "
                   f"(rank #{r['rank']})")
 
+    if threeball_bets:
+        value_bets["3ball"] = threeball_bets
+
+    # ── Portfolio diversification ────────────────────────────
+    field_str = get_field_strength(composite)
+    value_bets = enforce_diversification(value_bets, field_strength=field_str)
+    total_value = sum(
+        1 for bets in value_bets.values()
+        for b in bets if b.get("is_value")
+    )
+    print(f"  Portfolio filter applied (field: {field_str}, {total_value} value bets kept)")
+
+    from src.value import compute_run_quality
+    run_quality = compute_run_quality(value_bets)
+    placement_logging_allowed = run_quality["pass"]
+    if not placement_logging_allowed:
+        print(f"  ⚠ Run quality check FAILED: {', '.join(run_quality['issues'])}")
+        print(f"    Quality score: {run_quality['score']}")
+
     # ── Log predictions for next week's review ──────────────────
     n_logged = 0
     from src import db as _db_check
     if _db_check.has_predictions(tid):
         print("\n  ℹ Predictions already logged for this tournament — skipping (single-snapshot rule).")
         print("    To re-log, delete existing entries: DELETE FROM prediction_log WHERE tournament_id = <id>")
-    elif value_bets:
+    elif value_bets and placement_logging_allowed:
         from src.learning import log_predictions_for_tournament
         try:
             n_logged = log_predictions_for_tournament(
@@ -1236,6 +1256,8 @@ def main():
                 print(f"\n  Logged {n_logged} predictions for post-tournament review")
         except Exception as e:
             print(f"\n  ⚠ Could not log predictions: {e}")
+    elif value_bets and not placement_logging_allowed:
+        print("  ⚠ Skipping prediction logging — run quality check failed")
 
     # ── Finalize pipeline context for methodology doc ─────────
     pipeline_ctx["ai_pre_analysis"] = ai_pre_analysis
@@ -1243,6 +1265,7 @@ def main():
     pipeline_ctx["value_bets"] = value_bets
     pipeline_ctx["matchup_bets"] = matchup_bets
     pipeline_ctx["predictions_logged"] = n_logged
+    pipeline_ctx["run_quality"] = run_quality
     pipeline_ctx["metric_counts"]["odds_markets"] = len(all_odds_by_market)
     pipeline_ctx["metric_counts"]["matchups"] = len(matchup_bets) if matchup_bets else 0
     pipeline_ctx["strategy"] = {
@@ -1271,17 +1294,17 @@ def main():
     except Exception:
         pipeline_ctx["adaptation_states"] = {}
 
-    if threeball_bets:
-        value_bets["3ball"] = threeball_bets
-
-    # ── Portfolio diversification ────────────────────────────
-    field_str = get_field_strength(composite)
-    value_bets = enforce_diversification(value_bets, field_strength=field_str)
-    total_value = sum(
-        1 for bets in value_bets.values()
-        for b in bets if b.get("is_value")
+    provenance_path = write_run_provenance(
+        event_name=event_name,
+        output_dir="output",
+        strategy_meta=pipeline_ctx.get("strategy"),
+        runtime_settings=runtime_settings,
+        run_quality=run_quality,
+        value_bets=value_bets,
+        source="run_predictions",
     )
-    print(f"  Portfolio filter applied (field: {field_str}, {total_value} value bets kept)")
+    pipeline_ctx["provenance_path"] = provenance_path
+    print(f"  Run provenance written: {provenance_path}")
 
     # ── Generate card ─────────────────────────────────────────
     print_header("Step 8: Generating Betting Card")

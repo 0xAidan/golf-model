@@ -73,12 +73,14 @@ def cmd_dashboard(args):
     if quiet_logs:
         print("Quiet access logs enabled (QUIET_DEV_ACCESS_LOGS=1).")
     print("Press Ctrl+C to stop\n")
+    reload_enabled = os.environ.get("UVICORN_RELOAD", "0").strip().lower() in {"1", "true", "yes", "on"}
     cmd = [
         sys.executable, "-m", "uvicorn", "app:app",
         "--host", "0.0.0.0",
         "--port", str(port),
-        "--reload",
     ]
+    if reload_enabled:
+        cmd.append("--reload")
     if quiet_logs:
         cmd.extend(["--no-access-log"])
     subprocess.run(cmd, cwd=ROOT)

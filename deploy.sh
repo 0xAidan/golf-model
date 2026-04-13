@@ -15,7 +15,7 @@
 # Configuration (set these or they'll be prompted):
 #   DEPLOY_HOST  - SSH host (e.g., user@1.2.3.4)
 #   DEPLOY_PATH  - Remote path (default: /opt/golf-model)
-#   DEPLOY_BRANCH - Git branch (default: feature/model-overhaul)
+#   DEPLOY_BRANCH - Git branch (default: main)
 
 set -euo pipefail
 
@@ -135,6 +135,8 @@ Type=simple
 User=root
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+Environment=LIVE_REFRESH_EMBEDDED_AUTOSTART=0
+EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python start.py dashboard --port 8000
 Restart=always
 RestartSec=10
@@ -154,6 +156,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python start.py agent
 Restart=always
 RestartSec=30
@@ -173,6 +176,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python -m workers.live_refresh_worker
 Restart=always
 RestartSec=10
@@ -190,6 +194,7 @@ Description=Golf Model Database Backup
 Type=oneshot
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python -m src.backup --keep 14
 SVC
 
@@ -235,7 +240,7 @@ update_server() {
         cd /opt/golf-model
 
         # Backup before update
-        if [ -f "golf_model.db" ]; then
+        if [ -f "data/golf.db" ]; then
             source venv/bin/activate
             python -m src.backup --keep 14 || true
         fi
@@ -254,7 +259,7 @@ update_server() {
             cd frontend
             npm ci --silent
             npm run build --silent
-            cd /opt/golf-model
+            cd "$DEPLOY_PATH"
         fi
 
         # Initialize DB (runs migrations)
@@ -283,8 +288,8 @@ check_status() {
 
         echo ""
         echo "=== Database ==="
-        if [ -f "/opt/golf-model/golf_model.db" ]; then
-            ls -lh /opt/golf-model/golf_model.db
+        if [ -f "/opt/golf-model/data/golf.db" ]; then
+            ls -lh /opt/golf-model/data/golf.db
         else
             echo "No database found"
         fi

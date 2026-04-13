@@ -14,6 +14,7 @@ from typing import Optional
 from src import db
 from src.field_selection import filter_rows_to_field
 from src.player_normalizer import normalize_name, display_name
+from src.run_provenance import write_run_provenance
 from src.strategy_resolution import build_pipeline_strategy_config
 
 logger = logging.getLogger("golf_model_service")
@@ -147,6 +148,8 @@ class GolfModelService:
             if resolved:
                 strategy, meta = resolved
                 self.strategy_config = build_pipeline_strategy_config(strategy)
+                meta = dict(meta or {})
+                meta.setdefault("runtime_settings", self.strategy_config)
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
         elif strategy_source == "config" and self.strategy_config:
@@ -220,18 +223,7 @@ class GolfModelService:
         ) if isinstance(value_bets, dict) else 0
         print(f"    → {total_vb} odds entries, {value_count_before} value bets found")
 
-        # Step 10a: Apply portfolio diversification rules
-        from src.portfolio import enforce_diversification
-        value_bets = enforce_diversification(value_bets)
-        result["value_bets"] = value_bets
-        value_count_after = sum(
-            1 for bets in value_bets.values()
-            for b in bets if b.get("is_value")
-        )
-        if value_count_after < value_count_before:
-            print(f"    → {value_count_after} value bets after diversification (was {value_count_before})")
-
-        # Step 10b: Matchups and 3-ball (live focus: plus-ROI areas)
+        # Step 10a: Matchups and 3-ball (live focus: plus-ROI areas)
         matchup_bets = []
         matchup_diagnostics = {
             "market_counts": {},
@@ -252,6 +244,36 @@ class GolfModelService:
                 value_bets.setdefault("3ball", []).extend(threeball_bets)
                 print(f"    → {len(threeball_bets)} 3-ball value plays")
         result["value_bets"] = value_bets
+
+        # Step 10b: Exposure filtering (when enabled) and diversification
+        try:
+            from src.feature_flags import is_enabled
+            if is_enabled("exposure_caps"):
+                from src.exposure import filter_by_exposure
+                from src.kelly import get_bankroll_state
+                state = get_bankroll_state()
+                bankroll = state["balance"] if state else None
+                value_bets, exp_warnings = filter_by_exposure(value_bets, bankroll=bankroll)
+                for warning in exp_warnings:
+                    print(f"    ⚠ {warning}")
+        except Exception as exc:
+            logger.warning("Exposure filtering error: %s", exc)
+
+        from src.portfolio import enforce_diversification
+        from src.confidence import get_field_strength
+
+        field_strength = get_field_strength(composite)
+        value_bets = enforce_diversification(value_bets, field_strength=field_strength)
+        result["value_bets"] = value_bets
+        value_count_after = sum(
+            1 for bets in value_bets.values()
+            for b in bets if b.get("is_value")
+        )
+        if value_count_after < value_count_before:
+            print(
+                f"    → {value_count_after} value bets after diversification "
+                f"(was {value_count_before}, field={field_strength})"
+            )
 
         # Step 10c: Run quality check before logging anything
         from src.value import compute_run_quality
@@ -324,6 +346,16 @@ class GolfModelService:
         run_end = datetime.now()
         result["status"] = "complete"
         result["run_duration_seconds"] = (run_end - run_start).total_seconds()
+        result["provenance_path"] = write_run_provenance(
+            event_name=tournament_name,
+            output_dir=output_dir,
+            strategy_meta=result.get("strategy_meta"),
+            runtime_settings=self.strategy_config,
+            run_quality=result.get("run_quality"),
+            value_bets=result.get("value_bets"),
+            matchup_diagnostics=result.get("matchup_diagnostics"),
+            source="golf_model_service",
+        )
 
         self._log_run(tid, result)
         return result
@@ -897,7 +929,7 @@ class GolfModelService:
                 conn.commit()
             conn.close()
         except Exception:
-            pass  # Non-critical
+            logger.warning("Run metadata logging failed", exc_info=True)
 
     def _resolve_strategy(self) -> tuple | None:
         """Resolve strategy using shared registry chain (live -> research -> active -> default)."""

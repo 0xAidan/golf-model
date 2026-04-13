@@ -112,7 +112,7 @@ def filter_rows_to_field(
     for row in rows or []:
         row_key = str(row.get("player_key") or "").strip().lower()
         if not row_key:
-            filtered.append(row)
+            extra_row_keys.add("<missing_player_key>")
             continue
         seen_row_keys.add(row_key)
         if row_key not in field_set:
