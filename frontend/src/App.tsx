@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Brain, ChevronDown, CircleAlert, Clock3, Download, ExternalLink, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
+import { Brain, ChevronDown, CircleAlert, Clock3, Download, ExternalLink, Flag, NotebookPen, Radar, ShieldAlert, Sparkles } from "lucide-react"
 import { Link, Route, Routes } from "react-router-dom"
 
 import { BarTrendChart, SparklineChart } from "@/components/charts"
+import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { CommandShell, MetricTile, SectionTitle, SurfaceCard } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
@@ -30,6 +31,7 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
   mode: "full",
   enable_ai: true,
 }
+const RICH_PLAYER_PROFILES_ENABLED = import.meta.env.VITE_RICH_PLAYER_PROFILES !== "0"
 
 function App() {
   const queryClient = useQueryClient()
@@ -117,7 +119,9 @@ function App() {
   const playerProfileQuery = useQuery({
     queryKey: ["player-profile", selectedPlayerKey, effectivePredictionRun?.tournament_id, effectivePredictionRun?.course_num],
     queryFn: () => api.getPlayerProfile(selectedPlayerKey, effectivePredictionRun?.tournament_id ?? 0, effectivePredictionRun?.course_num),
-    enabled: Boolean(selectedPlayerKey && effectivePredictionRun?.tournament_id),
+    enabled: RICH_PLAYER_PROFILES_ENABLED && Boolean(selectedPlayerKey && effectivePredictionRun?.tournament_id),
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
   })
 
   const gradeMutation = useMutation({
@@ -262,6 +266,7 @@ function App() {
               players={players}
               selectedPlayerProfile={playerProfileQuery.data}
               onPlayerSelect={setSelectedPlayerKey}
+              richProfilesEnabled={RICH_PLAYER_PROFILES_ENABLED}
             />
           }
         />
@@ -843,10 +848,12 @@ function PlayersPage({
   players,
   selectedPlayerProfile,
   onPlayerSelect,
+  richProfilesEnabled,
 }: {
   players: CompositePlayer[]
   selectedPlayerProfile?: PlayerProfile
   onPlayerSelect: (playerKey: string) => void
+  richProfilesEnabled: boolean
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
@@ -859,16 +866,6 @@ function PlayersPage({
       onPlayerSelect(playerKey)
     }
   }
-
-  const expandedPlayer = expandedKey ? players.find((p) => p.player_key === expandedKey) ?? null : null
-  const recentTrend = (selectedPlayerProfile?.recent_rounds ?? []).map((round) => Number(round.sg_total ?? 0)).reverse()
-  const momentumValues =
-    recentTrend.length > 0
-      ? recentTrend
-      : expandedPlayer
-        ? [expandedPlayer.course_fit, expandedPlayer.form, expandedPlayer.momentum, expandedPlayer.composite]
-        : []
-  const courseValues = selectedPlayerProfile?.course_history.map((round) => Number(round.sg_total ?? 0)).reverse() ?? []
 
   return (
     <SurfaceCard>
@@ -893,7 +890,10 @@ function PlayersPage({
                 const dir = player.momentum_direction ?? ""
                 const arrow = TREND_ARROW[dir] ?? "—"
                 const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
-                const profileReady = isExpanded && selectedPlayerProfile && expandedKey === player.player_key
+                const profileReady =
+                  isExpanded &&
+                  Boolean(selectedPlayerProfile) &&
+                  selectedPlayerProfile?.player_key === player.player_key
 
                 return (
                   <tr key={player.player_key} className="group">
@@ -919,64 +919,25 @@ function PlayersPage({
                       </button>
                       {isExpanded ? (
                         <div className="border-t border-white/8 bg-white/3 px-4 py-5">
-                          <div className="space-y-5">
-                            <div className="grid gap-4 md:grid-cols-4">
-                              <MetricTile label="Composite" value={formatNumber(player.composite, 1)} />
-                              <MetricTile label="Course fit" value={formatNumber(player.course_fit, 1)} />
-                              <MetricTile label="Form" value={formatNumber(player.form, 1)} />
-                              <MetricTile label="Momentum" value={formatNumber(player.momentum, 1)} />
+                          {richProfilesEnabled ? (
+                            <PlayerProfileSections
+                              player={player}
+                              profile={selectedPlayerProfile}
+                              profileReady={profileReady}
+                            />
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                                Rich profile sections are currently disabled by configuration.
+                              </div>
+                              <div className="grid gap-4 md:grid-cols-4">
+                                <MetricTile label="Composite" value={formatNumber(player.composite, 1)} />
+                                <MetricTile label="Course fit" value={formatNumber(player.course_fit, 1)} />
+                                <MetricTile label="Form" value={formatNumber(player.form, 1)} />
+                                <MetricTile label="Momentum" value={formatNumber(player.momentum, 1)} />
+                              </div>
                             </div>
-                            {momentumValues.length ? (
-                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                                <div className="mb-2 flex items-center gap-2 text-slate-300">
-                                  <TrendingUp className="h-4 w-4 text-cyan-200" />
-                                  <span className="text-sm font-medium">Recent strokes-gained trend</span>
-                                </div>
-                                <SparklineChart values={momentumValues} color="#5eead4" />
-                              </div>
-                            ) : null}
-                            {courseValues.length ? (
-                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                                <div className="mb-2 flex items-center gap-2 text-slate-300">
-                                  <Flag className="h-4 w-4 text-cyan-200" />
-                                  <span className="text-sm font-medium">Course-history trend</span>
-                                </div>
-                                <SparklineChart values={courseValues} color="#60a5fa" />
-                              </div>
-                            ) : null}
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <MetricTile label="Momentum direction" value={player.momentum_direction ?? "--"} />
-                              <MetricTile label="Course confidence" value={formatNumber(player.course_confidence, 2)} />
-                              <MetricTile label="Course rounds" value={String(player.course_rounds ?? 0)} />
-                              <MetricTile label="Weather adj." value={formatNumber(player.weather_adjustment, 1)} />
-                            </div>
-                            {profileReady && selectedPlayerProfile?.linked_bets?.length ? (
-                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                                <h4 className="mb-3 text-sm font-semibold text-white">Linked bets</h4>
-                                <div className="space-y-3">
-                                  {selectedPlayerProfile.linked_bets.slice(0, 6).map((bet, index) => (
-                                    <div key={`${bet.bet_type}-${index}`} className="flex items-center justify-between gap-4 rounded-2xl border border-white/6 px-3 py-3">
-                                      <div>
-                                        <p className="text-sm font-medium text-white">{bet.bet_type ?? "bet"}</p>
-                                        <p className="text-xs text-slate-500">
-                                          {bet.player_display}
-                                          {bet.opponent_display ? ` vs ${bet.opponent_display}` : ""}
-                                        </p>
-                                      </div>
-                                      <div className="text-right">
-                                        <p className="text-sm text-cyan-200">{bet.market_odds ?? "--"}</p>
-                                        <p className="text-xs text-slate-500">{bet.confidence ?? "quant"}</p>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                            <ComponentTable title="Course components" components={player.details?.course_components} />
-                            <ComponentTable title="Form components" components={player.details?.form_components} />
-                            <ComponentTable title="Momentum windows" components={player.details?.momentum_windows} />
-                            <MetricsCategoryTable title="Current market context" categories={selectedPlayerProfile?.current_metrics} />
-                          </div>
+                          )}
                         </div>
                       ) : null}
                     </td>
@@ -1333,67 +1294,6 @@ function TrackRecordPage() {
           })}
         </div>
       </SurfaceCard>
-    </div>
-  )
-}
-
-function ComponentTable({
-  title,
-  components,
-}: {
-  title: string
-  components?: Record<string, number>
-}) {
-  const entries = Object.entries(components ?? {})
-  return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-      <h4 className="mb-3 text-sm font-semibold text-white">{title}</h4>
-      {entries.length ? (
-        <div className="space-y-2">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between gap-4 text-sm">
-              <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
-              <span className="font-medium text-slate-100">{formatNumber(value, 2)}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-slate-400">No component detail available yet.</p>
-      )}
-    </div>
-  )
-}
-
-function MetricsCategoryTable({
-  title,
-  categories,
-}: {
-  title: string
-  categories?: Record<string, Record<string, number | string | null>>
-}) {
-  const entries = Object.entries(categories ?? {})
-  return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-      <h4 className="mb-3 text-sm font-semibold text-white">{title}</h4>
-      {entries.length ? (
-        <div className="space-y-4">
-          {entries.map(([category, values]) => (
-            <div key={category}>
-              <p className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">{category}</p>
-              <div className="grid gap-2 md:grid-cols-2">
-                {Object.entries(values).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between gap-4 rounded-xl border border-white/6 px-3 py-2 text-sm">
-                    <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
-                    <span className="font-medium text-slate-100">{typeof value === "number" ? formatNumber(value, 2) : String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-slate-400">No current market metrics are available for this player.</p>
-      )}
     </div>
   )
 }

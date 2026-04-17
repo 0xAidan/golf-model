@@ -153,10 +153,15 @@ def _extract_rankings(
             "course_rounds": row.get("course_rounds"),
             "weather_adjustment": row.get("weather_adjustment"),
             "finish_state": finish_state,
+            "availability": row.get("availability"),
+            "form_flags": row.get("form_flags") or [],
+            "form_notes": row.get("form_notes") or [],
         }
         details = row.get("details")
         if details:
             entry["details"] = details
+            if not entry.get("availability") and details.get("availability"):
+                entry["availability"] = details.get("availability")
         rankings.append(entry)
         if rank >= limit:
             break

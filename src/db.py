@@ -1023,6 +1023,91 @@ def get_player_metrics(tournament_id: int, player_key: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_player_metrics_by_categories(
+    tournament_id: int,
+    player_key: str,
+    categories: list[str],
+) -> list[dict]:
+    """Return player metrics filtered to specific metric categories."""
+    if not categories:
+        return []
+
+    placeholders = ",".join("?" for _ in categories)
+    params = [tournament_id, player_key, *categories]
+    conn = get_conn()
+    rows = conn.execute(
+        f"""SELECT * FROM metrics
+            WHERE tournament_id = ?
+              AND player_key = ?
+              AND metric_category IN ({placeholders})
+            ORDER BY metric_category, round_window, metric_name""",
+        params,
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_tournament_metric_values(
+    tournament_id: int,
+    metric_category: str,
+    metric_name: str,
+    *,
+    data_mode: str | None = None,
+    round_window: str | None = None,
+) -> list[float]:
+    """Return numeric metric values for one tournament-level metric slice."""
+    sql = """SELECT metric_value FROM metrics
+             WHERE tournament_id = ?
+               AND metric_category = ?
+               AND metric_name = ?
+               AND metric_value IS NOT NULL"""
+    params: list = [tournament_id, metric_category, metric_name]
+    if data_mode:
+        sql += " AND data_mode = ?"
+        params.append(data_mode)
+    if round_window:
+        sql += " AND round_window = ?"
+        params.append(round_window)
+
+    conn = get_conn()
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [float(r["metric_value"]) for r in rows if r["metric_value"] is not None]
+
+
+def get_tournament_field_size(tournament_id: int) -> int:
+    """
+    Return field size for a tournament.
+
+    Prefers explicit confirmed field rows from Data Golf field updates,
+    then falls back to distinct players seen in metrics.
+    """
+    conn = get_conn()
+    try:
+        confirmed_row = conn.execute(
+            """SELECT COUNT(DISTINCT player_key) AS cnt
+               FROM metrics
+               WHERE tournament_id = ?
+                 AND metric_category = 'meta'
+                 AND metric_name = 'field_status'
+                 AND metric_text = 'confirmed'""",
+            (tournament_id,),
+        ).fetchone()
+        confirmed_count = int(confirmed_row["cnt"] or 0) if confirmed_row else 0
+        if confirmed_count > 0:
+            return confirmed_count
+
+        fallback_row = conn.execute(
+            """SELECT COUNT(DISTINCT player_key) AS cnt
+               FROM metrics
+               WHERE tournament_id = ?""",
+            (tournament_id,),
+        ).fetchone()
+        return int(fallback_row["cnt"] or 0) if fallback_row else 0
+    finally:
+        conn.close()
+
+
 def get_all_players(tournament_id: int, confirmed_field_only: bool = True) -> list[str]:
     """Return player_key list for this tournament.
 
