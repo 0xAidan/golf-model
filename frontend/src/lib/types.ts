@@ -58,11 +58,29 @@ export type LiveRankingRow = {
   course_rounds?: number
   weather_adjustment?: number
   finish_state?: string | null
+  availability?: Record<string, number | string | null>
+  form_flags?: string[]
+  form_notes?: string[]
   details?: {
     course_components?: Record<string, number>
     form_components?: Record<string, number>
     momentum_windows?: Record<string, number>
+    form_flags?: string[]
+    form_notes?: string[]
+    availability?: Record<string, number | string | null>
   }
+}
+
+export type LiveLeaderboardRow = {
+  rank: number
+  position?: string
+  player_key?: string
+  player: string
+  total_to_par?: number | null
+  latest_round_num?: number | null
+  latest_round_score?: number | null
+  rounds_played?: number
+  finish_state?: string | null
 }
 
 export type LiveMatchupRow = {
@@ -125,6 +143,7 @@ export type LiveTournamentSnapshot = {
   tournament_id?: number
   course_num?: number
   active?: boolean
+  leaderboard?: LiveLeaderboardRow[]
   rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]
   matchup_bets?: MatchupBet[]
@@ -143,6 +162,11 @@ export type LiveTournamentSnapshot = {
     }
     adaptation_state?: string
     reason_codes?: Record<string, number>
+    value_filters?: {
+      missing_display_odds?: number
+      ev_cap_filtered?: number
+      probability_inconsistency_filtered?: number
+    }
     books_seen?: string[]
     books_with_qualifying_edges?: string[]
     books_after_card_caps?: string[]
@@ -187,6 +211,28 @@ export type LiveRefreshSnapshotResponse = {
   stale_after_seconds?: number | null
   stale_reason?: string | null
   fallback_reason?: string | null
+}
+
+export type PastSnapshotEvent = {
+  event_id: string
+  event_name: string
+  latest_generated_at?: string | null
+  snapshot_count?: number
+}
+
+export type PastSnapshotEventsResponse = {
+  events: PastSnapshotEvent[]
+}
+
+export type PastSnapshotResponse = {
+  ok: boolean
+  event_id?: string
+  snapshot_id?: string
+  generated_at?: string | null
+  tour?: string | null
+  section?: string
+  snapshot?: LiveTournamentSnapshot | null
+  error?: string
 }
 
 export type OutputArtifact = {
@@ -278,10 +324,16 @@ export type CompositePlayer = {
   course_confidence?: number
   course_rounds?: number
   weather_adjustment?: number
+  availability?: Record<string, number | string | null>
+  form_flags?: string[]
+  form_notes?: string[]
   details?: {
     course_components?: Record<string, number>
     form_components?: Record<string, number>
     momentum_windows?: Record<string, number>
+    form_flags?: string[]
+    form_notes?: string[]
+    availability?: Record<string, number | string | null>
   }
 }
 
@@ -391,6 +443,78 @@ export type PlayerProfile = {
     confidence?: string
     reasoning?: string
   }>
+  header?: {
+    dg_rank?: number | null
+    owgr_rank?: number | null
+    dg_skill_estimate?: number | null
+    field_size?: number
+    tee_time?: string | null
+    field_status?: string | null
+    recent_rounds_tracked?: number
+    course_rounds_tracked?: number
+    latest_event_name?: string | null
+    latest_event_completed?: string | null
+  }
+  skill_breakdown?: {
+    primary?: Array<{ key: string; label: string; value: number }>
+    approach_buckets?: Array<{ key: string; label: string; value: number }>
+    component_deltas?: Array<{ key: string; label: string; value: number }>
+    summary?: {
+      best_area?: { key: string; label: string; value: number } | null
+      weakest_area?: { key: string; label: string; value: number } | null
+      dg_rank?: number | null
+      owgr_rank?: number | null
+      dg_skill_estimate?: number | null
+    }
+  }
+  rolling_form?: {
+    windows?: Record<string, number | null>
+    window_source_map?: Record<string, string>
+    benchmarks?: Record<string, Record<string, number | null>>
+    trend_series?: number[]
+    summary?: {
+      delta_short_vs_medium?: number | null
+      rounds_in_sample?: number
+    }
+  }
+  course_event_context?: {
+    recent_starts?: Array<{
+      event_name?: string | null
+      event_completed?: string | null
+      fin_text?: string | null
+      rounds_recorded?: number
+      avg_sg_total?: number | null
+    }>
+    recent_summary?: {
+      events_tracked?: number
+      made_cuts?: number
+      avg_sg_total?: number | null
+    }
+    course_summary?: {
+      rounds_tracked?: number
+      avg_sg_total?: number | null
+      best_round_sg?: number | null
+      worst_round_sg?: number | null
+    }
+  }
+  betting_context?: {
+    summary?: {
+      linked_bet_count?: number
+      average_ev?: number | null
+      high_confidence_count?: number
+    }
+    strongest_linked_bet?: {
+      bet_type?: string
+      player_display?: string
+      opponent_display?: string
+      market_odds?: string
+      ev?: number
+      confidence?: string
+      reasoning?: string
+    } | null
+  }
+  metric_labels?: Record<string, string>
+  sections_version?: number
 }
 
 export type ResearchProposal = {

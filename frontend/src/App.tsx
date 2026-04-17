@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Brain, ChevronDown, CircleAlert, Clock3, Download, ExternalLink, Flag, NotebookPen, Radar, ShieldAlert, Sparkles, TrendingUp } from "lucide-react"
+import { Brain, ChevronDown, CircleAlert, Clock3, Download, ExternalLink, Flag, NotebookPen, Radar, ShieldAlert, Sparkles } from "lucide-react"
 import { Link, Route, Routes } from "react-router-dom"
 
 import { BarTrendChart, SparklineChart } from "@/components/charts"
+import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { CommandShell, MetricTile, SectionTitle, SurfaceCard } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
-import { buildHydratedPredictionRun, collectAvailableBooks, flattenSecondaryBets, NON_BOOK_SOURCES, normalizeSportsbook } from "@/lib/prediction-board"
+import { buildHydratedPredictionRun, buildPredictionRunFromSection, collectAvailableBooks, flattenSecondaryBets, NON_BOOK_SOURCES, normalizeSportsbook } from "@/lib/prediction-board"
 import { useLocalStorageState } from "@/lib/storage"
 import trackRecordData from "@/data/trackRecord.json"
 import type {
@@ -18,6 +19,7 @@ import type {
   LiveRefreshSnapshot,
   LiveRefreshStatusResponse,
   MatchupBet,
+  PastSnapshotEvent,
   PlayerProfile,
   PredictionRunRequest,
   PredictionRunResponse,
@@ -30,6 +32,7 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
   mode: "full",
   enable_ai: true,
 }
+const RICH_PLAYER_PROFILES_ENABLED = import.meta.env.VITE_RICH_PLAYER_PROFILES !== "0"
 
 function App() {
   const queryClient = useQueryClient()
@@ -92,32 +95,31 @@ function App() {
   const [predictionTab, setPredictionTab] = useState<"live" | "upcoming" | "past">(
     isLiveActive ? "live" : "upcoming",
   )
-  const effectivePredictionTab: "live" | "upcoming" | "past" =
-    isLiveActive && predictionTab === "upcoming"
-      ? "live"
-      : !isLiveActive && predictionTab === "live"
-        ? "upcoming"
-        : predictionTab
   const hydratedRun = useMemo(() => {
-    const snapshotTab = effectivePredictionTab === "past" ? "live" : effectivePredictionTab
-    return buildHydratedPredictionRun(liveSnapshot, snapshotTab)
-  }, [liveSnapshot, effectivePredictionTab])
+    if (predictionTab === "past") {
+      return null
+    }
+    return buildHydratedPredictionRun(liveSnapshot, predictionTab)
+  }, [liveSnapshot, predictionTab])
   const effectivePredictionRun = useMemo(() => {
     return hydratedRun ?? predictionRun
   }, [predictionRun, hydratedRun])
+  const visiblePredictionRun = predictionTab === "past" ? null : effectivePredictionRun
   const normalizedSelectedBooks = useMemo(
     () => selectedBooks.map((book) => normalizeSportsbook(book)).filter(Boolean),
     [selectedBooks],
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
   const availableBooks = useMemo(
-    () => collectAvailableBooks(effectivePredictionRun),
-    [effectivePredictionRun],
+    () => collectAvailableBooks(visiblePredictionRun),
+    [visiblePredictionRun],
   )
   const playerProfileQuery = useQuery({
-    queryKey: ["player-profile", selectedPlayerKey, effectivePredictionRun?.tournament_id, effectivePredictionRun?.course_num],
-    queryFn: () => api.getPlayerProfile(selectedPlayerKey, effectivePredictionRun?.tournament_id ?? 0, effectivePredictionRun?.course_num),
-    enabled: Boolean(selectedPlayerKey && effectivePredictionRun?.tournament_id),
+    queryKey: ["player-profile", selectedPlayerKey, visiblePredictionRun?.tournament_id, visiblePredictionRun?.course_num],
+    queryFn: () => api.getPlayerProfile(selectedPlayerKey, visiblePredictionRun?.tournament_id ?? 0, visiblePredictionRun?.course_num),
+    enabled: RICH_PLAYER_PROFILES_ENABLED && Boolean(selectedPlayerKey && visiblePredictionRun?.tournament_id),
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
   })
 
   const gradeMutation = useMutation({
@@ -148,11 +150,11 @@ function App() {
     },
   })
 
-  const players = effectivePredictionRun?.composite_results ?? []
+  const players = predictionTab === "past" ? [] : (effectivePredictionRun?.composite_results ?? [])
   const filteredMatchups = useMemo(() => {
     const sourceMatchups =
-      effectivePredictionRun?.matchup_bets_all_books
-      ?? effectivePredictionRun?.matchup_bets
+      visiblePredictionRun?.matchup_bets_all_books
+      ?? visiblePredictionRun?.matchup_bets
       ?? []
     return sourceMatchups.filter((matchup) => {
       const matchupBook = normalizeSportsbook(matchup.book)
@@ -163,16 +165,19 @@ function App() {
         : true
       return passesBook && passesSearch && matchup.ev >= minEdge
     })
-  }, [effectivePredictionRun?.matchup_bets_all_books, effectivePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
+  }, [visiblePredictionRun?.matchup_bets_all_books, visiblePredictionRun?.matchup_bets, matchupSearch, minEdge, selectedBookSet])
 
   const secondaryBets = useMemo(() => {
-    return flattenSecondaryBets(effectivePredictionRun).filter((bet) => {
+    if (predictionTab === "past") {
+      return []
+    }
+    return flattenSecondaryBets(visiblePredictionRun).filter((bet) => {
       const betBook = normalizeSportsbook(bet.book)
       if (betBook && NON_BOOK_SOURCES.has(betBook)) return false
       if (selectedBookSet.size === 0) return true
       return betBook ? selectedBookSet.has(betBook) : false
     })
-  }, [effectivePredictionRun, selectedBookSet])
+  }, [predictionTab, visiblePredictionRun, selectedBookSet])
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const dashboard = dashboardQuery.data as DashboardState | undefined
 
@@ -242,7 +247,7 @@ function App() {
               runtimeStatus={runtimeStatus}
               snapshotNotice={snapshotNotice}
               snapshotAgeSeconds={liveSnapshotEnvelope?.age_seconds ?? null}
-              predictionTab={effectivePredictionTab}
+              predictionTab={predictionTab}
               onPredictionTabChange={setPredictionTab}
               availableBooks={availableBooks}
               selectedBooks={normalizedSelectedBooks}
@@ -262,6 +267,7 @@ function App() {
               players={players}
               selectedPlayerProfile={playerProfileQuery.data}
               onPlayerSelect={setSelectedPlayerKey}
+              richProfilesEnabled={RICH_PLAYER_PROFILES_ENABLED}
             />
           }
         />
@@ -332,16 +338,77 @@ function PredictionWorkspacePage({
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [healthExpanded, setHealthExpanded] = useState(false)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
+  const pastEventsQuery = useQuery({
+    queryKey: ["live-refresh-past-events"],
+    queryFn: api.getLiveRefreshPastEvents,
+    staleTime: 60_000,
+  })
 
   const totalProfit = gradingHistory.reduce((sum, t) => sum + Number(t.total_profit ?? 0), 0)
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
   const isLiveActive = Boolean(liveTournament?.active)
 
+  const fallbackPastEvents = useMemo<PastSnapshotEvent[]>(
+    () =>
+      gradingHistory
+        .filter((event) => Boolean(event.event_id))
+        .map((event) => ({
+          event_id: String(event.event_id),
+          event_name: event.name,
+        })),
+    [gradingHistory],
+  )
+  const pastEventOptions = useMemo(() => {
+    const persisted = pastEventsQuery.data?.events ?? []
+    return persisted.length > 0 ? persisted : fallbackPastEvents
+  }, [fallbackPastEvents, pastEventsQuery.data?.events])
   const selectedPastEvent = useMemo(() => {
-    if (!selectedPastEventKey) return gradingHistory[0]
-    return gradingHistory.find((event) => String(event.event_id ?? "") === selectedPastEventKey) ?? gradingHistory[0]
-  }, [gradingHistory, selectedPastEventKey])
+    if (pastEventOptions.length === 0) return null
+    if (!selectedPastEventKey) return pastEventOptions[0]
+    return pastEventOptions.find((event) => event.event_id === selectedPastEventKey) ?? pastEventOptions[0]
+  }, [pastEventOptions, selectedPastEventKey])
+  useEffect(() => {
+    if (predictionTab !== "past") return
+    if (selectedPastEventKey) return
+    const firstEventId = pastEventOptions[0]?.event_id
+    if (firstEventId) {
+      setSelectedPastEventKey(firstEventId)
+    }
+  }, [pastEventOptions, predictionTab, selectedPastEventKey])
+  const pastSnapshotQuery = useQuery({
+    queryKey: ["live-refresh-past-snapshot", selectedPastEvent?.event_id],
+    queryFn: () => api.getLiveRefreshPastSnapshot(selectedPastEvent?.event_id ?? ""),
+    enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
+    staleTime: 30_000,
+  })
+  const pastSnapshotSection = pastSnapshotQuery.data?.ok ? (pastSnapshotQuery.data.snapshot ?? null) : null
+  const pastPredictionRun = useMemo(
+    () => buildPredictionRunFromSection(pastSnapshotSection),
+    [pastSnapshotSection],
+  )
+  const selectedBookSet = useMemo(() => new Set(selectedBooks), [selectedBooks])
+  const pastMatchups = useMemo(() => {
+    const sourceRows = pastPredictionRun?.matchup_bets_all_books ?? pastPredictionRun?.matchup_bets ?? []
+    return sourceRows.filter((matchup) => {
+      const matchupBook = normalizeSportsbook(matchup.book)
+      if (NON_BOOK_SOURCES.has(matchupBook)) return false
+      if (selectedBookSet.size === 0) return true
+      return matchupBook ? selectedBookSet.has(matchupBook) : false
+    })
+  }, [pastPredictionRun, selectedBookSet])
+  const pastSecondaryBets = useMemo(() => {
+    return flattenSecondaryBets(pastPredictionRun).filter((bet) => {
+      const betBook = normalizeSportsbook(bet.book)
+      if (betBook && NON_BOOK_SOURCES.has(betBook)) return false
+      if (selectedBookSet.size === 0) return true
+      return betBook ? selectedBookSet.has(betBook) : false
+    })
+  }, [pastPredictionRun, selectedBookSet])
+  const displayPredictionRun = predictionTab === "past" ? pastPredictionRun : predictionRun
+  const displayPlayers = predictionTab === "past" ? (pastPredictionRun?.composite_results ?? []) : players
+  const displaySecondaryBets = predictionTab === "past" ? pastSecondaryBets : secondaryBets
+  const displayAvailableBooks = predictionTab === "past" ? collectAvailableBooks(pastPredictionRun) : availableBooks
   const activeSection =
     predictionTab === "upcoming"
       ? upcomingTournament
@@ -350,20 +417,23 @@ function PredictionWorkspacePage({
         : null
   const eventName =
     predictionTab === "past"
-      ? selectedPastEvent?.name ?? "Past event snapshot unavailable"
-      : activeSection?.event_name ?? predictionRun?.event_name ?? "No event loaded"
+      ? selectedPastEvent?.event_name ?? "Past event snapshot unavailable"
+      : activeSection?.event_name ?? displayPredictionRun?.event_name ?? "No event loaded"
   const courseName =
     predictionTab === "past"
-      ? ""
-      : activeSection?.course_name ?? predictionRun?.course_name ?? ""
+      ? (pastPredictionRun?.course_name ?? "")
+      : activeSection?.course_name ?? displayPredictionRun?.course_name ?? ""
   const fieldSize =
     predictionTab === "past"
-      ? 0
-      : activeSection?.field_size ?? predictionRun?.field_size ?? 0
-  const diagnostics = activeSection?.diagnostics
+      ? (pastPredictionRun?.field_size ?? 0)
+      : activeSection?.field_size ?? displayPredictionRun?.field_size ?? 0
+  const diagnostics = predictionTab === "past" ? pastSnapshotSection?.diagnostics : activeSection?.diagnostics
+  const leaderboardRows = predictionTab === "past"
+    ? (pastSnapshotSection?.leaderboard ?? [])
+    : (activeSection?.leaderboard ?? [])
   const matchupSource = useMemo(
-    () => (predictionTab === "past" ? [] : filteredMatchups),
-    [filteredMatchups, predictionTab],
+    () => (predictionTab === "past" ? pastMatchups : filteredMatchups),
+    [filteredMatchups, pastMatchups, predictionTab],
   )
 
   const topPlays = useMemo(() => {
@@ -379,19 +449,26 @@ function PredictionWorkspacePage({
     ? topPlays[0].ev
     : 0
 
-  const diagnosticsMessage = getMatchupStateMessage({
-    state: diagnostics?.state,
-    reasonCodes: diagnostics?.reason_codes,
-    hasFilters: selectedBooks.length > 0,
-  })
+  const diagnosticsMessage =
+    predictionTab === "past"
+      ? pastSnapshotQuery.isFetching
+        ? "Loading stored past-event snapshot..."
+        : pastSnapshotQuery.isError
+          ? "No stored past-event snapshot found for this selection yet."
+          : "Stored snapshot replay for completed event."
+      : getMatchupStateMessage({
+        state: diagnostics?.state,
+        reasonCodes: diagnostics?.reason_codes,
+        hasFilters: selectedBooks.length > 0,
+      })
 
   const handleExportMarkdown = () => {
-    if (!predictionRun?.card_content) return
-    const blob = new Blob([predictionRun.card_content], { type: "text/markdown;charset=utf-8" })
+    if (!displayPredictionRun?.card_content) return
+    const blob = new Blob([displayPredictionRun.card_content], { type: "text/markdown;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement("a")
     anchor.href = url
-    anchor.download = `${predictionRun.event_name ?? "prediction"}.md`
+    anchor.download = `${displayPredictionRun.event_name ?? "prediction"}.md`
     anchor.click()
     URL.revokeObjectURL(url)
   }
@@ -455,7 +532,7 @@ function PredictionWorkspacePage({
           </Button>
         </div>
 
-        {predictionTab === "past" && gradingHistory.length > 0 ? (
+        {predictionTab === "past" ? (
           <div className="mt-3">
             <label className="block">
               <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">Browse past events</span>
@@ -464,17 +541,24 @@ function PredictionWorkspacePage({
                 value={selectedPastEventKey}
                 onChange={(event) => setSelectedPastEventKey(event.target.value)}
                 aria-label="Select past event"
+                disabled={pastEventOptions.length === 0}
               >
                 <option value="">Most recent completed event</option>
-                {gradingHistory.map((event) => (
-                  <option key={`${event.event_id}-${event.year}`} value={event.event_id ?? ""}>
-                    {event.name}{event.year ? ` (${event.year})` : ""}
+                {pastEventOptions.map((event) => (
+                  <option key={event.event_id} value={event.event_id}>
+                    {event.event_name}
                   </option>
                 ))}
               </select>
             </label>
             <p className="mt-2 text-xs text-slate-400">
-              Past-event board replay is not yet available; use the Grading tab for audited results.
+              {pastSnapshotQuery.isFetching
+                ? "Loading immutable snapshot replay for the selected event..."
+                : pastSnapshotQuery.isError
+                  ? "No immutable snapshot found for this event yet. Run live refresh during event windows to capture replay history."
+                  : selectedPastEvent
+                    ? `Replay loaded from snapshot history${pastSnapshotQuery.data?.generated_at ? ` (${formatDateTime(pastSnapshotQuery.data.generated_at)}).` : "."}`
+                    : "Select an event to load snapshot replay."}
             </p>
           </div>
         ) : null}
@@ -503,7 +587,13 @@ function PredictionWorkspacePage({
       <SurfaceCard>
         <SectionTitle
           title="Top Plays"
-          description={predictionTab === "live" ? "Best edges from the live event." : predictionTab === "upcoming" ? "Highest-conviction matchup edges for the upcoming event." : "Matchups from the most recently completed event."}
+          description={
+            predictionTab === "live"
+              ? "Best edges from the live event."
+              : predictionTab === "upcoming"
+                ? "Highest-conviction matchup edges for the upcoming event."
+                : "Replayed matchup edges captured during prior refresh cycles."
+          }
           action={
             <Link to="/matchups" className="flex items-center gap-1.5 text-sm text-cyan-300 transition hover:text-cyan-200">
               View all matchups <ExternalLink className="h-3.5 w-3.5" />
@@ -511,10 +601,10 @@ function PredictionWorkspacePage({
           }
         />
 
-        {availableBooks.length > 0 ? (
+        {displayAvailableBooks.length > 0 ? (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Books</span>
-            {availableBooks.map((book) => {
+            {displayAvailableBooks.map((book) => {
               const active = selectedBooks.includes(book)
               return (
                 <button
@@ -658,7 +748,7 @@ function PredictionWorkspacePage({
               </Link>
             }
           />
-          {players.length > 0 ? (
+          {displayPlayers.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] text-sm" role="grid">
                 <thead>
@@ -672,7 +762,7 @@ function PredictionWorkspacePage({
                   </tr>
                 </thead>
                 <tbody>
-                  {players.slice(0, 10).map((player) => {
+                  {displayPlayers.slice(0, 10).map((player) => {
                     const dir = player.momentum_direction ?? ""
                     const arrow = TREND_ARROW[dir] ?? "—"
                     const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
@@ -698,40 +788,80 @@ function PredictionWorkspacePage({
             <EmptyState message="No rankings available yet for this event context." />
           )}
         </SurfaceCard>
+        <div className="space-y-6">
+          <SurfaceCard>
+            <SectionTitle
+              title="Leaderboard"
+              description={
+                predictionTab === "upcoming"
+                  ? "Live leaderboard appears once round scoring data is available."
+                  : "Round-by-round leaderboard feed, independent of model projections."
+              }
+            />
+            {leaderboardRows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[420px] text-sm" role="grid">
+                  <thead>
+                    <tr className="border-b border-white/10 text-left text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                      <th className="px-3 py-2 font-medium">Pos</th>
+                      <th className="px-3 py-2 font-medium">Player</th>
+                      <th className="px-3 py-2 text-right font-medium">To Par</th>
+                      <th className="px-3 py-2 text-right font-medium">R</th>
+                      <th className="px-3 py-2 text-right font-medium">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboardRows.slice(0, 10).map((row) => (
+                      <tr key={`${row.player_key ?? row.player}-${row.rank}`} className="border-t border-white/6 transition hover:bg-white/5">
+                        <td className="px-3 py-2.5 text-slate-400">{row.position ?? row.rank}</td>
+                        <td className="px-3 py-2.5 text-white">{row.player}</td>
+                        <td className="px-3 py-2.5 text-right text-cyan-200">{formatToParValue(row.total_to_par)}</td>
+                        <td className="px-3 py-2.5 text-right text-slate-300">{row.latest_round_num ?? "--"}</td>
+                        <td className="px-3 py-2.5 text-right text-slate-300">{row.latest_round_score ?? "--"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState message="No leaderboard rows available yet for this event context." />
+            )}
+          </SurfaceCard>
 
-        <SurfaceCard>
-          <SectionTitle
-            title="Market Intel"
-            description="Secondary edges across placement and adjacent markets."
-          />
-          {secondaryBets.length > 0 ? (
-            <div className="space-y-2">
-              {secondaryBets.slice(0, 6).map((bet) => (
-                <div key={`${bet.market}-${bet.player}-${bet.odds}`} className="flex items-center justify-between gap-4 rounded-xl border border-white/8 bg-black/20 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{bet.player}</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      <span className="rounded-full bg-white/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
-                        {bet.market}
-                      </span>
-                      <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
-                        {secondaryBadgeLabel(bet.market)}
-                      </span>
+          <SurfaceCard>
+            <SectionTitle
+              title="Market Intel"
+              description="Secondary edges across placement and adjacent markets."
+            />
+            {displaySecondaryBets.length > 0 ? (
+              <div className="space-y-2">
+                {displaySecondaryBets.slice(0, 6).map((bet) => (
+                  <div key={`${bet.market}-${bet.player}-${bet.odds}`} className="flex items-center justify-between gap-4 rounded-xl border border-white/8 bg-black/20 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white">{bet.player}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span className="rounded-full bg-white/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                          {bet.market}
+                        </span>
+                        <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                          {secondaryBadgeLabel(bet.market)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-cyan-200">{formatNumber(bet.ev * 100, 1)}%</p>
+                      <p className="text-xs text-slate-500">
+                        {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-cyan-200">{formatNumber(bet.ev * 100, 1)}%</p>
-                    <p className="text-xs text-slate-500">
-                      {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState message="No secondary market edges surfaced yet." />
-          )}
-        </SurfaceCard>
+                ))}
+              </div>
+            ) : (
+              <EmptyState message="No secondary market edges surfaced yet." />
+            )}
+          </SurfaceCard>
+        </div>
       </div>
 
       {/* ── Zone 4: Season performance + model health ── */}
@@ -788,7 +918,7 @@ function PredictionWorkspacePage({
             }
           />
           <div className="grid gap-3 sm:grid-cols-2">
-            <InfoRow icon={ShieldAlert} label="Field validation" value={predictionRun?.field_validation?.has_cross_tour_field_risk ? "Review warnings" : "Healthy"} />
+            <InfoRow icon={ShieldAlert} label="Field validation" value={displayPredictionRun?.field_validation?.has_cross_tour_field_risk ? "Review warnings" : "Healthy"} />
             <InfoRow icon={Brain} label="AI availability" value={dashboard?.ai_status?.available ? "Enabled" : "Unavailable"} />
             <InfoRow icon={Flag} label="Latest completed" value={dashboard?.latest_completed_event?.event_name ?? "--"} />
             <InfoRow icon={Clock3} label="Last graded" value={dashboard?.latest_graded_tournament?.name ?? "--"} />
@@ -802,18 +932,21 @@ function PredictionWorkspacePage({
                   <p>Snapshot state: {diagnostics?.state ?? "unknown"}</p>
                   <p>Matchup rows posted: {String(diagnostics?.market_counts?.tournament_matchups?.raw_rows ?? 0)}</p>
                   <p>Selection rows: {String(diagnostics?.selection_counts?.selected_rows ?? 0)}</p>
+                  <p>Rows filtered (EV cap): {String(diagnostics?.value_filters?.ev_cap_filtered ?? 0)}</p>
+                  <p>Rows filtered (missing odds): {String(diagnostics?.value_filters?.missing_display_odds ?? 0)}</p>
+                  <p>Rows filtered (probability mismatch): {String(diagnostics?.value_filters?.probability_inconsistency_filtered ?? 0)}</p>
                 </div>
               </div>
-              {predictionRun?.warnings?.length ? (
+              {displayPredictionRun?.warnings?.length ? (
                 <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
-                  {predictionRun.warnings.join(" ")}
+                  {displayPredictionRun.warnings.join(" ")}
                 </div>
               ) : null}
             </div>
           ) : null}
 
           <div className="mt-4">
-            <Button size="sm" variant="outline" onClick={handleExportMarkdown} disabled={!predictionRun?.card_content}>
+            <Button size="sm" variant="outline" onClick={handleExportMarkdown} disabled={!displayPredictionRun?.card_content}>
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export markdown
             </Button>
@@ -822,6 +955,12 @@ function PredictionWorkspacePage({
       </div>
     </div>
   )
+}
+
+const formatToParValue = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--"
+  if (value === 0) return "E"
+  return value > 0 ? `+${value}` : `${value}`
 }
 
 const TREND_ARROW: Record<string, string> = { hot: "↑↑", warming: "↑", cooling: "↓", cold: "↓↓" }
@@ -843,10 +982,12 @@ function PlayersPage({
   players,
   selectedPlayerProfile,
   onPlayerSelect,
+  richProfilesEnabled,
 }: {
   players: CompositePlayer[]
   selectedPlayerProfile?: PlayerProfile
   onPlayerSelect: (playerKey: string) => void
+  richProfilesEnabled: boolean
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
@@ -859,16 +1000,6 @@ function PlayersPage({
       onPlayerSelect(playerKey)
     }
   }
-
-  const expandedPlayer = expandedKey ? players.find((p) => p.player_key === expandedKey) ?? null : null
-  const recentTrend = (selectedPlayerProfile?.recent_rounds ?? []).map((round) => Number(round.sg_total ?? 0)).reverse()
-  const momentumValues =
-    recentTrend.length > 0
-      ? recentTrend
-      : expandedPlayer
-        ? [expandedPlayer.course_fit, expandedPlayer.form, expandedPlayer.momentum, expandedPlayer.composite]
-        : []
-  const courseValues = selectedPlayerProfile?.course_history.map((round) => Number(round.sg_total ?? 0)).reverse() ?? []
 
   return (
     <SurfaceCard>
@@ -893,7 +1024,10 @@ function PlayersPage({
                 const dir = player.momentum_direction ?? ""
                 const arrow = TREND_ARROW[dir] ?? "—"
                 const trendColor = TREND_COLOR[dir] ?? "text-slate-500"
-                const profileReady = isExpanded && selectedPlayerProfile && expandedKey === player.player_key
+                const profileReady =
+                  isExpanded &&
+                  Boolean(selectedPlayerProfile) &&
+                  selectedPlayerProfile?.player_key === player.player_key
 
                 return (
                   <tr key={player.player_key} className="group">
@@ -919,64 +1053,25 @@ function PlayersPage({
                       </button>
                       {isExpanded ? (
                         <div className="border-t border-white/8 bg-white/3 px-4 py-5">
-                          <div className="space-y-5">
-                            <div className="grid gap-4 md:grid-cols-4">
-                              <MetricTile label="Composite" value={formatNumber(player.composite, 1)} />
-                              <MetricTile label="Course fit" value={formatNumber(player.course_fit, 1)} />
-                              <MetricTile label="Form" value={formatNumber(player.form, 1)} />
-                              <MetricTile label="Momentum" value={formatNumber(player.momentum, 1)} />
+                          {richProfilesEnabled ? (
+                            <PlayerProfileSections
+                              player={player}
+                              profile={selectedPlayerProfile}
+                              profileReady={profileReady}
+                            />
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                                Rich profile sections are currently disabled by configuration.
+                              </div>
+                              <div className="grid gap-4 md:grid-cols-4">
+                                <MetricTile label="Composite" value={formatNumber(player.composite, 1)} />
+                                <MetricTile label="Course fit" value={formatNumber(player.course_fit, 1)} />
+                                <MetricTile label="Form" value={formatNumber(player.form, 1)} />
+                                <MetricTile label="Momentum" value={formatNumber(player.momentum, 1)} />
+                              </div>
                             </div>
-                            {momentumValues.length ? (
-                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                                <div className="mb-2 flex items-center gap-2 text-slate-300">
-                                  <TrendingUp className="h-4 w-4 text-cyan-200" />
-                                  <span className="text-sm font-medium">Recent strokes-gained trend</span>
-                                </div>
-                                <SparklineChart values={momentumValues} color="#5eead4" />
-                              </div>
-                            ) : null}
-                            {courseValues.length ? (
-                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                                <div className="mb-2 flex items-center gap-2 text-slate-300">
-                                  <Flag className="h-4 w-4 text-cyan-200" />
-                                  <span className="text-sm font-medium">Course-history trend</span>
-                                </div>
-                                <SparklineChart values={courseValues} color="#60a5fa" />
-                              </div>
-                            ) : null}
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <MetricTile label="Momentum direction" value={player.momentum_direction ?? "--"} />
-                              <MetricTile label="Course confidence" value={formatNumber(player.course_confidence, 2)} />
-                              <MetricTile label="Course rounds" value={String(player.course_rounds ?? 0)} />
-                              <MetricTile label="Weather adj." value={formatNumber(player.weather_adjustment, 1)} />
-                            </div>
-                            {profileReady && selectedPlayerProfile?.linked_bets?.length ? (
-                              <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                                <h4 className="mb-3 text-sm font-semibold text-white">Linked bets</h4>
-                                <div className="space-y-3">
-                                  {selectedPlayerProfile.linked_bets.slice(0, 6).map((bet, index) => (
-                                    <div key={`${bet.bet_type}-${index}`} className="flex items-center justify-between gap-4 rounded-2xl border border-white/6 px-3 py-3">
-                                      <div>
-                                        <p className="text-sm font-medium text-white">{bet.bet_type ?? "bet"}</p>
-                                        <p className="text-xs text-slate-500">
-                                          {bet.player_display}
-                                          {bet.opponent_display ? ` vs ${bet.opponent_display}` : ""}
-                                        </p>
-                                      </div>
-                                      <div className="text-right">
-                                        <p className="text-sm text-cyan-200">{bet.market_odds ?? "--"}</p>
-                                        <p className="text-xs text-slate-500">{bet.confidence ?? "quant"}</p>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                            <ComponentTable title="Course components" components={player.details?.course_components} />
-                            <ComponentTable title="Form components" components={player.details?.form_components} />
-                            <ComponentTable title="Momentum windows" components={player.details?.momentum_windows} />
-                            <MetricsCategoryTable title="Current market context" categories={selectedPlayerProfile?.current_metrics} />
-                          </div>
+                          )}
                         </div>
                       ) : null}
                     </td>
@@ -1333,67 +1428,6 @@ function TrackRecordPage() {
           })}
         </div>
       </SurfaceCard>
-    </div>
-  )
-}
-
-function ComponentTable({
-  title,
-  components,
-}: {
-  title: string
-  components?: Record<string, number>
-}) {
-  const entries = Object.entries(components ?? {})
-  return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-      <h4 className="mb-3 text-sm font-semibold text-white">{title}</h4>
-      {entries.length ? (
-        <div className="space-y-2">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between gap-4 text-sm">
-              <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
-              <span className="font-medium text-slate-100">{formatNumber(value, 2)}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-slate-400">No component detail available yet.</p>
-      )}
-    </div>
-  )
-}
-
-function MetricsCategoryTable({
-  title,
-  categories,
-}: {
-  title: string
-  categories?: Record<string, Record<string, number | string | null>>
-}) {
-  const entries = Object.entries(categories ?? {})
-  return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-      <h4 className="mb-3 text-sm font-semibold text-white">{title}</h4>
-      {entries.length ? (
-        <div className="space-y-4">
-          {entries.map(([category, values]) => (
-            <div key={category}>
-              <p className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">{category}</p>
-              <div className="grid gap-2 md:grid-cols-2">
-                {Object.entries(values).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between gap-4 rounded-xl border border-white/6 px-3 py-2 text-sm">
-                    <span className="capitalize text-slate-400">{key.replaceAll("_", " ")}</span>
-                    <span className="font-medium text-slate-100">{typeof value === "number" ? formatNumber(value, 2) : String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-slate-400">No current market metrics are available for this player.</p>
-      )}
     </div>
   )
 }

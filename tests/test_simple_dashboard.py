@@ -557,6 +557,14 @@ def test_player_profile_endpoint_returns_recent_rounds_course_history_and_linked
     assert len(body["course_history"]) == 1
     assert len(body["linked_bets"]) == 1
     assert body["current_metrics"]["dg_skill"]["sg_total"] == 1.82
+    assert body["sections_version"] == 1
+    assert body["header"]["field_size"] == 1
+    assert body["header"]["dg_rank"] is None
+    assert body["skill_breakdown"]["primary"]
+    assert body["rolling_form"]["windows"]["10"] is not None
+    assert body["rolling_form"]["window_source_map"]["25"] == "24"
+    assert body["course_event_context"]["course_summary"]["rounds_tracked"] == 1
+    assert body["betting_context"]["summary"]["linked_bet_count"] == 1
 
 
 def test_output_list_and_content_endpoints_are_safe(tmp_path, monkeypatch):

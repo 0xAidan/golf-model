@@ -17,6 +17,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import mean
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,6 +36,7 @@ from src.csv_parser import ingest_folder, classify_file_type, detect_data_mode, 
 from src.db import (
     get_or_create_tournament, get_active_weights, get_all_players,
     get_conn, init_db, store_results, store_picks,
+    list_past_snapshot_events, get_latest_snapshot_section, get_market_prediction_rows_for_event,
 )
 from src.models.composite import compute_composite
 from src.models.weights import retune, analyze_pick_performance, get_current_weights
@@ -505,24 +507,457 @@ async def get_track_record(limit: int = 20):
     return {"events": result}
 
 
+_PROFILE_CATEGORY_METRIC_ORDER: dict[str, list[str]] = {
+    "dg_skill": [
+        "sg_total",
+        "dg_sg_total",
+        "sg_ott",
+        "dg_sg_ott",
+        "sg_app",
+        "dg_sg_app",
+        "sg_arg",
+        "dg_sg_arg",
+        "sg_putt",
+        "dg_sg_putt",
+        "driving_dist",
+        "dg_driving_dist",
+        "driving_acc",
+        "dg_driving_acc",
+    ],
+    "dg_ranking": ["dg_rank", "owgr_rank", "dg_skill_estimate"],
+    "dg_approach": [
+        "approach_sg_composite",
+        "50_100_fw_sg_per_shot",
+        "50_100_rgh_sg_per_shot",
+        "100_150_fw_sg_per_shot",
+        "100_150_rgh_sg_per_shot",
+        "150_200_fw_sg_per_shot",
+        "150_200_rgh_sg_per_shot",
+        "200_plus_fw_sg_per_shot",
+        "200_plus_rgh_sg_per_shot",
+    ],
+    "dg_decomposition": [
+        "dg_sg_total",
+        "dg_baseline_pred",
+        "dg_total_fit_adj",
+        "dg_total_ch_adj",
+        "dg_sg_category_adj",
+        "dg_driving_dist_adj",
+        "dg_driving_acc_adj",
+        "dg_cf_approach",
+        "dg_cf_short",
+    ],
+    "strokes_gained": ["SG:TOT", "SG:OTT", "SG:APP", "SG:ARG", "SG:PUTT"],
+    "sim": ["Win %", "Top 5 %", "Top 10 %", "Top 20 %", "Make Cut %"],
+    "meta": ["field_status", "teetime", "draftkings", "fanduel", "dg_id"],
+}
+
+_PROFILE_METRIC_LABELS: dict[str, str] = {
+    "sg_total": "SG Total",
+    "dg_sg_total": "DG SG Total",
+    "sg_ott": "Off-the-Tee",
+    "dg_sg_ott": "DG Off-the-Tee",
+    "sg_app": "Approach",
+    "dg_sg_app": "DG Approach",
+    "sg_arg": "Around Green",
+    "dg_sg_arg": "DG Around Green",
+    "sg_putt": "Putting",
+    "dg_sg_putt": "DG Putting",
+    "driving_dist": "Driving Distance",
+    "dg_driving_dist": "DG Driving Distance",
+    "driving_acc": "Driving Accuracy",
+    "dg_driving_acc": "DG Driving Accuracy",
+    "dg_rank": "DataGolf Rank",
+    "owgr_rank": "OWGR Rank",
+    "dg_skill_estimate": "DG Skill Estimate",
+    "approach_sg_composite": "Approach Composite",
+    "dg_total_fit_adj": "Course-Fit Adjustment",
+    "dg_total_ch_adj": "Course-History Adjustment",
+    "dg_sg_category_adj": "Category Adjustment",
+    "dg_driving_dist_adj": "Distance Adjustment",
+    "dg_driving_acc_adj": "Accuracy Adjustment",
+    "dg_cf_approach": "Approach Component",
+    "dg_cf_short": "Short-Game Component",
+    "SG:TOT": "SG Total",
+    "SG:OTT": "SG Off-the-Tee",
+    "SG:APP": "SG Approach",
+    "SG:ARG": "SG Around Green",
+    "SG:PUTT": "SG Putting",
+    "field_status": "Field Status",
+    "teetime": "Tee Time",
+}
+
+_PROFILE_ROLLING_WINDOWS = {"10": "8", "25": "24", "50": "all"}
+_CUT_LIKE_STATES = {"CUT", "MC", "MDF", "WD", "DQ", "DNS"}
+
+
+def _profile_metric_value(metric: dict) -> float | str | None:
+    if metric.get("metric_value") is not None:
+        return float(metric["metric_value"])
+    value = metric.get("metric_text")
+    return str(value) if value is not None else None
+
+
+def _profile_numeric_value(value) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _profile_average(values: list[float]) -> float | None:
+    clean = [float(v) for v in values if v is not None]
+    if not clean:
+        return None
+    return round(mean(clean), 3)
+
+
+def _profile_label(metric_name: str) -> str:
+    if metric_name in _PROFILE_METRIC_LABELS:
+        return _PROFILE_METRIC_LABELS[metric_name]
+    return metric_name.replace("_", " ").replace(":", " ").title()
+
+
+def _group_profile_metrics(metrics: list[dict]) -> tuple[
+    dict[str, dict[str, float | str | None]],
+    dict[str, dict[str, dict[str, float | str | None]]],
+]:
+    by_category: dict[str, dict[str, float | str | None]] = {}
+    by_category_window: dict[str, dict[str, dict[str, float | str | None]]] = {}
+
+    for metric in metrics:
+        category = str(metric.get("metric_category") or "other")
+        window = str(metric.get("round_window") or "all")
+        metric_name = str(metric.get("metric_name") or "value")
+        value = _profile_metric_value(metric)
+        if value is None:
+            continue
+
+        bucket = by_category_window.setdefault(category, {}).setdefault(window, {})
+        bucket[metric_name] = value
+
+        flat_key = metric_name if window == "all" else f"{metric_name} [{window}]"
+        by_category.setdefault(category, {})[flat_key] = value
+
+    ordered_categories: dict[str, dict[str, float | str | None]] = {}
+    for category in sorted(by_category):
+        values = by_category[category]
+        preferred = _PROFILE_CATEGORY_METRIC_ORDER.get(category, [])
+        preferred_index = {name: idx for idx, name in enumerate(preferred)}
+        sorted_keys = sorted(
+            values.keys(),
+            key=lambda key: (
+                preferred_index.get(key.split(" [", 1)[0], len(preferred) + 50),
+                key,
+            ),
+        )
+        ordered_categories[category] = {key: values[key] for key in sorted_keys}
+    return ordered_categories, by_category_window
+
+
+def _build_skill_breakdown(
+    metrics_by_category_window: dict[str, dict[str, dict[str, float | str | None]]],
+) -> dict:
+    skill_metrics = metrics_by_category_window.get("dg_skill", {}).get("all", {})
+    ranking_metrics = metrics_by_category_window.get("dg_ranking", {}).get("all", {})
+    approach_metrics = metrics_by_category_window.get("dg_approach", {}).get("all", {})
+    decomposition_metrics = metrics_by_category_window.get("dg_decomposition", {}).get("all", {})
+
+    primary_pairs = [
+        ("dg_sg_total", "sg_total"),
+        ("dg_sg_ott", "sg_ott"),
+        ("dg_sg_app", "sg_app"),
+        ("dg_sg_arg", "sg_arg"),
+        ("dg_sg_putt", "sg_putt"),
+    ]
+    primary = []
+    for preferred_key, fallback_key in primary_pairs:
+        key = preferred_key if preferred_key in skill_metrics else fallback_key
+        value = _profile_numeric_value(skill_metrics.get(key))
+        if value is None:
+            continue
+        primary.append({"key": key, "label": _profile_label(key), "value": round(value, 3)})
+    approach_composite = _profile_numeric_value(approach_metrics.get("approach_sg_composite"))
+    if approach_composite is not None:
+        primary.append(
+            {
+                "key": "approach_sg_composite",
+                "label": _profile_label("approach_sg_composite"),
+                "value": round(approach_composite, 3),
+            }
+        )
+
+    approach_buckets = []
+    for key, value in approach_metrics.items():
+        if not key.endswith("_sg_per_shot"):
+            continue
+        numeric = _profile_numeric_value(value)
+        if numeric is None:
+            continue
+        approach_buckets.append({"key": key, "label": _profile_label(key), "value": round(numeric, 3)})
+    approach_buckets.sort(key=lambda row: row["value"], reverse=True)
+
+    component_delta_keys = [
+        "dg_total_fit_adj",
+        "dg_total_ch_adj",
+        "dg_sg_category_adj",
+        "dg_driving_dist_adj",
+        "dg_driving_acc_adj",
+        "dg_cf_approach",
+        "dg_cf_short",
+    ]
+    component_deltas = []
+    for key in component_delta_keys:
+        numeric = _profile_numeric_value(decomposition_metrics.get(key))
+        if numeric is None:
+            continue
+        component_deltas.append({"key": key, "label": _profile_label(key), "value": round(numeric, 3)})
+
+    sorted_primary = sorted(primary, key=lambda row: row["value"], reverse=True)
+    best_area = sorted_primary[0] if sorted_primary else None
+    weakest_area = sorted_primary[-1] if sorted_primary else None
+    return {
+        "primary": primary,
+        "approach_buckets": approach_buckets[:12],
+        "component_deltas": component_deltas,
+        "summary": {
+            "best_area": best_area,
+            "weakest_area": weakest_area,
+            "dg_rank": _profile_numeric_value(ranking_metrics.get("dg_rank")),
+            "owgr_rank": _profile_numeric_value(ranking_metrics.get("owgr_rank")),
+            "dg_skill_estimate": _profile_numeric_value(ranking_metrics.get("dg_skill_estimate")),
+        },
+    }
+
+
+def _build_rolling_form_section(
+    db_module,
+    tournament_id: int,
+    metrics_by_category_window: dict[str, dict[str, dict[str, float | str | None]]],
+    recent_rounds: list[dict],
+) -> dict:
+    sg_metrics = metrics_by_category_window.get("strokes_gained", {})
+    recent_sg = [
+        float(round_row["sg_total"])
+        for round_row in recent_rounds
+        if round_row.get("sg_total") is not None
+    ]
+
+    window_values: dict[str, float | None] = {}
+    benchmark_values: dict[str, dict[str, float | None]] = {
+        "tour_avg": {},
+        "top50": {},
+        "top10": {},
+    }
+    source_window_map: dict[str, str] = {}
+    for ui_window, source_window in _PROFILE_ROLLING_WINDOWS.items():
+        source_window_map[ui_window] = source_window
+        player_value = _profile_numeric_value(
+            sg_metrics.get(source_window, {}).get("SG:TOT")
+        )
+        if player_value is None and recent_sg:
+            fallback_window = min(int(ui_window), len(recent_sg))
+            player_value = _profile_average(recent_sg[:fallback_window])
+        window_values[ui_window] = round(player_value, 3) if player_value is not None else None
+
+        sample = db_module.get_tournament_metric_values(
+            tournament_id,
+            "strokes_gained",
+            "SG:TOT",
+            data_mode="recent_form",
+            round_window=source_window,
+        )
+        if not sample and source_window == "all":
+            sample = db_module.get_tournament_metric_values(
+                tournament_id,
+                "strokes_gained",
+                "SG:TOT",
+                round_window=source_window,
+            )
+        ordered = sorted(sample, reverse=True)
+        half_count = max(1, len(ordered) // 2) if ordered else 0
+        top_count = min(10, len(ordered))
+        benchmark_values["tour_avg"][ui_window] = _profile_average(ordered) if ordered else None
+        benchmark_values["top50"][ui_window] = _profile_average(ordered[:half_count]) if half_count else None
+        benchmark_values["top10"][ui_window] = _profile_average(ordered[:top_count]) if top_count else None
+
+    short_value = window_values.get("10")
+    medium_value = window_values.get("25")
+    delta_short_vs_medium = (
+        round(short_value - medium_value, 3)
+        if short_value is not None and medium_value is not None
+        else None
+    )
+    return {
+        "windows": window_values,
+        "window_source_map": source_window_map,
+        "benchmarks": benchmark_values,
+        "trend_series": list(reversed(recent_sg[:50])),
+        "summary": {
+            "delta_short_vs_medium": delta_short_vs_medium,
+            "rounds_in_sample": len(recent_sg),
+        },
+    }
+
+
+def _summarize_recent_events(recent_rounds: list[dict], limit: int = 8) -> list[dict]:
+    event_map: dict[str, dict] = {}
+    ordered_keys: list[str] = []
+    for round_row in recent_rounds:
+        event_key = (
+            str(round_row.get("event_id") or "").strip()
+            or str(round_row.get("event_name") or "").strip()
+            or str(round_row.get("event_completed") or "").strip()
+        )
+        if not event_key:
+            continue
+        if event_key not in event_map:
+            event_map[event_key] = {
+                "event_name": round_row.get("event_name"),
+                "event_completed": round_row.get("event_completed"),
+                "fin_text": round_row.get("fin_text"),
+                "sg_total_values": [],
+                "rounds_recorded": 0,
+            }
+            ordered_keys.append(event_key)
+        event_row = event_map[event_key]
+        sg_total = round_row.get("sg_total")
+        if sg_total is not None:
+            event_row["sg_total_values"].append(float(sg_total))
+        event_row["rounds_recorded"] += 1
+        if not event_row.get("fin_text") and round_row.get("fin_text"):
+            event_row["fin_text"] = round_row.get("fin_text")
+
+    summarized = []
+    for key in ordered_keys[:limit]:
+        event_row = event_map[key]
+        summarized.append(
+            {
+                "event_name": event_row.get("event_name"),
+                "event_completed": event_row.get("event_completed"),
+                "fin_text": event_row.get("fin_text"),
+                "rounds_recorded": event_row.get("rounds_recorded"),
+                "avg_sg_total": _profile_average(event_row.get("sg_total_values") or []),
+            }
+        )
+    return summarized
+
+
+def _build_course_event_context(recent_rounds: list[dict], course_history: list[dict]) -> dict:
+    recent_events = _summarize_recent_events(recent_rounds, limit=8)
+    recent_sg = [
+        event["avg_sg_total"]
+        for event in recent_events
+        if event.get("avg_sg_total") is not None
+    ]
+    made_cut_count = sum(
+        1
+        for event in recent_events
+        if str(event.get("fin_text") or "").strip().upper() not in _CUT_LIKE_STATES
+    )
+
+    course_sg = [
+        float(round_row["sg_total"])
+        for round_row in course_history
+        if round_row.get("sg_total") is not None
+    ]
+    return {
+        "recent_starts": recent_events,
+        "recent_summary": {
+            "events_tracked": len(recent_events),
+            "made_cuts": made_cut_count,
+            "avg_sg_total": _profile_average(recent_sg),
+        },
+        "course_summary": {
+            "rounds_tracked": len(course_history),
+            "avg_sg_total": _profile_average(course_sg),
+            "best_round_sg": round(max(course_sg), 3) if course_sg else None,
+            "worst_round_sg": round(min(course_sg), 3) if course_sg else None,
+        },
+    }
+
+
+def _build_betting_context(linked_bets: list[dict]) -> dict:
+    ev_values = [
+        float(bet["ev"])
+        for bet in linked_bets
+        if bet.get("ev") is not None
+    ]
+    high_confidence = [
+        bet
+        for bet in linked_bets
+        if str(bet.get("confidence") or "").strip().lower() in {"high", "strong"}
+    ]
+    strongest_bet = linked_bets[0] if linked_bets else None
+    return {
+        "summary": {
+            "linked_bet_count": len(linked_bets),
+            "average_ev": _profile_average(ev_values),
+            "high_confidence_count": len(high_confidence),
+        },
+        "strongest_linked_bet": strongest_bet,
+    }
+
+
+def _build_profile_header(
+    metrics_by_category_window: dict[str, dict[str, dict[str, float | str | None]]],
+    field_size: int,
+    recent_rounds: list[dict],
+    course_history: list[dict],
+) -> dict:
+    ranking_metrics = metrics_by_category_window.get("dg_ranking", {}).get("all", {})
+    meta_metrics = metrics_by_category_window.get("meta", {}).get("all", {})
+    latest_round = recent_rounds[0] if recent_rounds else {}
+    return {
+        "dg_rank": _profile_numeric_value(ranking_metrics.get("dg_rank")),
+        "owgr_rank": _profile_numeric_value(ranking_metrics.get("owgr_rank")),
+        "dg_skill_estimate": _profile_numeric_value(ranking_metrics.get("dg_skill_estimate")),
+        "field_size": field_size,
+        "tee_time": meta_metrics.get("teetime"),
+        "field_status": meta_metrics.get("field_status"),
+        "recent_rounds_tracked": len(recent_rounds),
+        "course_rounds_tracked": len(course_history),
+        "latest_event_name": latest_round.get("event_name"),
+        "latest_event_completed": latest_round.get("event_completed"),
+    }
+
+
 @app.get("/api/players/{player_key}/profile")
 async def get_player_profile(player_key: str, tournament_id: int, course_num: int | None = None):
-    """Return deep profile data for one player in the current tournament context."""
+    """Return rich profile data for one player in the current tournament context."""
     from src import db
 
-    metrics = db.get_player_metrics(tournament_id, player_key)
+    profile_categories = [
+        "dg_skill",
+        "dg_ranking",
+        "dg_approach",
+        "dg_decomposition",
+        "strokes_gained",
+        "sim",
+        "meta",
+    ]
+    metrics = db.get_player_metrics_by_categories(tournament_id, player_key, profile_categories)
+    if not metrics:
+        metrics = db.get_player_metrics(tournament_id, player_key)
     recent_rounds = db.get_player_recent_rounds_by_key(player_key, limit=24)
 
-    metrics_by_category: dict[str, dict[str, float | str | None]] = {}
-    for metric in metrics:
-        category = metric.get("metric_category") or "other"
-        bucket = metrics_by_category.setdefault(category, {})
-        bucket[metric.get("metric_name") or "value"] = metric.get("metric_value", metric.get("metric_text"))
+    metrics_by_category, metrics_by_category_window = _group_profile_metrics(metrics)
 
-    dg_id = recent_rounds[0].get("dg_id") if recent_rounds else None
+    dg_id = _profile_numeric_value(
+        metrics_by_category_window.get("meta", {}).get("all", {}).get("dg_id")
+    )
+    if dg_id is None and recent_rounds:
+        dg_id = _profile_numeric_value(recent_rounds[0].get("dg_id"))
+
     course_history = []
     if dg_id and course_num is not None:
-        course_history = db.get_player_course_rounds(int(dg_id), course_num)
+        course_history = db.get_player_course_rounds(int(dg_id), course_num)[:36]
+
+    field_size = db.get_tournament_field_size(tournament_id)
 
     conn = get_conn()
     linked_bets = conn.execute(
@@ -536,6 +971,7 @@ async def get_player_profile(player_key: str, tournament_id: int, course_num: in
         (tournament_id, player_key, player_key),
     ).fetchall()
     conn.close()
+    linked_bets_payload = [dict(row) for row in linked_bets][:20]
 
     player_display = None
     for metric in metrics:
@@ -553,7 +989,24 @@ async def get_player_profile(player_key: str, tournament_id: int, course_num: in
         "current_metrics": metrics_by_category,
         "recent_rounds": recent_rounds,
         "course_history": course_history,
-        "linked_bets": [dict(row) for row in linked_bets],
+        "linked_bets": linked_bets_payload,
+        "header": _build_profile_header(
+            metrics_by_category_window,
+            field_size,
+            recent_rounds,
+            course_history,
+        ),
+        "skill_breakdown": _build_skill_breakdown(metrics_by_category_window),
+        "rolling_form": _build_rolling_form_section(
+            db,
+            tournament_id,
+            metrics_by_category_window,
+            recent_rounds,
+        ),
+        "course_event_context": _build_course_event_context(recent_rounds, course_history),
+        "betting_context": _build_betting_context(linked_bets_payload),
+        "metric_labels": _PROFILE_METRIC_LABELS,
+        "sections_version": 1,
     }
 
 
@@ -1284,6 +1737,63 @@ async def get_live_refresh_runtime_status():
         "status": get_live_refresh_status(),
         "settings": (get_settings().get("live_refresh") or {}),
     }
+
+
+@app.get("/api/live-refresh/past-events")
+async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=200)):
+    """List events with immutable snapshot history for Past Event replay."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    events = list_past_snapshot_events(limit=limit)
+    return {"events": events}
+
+
+@app.get("/api/live-refresh/past-snapshot")
+async def get_live_refresh_past_snapshot(event_id: str = Query(..., min_length=1), section: str = Query(default="live")):
+    """Return the latest stored snapshot section for a specific past event."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    section_value = section.strip().lower()
+    if section_value not in {"live", "upcoming"}:
+        return JSONResponse({"ok": False, "error": "section must be 'live' or 'upcoming'"}, status_code=400)
+
+    payload = get_latest_snapshot_section(event_id=event_id, section=section_value)
+    if not payload:
+        return JSONResponse(
+            {"ok": False, "error": "No snapshot history found for this event."},
+            status_code=404,
+        )
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "snapshot_id": payload.get("snapshot_id"),
+        "generated_at": payload.get("generated_at"),
+        "tour": payload.get("tour"),
+        "section": payload.get("section"),
+        "snapshot": payload.get("snapshot") or {},
+    }
+
+
+@app.get("/api/live-refresh/past-market-rows")
+async def get_live_refresh_past_market_rows(
+    event_id: str = Query(..., min_length=1),
+    market_family: str | None = Query(default=None),
+    section: str | None = Query(default=None),
+    limit: int = Query(default=2000, ge=1, le=10000),
+):
+    """Return persisted matchup/placement rows for post-event analysis."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    rows = get_market_prediction_rows_for_event(
+        event_id=event_id,
+        market_family=market_family,
+        section=section,
+        limit=limit,
+    )
+    return {"event_id": event_id, "rows": rows}
 
 
 @app.get("/api/live-refresh/snapshot")

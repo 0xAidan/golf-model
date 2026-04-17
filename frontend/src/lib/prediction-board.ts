@@ -28,6 +28,30 @@ function isDisplayBook(value?: string | null): boolean {
   return normalized.length > 0 && !NON_BOOK_SOURCES.has(normalized)
 }
 
+function normalizeOddsDisplay(oddsValue: unknown, fallbackOdds?: unknown): string {
+  const primaryMissing =
+    oddsValue === null
+    || oddsValue === undefined
+    || (typeof oddsValue === "string" && oddsValue.trim() === "")
+  const candidate = primaryMissing ? fallbackOdds : oddsValue
+  if (candidate === null || candidate === undefined || candidate === "") {
+    return "--"
+  }
+
+  if (typeof candidate === "number" && Number.isFinite(candidate)) {
+    if (candidate > 0) {
+      return `+${candidate}`
+    }
+    return String(candidate)
+  }
+
+  const asText = String(candidate).trim()
+  if (!asText) {
+    return "--"
+  }
+  return asText
+}
+
 function hydrateLegacyMatchups(matchups: LiveMatchupRow[] | undefined): MatchupBet[] {
   return (matchups ?? []).map((row) => {
     const ev = Number(row.ev ?? 0)
@@ -142,7 +166,7 @@ export function hydrateSnapshotValueBets(source: LiveTournamentSnapshot): Record
           ...bet,
           player: bet.player ?? bet.player_display ?? "Unknown player",
           player_display: bet.player_display ?? bet.player ?? "Unknown player",
-          odds: String(bet.odds ?? "--"),
+          odds: normalizeOddsDisplay(bet.odds, bet.best_odds),
           book: normalizedBook,
           best_book: normalizedBestBook,
           ev,
@@ -193,7 +217,7 @@ export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null
         .map((bet) => ({
           market,
           player: bet.player_display ?? bet.player ?? "Unknown player",
-          odds: bet.odds,
+          odds: normalizeOddsDisplay(bet.odds, bet.best_odds),
           ev: bet.ev,
           confidence: bet.confidence,
           book: normalizeSportsbook(bet.book ?? bet.best_book),
@@ -215,6 +239,12 @@ export function buildHydratedPredictionRun(
       ? (snapshot.live_tournament ?? snapshot.upcoming_tournament)
       : (snapshot.upcoming_tournament ?? snapshot.live_tournament)
 
+  return buildPredictionRunFromSection(source)
+}
+
+export function buildPredictionRunFromSection(
+  source: LiveTournamentSnapshot | null | undefined,
+): PredictionRunResponse | null {
   if (!source) {
     return null
   }
@@ -268,11 +298,14 @@ export function buildHydratedPredictionRun(
       course_confidence: row.course_confidence != null ? Number(row.course_confidence) : undefined,
       course_rounds: row.course_rounds != null ? Number(row.course_rounds) : undefined,
       weather_adjustment: row.weather_adjustment != null ? Number(row.weather_adjustment) : undefined,
+      availability: row.availability,
+      form_flags: row.form_flags,
+      form_notes: row.form_notes,
       details: row.details,
     })),
     matchup_bets: matchupBets,
     matchup_bets_all_books: matchupBetsAllBooks,
     value_bets: valueBets,
-    warnings: ["Hydrated from live snapshot. Manual runs are still required for card export and full provenance details."],
+    warnings: ["Hydrated from snapshot history. Manual runs are still required for card export and full provenance details."],
   }
 }

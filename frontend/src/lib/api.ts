@@ -4,6 +4,8 @@ import type {
   GradingHistoryResponse,
   LiveRefreshSnapshotResponse,
   LiveRefreshStatusResponse,
+  PastSnapshotEventsResponse,
+  PastSnapshotResponse,
   PlayerProfile,
   PredictionRunRequest,
   PredictionRunResponse,
@@ -37,6 +39,9 @@ export const api = {
   getAutoresearchStatus: () => request<Record<string, unknown>>("/api/autoresearch/status"),
   getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
   getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
+  getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
+  getLiveRefreshPastSnapshot: (eventId: string) =>
+    request<PastSnapshotResponse>(`/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=live`),
   refreshLiveSnapshot: () =>
     request<LiveRefreshSnapshotResponse>("/api/live-refresh/refresh", {
       method: "POST",

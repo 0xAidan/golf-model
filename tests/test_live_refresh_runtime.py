@@ -687,3 +687,209 @@ def test_run_recompute_does_not_use_markdown_card_rankings_for_live_surface(monk
     assert live["rankings"] == []
     assert live["source_card_path"] == "output/current_event.md"
 
+
+def test_extract_board_value_bets_reports_filter_counters():
+    from backtester import dashboard_runtime as runtime
+
+    value_bets, diagnostics = runtime._extract_board_value_bets(
+        {
+            "top10": [
+                {
+                    "player_display": "Valid Player",
+                    "book": "bet365",
+                    "odds": "+180",
+                    "ev": 0.16,
+                    "is_value": True,
+                },
+                {
+                    "player_display": "Missing Odds",
+                    "book": "bet365",
+                    "ev": 0.14,
+                    "is_value": True,
+                },
+                {
+                    "player_display": "Capped Edge",
+                    "book": "bet365",
+                    "odds": "+220",
+                    "ev": 0.50,
+                    "ev_capped": True,
+                    "is_value": True,
+                },
+                {
+                    "player_display": "Suspicious Divergence",
+                    "book": "bet365",
+                    "odds": "+400",
+                    "ev": 0.20,
+                    "suspicious": True,
+                    "is_value": True,
+                },
+            ]
+        },
+        return_diagnostics=True,
+    )
+
+    assert list(value_bets) == ["top10"]
+    assert len(value_bets["top10"]) == 1
+    assert value_bets["top10"][0]["player_display"] == "Valid Player"
+    assert diagnostics["missing_display_odds"] == 1
+    assert diagnostics["ev_cap_filtered"] == 1
+    assert diagnostics["probability_inconsistency_filtered"] == 1
+
+
+def test_run_recompute_records_snapshot_history_and_market_rows(monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    captured = {"history_calls": [], "market_rows": []}
+
+    monkeypatch.setattr(
+        runtime,
+        "run_snapshot_analysis",
+        lambda **kwargs: {
+            "status": "complete",
+            "event_name": kwargs.get("tournament_name") or "Test Event",
+            "course_name": kwargs.get("course_name") or "Test Course",
+            "field_size": 40,
+            "field_validation": {
+                "strict_field_verified": True,
+                "field_source": "datagolf_field_updates",
+                "expected_event_id": kwargs.get("event_id") or "123",
+                "failed_invariants": [],
+                "major_event": False,
+                "cross_tour_backfill_used": False,
+            },
+            "composite_results": [
+                {
+                    "player_key": "a_player",
+                    "player_display": "A Player",
+                    "composite": 75.0,
+                    "course_fit": 70.0,
+                    "form": 68.0,
+                    "momentum": 64.0,
+                }
+            ],
+            "matchup_bets": [
+                {
+                    "pick": "A Player",
+                    "pick_key": "a_player",
+                    "opponent": "B Player",
+                    "opponent_key": "b_player",
+                    "book": "fanduel",
+                    "odds": "+105",
+                    "model_win_prob": 0.54,
+                    "implied_prob": 0.49,
+                    "ev": 0.08,
+                }
+            ],
+            "matchup_bets_all_books": [
+                {
+                    "pick": "A Player",
+                    "pick_key": "a_player",
+                    "opponent": "B Player",
+                    "opponent_key": "b_player",
+                    "book": "fanduel",
+                    "odds": "+105",
+                    "model_win_prob": 0.54,
+                    "implied_prob": 0.49,
+                    "ev": 0.08,
+                }
+            ],
+            "value_bets": {
+                "top10": [
+                    {
+                        "player_key": "a_player",
+                        "player_display": "A Player",
+                        "book": "fanduel",
+                        "odds": "+220",
+                        "model_prob": 0.21,
+                        "market_prob": 0.17,
+                        "ev": 0.12,
+                        "is_value": True,
+                    }
+                ]
+            },
+            "output_file": "output/test_event.md",
+            "matchup_diagnostics": {
+                "market_counts": {"tournament_matchups": {"raw_rows": 1, "reason_code": "ok"}},
+                "selection_counts": {"input_rows": 1, "selected_rows": 1, "all_qualifying_rows": 1},
+                "reason_codes": {},
+                "state": "edges_available",
+                "errors": [],
+            },
+        },
+    )
+    monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
+    monkeypatch.setattr(
+        runtime,
+        "_load_event_leaderboard_rows",
+        lambda event_id, year=None, limit=30: [{"rank": 1, "position": "1", "player": "A Player", "total_to_par": -6}],
+    )
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
+    monkeypatch.setattr(
+        runtime.db,
+        "store_live_snapshot_sections",
+        lambda *args, **kwargs: captured["history_calls"].append((args, kwargs)) or 2,
+    )
+    monkeypatch.setattr(
+        runtime.db,
+        "store_market_prediction_rows",
+        lambda rows: captured["market_rows"].append(rows) or len(rows),
+    )
+    monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+
+    snapshot = runtime._run_recompute(
+        "pga",
+        "live_window",
+        {
+            "event_name": "Test Event",
+            "event_id": "123",
+            "event_year": 2026,
+            "course": "Test Course",
+            "upcoming_event_names": ["Test Event", "Future Event"],
+            "upcoming_event_row": {"event_id": "124", "event_name": "Future Event", "course": "Future Course", "year": 2026},
+            "live_event_active": True,
+            "market_counts": {"tournament_matchups": {"raw_rows": 1, "reason_code": "ok"}},
+        },
+    )
+
+    assert snapshot.get("snapshot_id")
+    assert snapshot["diagnostics"]["history_rows_written"] == 2
+    assert snapshot["diagnostics"]["market_rows_written"] >= 2
+    assert snapshot["live_tournament"]["leaderboard"][0]["player"] == "A Player"
+    assert captured["history_calls"], "Expected immutable snapshot rows to be persisted."
+    assert captured["market_rows"], "Expected market prediction rows to be persisted."
+
+
+def test_live_refresh_past_snapshot_endpoints(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "list_past_snapshot_events",
+        lambda limit=40: [{"event_id": "18", "event_name": "Zurich Classic", "latest_generated_at": "2026-04-17T20:00:00+00:00"}],
+    )
+    monkeypatch.setattr(
+        app_module,
+        "get_latest_snapshot_section",
+        lambda event_id, section="live": {
+            "snapshot_id": "snap_123",
+            "generated_at": "2026-04-17T20:00:00+00:00",
+            "tour": "pga",
+            "section": section,
+            "snapshot": {"event_name": "Zurich Classic", "rankings": [], "matchup_bets_all_books": []},
+        },
+    )
+
+    client = TestClient(app_module.app)
+    events_response = client.get("/api/live-refresh/past-events")
+    snapshot_response = client.get("/api/live-refresh/past-snapshot?event_id=18&section=live")
+
+    assert events_response.status_code == 200
+    events_body = events_response.json()
+    assert events_body["events"][0]["event_id"] == "18"
+
+    assert snapshot_response.status_code == 200
+    snapshot_body = snapshot_response.json()
+    assert snapshot_body["ok"] is True
+    assert snapshot_body["snapshot"]["event_name"] == "Zurich Classic"
+
