@@ -25,6 +25,7 @@ import json
 import os
 import shutil
 from datetime import datetime
+from typing import Any
 
 from src import config
 
@@ -277,6 +278,56 @@ def init_db():
             profit REAL,                 -- actual P/L if bet at those odds
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS live_snapshot_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT NOT NULL,
+            generated_at TEXT,
+            tour TEXT,
+            cadence_mode TEXT,
+            section TEXT NOT NULL, -- live / upcoming
+            event_id TEXT,
+            event_name TEXT,
+            source_event_id TEXT,
+            source_event_name TEXT,
+            active INTEGER DEFAULT 0,
+            payload_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_live_snapshot_history_event
+            ON live_snapshot_history(source_event_id, generated_at DESC, section);
+        CREATE INDEX IF NOT EXISTS idx_live_snapshot_history_snapshot
+            ON live_snapshot_history(snapshot_id, section);
+
+        CREATE TABLE IF NOT EXISTS market_prediction_rows (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT NOT NULL,
+            generated_at TEXT,
+            tour TEXT,
+            section TEXT NOT NULL, -- live / upcoming
+            event_id TEXT,
+            event_name TEXT,
+            market_family TEXT NOT NULL, -- matchup / placement
+            market_type TEXT,
+            player_key TEXT,
+            player_display TEXT,
+            opponent_key TEXT,
+            opponent_display TEXT,
+            book TEXT,
+            odds TEXT,
+            model_prob REAL,
+            implied_prob REAL,
+            ev REAL,
+            is_value INTEGER DEFAULT 0,
+            payload_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_event
+            ON market_prediction_rows(event_id, generated_at DESC, market_family);
+        CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_snapshot
+            ON market_prediction_rows(snapshot_id, section, market_family);
 
         -- ═══ AI brain persistent memory ═══
         CREATE TABLE IF NOT EXISTS ai_memory (
@@ -1479,6 +1530,179 @@ def get_calibration_data(min_tournaments: int = 3) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Live snapshot + market row history helpers ─────────────────────
+
+def store_live_snapshot_sections(
+    snapshot_id: str,
+    *,
+    generated_at: str | None,
+    tour: str | None,
+    cadence_mode: str | None,
+    live_section: dict | None,
+    upcoming_section: dict | None,
+) -> int:
+    """Persist immutable live/upcoming snapshot sections for replay and audits."""
+    if not snapshot_id:
+        return 0
+
+    section_rows: list[dict] = []
+    for section_name, section in (("live", live_section), ("upcoming", upcoming_section)):
+        if not isinstance(section, dict) or not section:
+            continue
+        section_rows.append(
+            {
+                "snapshot_id": snapshot_id,
+                "generated_at": generated_at,
+                "tour": (tour or "").strip().lower() or None,
+                "cadence_mode": cadence_mode,
+                "section": section_name,
+                "event_id": str(section.get("source_event_id") or section.get("event_id") or "").strip() or None,
+                "event_name": str(section.get("event_name") or "").strip() or None,
+                "source_event_id": str(section.get("source_event_id") or "").strip() or None,
+                "source_event_name": str(section.get("source_event_name") or section.get("event_name") or "").strip() or None,
+                "active": 1 if bool(section.get("active")) else 0,
+                "payload_json": json.dumps(section),
+            }
+        )
+
+    if not section_rows:
+        return 0
+
+    conn = get_conn()
+    conn.executemany(
+        """
+        INSERT INTO live_snapshot_history
+            (snapshot_id, generated_at, tour, cadence_mode, section, event_id, event_name,
+             source_event_id, source_event_name, active, payload_json)
+        VALUES
+            (:snapshot_id, :generated_at, :tour, :cadence_mode, :section, :event_id, :event_name,
+             :source_event_id, :source_event_name, :active, :payload_json)
+        """,
+        section_rows,
+    )
+    conn.commit()
+    conn.close()
+    return len(section_rows)
+
+
+def list_past_snapshot_events(limit: int = 40) -> list[dict]:
+    """List events that have immutable snapshot history for past-event replay."""
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT
+            source_event_id AS event_id,
+            COALESCE(MAX(source_event_name), MAX(event_name)) AS event_name,
+            MAX(generated_at) AS latest_generated_at,
+            COUNT(*) AS snapshot_count
+        FROM live_snapshot_history
+        WHERE section = 'live'
+          AND source_event_id IS NOT NULL
+          AND TRIM(source_event_id) != ''
+        GROUP BY source_event_id
+        ORDER BY latest_generated_at DESC, source_event_id DESC
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_latest_snapshot_section(event_id: str, *, section: str = "live") -> dict | None:
+    """Return the latest stored section payload for a given event id."""
+    normalized_event_id = str(event_id or "").strip()
+    if not normalized_event_id:
+        return None
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT snapshot_id, generated_at, tour, cadence_mode, section, source_event_id,
+               source_event_name, active, payload_json
+        FROM live_snapshot_history
+        WHERE source_event_id = ? AND section = ?
+        ORDER BY generated_at DESC, id DESC
+        LIMIT 1
+        """,
+        (normalized_event_id, section),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    payload = dict(row)
+    raw_payload = payload.pop("payload_json", None)
+    try:
+        payload["snapshot"] = json.loads(raw_payload) if raw_payload else {}
+    except json.JSONDecodeError:
+        payload["snapshot"] = {}
+    return payload
+
+
+def store_market_prediction_rows(rows: list[dict]) -> int:
+    """Persist matchup/placement rows shown in snapshot surfaces."""
+    if not rows:
+        return 0
+    conn = get_conn()
+    conn.executemany(
+        """
+        INSERT INTO market_prediction_rows
+            (snapshot_id, generated_at, tour, section, event_id, event_name, market_family,
+             market_type, player_key, player_display, opponent_key, opponent_display, book,
+             odds, model_prob, implied_prob, ev, is_value, payload_json)
+        VALUES
+            (:snapshot_id, :generated_at, :tour, :section, :event_id, :event_name, :market_family,
+             :market_type, :player_key, :player_display, :opponent_key, :opponent_display, :book,
+             :odds, :model_prob, :implied_prob, :ev, :is_value, :payload_json)
+        """,
+        rows,
+    )
+    conn.commit()
+    conn.close()
+    return len(rows)
+
+
+def get_market_prediction_rows_for_event(
+    event_id: str,
+    *,
+    market_family: str | None = None,
+    section: str | None = None,
+    limit: int = 2000,
+) -> list[dict]:
+    """Fetch historical market rows for an event (used by post-event evaluation)."""
+    normalized_event_id = str(event_id or "").strip()
+    if not normalized_event_id:
+        return []
+    clauses = ["event_id = ?"]
+    params: list[Any] = [normalized_event_id]
+    if market_family:
+        clauses.append("market_family = ?")
+        params.append(str(market_family))
+    if section:
+        clauses.append("section = ?")
+        params.append(str(section))
+    params.append(int(limit))
+    conn = get_conn()
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM market_prediction_rows
+        WHERE {' AND '.join(clauses)}
+        ORDER BY generated_at DESC, id DESC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    conn.close()
+    result = [dict(row) for row in rows]
+    for row in result:
+        raw_payload = row.get("payload_json")
+        try:
+            row["payload"] = json.loads(raw_payload) if raw_payload else {}
+        except json.JSONDecodeError:
+            row["payload"] = {}
+    return result
 
 
 # ── AI memory helpers ──────────────────────────────────────────────

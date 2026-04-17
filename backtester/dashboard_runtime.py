@@ -9,6 +9,7 @@ import logging
 import re
 import threading
 import time
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -120,6 +121,124 @@ def _is_cut_or_inactive(finish_state: str | None) -> bool:
         return False
     state = str(finish_state).strip().upper()
     return state in {"CUT", "MDF", "WD", "DQ", "DNS"}
+
+
+def _finish_rank_from_text(finish_state: str | None) -> int | None:
+    if not finish_state:
+        return None
+    normalized = str(finish_state).strip().upper()
+    if normalized.startswith("T"):
+        normalized = normalized[1:]
+    if normalized.isdigit():
+        try:
+            return int(normalized)
+        except ValueError:
+            return None
+    return None
+
+
+def _load_event_leaderboard_rows(
+    event_id: str | None,
+    *,
+    year: int | None = None,
+    limit: int = 30,
+) -> list[dict]:
+    if not event_id:
+        return []
+    resolved_year = int(year or datetime.now(timezone.utc).year)
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            """
+            WITH latest_round AS (
+                SELECT player_key, MAX(round_num) AS latest_round_num
+                FROM rounds
+                WHERE event_id = ? AND year = ?
+                GROUP BY player_key
+            )
+            SELECT
+                r.player_key,
+                MAX(r.player_name) AS player_name,
+                MAX(
+                    CASE
+                        WHEN r.fin_text IS NOT NULL AND TRIM(r.fin_text) != '' THEN r.fin_text
+                        ELSE NULL
+                    END
+                ) AS finish_state,
+                SUM(
+                    CASE
+                        WHEN r.score IS NOT NULL AND r.course_par IS NOT NULL THEN (r.score - r.course_par)
+                        ELSE 0
+                    END
+                ) AS total_to_par,
+                MAX(r.round_num) AS latest_round_num,
+                MAX(CASE WHEN r.round_num = lr.latest_round_num THEN r.score END) AS latest_round_score,
+                COUNT(CASE WHEN r.score IS NOT NULL THEN 1 END) AS rounds_played
+            FROM rounds r
+            JOIN latest_round lr ON lr.player_key = r.player_key
+            WHERE r.event_id = ? AND r.year = ?
+            GROUP BY r.player_key
+            """,
+            (str(event_id), resolved_year, str(event_id), resolved_year),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    leaderboard_rows: list[dict] = []
+    for row in rows:
+        player_key = str(row["player_key"] or "").strip().lower()
+        player_name = str(row["player_name"] or "").strip()
+        if not player_key or not player_name:
+            continue
+        finish_state = str(row["finish_state"] or "").strip().upper() or None
+        finish_rank = _finish_rank_from_text(finish_state)
+        total_to_par_raw = row["total_to_par"]
+        total_to_par = int(total_to_par_raw) if total_to_par_raw is not None else None
+        latest_round_num_raw = row["latest_round_num"]
+        latest_round_num = int(latest_round_num_raw) if latest_round_num_raw is not None else None
+        latest_round_score_raw = row["latest_round_score"]
+        latest_round_score = int(latest_round_score_raw) if latest_round_score_raw is not None else None
+        rounds_played_raw = row["rounds_played"]
+        rounds_played = int(rounds_played_raw) if rounds_played_raw is not None else 0
+        leaderboard_rows.append(
+            {
+                "player_key": player_key,
+                "player": player_name,
+                "finish_state": finish_state,
+                "finish_rank": finish_rank,
+                "total_to_par": total_to_par,
+                "latest_round_num": latest_round_num,
+                "latest_round_score": latest_round_score,
+                "rounds_played": rounds_played,
+            }
+        )
+
+    leaderboard_rows.sort(
+        key=lambda row: (
+            row["finish_rank"] is None,
+            row["finish_rank"] if row["finish_rank"] is not None else 9999,
+            row["total_to_par"] if row["total_to_par"] is not None else 9999,
+            row["player"],
+        )
+    )
+
+    output: list[dict] = []
+    for idx, row in enumerate(leaderboard_rows[:limit], start=1):
+        display_position = row["finish_state"] or str(idx)
+        output.append(
+            {
+                "rank": idx,
+                "position": display_position,
+                "player_key": row["player_key"],
+                "player": row["player"],
+                "total_to_par": row["total_to_par"],
+                "latest_round_num": row["latest_round_num"],
+                "latest_round_score": row["latest_round_score"],
+                "rounds_played": row["rounds_played"],
+                "finish_state": row["finish_state"],
+            }
+        )
+    return output
 
 
 def _extract_rankings(
@@ -234,18 +353,132 @@ def _extract_board_matchup_bets(matchups: list[dict]) -> list[dict]:
     return filtered
 
 
-def _extract_board_value_bets(value_bets: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def _extract_board_value_bets(
+    value_bets: dict[str, list[dict]],
+    *,
+    return_diagnostics: bool = False,
+) -> dict[str, list[dict]] | tuple[dict[str, list[dict]], dict[str, int]]:
     extracted: dict[str, list[dict]] = {}
+    diagnostics = {
+        "missing_display_odds": 0,
+        "ev_cap_filtered": 0,
+        "probability_inconsistency_filtered": 0,
+    }
     for market, bets in (value_bets or {}).items():
-        filtered = [
-            dict(bet)
-            for bet in bets
-            if bet.get("is_value") and not _is_non_book_source(bet.get("book") or bet.get("best_book"))
-        ]
+        filtered: list[dict] = []
+        for bet in bets or []:
+            if not bet.get("is_value"):
+                continue
+            if _is_non_book_source(bet.get("book") or bet.get("best_book")):
+                continue
+            if bet.get("ev_capped"):
+                diagnostics["ev_cap_filtered"] += 1
+                continue
+            if bet.get("suspicious"):
+                diagnostics["probability_inconsistency_filtered"] += 1
+                continue
+            odds_text = _normalize_market_odds(bet.get("odds"), bet.get("best_odds"))
+            if not odds_text:
+                diagnostics["missing_display_odds"] += 1
+                continue
+            row = dict(bet)
+            row["odds"] = odds_text
+            filtered.append(row)
         filtered.sort(key=lambda item: item.get("ev", 0), reverse=True)
         if filtered:
             extracted[market] = filtered
+    if return_diagnostics:
+        return extracted, diagnostics
     return extracted
+
+
+def _normalize_market_odds(value: Any, fallback: Any = None) -> str | None:
+    candidate = value if value not in (None, "", "n/a") else fallback
+    if candidate in (None, "", "n/a"):
+        return None
+    if isinstance(candidate, (int, float)):
+        number = int(candidate)
+        return f"+{number}" if number > 0 else str(number)
+    text = str(candidate).strip()
+    return text or None
+
+
+def _build_market_prediction_rows(
+    *,
+    snapshot_id: str,
+    generated_at: str,
+    tour: str,
+    section_name: str,
+    section_payload: dict[str, Any] | None,
+) -> list[dict]:
+    section = section_payload or {}
+    event_id = str(section.get("source_event_id") or section.get("event_id") or "").strip()
+    event_name = str(section.get("event_name") or "").strip() or None
+    if not event_id:
+        return []
+
+    rows: list[dict] = []
+    matchup_rows = section.get("matchup_bets_all_books") or section.get("matchup_bets") or []
+    for bet in matchup_rows:
+        ev = float(bet.get("ev") or 0.0)
+        model_prob = bet.get("model_win_prob")
+        implied_prob = bet.get("implied_prob")
+        odds = _normalize_market_odds(bet.get("odds"), bet.get("market_odds"))
+        rows.append(
+            {
+                "snapshot_id": snapshot_id,
+                "generated_at": generated_at,
+                "tour": str(tour or "").strip().lower() or None,
+                "section": section_name,
+                "event_id": event_id,
+                "event_name": event_name,
+                "market_family": "matchup",
+                "market_type": str(bet.get("market_type") or "tournament_matchups"),
+                "player_key": str(bet.get("pick_key") or bet.get("player_key") or "").strip() or None,
+                "player_display": str(bet.get("pick") or bet.get("player") or "").strip() or None,
+                "opponent_key": str(bet.get("opponent_key") or "").strip() or None,
+                "opponent_display": str(bet.get("opponent") or "").strip() or None,
+                "book": str(bet.get("book") or bet.get("bookmaker") or "").strip() or None,
+                "odds": odds,
+                "model_prob": float(model_prob) if model_prob is not None else None,
+                "implied_prob": float(implied_prob) if implied_prob is not None else None,
+                "ev": ev,
+                "is_value": 1 if ev > 0 else 0,
+                "payload_json": json.dumps(bet),
+            }
+        )
+
+    for market_type, bets in (section.get("value_bets") or {}).items():
+        for bet in bets or []:
+            model_prob = bet.get("model_prob")
+            implied_prob = bet.get("market_prob")
+            ev = float(bet.get("ev") or 0.0)
+            odds = _normalize_market_odds(bet.get("odds"), bet.get("best_odds"))
+            rows.append(
+                {
+                    "snapshot_id": snapshot_id,
+                    "generated_at": generated_at,
+                    "tour": str(tour or "").strip().lower() or None,
+                    "section": section_name,
+                    "event_id": event_id,
+                    "event_name": event_name,
+                    "market_family": "placement",
+                    "market_type": str(market_type),
+                    "player_key": str(bet.get("player_key") or "").strip() or None,
+                    "player_display": str(bet.get("player_display") or bet.get("player") or "").strip() or None,
+                    "opponent_key": None,
+                    "opponent_display": None,
+                    "book": str(bet.get("book") or bet.get("best_book") or "").strip() or None,
+                    "odds": odds,
+                    "model_prob": float(model_prob) if model_prob is not None else None,
+                    "implied_prob": float(implied_prob) if implied_prob is not None else None,
+                    "ev": ev,
+                    "is_value": 1 if bool(bet.get("is_value")) else 0,
+                    "payload_json": json.dumps(bet),
+                }
+            )
+
+    return rows
 
 
 def _event_slug(value: str | None) -> str:
@@ -653,6 +886,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         enable_backfill=False,
     )
     generated_at = _iso_now()
+    snapshot_id = uuid.uuid4().hex
     event_name = live_result.get("event_name") or ingest_summary.get("event_name")
     live_event_id = str(ingest_summary.get("event_id") or "")
     finish_states = _load_finish_state_map(
@@ -660,6 +894,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         year=ingest_summary.get("event_year"),
     )
     previous_snapshot = read_snapshot()
+    base_value_bets, base_value_filters = _extract_board_value_bets(
+        live_result.get("value_bets") or {},
+        return_diagnostics=True,
+    )
     base_section = {
         "event_name": event_name,
         "course_name": live_result.get("course_name"),
@@ -671,12 +909,16 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             finish_states=finish_states,
             exclude_cut_players=False,
         ),
+        "leaderboard": _load_event_leaderboard_rows(
+            ingest_summary.get("event_id"),
+            year=ingest_summary.get("event_year"),
+        ),
         "matchups": _extract_matchups(live_result.get("matchup_bets") or []),
         "matchup_bets": _extract_board_matchup_bets(live_result.get("matchup_bets") or []),
         "matchup_bets_all_books": _extract_board_matchup_bets(
             live_result.get("matchup_bets_all_books") or live_result.get("matchup_bets") or []
         ),
-        "value_bets": _extract_board_value_bets(live_result.get("value_bets") or {}),
+        "value_bets": base_value_bets,
         "card_path": live_result.get("output_file") or live_result.get("card_filepath"),
         "source_card_path": live_result.get("output_file") or live_result.get("card_filepath"),
         "eligibility": _build_section_eligibility(
@@ -699,6 +941,18 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or live_event_id or "").strip()
     resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip()
     live_event_name = event_name if live_is_active else (resolved_completed_event_name or event_name)
+    live_source_event_id = str(
+        ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
+    ).strip()
+    live_source_event_year_raw = (
+        ingest_summary.get("event_year")
+        if live_is_active
+        else (ingest_summary.get("latest_completed_event_year") or ingest_summary.get("event_year"))
+    )
+    try:
+        live_source_event_year = int(live_source_event_year_raw) if live_source_event_year_raw is not None else None
+    except (TypeError, ValueError):
+        live_source_event_year = None
 
     upcoming_result = {}
     if upcoming_event_name:
@@ -717,6 +971,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             upcoming_result = {}
 
     if upcoming_result:
+        upcoming_value_bets, upcoming_value_filters = _extract_board_value_bets(
+            upcoming_result.get("value_bets") or {},
+            return_diagnostics=True,
+        )
         upcoming_diag = upcoming_result.get("matchup_diagnostics") or {}
         upcoming_selection_counts = upcoming_diag.get("selection_counts") or {}
         upcoming_selected_rows = int(
@@ -739,6 +997,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "event_name": upcoming_result.get("event_name") or upcoming_event_name,
             "course_name": upcoming_result.get("course_name"),
             "field_size": upcoming_result.get("field_size"),
+            "leaderboard": _load_event_leaderboard_rows(
+                upcoming_event_id,
+                year=upcoming_row.get("year"),
+            ),
             "rankings": (
                 _extract_rankings(upcoming_result.get("composite_results") or [], exclude_cut_players=False)
                 if upcoming_eligibility.get("verified")
@@ -762,7 +1024,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 else []
             ),
             "value_bets": (
-                _extract_board_value_bets(upcoming_result.get("value_bets") or {})
+                upcoming_value_bets
                 if upcoming_eligibility.get("verified")
                 else {}
             ),
@@ -779,6 +1041,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "selection_counts": upcoming_diag.get("selection_counts") or {},
                 "adaptation_state": upcoming_diag.get("adaptation_state", "normal"),
                 "reason_codes": upcoming_diag.get("reason_codes") or {},
+                "value_filters": upcoming_value_filters,
                 "state": upcoming_state,
                 "errors": (
                     (upcoming_diag.get("errors") or [])
@@ -812,6 +1075,14 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             upcoming_section["diagnostics"]["errors"] = fallback_errors + [
                 "Upcoming recompute unavailable; serving last verified snapshot for the same event.",
             ]
+            upcoming_section["diagnostics"].setdefault(
+                "value_filters",
+                {
+                    "missing_display_odds": 0,
+                    "ev_cap_filtered": 0,
+                    "probability_inconsistency_filtered": 0,
+                },
+            )
         else:
             upcoming_section = {
                 **base_section,
@@ -820,6 +1091,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "source_event_name": upcoming_event_name,
                 "generated_from": "upcoming_event_model_unavailable",
                 "ranking_source": "eligibility_failed",
+                "leaderboard": _load_event_leaderboard_rows(
+                    upcoming_event_id,
+                    year=upcoming_row.get("year"),
+                ),
                 "rankings": [],
                 "matchups": [],
                 "matchup_bets": [],
@@ -854,6 +1129,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                     "selection_counts": {"selected_rows": 0, "all_qualifying_rows": 0},
                     "adaptation_state": "unknown",
                     "reason_codes": {},
+                "value_filters": {
+                    "missing_display_odds": 0,
+                    "ev_cap_filtered": 0,
+                    "probability_inconsistency_filtered": 0,
+                },
                     "state": "eligibility_failed",
                     "errors": ["Upcoming model unavailable and no verified fallback exists."],
                 },
@@ -862,6 +1142,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             upcoming_section["source_event_id"] = str(upcoming_section.get("source_event_id") or upcoming_event_id)
             upcoming_section["source_event_name"] = str(upcoming_section.get("source_event_name") or upcoming_event_name)
             upcoming_section["event_name"] = str(upcoming_section.get("event_name") or upcoming_event_name)
+            upcoming_section["leaderboard"] = (
+                upcoming_section.get("leaderboard")
+                or _load_event_leaderboard_rows(upcoming_event_id, year=upcoming_row.get("year"))
+            )
             upcoming_section["matchup_bets_all_books"] = (
                 upcoming_section.get("matchup_bets_all_books")
                 or upcoming_section.get("matchup_bets")
@@ -894,6 +1178,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     )
     live_value_bets = base_section.get("value_bets") or {}
     live_verification_error = base_section.get("verification_error")
+    live_leaderboard = _load_event_leaderboard_rows(
+        live_source_event_id,
+        year=live_source_event_year,
+    )
 
     if not live_eligibility.get("verified"):
         live_state = "eligibility_failed"
@@ -921,6 +1209,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             live_value_bets = fallback_live.get("value_bets") or {}
             live_eligibility = fallback_live.get("eligibility") or live_eligibility
             live_verification_error = fallback_live.get("verification_error") or live_verification_error
+            live_leaderboard = fallback_live.get("leaderboard") or live_leaderboard
             live_ranking_source = "verified_snapshot_fallback"
             live_source_card_path = fallback_live.get("source_card_path") or live_source_card_path
             live_state = "pipeline_error"
@@ -943,6 +1232,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         ]
 
     snapshot = {
+        "snapshot_id": snapshot_id,
         "generated_at": generated_at,
         "cadence_mode": cadence_mode,
         "event_context": {
@@ -958,14 +1248,13 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             **base_section,
             "event_name": live_event_name,
             "active": live_is_active,
+            "leaderboard": live_leaderboard,
             "rankings": live_rankings,
             "matchups": live_matchups,
             "matchup_bets": live_board_matchup_bets,
             "matchup_bets_all_books": live_board_matchup_bets_all_books,
             "value_bets": live_value_bets,
-            "source_event_id": str(
-                ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
-            ),
+            "source_event_id": live_source_event_id,
             "source_event_name": event_name if live_is_active else (resolved_completed_event_name or event_name),
             "data_mode": mode,
             "source": "current_event_model",
@@ -979,6 +1268,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "selection_counts": live_diag.get("selection_counts") or {},
                 "adaptation_state": live_diag.get("adaptation_state", "normal"),
                 "reason_codes": live_diag.get("reason_codes") or {},
+                "value_filters": base_value_filters,
                 "state": live_state,
                 "errors": [err for err in live_diag_errors if err],
             },
@@ -996,6 +1286,46 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "upcoming_state": (upcoming_section.get("diagnostics") or {}).get("state"),
         },
     }
+    try:
+        history_count = db.store_live_snapshot_sections(
+            snapshot_id,
+            generated_at=generated_at,
+            tour=tour,
+            cadence_mode=cadence_mode,
+            live_section=snapshot.get("live_tournament"),
+            upcoming_section=snapshot.get("upcoming_tournament"),
+        )
+        snapshot.setdefault("diagnostics", {})["history_rows_written"] = history_count
+    except Exception as exc:
+        _logger.warning("Failed to persist snapshot history rows: %s", exc)
+        snapshot.setdefault("diagnostics", {})["history_rows_written"] = 0
+        snapshot.setdefault("diagnostics", {})["history_write_error"] = str(exc)
+    try:
+        market_rows = []
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="live",
+                section_payload=snapshot.get("live_tournament"),
+            )
+        )
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="upcoming",
+                section_payload=snapshot.get("upcoming_tournament"),
+            )
+        )
+        market_rows_written = db.store_market_prediction_rows(market_rows)
+        snapshot.setdefault("diagnostics", {})["market_rows_written"] = market_rows_written
+    except Exception as exc:
+        _logger.warning("Failed to persist market prediction rows: %s", exc)
+        snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0
+        snapshot.setdefault("diagnostics", {})["market_rows_write_error"] = str(exc)
     _write_snapshot(snapshot)
     return snapshot
 

@@ -71,6 +71,18 @@ export type LiveRankingRow = {
   }
 }
 
+export type LiveLeaderboardRow = {
+  rank: number
+  position?: string
+  player_key?: string
+  player: string
+  total_to_par?: number | null
+  latest_round_num?: number | null
+  latest_round_score?: number | null
+  rounds_played?: number
+  finish_state?: string | null
+}
+
 export type LiveMatchupRow = {
   player: string
   player_key?: string
@@ -131,6 +143,7 @@ export type LiveTournamentSnapshot = {
   tournament_id?: number
   course_num?: number
   active?: boolean
+  leaderboard?: LiveLeaderboardRow[]
   rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]
   matchup_bets?: MatchupBet[]
@@ -149,6 +162,11 @@ export type LiveTournamentSnapshot = {
     }
     adaptation_state?: string
     reason_codes?: Record<string, number>
+    value_filters?: {
+      missing_display_odds?: number
+      ev_cap_filtered?: number
+      probability_inconsistency_filtered?: number
+    }
     books_seen?: string[]
     books_with_qualifying_edges?: string[]
     books_after_card_caps?: string[]
@@ -193,6 +211,28 @@ export type LiveRefreshSnapshotResponse = {
   stale_after_seconds?: number | null
   stale_reason?: string | null
   fallback_reason?: string | null
+}
+
+export type PastSnapshotEvent = {
+  event_id: string
+  event_name: string
+  latest_generated_at?: string | null
+  snapshot_count?: number
+}
+
+export type PastSnapshotEventsResponse = {
+  events: PastSnapshotEvent[]
+}
+
+export type PastSnapshotResponse = {
+  ok: boolean
+  event_id?: string
+  snapshot_id?: string
+  generated_at?: string | null
+  tour?: string | null
+  section?: string
+  snapshot?: LiveTournamentSnapshot | null
+  error?: string
 }
 
 export type OutputArtifact = {

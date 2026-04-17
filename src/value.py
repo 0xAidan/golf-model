@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_EV_THRESHOLD = config.DEFAULT_EV_THRESHOLD
 MARKET_EV_THRESHOLDS = config.MARKET_EV_THRESHOLDS
 MAX_CREDIBLE_EV = config.MAX_CREDIBLE_EV
+MAX_CREDIBLE_PLACEMENT_EV = config.MAX_CREDIBLE_PLACEMENT_EV
 MIN_MARKET_PROB = config.MIN_MARKET_PROB
 MAX_REASONABLE_ODDS = config.MAX_REASONABLE_ODDS
+PLACEMENT_MARKETS = {"outright", "top5", "top10", "top15", "top20", "make_cut", "frl"}
 
 
 def compute_ev(model_prob: float, american_odds: int) -> float:
@@ -572,9 +574,11 @@ def find_value_bets(composite_results: list[dict],
                 )
                 continue
 
-            # Cap EV at a credible maximum — anything higher is data error
-            if ev > MAX_CREDIBLE_EV:
-                ev = MAX_CREDIBLE_EV
+            # Cap EV at credible market-specific bounds.
+            # Placement markets use a stricter cap to avoid unrealistic longshot artifacts.
+            ev_cap_limit = MAX_CREDIBLE_PLACEMENT_EV if bet_type in PLACEMENT_MARKETS else MAX_CREDIBLE_EV
+            if ev > ev_cap_limit:
+                ev = ev_cap_limit
                 ev_capped = True
             else:
                 ev_capped = False
@@ -586,6 +590,8 @@ def find_value_bets(composite_results: list[dict],
             # Flag if model prob is wildly different from market prob
             # (>10x difference suggests one side has bad data)
             suspicious = prob_ratio > 10.0 or prob_ratio < 0.1
+            odds_text = f"+{book_price}" if book_price > 0 else str(book_price)
+            has_display_odds = bool(odds_text)
 
             value_bets.append({
                 "player_key": pkey,
@@ -596,6 +602,7 @@ def find_value_bets(composite_results: list[dict],
                 "form": r["form"],
                 "momentum": r["momentum"],
                 "book": book_name,
+                "odds": odds_text,
                 "model_prob": round(model_prob, 4),
                 "dg_prob": round(dg_prob_for_log, 4) if dg_prob_for_log else None,
                 "dg_only_prob": round(dg_only_prob, 4) if dg_only_prob is not None else None,
@@ -610,7 +617,7 @@ def find_value_bets(composite_results: list[dict],
                 "ev": round(ev, 4),
                 "ev_pct": f"{ev * 100:.1f}%",
                 "ev_capped": ev_capped,
-                "is_value": ev >= ev_threshold and not ev_capped and not speculative,
+                "is_value": ev >= ev_threshold and not ev_capped and not speculative and not suspicious and has_display_odds,
                 "speculative": speculative,
                 "needs_review": ev > 1.0,
                 "suspicious": suspicious,

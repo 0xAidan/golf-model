@@ -36,6 +36,7 @@ from src.csv_parser import ingest_folder, classify_file_type, detect_data_mode, 
 from src.db import (
     get_or_create_tournament, get_active_weights, get_all_players,
     get_conn, init_db, store_results, store_picks,
+    list_past_snapshot_events, get_latest_snapshot_section, get_market_prediction_rows_for_event,
 )
 from src.models.composite import compute_composite
 from src.models.weights import retune, analyze_pick_performance, get_current_weights
@@ -1736,6 +1737,63 @@ async def get_live_refresh_runtime_status():
         "status": get_live_refresh_status(),
         "settings": (get_settings().get("live_refresh") or {}),
     }
+
+
+@app.get("/api/live-refresh/past-events")
+async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=200)):
+    """List events with immutable snapshot history for Past Event replay."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    events = list_past_snapshot_events(limit=limit)
+    return {"events": events}
+
+
+@app.get("/api/live-refresh/past-snapshot")
+async def get_live_refresh_past_snapshot(event_id: str = Query(..., min_length=1), section: str = Query(default="live")):
+    """Return the latest stored snapshot section for a specific past event."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    section_value = section.strip().lower()
+    if section_value not in {"live", "upcoming"}:
+        return JSONResponse({"ok": False, "error": "section must be 'live' or 'upcoming'"}, status_code=400)
+
+    payload = get_latest_snapshot_section(event_id=event_id, section=section_value)
+    if not payload:
+        return JSONResponse(
+            {"ok": False, "error": "No snapshot history found for this event."},
+            status_code=404,
+        )
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "snapshot_id": payload.get("snapshot_id"),
+        "generated_at": payload.get("generated_at"),
+        "tour": payload.get("tour"),
+        "section": payload.get("section"),
+        "snapshot": payload.get("snapshot") or {},
+    }
+
+
+@app.get("/api/live-refresh/past-market-rows")
+async def get_live_refresh_past_market_rows(
+    event_id: str = Query(..., min_length=1),
+    market_family: str | None = Query(default=None),
+    section: str | None = Query(default=None),
+    limit: int = Query(default=2000, ge=1, le=10000),
+):
+    """Return persisted matchup/placement rows for post-event analysis."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    rows = get_market_prediction_rows_for_event(
+        event_id=event_id,
+        market_family=market_family,
+        section=section,
+        limit=limit,
+    )
+    return {"event_id": event_id, "rows": rows}
 
 
 @app.get("/api/live-refresh/snapshot")
