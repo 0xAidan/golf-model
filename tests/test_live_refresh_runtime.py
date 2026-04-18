@@ -923,6 +923,31 @@ def test_parse_in_play_leaderboard_handles_sample_payload():
     assert win_prob.get("scottie_scheffler") == 0.22
 
 
+def test_parse_in_play_leaderboard_handles_scratch_api_shape():
+    """preds/in-play commonly returns data + current_score + win (see generate_backtest_report.py)."""
+    from src.datagolf import parse_in_play_leaderboard
+
+    sample = {
+        "data": [
+            {
+                "player_name": "Young, Cameron",
+                "current_score": -5,
+                "current_pos": "T3",
+                "win": 0.02,
+                "R2": 67,
+            },
+        ],
+        "info": {},
+    }
+    rows, win_prob, note = parse_in_play_leaderboard(sample)
+    assert note is None
+    assert len(rows) == 1
+    assert rows[0]["player"] == "Cameron Young"
+    assert rows[0]["total_to_par"] == -5
+    assert rows[0]["position"] == "T3"
+    assert win_prob.get("cameron_young") == 0.02
+
+
 def test_build_live_point_in_time_rankings_adjusts_by_leaderboard():
     from backtester import dashboard_runtime as runtime
 
@@ -958,6 +983,42 @@ def test_build_live_point_in_time_rankings_adjusts_by_leaderboard():
     assert source == "live_point_in_time_model_tournament_state"
     assert rankings[0]["player_key"] == "leader"
     assert rankings[0]["rank"] == 1
+
+
+def test_build_live_point_in_time_rankings_falls_back_when_no_tournament_signal():
+    from backtester import dashboard_runtime as runtime
+
+    composite = [
+        {
+            "player_key": "alpha",
+            "player_display": "Alpha",
+            "composite": 80.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+        {
+            "player_key": "beta",
+            "player_display": "Beta",
+            "composite": 70.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+    ]
+    leaderboard = [
+        {"player_key": "alpha", "total_to_par": 0},
+        {"player_key": "beta", "total_to_par": 0},
+    ]
+    rankings, source = runtime._build_live_point_in_time_rankings(
+        composite,
+        leaderboard,
+        finish_states=None,
+        exclude_cut_players=False,
+        dg_win_prob=None,
+    )
+    assert source == "live_point_in_time_pre_tournament_fallback"
+    assert rankings[0]["player_key"] == "alpha"
 
 
 def test_live_refresh_past_snapshot_endpoints(monkeypatch):

@@ -1323,6 +1323,10 @@ def _flatten_in_play_player_rows(raw: Any) -> list[dict]:
         return [x for x in raw if isinstance(x, dict)]
     if not isinstance(raw, dict):
         return []
+    # Scratch API commonly returns {"data": [...], "info": {...}} (see scripts/generate_backtest_report.py).
+    data_list = raw.get("data")
+    if isinstance(data_list, list) and data_list:
+        return [x for x in data_list if isinstance(x, dict)]
     skip = {"info", "updated", "timestamp", "last_updated", "last_update", "notes"}
     rows: list[dict] = []
     for key, val in raw.items():
@@ -1349,6 +1353,7 @@ def parse_in_play_leaderboard(
 
     Returns (leaderboard_rows, win_prob_by_player_key, note_if_empty).
     """
+    from src.player_normalizer import display_name as _display
     from src.player_normalizer import normalize_name as _norm
 
     rows_in = _flatten_in_play_player_rows(raw)
@@ -1366,15 +1371,19 @@ def parse_in_play_leaderboard(
         )
         if not name or not isinstance(name, str):
             continue
-        display = name.strip()
-        pk = _norm(display)
+        raw_name = name.strip()
+        pk = _norm(raw_name)
         if not pk:
             continue
+        display = _display(raw_name) or raw_name
         wp = _safe_float(row.get("win_prob"))
         if wp is None:
             wp = _safe_float(row.get("model_win_prob"))
         if wp is None:
             wp = _safe_float(row.get("dg_win_prob"))
+        # Scratch preds/in-play uses "win" for model win probability (0–1).
+        if wp is None:
+            wp = _safe_float(row.get("win"))
         if wp is not None:
             win_prob_by_key[pk] = float(wp)
         ttp = row.get("total")
@@ -1384,6 +1393,11 @@ def parse_in_play_leaderboard(
             ttp = row.get("to_par")
         if ttp is None:
             ttp = row.get("score_vs_par")
+        # Scratch API: strokes vs par for the tournament (see generate_backtest_report.py).
+        if ttp is None:
+            ttp = row.get("current_score")
+        if ttp is None:
+            ttp = row.get("score")
         try:
             total_to_par = int(ttp) if ttp is not None else None
         except (TypeError, ValueError):
@@ -1393,6 +1407,21 @@ def parse_in_play_leaderboard(
             latest_round_num = int(rnd) if rnd is not None else None
         except (TypeError, ValueError):
             latest_round_num = None
+        if latest_round_num is None:
+            for n in (4, 3, 2, 1):
+                key = f"R{n}"
+                if row.get(key) is not None:
+                    latest_round_num = n
+                    break
+        latest_round_score = None
+        if latest_round_num is not None:
+            raw_rs = row.get(f"R{latest_round_num}")
+            if raw_rs is not None:
+                try:
+                    latest_round_score = int(float(raw_rs))
+                except (TypeError, ValueError):
+                    latest_round_score = None
+        dg_pos = row.get("current_pos") or row.get("position")
         entry = {
             "player_key": pk,
             "player": display,
@@ -1400,8 +1429,9 @@ def parse_in_play_leaderboard(
             "finish_rank": None,
             "total_to_par": total_to_par,
             "latest_round_num": latest_round_num,
-            "latest_round_score": None,
+            "latest_round_score": latest_round_score,
             "rounds_played": 0,
+            "dg_position": dg_pos,
         }
         sort_key = float(total_to_par) if total_to_par is not None else 9999.0
         prev = best_by_pk.get(pk)
@@ -1416,9 +1446,10 @@ def parse_in_play_leaderboard(
     parsed.sort(key=lambda item: (item[1], item[0]["player"].lower()))
     out: list[dict] = []
     for idx, (entry, _) in enumerate(parsed[:limit], start=1):
+        pos_label = str(entry["dg_position"]) if entry.get("dg_position") is not None else str(idx)
         entry_out = {
             "rank": idx,
-            "position": str(idx),
+            "position": pos_label,
             "player_key": entry["player_key"],
             "player": entry["player"],
             "total_to_par": entry["total_to_par"],

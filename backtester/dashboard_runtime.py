@@ -332,6 +332,21 @@ def _build_live_point_in_time_rankings(
             ttp_map[pk] = int(ttp)
         except (TypeError, ValueError):
             continue
+    dg_w = dg_win_prob or {}
+    ttps_list = list(ttp_map.values())
+    has_spread = len(ttps_list) >= 2 and len(set(ttps_list)) > 1
+    has_win_signal = len(dg_w) > 0
+    if not has_win_signal and not has_spread:
+        # No tournament signal (e.g. DB fallback with all zeros, or parse missed scores): do not
+        # pretend point-in-time ordering — that degenerates to pure pre-tournament composite.
+        return (
+            _extract_rankings(
+                composite_results,
+                finish_states=finish_states,
+                exclude_cut_players=exclude_cut_players,
+            ),
+            "live_point_in_time_pre_tournament_fallback",
+        )
     ttps = [float(v) for v in ttp_map.values()]
     median_ttp = _median_float(ttps) if ttps else 0.0
     scored: list[tuple[float, float, dict]] = []
@@ -344,8 +359,8 @@ def _build_live_point_in_time_rankings(
             continue
         base = float(row.get("composite") or 0)
         ttp = ttp_map.get(pk)
-        if dg_win_prob and pk in dg_win_prob:
-            adjusted = base + 25.0 * float(dg_win_prob[pk])
+        if dg_w and pk in dg_w:
+            adjusted = base + 25.0 * float(dg_w[pk])
         else:
             gap = median_ttp - float(ttp if ttp is not None else median_ttp)
             adjusted = base + 0.12 * gap
@@ -381,11 +396,9 @@ def _build_live_point_in_time_rankings(
             entry["details"] = details
         rankings.append(entry)
     source_used = "live_point_in_time_model_dg_blend" if (
-        dg_win_prob
+        dg_w
         and scored
-        and any(
-            str(r.get("player_key") or "").strip().lower() in dg_win_prob for _, _, r in scored
-        )
+        and any(str(r.get("player_key") or "").strip().lower() in dg_w for _, _, r in scored)
     ) else "live_point_in_time_model_tournament_state"
     return rankings, source_used
 
