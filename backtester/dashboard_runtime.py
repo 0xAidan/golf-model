@@ -88,6 +88,13 @@ def _is_live_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
     return start_date <= today <= end_date
 
 
+def _has_started_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
+    start_date = _parse_iso_date(event_row.get("start_date"))
+    if not start_date:
+        return False
+    return start_date <= today
+
+
 def _load_finish_state_map(event_id: str | None, *, year: int | None = None) -> dict[str, str]:
     if not event_id:
         return {}
@@ -728,6 +735,8 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     three_ball, three_ball_diag = fetch_matchup_odds_with_diagnostics(market="3_balls", tour=tour)
     now_date = _utc_now().date()
     live_row = next((row for row in full_schedule if _is_live_schedule_event(row, today=now_date)), None)
+    if not live_row:
+        live_row = next((row for row in upcoming_schedule if _has_started_schedule_event(row, today=now_date)), None)
     live_event_active = bool(live_row)
     current_row = live_row if live_row else (upcoming_schedule[0] if upcoming_schedule else {})
 
@@ -741,11 +750,20 @@ def _run_ingest(tour: str) -> dict[str, Any]:
         upcoming_row = next(
             (
                 row
-                for row in full_schedule
+                for row in upcoming_schedule
                 if _is_future_event(row) and str(row.get("event_id") or "") != str((live_row or {}).get("event_id") or "")
             ),
             None,
         )
+        if upcoming_row is None:
+            upcoming_row = next(
+                (
+                    row
+                    for row in full_schedule
+                    if _is_future_event(row) and str(row.get("event_id") or "") != str((live_row or {}).get("event_id") or "")
+                ),
+                None,
+            )
     else:
         upcoming_row = next((row for row in upcoming_schedule if _is_future_event(row)), None)
         if upcoming_row is None:
@@ -762,7 +780,7 @@ def _run_ingest(tour: str) -> dict[str, Any]:
             ),
             upcoming_row,
         )
-    context_row = live_row if live_row else (upcoming_row or current_row or {})
+    context_row = current_row or upcoming_row or {}
     return {
         "event_name": context_row.get("event_name"),
         "event_id": context_row.get("event_id"),
