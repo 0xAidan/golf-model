@@ -304,6 +304,12 @@ Use these fields to separate causes:
 - `diagnostics.selection_counts.selected_rows` (card-curated rows after exposure/pair caps)
 - `diagnostics.reason_codes` (where rows were excluded)
 
+### Cockpit dashboard tabs (React SPA)
+
+- **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`).
+- **Upcoming:** Pre-tournament model from `upcoming_tournament`.
+- **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
+
 ---
 
 ## 4. Configuration Reference
@@ -394,6 +400,8 @@ Major sections and key values:
 **Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`.
 
 **External data:** `equipment_changes`, `intel_events`.
+
+**Live dashboard replay:** `pre_teeoff_candidates` (latest pre-teeoff upcoming section per event while still upcoming), `pre_teeoff_frozen` (immutable freeze when the event goes live), in addition to `live_snapshot_history` and `market_prediction_rows`.
 
 **Meta:** `schema_version` (tracks schema version; constraint id=1).
 

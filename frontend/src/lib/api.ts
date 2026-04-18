@@ -42,7 +42,10 @@ export const api = {
   getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
   getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
   getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
-  getLiveRefreshPastSnapshot: (eventId: string, section: "live" | "upcoming" = "live") =>
+  getLiveRefreshPastSnapshot: (
+    eventId: string,
+    section: "live" | "upcoming" | "completed" = "completed",
+  ) =>
     request<PastSnapshotResponse>(
       `/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=${encodeURIComponent(section)}`,
     ),

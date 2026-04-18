@@ -143,8 +143,15 @@ export type LiveTournamentSnapshot = {
   tournament_id?: number
   course_num?: number
   active?: boolean
+  completed_replay?: boolean
+  leaderboard_source?: string
+  in_play_parse_note?: string | null
+  live_point_in_time_source?: string | null
   leaderboard?: LiveLeaderboardRow[]
   rankings?: LiveRankingRow[]
+  live_rankings?: LiveRankingRow[]
+  pre_tournament_rankings?: LiveRankingRow[]
+  frozen_pre_teeoff_rankings?: LiveRankingRow[]
   matchups?: LiveMatchupRow[]
   matchup_bets?: MatchupBet[]
   matchup_bets_all_books?: MatchupBet[]

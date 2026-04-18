@@ -782,6 +782,34 @@ def init_db():
     conn.close()
 
 
+def _ensure_pre_teeoff_tables(conn: sqlite3.Connection) -> None:
+    """Pre-teeoff candidate + frozen snapshot tables for Completed tab replay."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pre_teeoff_candidates (
+            event_id TEXT PRIMARY KEY,
+            tour TEXT,
+            event_name TEXT,
+            payload_json TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pre_teeoff_frozen (
+            event_id TEXT PRIMARY KEY,
+            tour TEXT,
+            event_name TEXT,
+            payload_json TEXT NOT NULL,
+            frozen_at TEXT NOT NULL,
+            source_snapshot_id TEXT
+        )
+        """
+    )
+    conn.commit()
+
+
 def _run_migrations(conn: sqlite3.Connection):
     """Add columns/tables that may be missing in older databases."""
     # Add source column to csv_imports if missing
@@ -875,6 +903,8 @@ def _run_migrations(conn: sqlite3.Connection):
         ON live_model_registry(scope, is_current, created_at DESC)
     """)
     conn.commit()
+
+    _ensure_pre_teeoff_tables(conn)
 
     # Create pit_course_stats table if missing
     conn.execute("""
@@ -1737,6 +1767,196 @@ def list_snapshot_timeline_points(event_id: str, *, section: str = "live", limit
         )
 
     return points
+
+
+def upsert_pre_teeoff_candidate(
+    event_id: str,
+    *,
+    tour: str | None,
+    event_name: str | None,
+    section_payload: dict,
+) -> None:
+    """Store latest verified upcoming section while an event is still pre-teeoff."""
+    normalized = str(event_id or "").strip()
+    if not normalized or not isinstance(section_payload, dict):
+        return
+    conn = get_conn()
+    _ensure_pre_teeoff_tables(conn)
+    conn.execute(
+        """
+        INSERT INTO pre_teeoff_candidates (event_id, tour, event_name, payload_json, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(event_id) DO UPDATE SET
+            tour = excluded.tour,
+            event_name = excluded.event_name,
+            payload_json = excluded.payload_json,
+            updated_at = datetime('now')
+        """,
+        (normalized, (tour or "").strip().lower() or None, (event_name or "").strip() or None, json.dumps(section_payload)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def has_pre_teeoff_frozen(event_id: str) -> bool:
+    normalized = str(event_id or "").strip()
+    if not normalized:
+        return False
+    conn = get_conn()
+    _ensure_pre_teeoff_tables(conn)
+    row = conn.execute(
+        "SELECT 1 FROM pre_teeoff_frozen WHERE event_id = ? LIMIT 1",
+        (normalized,),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def get_pre_teeoff_candidate_payload(event_id: str) -> dict | None:
+    normalized = str(event_id or "").strip()
+    if not normalized:
+        return None
+    conn = get_conn()
+    _ensure_pre_teeoff_tables(conn)
+    row = conn.execute(
+        "SELECT payload_json FROM pre_teeoff_candidates WHERE event_id = ?",
+        (normalized,),
+    ).fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return None
+    try:
+        return json.loads(row[0])
+    except json.JSONDecodeError:
+        return None
+
+
+def get_pre_teeoff_frozen_payload(event_id: str) -> dict | None:
+    normalized = str(event_id or "").strip()
+    if not normalized:
+        return None
+    conn = get_conn()
+    _ensure_pre_teeoff_tables(conn)
+    row = conn.execute(
+        "SELECT payload_json FROM pre_teeoff_frozen WHERE event_id = ?",
+        (normalized,),
+    ).fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return None
+    try:
+        return json.loads(row[0])
+    except json.JSONDecodeError:
+        return None
+
+
+def build_completed_snapshot_section(event_id: str) -> dict | None:
+    """
+    Merge frozen pre-teeoff upcoming board with latest live snapshot leaderboard for Completed replay.
+    """
+    normalized = str(event_id or "").strip()
+    if not normalized:
+        return None
+    frozen = get_pre_teeoff_frozen_payload(normalized)
+    latest_live = get_latest_snapshot_section(normalized, section="live")
+    live_snap = (latest_live or {}).get("snapshot") or {}
+    if not frozen and not live_snap:
+        return None
+    base = dict(frozen) if frozen else dict(live_snap)
+    final_lb = live_snap.get("leaderboard") or base.get("leaderboard") or []
+    out = dict(base)
+    out["leaderboard"] = final_lb
+    out["completed_replay"] = True
+    out.setdefault("diagnostics", {})
+    out["diagnostics"]["state"] = "completed_replay"
+    if frozen:
+        out["frozen_pre_teeoff_rankings"] = frozen.get("rankings") or frozen.get("live_rankings")
+        out["ranking_source"] = frozen.get("ranking_source") or "frozen_pre_teeoff_upcoming"
+    return out
+
+
+def insert_pre_teeoff_frozen(
+    event_id: str,
+    *,
+    tour: str | None,
+    event_name: str | None,
+    section_payload: dict,
+    source_snapshot_id: str | None,
+) -> bool:
+    """Persist immutable pre-teeoff board once per event. Returns True if inserted."""
+    normalized = str(event_id or "").strip()
+    if not normalized or not isinstance(section_payload, dict):
+        return False
+    conn = get_conn()
+    _ensure_pre_teeoff_tables(conn)
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO pre_teeoff_frozen
+            (event_id, tour, event_name, payload_json, frozen_at, source_snapshot_id)
+        VALUES (?, ?, ?, ?, datetime('now'), ?)
+        """,
+        (
+            normalized,
+            (tour or "").strip().lower() or None,
+            (event_name or "").strip() or None,
+            json.dumps(section_payload),
+            (source_snapshot_id or "").strip() or None,
+        ),
+    )
+    conn.commit()
+    inserted = cur.rowcount > 0
+    conn.close()
+    return inserted
+
+
+def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
+    """Events available for Completed replay (live history + frozen pre-teeoff)."""
+    conn = get_conn()
+    _ensure_pre_teeoff_tables(conn)
+    live_rows = list_past_snapshot_events(limit=max(int(limit) * 3, 120))
+    frozen_rows = conn.execute(
+        """
+        SELECT event_id, event_name, frozen_at
+        FROM pre_teeoff_frozen
+        ORDER BY frozen_at DESC
+        LIMIT ?
+        """,
+        (max(int(limit) * 3, 120),),
+    ).fetchall()
+    conn.close()
+    merged: dict[str, dict[str, Any]] = {}
+    for row in live_rows:
+        eid = str(row.get("event_id") or "").strip()
+        if not eid:
+            continue
+        merged[eid] = {
+            "event_id": eid,
+            "event_name": row.get("event_name") or "",
+            "latest_generated_at": row.get("latest_generated_at"),
+            "snapshot_count": int(row.get("snapshot_count") or 0),
+        }
+    for fr in frozen_rows:
+        eid = str(fr["event_id"] or "").strip()
+        if not eid:
+            continue
+        ts = fr["frozen_at"]
+        prev = merged.get(eid)
+        if prev is None:
+            merged[eid] = {
+                "event_id": eid,
+                "event_name": fr["event_name"] or "",
+                "latest_generated_at": ts,
+                "snapshot_count": 1,
+            }
+        else:
+            if ts and (not prev.get("latest_generated_at") or str(ts) > str(prev.get("latest_generated_at") or "")):
+                prev["latest_generated_at"] = ts
+    out = sorted(
+        merged.values(),
+        key=lambda r: (str(r.get("latest_generated_at") or ""), r["event_id"]),
+        reverse=True,
+    )
+    return out[: int(limit)]
 
 
 def store_market_prediction_rows(rows: list[dict]) -> int:

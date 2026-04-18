@@ -484,6 +484,10 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
     monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
+    monkeypatch.setattr(runtime, "fetch_in_play_predictions", lambda **kwargs: {})
+    monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
+    monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
+    monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -875,6 +879,10 @@ def test_run_recompute_records_snapshot_history_and_market_rows(monkeypatch):
         lambda rows: captured["market_rows"].append(rows) or len(rows),
     )
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "fetch_in_play_predictions", lambda **kwargs: {})
+    monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
+    monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
+    monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -899,13 +907,66 @@ def test_run_recompute_records_snapshot_history_and_market_rows(monkeypatch):
     assert captured["market_rows"], "Expected market prediction rows to be persisted."
 
 
+def test_parse_in_play_leaderboard_handles_sample_payload():
+    from src.datagolf import parse_in_play_leaderboard
+
+    sample = {
+        "pga": [
+            {"player_name": "Scottie Scheffler", "total": -8, "win_prob": 0.22},
+            {"player_name": "Rory McIlroy", "total": -4, "win_prob": 0.11},
+        ]
+    }
+    rows, win_prob, note = parse_in_play_leaderboard(sample)
+    assert note is None
+    assert len(rows) == 2
+    assert rows[0]["player"] == "Scottie Scheffler"
+    assert win_prob.get("scottie_scheffler") == 0.22
+
+
+def test_build_live_point_in_time_rankings_adjusts_by_leaderboard():
+    from backtester import dashboard_runtime as runtime
+
+    composite = [
+        {
+            "player_key": "leader",
+            "player_display": "Leader",
+            "composite": 74.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+        {
+            "player_key": "trailer",
+            "player_display": "Trailer",
+            "composite": 74.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+    ]
+    leaderboard = [
+        {"player_key": "leader", "total_to_par": -6},
+        {"player_key": "trailer", "total_to_par": 3},
+    ]
+    rankings, source = runtime._build_live_point_in_time_rankings(
+        composite,
+        leaderboard,
+        finish_states={},
+        exclude_cut_players=False,
+        dg_win_prob=None,
+    )
+    assert source == "live_point_in_time_model_tournament_state"
+    assert rankings[0]["player_key"] == "leader"
+    assert rankings[0]["rank"] == 1
+
+
 def test_live_refresh_past_snapshot_endpoints(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr(
         app_module,
-        "list_past_snapshot_events",
+        "list_completed_snapshot_events",
         lambda limit=40: [{"event_id": "18", "event_name": "Zurich Classic", "latest_generated_at": "2026-04-17T20:00:00+00:00"}],
     )
     monkeypatch.setattr(
@@ -1121,7 +1182,12 @@ def test_live_refresh_replay_endpoints_reject_invalid_section_consistently(monke
     timeline_response = client.get("/api/live-refresh/past-timeline?event_id=18&section=bad")
     market_rows_response = client.get("/api/live-refresh/past-market-rows?event_id=18&section=bad")
 
-    for response in (snapshot_response, timeline_response, market_rows_response):
+    assert snapshot_response.status_code == 400
+    assert snapshot_response.json() == {
+        "ok": False,
+        "error": "section must be 'completed', 'live', or 'upcoming'",
+    }
+    for response in (timeline_response, market_rows_response):
         assert response.status_code == 400
         assert response.json() == {
             "ok": False,
@@ -1133,6 +1199,11 @@ def test_live_refresh_replay_endpoints_treat_empty_section_as_live(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "build_completed_snapshot_section",
+        lambda event_id: {"event_name": "Zurich Classic", "completed_replay": True},
+    )
     monkeypatch.setattr(
         app_module,
         "get_latest_snapshot_section",
@@ -1189,7 +1260,8 @@ def test_live_refresh_replay_endpoints_treat_empty_section_as_live(monkeypatch):
     market_rows_response = client.get("/api/live-refresh/past-market-rows?event_id=18&section=")
 
     assert snapshot_response.status_code == 200
-    assert snapshot_response.json()["section"] == "live"
+    assert snapshot_response.json()["section"] == "completed"
+    assert snapshot_response.json()["snapshot"]["event_name"] == "Zurich Classic"
 
     assert timeline_response.status_code == 200
     assert timeline_response.json()["section"] == "live"

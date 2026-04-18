@@ -108,7 +108,7 @@ export function PredictionWorkspacePage({
 }) {
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
-  const [pastReplaySection, setPastReplaySection] = useState<"live" | "upcoming">("live")
+  const [pastReplaySection, setPastReplaySection] = useState<"completed" | "live" | "upcoming">("completed")
   const pastEventsQuery = useQuery({
     queryKey: ["live-refresh-past-events"],
     queryFn: api.getLiveRefreshPastEvents,
@@ -157,24 +157,37 @@ export function PredictionWorkspacePage({
     enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
     staleTime: 30_000,
   })
+  const pastReplayHasHistoryLanes = pastReplaySection === "live" || pastReplaySection === "upcoming"
   const pastTimelineQuery = useQuery({
     queryKey: ["live-refresh-past-timeline", selectedPastEvent?.event_id, pastReplaySection],
-    queryFn: () =>
-      api.getLiveRefreshPastTimeline(selectedPastEvent?.event_id ?? "", {
-        section: pastReplaySection,
+    queryFn: () => {
+      const lane = pastReplaySection
+      if (lane !== "live" && lane !== "upcoming") {
+        throw new Error("Past timeline is only available for live or upcoming replay lanes.")
+      }
+      return api.getLiveRefreshPastTimeline(selectedPastEvent?.event_id ?? "", {
+        section: lane,
         limit: 24,
-      }),
-    enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
+      })
+    },
+    enabled:
+      predictionTab === "past" && Boolean(selectedPastEvent?.event_id) && pastReplayHasHistoryLanes,
     staleTime: 30_000,
   })
   const pastMarketRowsQuery = useQuery({
     queryKey: ["live-refresh-past-market-rows", selectedPastEvent?.event_id, pastReplaySection],
-    queryFn: () =>
-      api.getLiveRefreshPastMarketRows(selectedPastEvent?.event_id ?? "", {
-        section: pastReplaySection,
+    queryFn: () => {
+      const lane = pastReplaySection
+      if (lane !== "live" && lane !== "upcoming") {
+        throw new Error("Past market rows are only available for live or upcoming replay lanes.")
+      }
+      return api.getLiveRefreshPastMarketRows(selectedPastEvent?.event_id ?? "", {
+        section: lane,
         limit: 200,
-      }),
-    enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
+      })
+    },
+    enabled:
+      predictionTab === "past" && Boolean(selectedPastEvent?.event_id) && pastReplayHasHistoryLanes,
     staleTime: 30_000,
   })
   const pastSnapshotSection = pastSnapshotQuery.data?.ok ? (pastSnapshotQuery.data.snapshot ?? null) : null
@@ -342,13 +355,17 @@ export function PredictionWorkspacePage({
         ? "Loading immutable replay assets for this event..."
         : pastSnapshotQuery.isError
           ? "No stored immutable snapshot was found for this event selection."
-          : pastTimelineQuery.isError
-            ? "Stored replay timeline is unavailable for this event selection."
-            : pastMarketRowsQuery.isError
-              ? "Stored market-row history is unavailable for this event selection."
-              : selectedPastEvent
-                ? `Reviewing ${pastReplaySection} replay captures for ${selectedPastEvent.event_name}.`
-                : "Replay mode is ready."
+          : pastReplaySection === "completed"
+            ? selectedPastEvent
+              ? `Reviewing completed snapshot (frozen pre-teeoff board + final leaderboard) for ${selectedPastEvent.event_name}.`
+              : "Replay mode is ready."
+            : pastTimelineQuery.isError
+              ? "Stored replay timeline is unavailable for this event selection."
+              : pastMarketRowsQuery.isError
+                ? "Stored market-row history is unavailable for this event selection."
+                : selectedPastEvent
+                  ? `Reviewing ${pastReplaySection} replay captures for ${selectedPastEvent.event_name}.`
+                  : "Replay mode is ready."
   const courseFeedModel = useMemo(
     () =>
       buildCourseFeedModel({
@@ -511,21 +528,27 @@ export function PredictionWorkspacePage({
                   <div>
                     <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">Replay lane</span>
                     <div className="flex flex-wrap gap-2">
-                      {(["live", "upcoming"] as const).map((section) => {
-                        const active = pastReplaySection === section
+                      {(
+                        [
+                          { value: "completed" as const, label: "Completed" },
+                          { value: "live" as const, label: "Live capture" },
+                          { value: "upcoming" as const, label: "Upcoming capture" },
+                        ] as const
+                      ).map(({ value, label }) => {
+                        const active = pastReplaySection === value
                         return (
                           <button
-                            key={section}
+                            key={value}
                             type="button"
                             aria-pressed={active}
-                            onClick={() => setPastReplaySection(section)}
+                            onClick={() => setPastReplaySection(value)}
                             className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
                               active
                                 ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-100"
                                 : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
                             }`}
                           >
-                            {section} capture
+                            {label}
                           </button>
                         )
                       })}
@@ -537,7 +560,9 @@ export function PredictionWorkspacePage({
                       : pastSnapshotQuery.isError
                         ? "No immutable snapshot found for this event yet. Run live refresh during event windows to capture replay history."
                         : selectedPastEvent
-                          ? `Replay loaded from ${pastReplaySection} snapshot history${pastSnapshotQuery.data?.generated_at ? ` (${formatDateTime(pastSnapshotQuery.data.generated_at)}).` : "."}`
+                          ? pastReplaySection === "completed"
+                            ? `Completed replay loaded${pastSnapshotQuery.data?.generated_at ? ` (${formatDateTime(pastSnapshotQuery.data.generated_at)}).` : "."}`
+                            : `Replay loaded from ${pastReplaySection} snapshot history${pastSnapshotQuery.data?.generated_at ? ` (${formatDateTime(pastSnapshotQuery.data.generated_at)}).` : "."}`
                           : "Select an event to load snapshot replay."}
                   </p>
                 </div>
