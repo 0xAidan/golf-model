@@ -235,6 +235,67 @@ export type PastSnapshotResponse = {
   error?: string
 }
 
+export type PastTimelinePoint = {
+  snapshot_id: string
+  generated_at?: string | null
+  tour?: string | null
+  cadence_mode?: string | null
+  section: string
+  event_id?: string | null
+  event_name?: string | null
+  active: boolean
+  diagnostics_state?: string | null
+  leaderboard_count: number
+  rankings_count: number
+  matchup_count: number
+  value_pick_count: number
+  best_edge?: number | null
+}
+
+export type PastTimelineResponse = {
+  ok: boolean
+  event_id: string
+  section: string
+  point_count: number
+  points: PastTimelinePoint[]
+  error?: string
+}
+
+export type PastMarketPredictionRow = {
+  id?: number
+  snapshot_id: string
+  generated_at?: string | null
+  tour?: string | null
+  section: string
+  event_id: string
+  event_name?: string | null
+  market_family: string
+  market_type?: string | null
+  player_key?: string | null
+  player_display?: string | null
+  opponent_key?: string | null
+  opponent_display?: string | null
+  book?: string | null
+  odds?: string | null
+  model_prob?: number | null
+  implied_prob?: number | null
+  ev?: number | null
+  is_value?: number | null
+  is_value_bool?: boolean
+  payload?: Record<string, unknown>
+  payload_json?: string
+}
+
+export type PastMarketRowsResponse = {
+  ok: boolean
+  event_id: string
+  market_family?: string | null
+  section?: string | null
+  row_count: number
+  rows: PastMarketPredictionRow[]
+  error?: string
+}
+
 export type OutputArtifact = {
   type?: string
   path: string
@@ -379,6 +440,17 @@ export type SecondaryBet = {
   market_prob?: number
   best_odds?: number
   best_book?: string
+}
+
+export type FlattenedSecondaryBet = {
+  market: string
+  player: string
+  player_display?: string
+  player_key?: string
+  odds: string
+  ev: number
+  confidence?: string
+  book?: string
 }
 
 export type FieldValidation = {

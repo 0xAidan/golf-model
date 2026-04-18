@@ -12,7 +12,7 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "prediction", label: "Prediction", href: "/", icon: LayoutDashboard },
+  { id: "prediction", label: "Cockpit", href: "/", icon: LayoutDashboard },
   { id: "players", label: "Players", href: "/players", icon: Users },
   { id: "matchups", label: "Matchups", href: "/matchups", icon: Swords },
   { id: "course", label: "Course", href: "/course", icon: Route },
@@ -20,34 +20,64 @@ const NAV_ITEMS: NavItem[] = [
   { id: "track-record", label: "Track Record", href: "/track-record", icon: Trophy },
 ]
 
-export function CommandShell({
+export function SuiteShell({
   children,
   headline,
   subheadline,
+  modeSwitcher,
+  frameStatus,
   actions,
 }: {
   children: React.ReactNode
   headline: string
   subheadline: string
+  modeSwitcher?: React.ReactNode
+  frameStatus?: React.ReactNode
   actions?: React.ReactNode
 }) {
   return (
     <div className="min-h-screen bg-transparent text-foreground">
       <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-6 py-6">
         <header className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[0_20px_80px_rgba(5,10,18,0.45)] backdrop-blur-xl">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
+            <div className="flex items-start gap-3">
+              <div className="mt-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
                 <Gauge className="h-6 w-6" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Golf Model</p>
-                <h1 className="text-lg font-semibold text-white">Command Station</h1>
+                <h1 className="text-lg font-semibold text-white">Event Suite</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{subheadline}</p>
               </div>
             </div>
-            {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+            <div className="xl:justify-self-center">{modeSwitcher}</div>
+            {(frameStatus || actions) ? (
+              <div className="flex flex-col items-stretch gap-3 xl:justify-self-end">
+                {frameStatus ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-200">
+                    {frameStatus}
+                  </div>
+                ) : null}
+                {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+              </div>
+            ) : null}
           </div>
-          <nav className="flex flex-wrap gap-2">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Primary workspace</p>
+              <p className="mt-1 text-xl font-semibold tracking-tight text-white">{headline}</p>
+            </div>
+            <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/8 px-4 py-3">
+              <div className="mb-1 flex items-center gap-2 text-cyan-100">
+                <Activity className="h-4 w-4" />
+                <span className="text-sm font-semibold">Cockpit frame</span>
+              </div>
+              <p className="text-sm leading-6 text-slate-300">
+                Live, upcoming, and past contexts stay visible while legacy routes remain one click away.
+              </p>
+            </div>
+          </div>
+          <nav className="mt-5 flex flex-wrap gap-2">
             {NAV_ITEMS.map(({ href, icon: Icon, label }) => (
               <NavLink
                 key={href}
@@ -67,30 +97,16 @@ export function CommandShell({
               </NavLink>
             ))}
           </nav>
-          <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-400/8 p-4">
-            <div className="mb-2 flex items-center gap-2 text-cyan-100">
-              <Activity className="h-4 w-4" />
-              <span className="text-sm font-semibold">Operator Mode</span>
-            </div>
-            <p className="text-sm leading-6 text-slate-300">
-              Matchups stay front and center, but every player, course, and grading lane is one click away.
-            </p>
-          </div>
         </header>
         <main className="min-w-0 rounded-[28px] border border-white/10 bg-slate-950/65 p-6 shadow-[0_28px_100px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-          <header className="mb-6 border-b border-white/10 pb-5">
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-[0.24em] text-slate-400">Operator workspace</p>
-              <h2 className="text-3xl font-semibold tracking-tight text-white">{headline}</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{subheadline}</p>
-            </div>
-          </header>
           {children}
         </main>
       </div>
     </div>
   )
 }
+
+export const CommandShell = SuiteShell
 
 export function SurfaceCard({
   children,

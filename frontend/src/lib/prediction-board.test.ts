@@ -134,5 +134,6 @@ describe("buildHydratedPredictionRun", () => {
     const flattened = flattenSecondaryBets(run)
     expect(flattened).toHaveLength(1)
     expect(flattened[0].odds).toBe("+13000")
+    expect(flattened[0].player_key).toBe("jj_spaun")
   })
 })

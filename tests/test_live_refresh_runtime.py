@@ -1,5 +1,6 @@
 """Tests for live refresh policy and API endpoints."""
 
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -892,4 +893,270 @@ def test_live_refresh_past_snapshot_endpoints(monkeypatch):
     snapshot_body = snapshot_response.json()
     assert snapshot_body["ok"] is True
     assert snapshot_body["snapshot"]["event_name"] == "Zurich Classic"
+
+
+def test_list_snapshot_timeline_points_summarizes_history_rows_defensively(tmp_db):
+    conn = tmp_db.get_conn()
+    conn.execute(
+        """
+        INSERT INTO live_snapshot_history
+            (snapshot_id, generated_at, tour, cadence_mode, section, event_id, event_name,
+             source_event_id, source_event_name, active, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "snap_new",
+            "2026-04-17T20:05:00+00:00",
+            "pga",
+            "live_window",
+            "live",
+            "evt_18",
+            "Zurich Classic",
+            "evt_18",
+            "Zurich Classic",
+            1,
+            json.dumps(
+                {
+                    "event_name": "Zurich Classic",
+                    "source_event_id": "evt_18",
+                    "active": True,
+                    "diagnostics": {"state": "edges_available"},
+                    "leaderboard": [{"player": "Player A"}],
+                    "rankings": [{"player": "Player A"}, {"player": "Player B"}],
+                    "matchup_bets_all_books": [{"ev": 0.07}, {"ev": 0.11}],
+                    "value_bets": {
+                        "top10": [{"ev": 0.08}, {"ev": 0.04}],
+                        "top20": [{"ev": 0.05}],
+                    },
+                }
+            ),
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO live_snapshot_history
+            (snapshot_id, generated_at, tour, cadence_mode, section, event_id, event_name,
+             source_event_id, source_event_name, active, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "snap_old",
+            "2026-04-17T19:55:00+00:00",
+            "pga",
+            "live_window",
+            "live",
+            "evt_18",
+            "Zurich Classic",
+            "evt_18",
+            "Zurich Classic",
+            0,
+            json.dumps(
+                {
+                    "event_name": "Zurich Classic",
+                    "source_event_id": "evt_18",
+                    "active": False,
+                    "diagnostics": {},
+                    "leaderboard": None,
+                    "rankings": None,
+                    "value_bets": {"top10": None},
+                }
+            ),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    points = tmp_db.list_snapshot_timeline_points("evt_18", section="live", limit=10)
+
+    assert [point["snapshot_id"] for point in points] == ["snap_new", "snap_old"]
+    assert points[0]["diagnostics_state"] == "edges_available"
+    assert points[0]["leaderboard_count"] == 1
+    assert points[0]["rankings_count"] == 2
+    assert points[0]["matchup_count"] == 2
+    assert points[0]["value_pick_count"] == 3
+    assert points[0]["best_edge"] == 0.11
+    assert points[1]["diagnostics_state"] is None
+    assert points[1]["leaderboard_count"] == 0
+    assert points[1]["rankings_count"] == 0
+    assert points[1]["matchup_count"] == 0
+    assert points[1]["value_pick_count"] == 0
+    assert points[1]["best_edge"] is None
+
+
+def test_live_refresh_past_timeline_endpoint(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "list_snapshot_timeline_points",
+        lambda event_id, section="live", limit=120: [
+            {
+                "snapshot_id": "snap_123",
+                "generated_at": "2026-04-17T20:00:00+00:00",
+                "tour": "pga",
+                "cadence_mode": "live_window",
+                "section": section,
+                "event_id": event_id,
+                "event_name": "Zurich Classic",
+                "active": True,
+                "diagnostics_state": "edges_available",
+                "leaderboard_count": 4,
+                "rankings_count": 20,
+                "matchup_count": 6,
+                "value_pick_count": 3,
+                "best_edge": 0.14,
+            }
+        ],
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/past-timeline?event_id=18&section=live&limit=5")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["event_id"] == "18"
+    assert body["section"] == "live"
+    assert body["point_count"] == 1
+    assert body["points"][0]["snapshot_id"] == "snap_123"
+    assert body["points"][0]["best_edge"] == 0.14
+
+
+def test_live_refresh_past_market_rows_endpoint_returns_stable_contract(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "get_market_prediction_rows_for_event",
+        lambda event_id, market_family=None, section=None, limit=2000: [
+            {
+                "id": 7,
+                "snapshot_id": "snap_123",
+                "generated_at": "2026-04-17T20:00:00+00:00",
+                "tour": "pga",
+                "section": "live",
+                "event_id": event_id,
+                "event_name": "Zurich Classic",
+                "market_family": market_family or "matchup",
+                "market_type": "tournament_matchups",
+                "player_key": "player_a",
+                "player_display": "Player A",
+                "opponent_key": "player_b",
+                "opponent_display": "Player B",
+                "book": "fanduel",
+                "odds": "+112",
+                "model_prob": 0.58,
+                "implied_prob": 0.47,
+                "ev": 0.09,
+                "is_value": 1,
+                "payload": {"pick": "Player A", "opponent": "Player B"},
+            }
+        ],
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/past-market-rows?event_id=18&market_family=matchup&section=live")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["event_id"] == "18"
+    assert body["market_family"] == "matchup"
+    assert body["section"] == "live"
+    assert body["row_count"] == 1
+    assert body["rows"][0]["snapshot_id"] == "snap_123"
+    assert body["rows"][0]["is_value"] == 1
+    assert body["rows"][0]["is_value_bool"] is True
+    assert body["rows"][0]["payload"]["pick"] == "Player A"
+
+
+def test_live_refresh_replay_endpoints_reject_invalid_section_consistently(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+
+    client = TestClient(app_module.app)
+    snapshot_response = client.get("/api/live-refresh/past-snapshot?event_id=18&section=bad")
+    timeline_response = client.get("/api/live-refresh/past-timeline?event_id=18&section=bad")
+    market_rows_response = client.get("/api/live-refresh/past-market-rows?event_id=18&section=bad")
+
+    for response in (snapshot_response, timeline_response, market_rows_response):
+        assert response.status_code == 400
+        assert response.json() == {
+            "ok": False,
+            "error": "section must be one of: live, upcoming",
+        }
+
+
+def test_live_refresh_replay_endpoints_treat_empty_section_as_live(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "get_latest_snapshot_section",
+        lambda event_id, section="live": {
+            "snapshot_id": "snap_empty",
+            "generated_at": "2026-04-17T20:00:00+00:00",
+            "tour": "pga",
+            "section": section,
+            "snapshot": {"event_name": "Zurich Classic"},
+        },
+    )
+    monkeypatch.setattr(
+        app_module,
+        "list_snapshot_timeline_points",
+        lambda event_id, section="live", limit=120: [
+            {
+                "snapshot_id": "snap_empty",
+                "generated_at": "2026-04-17T20:00:00+00:00",
+                "tour": "pga",
+                "cadence_mode": "live_window",
+                "section": section,
+                "event_id": event_id,
+                "event_name": "Zurich Classic",
+                "active": True,
+                "diagnostics_state": "edges_available",
+                "leaderboard_count": 1,
+                "rankings_count": 1,
+                "matchup_count": 1,
+                "value_pick_count": 1,
+                "best_edge": 0.11,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        app_module,
+        "get_market_prediction_rows_for_event",
+        lambda event_id, market_family=None, section=None, limit=2000: [
+            {
+                "snapshot_id": "snap_empty",
+                "generated_at": "2026-04-17T20:00:00+00:00",
+                "tour": "pga",
+                "section": section,
+                "event_id": event_id,
+                "event_name": "Zurich Classic",
+                "market_family": market_family or "matchup",
+                "is_value": 1,
+            }
+        ],
+    )
+
+    client = TestClient(app_module.app)
+    snapshot_response = client.get("/api/live-refresh/past-snapshot?event_id=18&section=")
+    timeline_response = client.get("/api/live-refresh/past-timeline?event_id=18&section=")
+    market_rows_response = client.get("/api/live-refresh/past-market-rows?event_id=18&section=")
+
+    assert snapshot_response.status_code == 200
+    assert snapshot_response.json()["section"] == "live"
+
+    assert timeline_response.status_code == 200
+    assert timeline_response.json()["section"] == "live"
+    assert timeline_response.json()["points"][0]["section"] == "live"
+
+    assert market_rows_response.status_code == 200
+    assert market_rows_response.json()["section"] == "live"
+    assert market_rows_response.json()["rows"][0]["section"] == "live"
 

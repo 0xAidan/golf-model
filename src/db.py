@@ -1598,7 +1598,7 @@ def list_past_snapshot_events(limit: int = 40) -> list[dict]:
             MAX(generated_at) AS latest_generated_at,
             COUNT(*) AS snapshot_count
         FROM live_snapshot_history
-        WHERE section = 'live'
+        WHERE section IN ('live', 'upcoming')
           AND source_event_id IS NOT NULL
           AND TRIM(source_event_id) != ''
         GROUP BY source_event_id
@@ -1638,6 +1638,105 @@ def get_latest_snapshot_section(event_id: str, *, section: str = "live") -> dict
     except json.JSONDecodeError:
         payload["snapshot"] = {}
     return payload
+
+
+def list_snapshot_timeline_points(event_id: str, *, section: str = "live", limit: int = 120) -> list[dict]:
+    """Return summarized replay timeline points for a stored event section."""
+    normalized_event_id = str(event_id or "").strip()
+    normalized_section = str(section or "live").strip().lower()
+    if not normalized_event_id:
+        return []
+
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT snapshot_id, generated_at, tour, cadence_mode, section, source_event_id, source_event_name, event_name, active, payload_json
+        FROM live_snapshot_history
+        WHERE source_event_id = ? AND section = ?
+        ORDER BY generated_at DESC, id DESC
+        LIMIT ?
+        """,
+        (normalized_event_id, normalized_section, int(limit)),
+    ).fetchall()
+    conn.close()
+
+    points: list[dict] = []
+    for row in rows:
+        raw_payload = row["payload_json"]
+        try:
+            payload = json.loads(raw_payload) if raw_payload else {}
+        except json.JSONDecodeError:
+            payload = {}
+
+        diagnostics = payload.get("diagnostics") if isinstance(payload, dict) else {}
+        diagnostics_state = diagnostics.get("state") if isinstance(diagnostics, dict) else None
+
+        leaderboard = payload.get("leaderboard") if isinstance(payload, dict) else None
+        leaderboard_count = len(leaderboard) if isinstance(leaderboard, list) else 0
+
+        rankings = payload.get("rankings") if isinstance(payload, dict) else None
+        rankings_count = len(rankings) if isinstance(rankings, list) else 0
+
+        matchup_rows = []
+        if isinstance(payload, dict):
+            matchup_rows = payload.get("matchup_bets_all_books") or payload.get("matchup_bets") or []
+        matchup_count = len(matchup_rows) if isinstance(matchup_rows, list) else 0
+
+        value_pick_count = 0
+        best_edge: float | None = None
+        if isinstance(matchup_rows, list):
+            for bet in matchup_rows:
+                if not isinstance(bet, dict):
+                    continue
+                ev_value = bet.get("ev")
+                if ev_value is None:
+                    continue
+                try:
+                    candidate = float(ev_value)
+                except (TypeError, ValueError):
+                    continue
+                if best_edge is None or candidate > best_edge:
+                    best_edge = candidate
+
+        value_bets = payload.get("value_bets") if isinstance(payload, dict) else None
+        if isinstance(value_bets, dict):
+            for bets in value_bets.values():
+                if not isinstance(bets, list):
+                    continue
+                value_pick_count += len(bets)
+                for bet in bets:
+                    if not isinstance(bet, dict):
+                        continue
+                    ev_value = bet.get("ev")
+                    if ev_value is None:
+                        continue
+                    try:
+                        candidate = float(ev_value)
+                    except (TypeError, ValueError):
+                        continue
+                    if best_edge is None or candidate > best_edge:
+                        best_edge = candidate
+
+        points.append(
+            {
+                "snapshot_id": row["snapshot_id"],
+                "generated_at": row["generated_at"],
+                "tour": row["tour"],
+                "cadence_mode": row["cadence_mode"],
+                "section": row["section"],
+                "event_id": row["source_event_id"],
+                "event_name": row["source_event_name"] or row["event_name"],
+                "active": bool(row["active"]),
+                "diagnostics_state": diagnostics_state,
+                "leaderboard_count": leaderboard_count,
+                "rankings_count": rankings_count,
+                "matchup_count": matchup_count,
+                "value_pick_count": value_pick_count,
+                "best_edge": best_edge,
+            }
+        )
+
+    return points
 
 
 def store_market_prediction_rows(rows: list[dict]) -> int:
