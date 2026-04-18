@@ -19,7 +19,7 @@ import threading
 import time
 from collections import deque
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from src import db
 from src.field_selection import extract_field_player_keys, normalize_field_entries
@@ -1297,6 +1297,139 @@ def get_schedule_events(tour: str = "pga", upcoming_only: bool = True) -> list[d
     except Exception:
         logger.warning("get_schedule_events failed", exc_info=True)
         return []
+
+
+def fetch_in_play_predictions(
+    tour: str = "pga",
+    *,
+    odds_format: str = "percent",
+    cache_ttl_seconds: int = 45,
+) -> dict | list:
+    """
+    Live in-play model predictions (Scratch / preds/in-play).
+
+    Returns raw JSON (shape varies by tour). Used for point-in-time tournament
+    state during active events.
+    """
+    params: dict[str, str] = {"tour": tour, "odds_format": odds_format}
+    return _call_api("preds/in-play", params, cache_ttl_seconds=cache_ttl_seconds)
+
+
+def _flatten_in_play_player_rows(raw: Any) -> list[dict]:
+    """Extract a flat list of player dicts from preds/in-play response."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [x for x in raw if isinstance(x, dict)]
+    if not isinstance(raw, dict):
+        return []
+    skip = {"info", "updated", "timestamp", "last_updated", "last_update", "notes"}
+    rows: list[dict] = []
+    for key, val in raw.items():
+        if key in skip:
+            continue
+        if isinstance(val, list):
+            rows.extend([x for x in val if isinstance(x, dict)])
+        elif isinstance(val, dict):
+            inner = val.get("predictions") or val.get("data") or val.get("scores")
+            if isinstance(inner, list):
+                rows.extend([x for x in inner if isinstance(x, dict)])
+            elif isinstance(inner, dict):
+                rows.extend([x for x in inner.values() if isinstance(x, dict)])
+    return rows
+
+
+def parse_in_play_leaderboard(
+    raw: dict | list | None,
+    *,
+    limit: int = 120,
+) -> tuple[list[dict], dict[str, float], str | None]:
+    """
+    Parse preds/in-play into leaderboard rows (LiveLeaderboardRow shape) and win-prob map.
+
+    Returns (leaderboard_rows, win_prob_by_player_key, note_if_empty).
+    """
+    from src.player_normalizer import normalize_name as _norm
+
+    rows_in = _flatten_in_play_player_rows(raw)
+    if not rows_in:
+        return [], {}, "no_in_play_rows"
+
+    win_prob_by_key: dict[str, float] = {}
+    best_by_pk: dict[str, tuple[dict, float]] = {}
+    for row in rows_in:
+        name = (
+            row.get("player_name")
+            or row.get("name")
+            or row.get("player")
+            or row.get("p_name")
+        )
+        if not name or not isinstance(name, str):
+            continue
+        display = name.strip()
+        pk = _norm(display)
+        if not pk:
+            continue
+        wp = _safe_float(row.get("win_prob"))
+        if wp is None:
+            wp = _safe_float(row.get("model_win_prob"))
+        if wp is None:
+            wp = _safe_float(row.get("dg_win_prob"))
+        if wp is not None:
+            win_prob_by_key[pk] = float(wp)
+        ttp = row.get("total")
+        if ttp is None:
+            ttp = row.get("total_to_par")
+        if ttp is None:
+            ttp = row.get("to_par")
+        if ttp is None:
+            ttp = row.get("score_vs_par")
+        try:
+            total_to_par = int(ttp) if ttp is not None else None
+        except (TypeError, ValueError):
+            total_to_par = None
+        rnd = row.get("round") or row.get("current_round") or row.get("rnd")
+        try:
+            latest_round_num = int(rnd) if rnd is not None else None
+        except (TypeError, ValueError):
+            latest_round_num = None
+        entry = {
+            "player_key": pk,
+            "player": display,
+            "finish_state": None,
+            "finish_rank": None,
+            "total_to_par": total_to_par,
+            "latest_round_num": latest_round_num,
+            "latest_round_score": None,
+            "rounds_played": 0,
+        }
+        sort_key = float(total_to_par) if total_to_par is not None else 9999.0
+        prev = best_by_pk.get(pk)
+        if prev is None or sort_key < prev[1]:
+            best_by_pk[pk] = (entry, sort_key)
+
+    parsed = list(best_by_pk.values())
+
+    if not parsed:
+        return [], {}, "unparseable_in_play"
+
+    parsed.sort(key=lambda item: (item[1], item[0]["player"].lower()))
+    out: list[dict] = []
+    for idx, (entry, _) in enumerate(parsed[:limit], start=1):
+        entry_out = {
+            "rank": idx,
+            "position": str(idx),
+            "player_key": entry["player_key"],
+            "player": entry["player"],
+            "total_to_par": entry["total_to_par"],
+            "latest_round_num": entry["latest_round_num"],
+            "latest_round_score": entry["latest_round_score"],
+            "rounds_played": entry["rounds_played"],
+            "finish_state": entry["finish_state"],
+        }
+        out.append(entry_out)
+
+    return out, win_prob_by_key, None
 
 
 def fetch_dg_matchup_all_pairings(tour: str = "pga", odds_format: str = "american") -> dict:

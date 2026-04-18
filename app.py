@@ -36,7 +36,10 @@ from src.csv_parser import ingest_folder, classify_file_type, detect_data_mode, 
 from src.db import (
     get_or_create_tournament, get_active_weights, get_all_players,
     get_conn, init_db, store_results, store_picks,
-    list_past_snapshot_events, get_latest_snapshot_section, get_market_prediction_rows_for_event,
+    list_completed_snapshot_events,
+    build_completed_snapshot_section,
+    get_latest_snapshot_section,
+    get_market_prediction_rows_for_event,
 )
 from src.models.composite import compute_composite
 from src.models.weights import retune, analyze_pick_performance, get_current_weights
@@ -1741,23 +1744,42 @@ async def get_live_refresh_runtime_status():
 
 @app.get("/api/live-refresh/past-events")
 async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=200)):
-    """List events with immutable snapshot history for Past Event replay."""
+    """List events available for Completed replay (frozen pre-teeoff + live history)."""
     from src.db import ensure_initialized
 
     ensure_initialized()
-    events = list_past_snapshot_events(limit=limit)
+    events = list_completed_snapshot_events(limit=limit)
     return {"events": events}
 
 
 @app.get("/api/live-refresh/past-snapshot")
-async def get_live_refresh_past_snapshot(event_id: str = Query(..., min_length=1), section: str = Query(default="live")):
-    """Return the latest stored snapshot section for a specific past event."""
+async def get_live_refresh_past_snapshot(
+    event_id: str = Query(..., min_length=1),
+    section: str = Query(default="completed"),
+):
+    """Return snapshot for a past event: completed (default), live, or upcoming section."""
     from src.db import ensure_initialized
 
     ensure_initialized()
     section_value = section.strip().lower()
+    if section_value == "completed":
+        merged = build_completed_snapshot_section(event_id)
+        if not merged:
+            return JSONResponse(
+                {"ok": False, "error": "No completed snapshot available for this event."},
+                status_code=404,
+            )
+        return {
+            "ok": True,
+            "event_id": event_id,
+            "section": "completed",
+            "snapshot": merged,
+        }
     if section_value not in {"live", "upcoming"}:
-        return JSONResponse({"ok": False, "error": "section must be 'live' or 'upcoming'"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "section must be 'completed', 'live', or 'upcoming'"},
+            status_code=400,
+        )
 
     payload = get_latest_snapshot_section(event_id=event_id, section=section_value)
     if not payload:

@@ -417,7 +417,7 @@ function PredictionWorkspacePage({
         : null
   const eventName =
     predictionTab === "past"
-      ? selectedPastEvent?.event_name ?? "Past event snapshot unavailable"
+      ? selectedPastEvent?.event_name ?? "Completed event snapshot unavailable"
       : activeSection?.event_name ?? displayPredictionRun?.event_name ?? "No event loaded"
   const courseName =
     predictionTab === "past"
@@ -455,7 +455,7 @@ function PredictionWorkspacePage({
         ? "Loading stored past-event snapshot..."
         : pastSnapshotQuery.isError
           ? "No stored past-event snapshot found for this selection yet."
-          : "Stored snapshot replay for completed event."
+          : "Completed replay: frozen pre-teeoff board plus final leaderboard when available."
       : getMatchupStateMessage({
         state: diagnostics?.state,
         reasonCodes: diagnostics?.reason_codes,
@@ -480,7 +480,11 @@ function PredictionWorkspacePage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
-              {predictionTab === "live" ? "Live Event" : predictionTab === "upcoming" ? "Upcoming Event" : "Past Event"}
+              {predictionTab === "live"
+                ? "Live Event"
+                : predictionTab === "upcoming"
+                  ? "Upcoming Event"
+                  : "Completed Event"}
             </p>
             <h3 className="mt-1 text-2xl font-semibold tracking-tight text-white">{eventName}</h3>
             {courseName ? <p className="mt-1 text-sm text-slate-400">{courseName}</p> : null}
@@ -528,19 +532,19 @@ function PredictionWorkspacePage({
             variant={predictionTab === "past" ? "default" : "outline"}
             onClick={() => onPredictionTabChange("past")}
           >
-            Past Event
+            Completed
           </Button>
         </div>
 
         {predictionTab === "past" ? (
           <div className="mt-3">
             <label className="block">
-              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">Browse past events</span>
+              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">Browse completed events</span>
               <select
                 className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-400/30"
                 value={selectedPastEventKey}
                 onChange={(event) => setSelectedPastEventKey(event.target.value)}
-                aria-label="Select past event"
+                aria-label="Select completed event"
                 disabled={pastEventOptions.length === 0}
               >
                 <option value="">Most recent completed event</option>
@@ -741,7 +745,13 @@ function PredictionWorkspacePage({
         <SurfaceCard>
           <SectionTitle
             title="Power Rankings"
-            description="Top 10 model projections for this event context."
+            description={
+              predictionTab === "live"
+                ? "Point-in-time model rankings using current tournament state (Data Golf in-play when available)."
+                : predictionTab === "upcoming"
+                  ? "Top 10 model projections for this event context."
+                  : "Frozen pre-teeoff model board for this event (before play began)."
+            }
             action={
               <Link to="/players" className="flex items-center gap-1.5 text-sm text-cyan-300 transition hover:text-cyan-200">
                 Full rankings <ExternalLink className="h-3.5 w-3.5" />
@@ -795,7 +805,11 @@ function PredictionWorkspacePage({
               description={
                 predictionTab === "upcoming"
                   ? "Live leaderboard appears once round scoring data is available."
-                  : "Round-by-round leaderboard feed, independent of model projections."
+                  : predictionTab === "live"
+                    ? activeSection?.leaderboard_source === "datagolf_in_play"
+                      ? "Live standings from Data Golf in-play (falls back to local round data if needed)."
+                      : "Round-by-round leaderboard from stored scoring data (Data Golf in-play unavailable or empty)."
+                    : "Final leaderboard snapshot for this completed event."
               }
             />
             {leaderboardRows.length > 0 ? (

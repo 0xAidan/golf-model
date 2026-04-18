@@ -1,6 +1,6 @@
 """Tests for live refresh policy and API endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
@@ -130,6 +130,47 @@ def test_live_refresh_start_and_stop_endpoints(monkeypatch):
     assert stop_response.status_code == 200
     assert stop_response.json()["status"]["running"] is False
     assert calls["set_settings"], "Expected settings updates when starting/stopping live refresh."
+
+
+def test_run_ingest_prefers_started_current_event_when_schedule_lacks_live_end_dates(monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    current_row = {
+        "event_id": "12",
+        "event_name": "RBC Heritage",
+        "course": "Harbour Town Golf Links",
+        "start_date": "2026-04-16",
+        "status": "upcoming",
+    }
+    future_row = {
+        "event_id": "18",
+        "event_name": "Zurich Classic of New Orleans",
+        "course": "TPC Louisiana",
+        "start_date": "2026-04-23",
+        "status": "upcoming",
+    }
+
+    monkeypatch.setattr(runtime, "_utc_now", lambda: datetime(2026, 4, 18, 2, 0, tzinfo=timezone.utc))
+
+    def fake_fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True):
+        if upcoming_only:
+            return [current_row, future_row]
+        return [current_row, future_row]
+
+    monkeypatch.setattr("src.datagolf.fetch_schedule", fake_fetch_schedule)
+    monkeypatch.setattr(
+        "src.datagolf.fetch_matchup_odds_with_diagnostics",
+        lambda market, tour="pga": ([], {"reason_code": "invalid_match_list_type"}),
+    )
+    monkeypatch.setattr("src.datagolf.get_latest_completed_event_info", lambda tour="pga", as_of=None: {})
+
+    summary = runtime._run_ingest("pga")
+
+    assert summary["live_event_active"] is True
+    assert summary["event_id"] == "12"
+    assert summary["event_name"] == "RBC Heritage"
+    assert summary["current_event_row"]["event_name"] == "RBC Heritage"
+    assert summary["upcoming_event_row"]["event_name"] == "Zurich Classic of New Orleans"
 
 
 def test_extract_matchups_normalizes_pick_schema():
@@ -444,6 +485,10 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
     monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
+    monkeypatch.setattr(runtime, "fetch_in_play_predictions", lambda **kwargs: {})
+    monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
+    monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
+    monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -835,6 +880,10 @@ def test_run_recompute_records_snapshot_history_and_market_rows(monkeypatch):
         lambda rows: captured["market_rows"].append(rows) or len(rows),
     )
     monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "fetch_in_play_predictions", lambda **kwargs: {})
+    monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
+    monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
+    monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -859,13 +908,66 @@ def test_run_recompute_records_snapshot_history_and_market_rows(monkeypatch):
     assert captured["market_rows"], "Expected market prediction rows to be persisted."
 
 
+def test_parse_in_play_leaderboard_handles_sample_payload():
+    from src.datagolf import parse_in_play_leaderboard
+
+    sample = {
+        "pga": [
+            {"player_name": "Scottie Scheffler", "total": -8, "win_prob": 0.22},
+            {"player_name": "Rory McIlroy", "total": -4, "win_prob": 0.11},
+        ]
+    }
+    rows, win_prob, note = parse_in_play_leaderboard(sample)
+    assert note is None
+    assert len(rows) == 2
+    assert rows[0]["player"] == "Scottie Scheffler"
+    assert win_prob.get("scottie_scheffler") == 0.22
+
+
+def test_build_live_point_in_time_rankings_adjusts_by_leaderboard():
+    from backtester import dashboard_runtime as runtime
+
+    composite = [
+        {
+            "player_key": "leader",
+            "player_display": "Leader",
+            "composite": 74.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+        {
+            "player_key": "trailer",
+            "player_display": "Trailer",
+            "composite": 74.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+    ]
+    leaderboard = [
+        {"player_key": "leader", "total_to_par": -6},
+        {"player_key": "trailer", "total_to_par": 3},
+    ]
+    rankings, source = runtime._build_live_point_in_time_rankings(
+        composite,
+        leaderboard,
+        finish_states={},
+        exclude_cut_players=False,
+        dg_win_prob=None,
+    )
+    assert source == "live_point_in_time_model_tournament_state"
+    assert rankings[0]["player_key"] == "leader"
+    assert rankings[0]["rank"] == 1
+
+
 def test_live_refresh_past_snapshot_endpoints(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr(
         app_module,
-        "list_past_snapshot_events",
+        "list_completed_snapshot_events",
         lambda limit=40: [{"event_id": "18", "event_name": "Zurich Classic", "latest_generated_at": "2026-04-17T20:00:00+00:00"}],
     )
     monkeypatch.setattr(

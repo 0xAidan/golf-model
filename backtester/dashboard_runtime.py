@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from src import db
+from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.live_refresh_policy import resolve_cadence
 from src.services.live_snapshot_service import run_snapshot_analysis
 
@@ -86,6 +87,13 @@ def _is_live_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
     if not start_date or not end_date:
         return False
     return start_date <= today <= end_date
+
+
+def _has_started_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
+    start_date = _parse_iso_date(event_row.get("start_date"))
+    if not start_date:
+        return False
+    return start_date <= today
 
 
 def _load_finish_state_map(event_id: str | None, *, year: int | None = None) -> dict[str, str]:
@@ -285,6 +293,128 @@ def _extract_rankings(
         if rank >= limit:
             break
     return rankings
+
+
+def _median_float(vals: list[float]) -> float:
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    if len(s) % 2 == 1:
+        return float(s[len(s) // 2])
+    mid = len(s) // 2
+    return (float(s[mid - 1]) + float(s[mid])) / 2.0
+
+
+def _build_live_point_in_time_rankings(
+    composite_results: list[dict],
+    leaderboard_rows: list[dict],
+    *,
+    finish_states: dict[str, str] | None,
+    exclude_cut_players: bool,
+    dg_win_prob: dict[str, float] | None,
+) -> tuple[list[dict], str]:
+    """
+    Re-rank pre-tournament composite scores using current tournament state (DG live or DB leaderboard).
+
+    When Data Golf in-play win probabilities are available, blend them into the sort key so the
+    live board tracks the event rather than static pre-tournament ordering.
+    """
+    finish_state_map = finish_states or {}
+    ttp_map: dict[str, int] = {}
+    for row in leaderboard_rows or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        if not pk:
+            continue
+        ttp = row.get("total_to_par")
+        if ttp is None:
+            continue
+        try:
+            ttp_map[pk] = int(ttp)
+        except (TypeError, ValueError):
+            continue
+    ttps = [float(v) for v in ttp_map.values()]
+    median_ttp = _median_float(ttps) if ttps else 0.0
+    scored: list[tuple[float, float, dict]] = []
+    for row in composite_results or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        if not pk:
+            continue
+        finish_state = finish_state_map.get(pk)
+        if exclude_cut_players and _is_cut_or_inactive(finish_state):
+            continue
+        base = float(row.get("composite") or 0)
+        ttp = ttp_map.get(pk)
+        if dg_win_prob and pk in dg_win_prob:
+            adjusted = base + 25.0 * float(dg_win_prob[pk])
+        else:
+            gap = median_ttp - float(ttp if ttp is not None else median_ttp)
+            adjusted = base + 0.12 * gap
+        scored.append((adjusted, base, row))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    rankings: list[dict] = []
+    rank = 0
+    for adjusted, base, row in scored[:30]:
+        rank += 1
+        pk = str(row.get("player_key") or "").strip().lower()
+        finish_state = finish_state_map.get(pk)
+        entry: dict[str, Any] = {
+            "rank": rank,
+            "player_key": row.get("player_key"),
+            "player": row.get("player_display"),
+            "composite": round(adjusted, 3),
+            "pre_tournament_composite": base,
+            "course_fit": row.get("course_fit"),
+            "form": row.get("form"),
+            "momentum": row.get("momentum"),
+            "momentum_direction": row.get("momentum_direction"),
+            "momentum_trend": row.get("momentum_trend"),
+            "course_confidence": row.get("course_confidence"),
+            "course_rounds": row.get("course_rounds"),
+            "weather_adjustment": row.get("weather_adjustment"),
+            "finish_state": finish_state,
+            "availability": row.get("availability"),
+            "form_flags": row.get("form_flags") or [],
+            "form_notes": row.get("form_notes") or [],
+        }
+        details = row.get("details")
+        if details:
+            entry["details"] = details
+        rankings.append(entry)
+    source_used = "live_point_in_time_model_dg_blend" if (
+        dg_win_prob
+        and scored
+        and any(
+            str(r.get("player_key") or "").strip().lower() in dg_win_prob for _, _, r in scored
+        )
+    ) else "live_point_in_time_model_tournament_state"
+    return rankings, source_used
+
+
+def _maybe_freeze_pre_teeoff(
+    *,
+    live_event_id: str,
+    tour: str,
+    live_event_name: str | None,
+    snapshot_id: str,
+    previous_snapshot: dict[str, Any] | None,
+) -> None:
+    """Freeze the last verified upcoming board for this event once it goes live."""
+    if not live_event_id or db.has_pre_teeoff_frozen(live_event_id):
+        return
+    cand = db.get_pre_teeoff_candidate_payload(live_event_id)
+    if not cand:
+        prev = (previous_snapshot or {}).get("upcoming_tournament") or {}
+        if str(prev.get("source_event_id") or "").strip() == str(live_event_id).strip():
+            cand = prev
+    if not cand:
+        return
+    db.insert_pre_teeoff_frozen(
+        live_event_id,
+        tour=tour,
+        event_name=str(cand.get("event_name") or live_event_name or "").strip() or None,
+        section_payload=cand,
+        source_snapshot_id=snapshot_id,
+    )
 
 
 _NON_BOOK_SOURCES = {"datagolf"}
@@ -728,6 +858,8 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     three_ball, three_ball_diag = fetch_matchup_odds_with_diagnostics(market="3_balls", tour=tour)
     now_date = _utc_now().date()
     live_row = next((row for row in full_schedule if _is_live_schedule_event(row, today=now_date)), None)
+    if not live_row:
+        live_row = next((row for row in upcoming_schedule if _has_started_schedule_event(row, today=now_date)), None)
     live_event_active = bool(live_row)
     current_row = live_row if live_row else (upcoming_schedule[0] if upcoming_schedule else {})
 
@@ -741,11 +873,20 @@ def _run_ingest(tour: str) -> dict[str, Any]:
         upcoming_row = next(
             (
                 row
-                for row in full_schedule
+                for row in upcoming_schedule
                 if _is_future_event(row) and str(row.get("event_id") or "") != str((live_row or {}).get("event_id") or "")
             ),
             None,
         )
+        if upcoming_row is None:
+            upcoming_row = next(
+                (
+                    row
+                    for row in full_schedule
+                    if _is_future_event(row) and str(row.get("event_id") or "") != str((live_row or {}).get("event_id") or "")
+                ),
+                None,
+            )
     else:
         upcoming_row = next((row for row in upcoming_schedule if _is_future_event(row)), None)
         if upcoming_row is None:
@@ -762,7 +903,7 @@ def _run_ingest(tour: str) -> dict[str, Any]:
             ),
             upcoming_row,
         )
-    context_row = live_row if live_row else (upcoming_row or current_row or {})
+    context_row = current_row or upcoming_row or {}
     return {
         "event_name": context_row.get("event_name"),
         "event_id": context_row.get("event_id"),
@@ -1162,12 +1303,46 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         errors=live_diag.get("errors"),
     )
     live_eligibility = base_section.get("eligibility") or {}
-    live_rankings = _extract_rankings(
+    pre_tournament_rankings = _extract_rankings(
         live_result.get("composite_results") or [],
         finish_states=finish_states,
         exclude_cut_players=live_is_active,
     )
+    live_rankings = pre_tournament_rankings
     live_ranking_source = "current_event_model"
+    live_point_in_time_source: str | None = None
+    dg_win_prob: dict[str, float] = {}
+    leaderboard_source = "rounds_table"
+    in_play_parse_note: str | None = None
+    dg_leaderboard: list[dict] = []
+    if live_is_active:
+        try:
+            raw_in_play = fetch_in_play_predictions(tour=tour)
+            dg_leaderboard, dg_win_prob, in_play_parse_note = parse_in_play_leaderboard(raw_in_play)
+            if dg_leaderboard:
+                leaderboard_source = "datagolf_in_play"
+        except Exception as exc:
+            _logger.warning("Data Golf in-play fetch failed: %s", exc)
+            in_play_parse_note = str(exc)
+    live_leaderboard = dg_leaderboard if dg_leaderboard else _load_event_leaderboard_rows(
+        live_source_event_id,
+        year=live_source_event_year,
+    )
+    if (
+        live_is_active
+        and live_eligibility.get("verified")
+        and (live_result.get("composite_results") or [])
+    ):
+        pit_rankings, pit_source = _build_live_point_in_time_rankings(
+            live_result.get("composite_results") or [],
+            live_leaderboard,
+            finish_states=finish_states,
+            exclude_cut_players=live_is_active,
+            dg_win_prob=dg_win_prob if dg_win_prob else None,
+        )
+        live_rankings = pit_rankings
+        live_point_in_time_source = pit_source
+        live_ranking_source = pit_source
     live_source_card_path = base_section.get("source_card_path")
     live_matchups = base_section.get("matchups") or []
     live_board_matchup_bets = base_section.get("matchup_bets") or []
@@ -1178,10 +1353,6 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     )
     live_value_bets = base_section.get("value_bets") or {}
     live_verification_error = base_section.get("verification_error")
-    live_leaderboard = _load_event_leaderboard_rows(
-        live_source_event_id,
-        year=live_source_event_year,
-    )
 
     if not live_eligibility.get("verified"):
         live_state = "eligibility_failed"
@@ -1249,7 +1420,12 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "event_name": live_event_name,
             "active": live_is_active,
             "leaderboard": live_leaderboard,
+            "leaderboard_source": leaderboard_source,
+            "in_play_parse_note": in_play_parse_note,
             "rankings": live_rankings,
+            "live_rankings": live_rankings,
+            "pre_tournament_rankings": pre_tournament_rankings,
+            "live_point_in_time_source": live_point_in_time_source,
             "matchups": live_matchups,
             "matchup_bets": live_board_matchup_bets,
             "matchup_bets_all_books": live_board_matchup_bets_all_books,
@@ -1286,6 +1462,29 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "upcoming_state": (upcoming_section.get("diagnostics") or {}).get("state"),
         },
     }
+    try:
+        upcoming_payload = snapshot.get("upcoming_tournament") or {}
+        upcoming_eid = str(upcoming_payload.get("source_event_id") or "").strip()
+        if upcoming_eid and (upcoming_payload.get("eligibility") or {}).get("verified"):
+            db.upsert_pre_teeoff_candidate(
+                upcoming_eid,
+                tour=tour,
+                event_name=str(upcoming_payload.get("event_name") or "").strip() or None,
+                section_payload=dict(upcoming_payload),
+            )
+    except Exception as exc:
+        _logger.warning("pre-teeoff candidate upsert failed: %s", exc)
+    if live_is_active and live_source_event_id:
+        try:
+            _maybe_freeze_pre_teeoff(
+                live_event_id=str(live_source_event_id),
+                tour=tour,
+                live_event_name=live_event_name,
+                snapshot_id=snapshot_id,
+                previous_snapshot=previous_snapshot,
+            )
+        except Exception as exc:
+            _logger.warning("pre-teeoff freeze failed: %s", exc)
     try:
         history_count = db.store_live_snapshot_sections(
             snapshot_id,

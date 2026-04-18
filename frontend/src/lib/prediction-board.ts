@@ -273,7 +273,7 @@ export function buildPredictionRunFromSection(
     }
   }
 
-  const rankings = source.rankings ?? []
+  const rankings = source.live_rankings ?? source.rankings ?? []
   const matchupBets = hydrateSnapshotMatchups(source)
   const matchupBetsAllBooks = hydrateSnapshotMatchupsAllBooks(source)
   const valueBets = hydrateSnapshotValueBets(source)

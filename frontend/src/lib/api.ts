@@ -41,7 +41,9 @@ export const api = {
   getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
   getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
   getLiveRefreshPastSnapshot: (eventId: string) =>
-    request<PastSnapshotResponse>(`/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=live`),
+    request<PastSnapshotResponse>(
+      `/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=completed`,
+    ),
   refreshLiveSnapshot: () =>
     request<LiveRefreshSnapshotResponse>("/api/live-refresh/refresh", {
       method: "POST",
