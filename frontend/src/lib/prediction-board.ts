@@ -1,4 +1,5 @@
 import type {
+  FlattenedSecondaryBet,
   LiveMatchupRow,
   LiveRefreshSnapshot,
   LiveTournamentSnapshot,
@@ -208,7 +209,7 @@ export function collectAvailableBooks(predictionRun: PredictionRunResponse | nul
   return Array.from(names).sort()
 }
 
-export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null) {
+export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null): FlattenedSecondaryBet[] {
   const entries = Object.entries(predictionRun?.value_bets ?? {})
   return entries
     .flatMap(([market, bets]) =>
@@ -217,6 +218,8 @@ export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null
         .map((bet) => ({
           market,
           player: bet.player_display ?? bet.player ?? "Unknown player",
+          player_display: bet.player_display ?? bet.player ?? "Unknown player",
+          player_key: bet.player_key,
           odds: normalizeOddsDisplay(bet.odds, bet.best_odds),
           ev: bet.ev,
           confidence: bet.confidence,

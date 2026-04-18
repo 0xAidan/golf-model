@@ -37,6 +37,7 @@ from src.db import (
     get_or_create_tournament, get_active_weights, get_all_players,
     get_conn, init_db, store_results, store_picks,
     list_past_snapshot_events, get_latest_snapshot_section, get_market_prediction_rows_for_event,
+    list_snapshot_timeline_points,
 )
 from src.models.composite import compute_composite
 from src.models.weights import retune, analyze_pick_performance, get_current_weights
@@ -1749,15 +1750,36 @@ async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=2
     return {"events": events}
 
 
+_LIVE_REFRESH_REPLAY_SECTIONS = {"live", "upcoming"}
+
+
+def _invalid_replay_section_response() -> JSONResponse:
+    return JSONResponse(
+        {"ok": False, "error": "section must be one of: live, upcoming"},
+        status_code=400,
+    )
+
+
+def _normalize_replay_section(section: str | None, *, allow_none: bool = False) -> str | None:
+    if section is None:
+        return None if allow_none else "live"
+    section_value = section.strip().lower()
+    if not section_value:
+        return "live"
+    if section_value not in _LIVE_REFRESH_REPLAY_SECTIONS:
+        return None
+    return section_value
+
+
 @app.get("/api/live-refresh/past-snapshot")
 async def get_live_refresh_past_snapshot(event_id: str = Query(..., min_length=1), section: str = Query(default="live")):
     """Return the latest stored snapshot section for a specific past event."""
     from src.db import ensure_initialized
 
     ensure_initialized()
-    section_value = section.strip().lower()
-    if section_value not in {"live", "upcoming"}:
-        return JSONResponse({"ok": False, "error": "section must be 'live' or 'upcoming'"}, status_code=400)
+    section_value = _normalize_replay_section(section)
+    if section_value is None:
+        return _invalid_replay_section_response()
 
     payload = get_latest_snapshot_section(event_id=event_id, section=section_value)
     if not payload:
@@ -1776,24 +1798,67 @@ async def get_live_refresh_past_snapshot(event_id: str = Query(..., min_length=1
     }
 
 
+@app.get("/api/live-refresh/past-timeline")
+async def get_live_refresh_past_timeline(
+    event_id: str = Query(..., min_length=1),
+    section: str = Query(default="live"),
+    limit: int = Query(default=120, ge=1, le=1000),
+):
+    """Return ordered replay timeline points for a past event section."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    section_value = _normalize_replay_section(section)
+    if section_value is None:
+        return _invalid_replay_section_response()
+
+    points = list_snapshot_timeline_points(event_id=event_id, section=section_value, limit=limit)
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "section": section_value,
+        "point_count": len(points),
+        "points": points,
+    }
+
+
 @app.get("/api/live-refresh/past-market-rows")
 async def get_live_refresh_past_market_rows(
     event_id: str = Query(..., min_length=1),
     market_family: str | None = Query(default=None),
-    section: str | None = Query(default=None),
+    section: str | None = Query(default="live"),
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
     """Return persisted matchup/placement rows for post-event analysis."""
     from src.db import ensure_initialized
 
     ensure_initialized()
+    section_value = _normalize_replay_section(section)
+    if section_value is None:
+        return _invalid_replay_section_response()
     rows = get_market_prediction_rows_for_event(
         event_id=event_id,
         market_family=market_family,
-        section=section,
+        section=section_value,
         limit=limit,
     )
-    return {"event_id": event_id, "rows": rows}
+    normalized_rows = []
+    for row in rows:
+        normalized_rows.append(
+            {
+                **row,
+                "is_value": row.get("is_value"),
+                "is_value_bool": bool(row.get("is_value")),
+            }
+        )
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "market_family": market_family,
+        "section": section_value,
+        "row_count": len(normalized_rows),
+        "rows": normalized_rows,
+    }
 
 
 @app.get("/api/live-refresh/snapshot")

@@ -4,8 +4,10 @@ import type {
   GradingHistoryResponse,
   LiveRefreshSnapshotResponse,
   LiveRefreshStatusResponse,
+  PastMarketRowsResponse,
   PastSnapshotEventsResponse,
   PastSnapshotResponse,
+  PastTimelineResponse,
   PlayerProfile,
   PredictionRunRequest,
   PredictionRunResponse,
@@ -40,8 +42,45 @@ export const api = {
   getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
   getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
   getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
-  getLiveRefreshPastSnapshot: (eventId: string) =>
-    request<PastSnapshotResponse>(`/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=live`),
+  getLiveRefreshPastSnapshot: (eventId: string, section: "live" | "upcoming" = "live") =>
+    request<PastSnapshotResponse>(
+      `/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=${encodeURIComponent(section)}`,
+    ),
+  getLiveRefreshPastTimeline: (
+    eventId: string,
+    options?: { section?: "live" | "upcoming"; limit?: number },
+  ) => {
+    const params = new URLSearchParams({
+      event_id: eventId,
+      section: options?.section ?? "live",
+    })
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit))
+    }
+    return request<PastTimelineResponse>(`/api/live-refresh/past-timeline?${params.toString()}`)
+  },
+  getLiveRefreshPastMarketRows: (
+    eventId: string,
+    options?: {
+      marketFamily?: "matchup" | "placement" | string
+      section?: "live" | "upcoming"
+      limit?: number
+    },
+  ) => {
+    const params = new URLSearchParams({
+      event_id: eventId,
+    })
+    if (options?.marketFamily) {
+      params.set("market_family", options.marketFamily)
+    }
+    if (options?.section) {
+      params.set("section", options.section)
+    }
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit))
+    }
+    return request<PastMarketRowsResponse>(`/api/live-refresh/past-market-rows?${params.toString()}`)
+  },
   refreshLiveSnapshot: () =>
     request<LiveRefreshSnapshotResponse>("/api/live-refresh/refresh", {
       method: "POST",
