@@ -1,7 +1,7 @@
 """Tests for live refresh policy and API endpoints."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
@@ -131,6 +131,45 @@ def test_live_refresh_start_and_stop_endpoints(monkeypatch):
     assert stop_response.status_code == 200
     assert stop_response.json()["status"]["running"] is False
     assert calls["set_settings"], "Expected settings updates when starting/stopping live refresh."
+
+
+def test_run_ingest_prefers_started_current_event_when_schedule_lacks_live_end_dates(monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    current_row = {
+        "event_id": "12",
+        "event_name": "RBC Heritage",
+        "course": "Harbour Town Golf Links",
+        "start_date": "2026-04-16",
+        "status": "upcoming",
+    }
+    future_row = {
+        "event_id": "18",
+        "event_name": "Zurich Classic of New Orleans",
+        "course": "TPC Louisiana",
+        "start_date": "2026-04-23",
+        "status": "upcoming",
+    }
+
+    monkeypatch.setattr(runtime, "_utc_now", lambda: datetime(2026, 4, 18, 2, 0, tzinfo=timezone.utc))
+
+    def fake_fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True):
+        return [current_row, future_row]
+
+    monkeypatch.setattr("src.datagolf.fetch_schedule", fake_fetch_schedule)
+    monkeypatch.setattr(
+        "src.datagolf.fetch_matchup_odds_with_diagnostics",
+        lambda market, tour="pga": ([], {"reason_code": "invalid_match_list_type"}),
+    )
+    monkeypatch.setattr("src.datagolf.get_latest_completed_event_info", lambda tour="pga", as_of=None: {})
+
+    summary = runtime._run_ingest("pga")
+
+    assert summary["live_event_active"] is True
+    assert summary["event_id"] == "12"
+    assert summary["event_name"] == "RBC Heritage"
+    assert summary["current_event_row"]["event_name"] == "RBC Heritage"
+    assert summary["upcoming_event_row"]["event_name"] == "Zurich Classic of New Orleans"
 
 
 def test_extract_matchups_normalizes_pick_schema():
