@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 340" 
+     width="200" height="340"
+     role="img" aria-label="Hole 11 — Par 5, 558 yards">
+  <rect width="200" height="340" fill="#0a1a0a"/>
+  <polygon points="84.0,20.4 116.0,20.4 112.0,118.99999999999999 88.0,118.99999999999999" fill="#1a3320" opacity="0.95"/>
+  <polygon points="88.0,112.2 112.0,112.2 74.0,176.8 50.0,176.8" fill="#1a3320" opacity="0.95"/>
+  <polygon points="92.0,149.6 72.0,149.6 74.0,190.4 96.0,183.60000000000002" fill="#1a3320" opacity="0.95"/>
+  <polygon points="50.0,176.8 74.0,170.0 140.0,221.0 120.0,227.8" fill="#1a3320" opacity="0.95"/>
+  <polygon points="66.0,204.0 140.0,204.0 142.0,258.4 62.0,251.6" fill="#1a3320" opacity="0.95"/>
+  <rect x="42.0" y="183.60000000000002" width="16" height="74.8" rx="4" fill="#0a1e30" opacity="0.9"/>
+  <ellipse cx="130.0" cy="285.59999999999997" rx="22" ry="15" fill="#1a5c30" transform="rotate(0,130.0,285.59999999999997)"/>
+  <line x1="130.0" y1="277.59999999999997" x2="130.0" y2="265.59999999999997" stroke="#e8ecef" stroke-width="1.2"/>
+  <polygon points="130.0,265.59999999999997 139.0,270.59999999999997 130.0,275.59999999999997" fill="#22c55e"/>
+  <ellipse cx="104.0" cy="289.59999999999997" rx="9" ry="6" fill="#7a6445" opacity="0.85"/>
+  <ellipse cx="154.0" cy="282.59999999999997" rx="8" ry="5" fill="#7a6445" opacity="0.85"/>
+  <circle cx="100.0" cy="13.6" r="4" fill="#f5b418"/>
+  <text x="6" y="326" font-family="'JetBrains Mono',monospace" font-size="8" fill="#374349">558y</text>
+  <text x="6" y="335" font-family="'JetBrains Mono',monospace" font-size="8" fill="#374349">P5</text>
+</svg>

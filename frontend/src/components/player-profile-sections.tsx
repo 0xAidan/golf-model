@@ -223,7 +223,7 @@ function PillGroup<T extends string>({
   onSelect: (v: T) => void
 }) {
   const activeStyle = {
-    cyan:  { background: "rgba(34,211,238,0.12)", color: "var(--cyan)",  border: "1px solid rgba(34,211,238,0.25)" },
+    cyan:  { background: "rgba(34,197,94,0.15)",  color: "var(--green)", border: "1px solid rgba(34,197,94,0.35)" },
     green: { background: "rgba(34,197,94,0.12)",  color: "var(--green)", border: "1px solid rgba(34,197,94,0.25)" },
     gold:  { background: "rgba(245,180,24,0.10)", color: "var(--gold)",  border: "1px solid rgba(245,180,24,0.25)" },
   }[color]
@@ -415,7 +415,7 @@ function RollingFormSection({ profile }: { profile?: PlayerProfile }) {
           <div style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
             Window
           </div>
-          <PillGroup options={WINDOW_OPTS} active={window} color="cyan" onSelect={setWindow}
+          <PillGroup options={WINDOW_OPTS} active={window} color="green" onSelect={setWindow}
             labels={{ "10": "L10", "25": "L25", "50": "L50" } as Record<RollingWindow, string>}
           />
         </div>
@@ -526,7 +526,7 @@ function CourseEventSection({ profile }: { profile?: PlayerProfile }) {
       {courseValues.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <ChartLabel>Course History SG Trend</ChartLabel>
-          <SparklineChart values={courseValues} color="var(--cyan)" height={70} />
+          <SparklineChart values={courseValues} color="var(--green)" height={70} />
         </div>
       )}
 
@@ -618,7 +618,7 @@ function BettingSection({ profile }: { profile?: PlayerProfile }) {
                       {bet.player_display}{bet.opponent_display ? ` vs ${bet.opponent_display}` : ""}
                     </div>
                   </td>
-                  <td style={{ fontWeight: 600, fontFamily: "var(--font-mono)", color: VAR.cyan }}>{bet.market_odds ?? "—"}</td>
+                  <td style={{ fontWeight: 600, fontFamily: "var(--font-mono)", color: VAR.green }}>{bet.market_odds ?? "—"}</td>
                   <td className="right num" style={{ fontWeight: 700, color: toneColor(tone) }}>{signed(bet.ev)}</td>
                   <td>
                     <span className={`tier-badge ${(bet.confidence ?? "LEAN").toUpperCase()}`}>
@@ -669,7 +669,7 @@ export function PlayerProfileSections({
           gap: 8,
         }}
       >
-        <span style={{ animation: "pulse-glow 1.8s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "var(--cyan)" }} />
+        <span style={{ animation: "pulse-glow 1.8s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
         Loading profile…
       </div>
     )

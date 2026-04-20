@@ -9,7 +9,7 @@ import { normalizeSportsbook } from "@/lib/prediction-board"
 
 const TIER_STYLE: Record<string, string> = {
   STRONG: "bg-emerald-400/12 text-emerald-300",
-  GOOD: "bg-cyan-400/12 text-cyan-200",
+  GOOD: "bg-green-500/12 text-green-400",
   LEAN: "bg-slate-400/10 text-slate-400",
 }
 
@@ -38,7 +38,7 @@ export function InfoRow({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-      <div className="rounded-xl bg-white/6 p-2 text-cyan-200">
+      <div className="rounded-xl bg-white/6 p-2 text-green-400">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -66,7 +66,7 @@ export function SelectablePlayerName({
     <Button
       type="button"
       variant="link"
-      className="h-auto p-0 font-medium text-white underline decoration-transparent underline-offset-4 transition hover:text-cyan-200 hover:decoration-cyan-300"
+      className="h-auto p-0 font-medium text-white underline decoration-transparent underline-offset-4 transition hover:text-green-400 hover:decoration-green-400"
       onClick={() => onSelect(playerKey)}
     >
       {label}
@@ -75,7 +75,7 @@ export function SelectablePlayerName({
 }
 
 export function ChartColumnIcon() {
-  return <div className="h-4 w-4 rounded-full bg-cyan-300/80" aria-hidden="true" />
+  return <div className="h-4 w-4 rounded-full bg-green-400/80" aria-hidden="true" />
 }
 
 export function buildMatchupKey(matchup: MatchupBet) {

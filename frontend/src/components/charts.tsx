@@ -9,7 +9,7 @@ const T = {
   muted:    "#6b7a84",
   faint:    "#374349",
   green:    "#22c55e",
-  cyan:     "#22d3ee",
+  cyan:     "#22c55e",
   gold:     "#f5b418",
   red:      "#ef4444",
   amber:    "#f59e0b",
@@ -375,7 +375,7 @@ export function ApproachBucketsChart({
             data: fw.map((b) => ({
               value: b.value,
               itemStyle: {
-                color: b.value >= 0 ? `${T.cyan}cc` : `${T.red}99`,
+                color: b.value >= 0 ? `${T.green}cc` : `${T.red}99`,
                 borderRadius: [2, 2, 0, 0],
               },
             })),
@@ -416,7 +416,7 @@ export function TournamentHistoryChart({
   events,
   height = 160,
 }: {
-  events: Array<{ event_name: string; avg_sg_total: number | null; fin_text?: string | null }>
+  events: Array<{ event_name: string; avg_sg_total?: number | null; fin_text?: string | null }>
   height?: number
 }) {
   const filtered = events.filter((e) => e.avg_sg_total != null).slice(0, 16).reverse()
@@ -431,7 +431,7 @@ export function TournamentHistoryChart({
   const values = filtered.map((e) => e.avg_sg_total!)
 
   const itemColors = values.map((v) =>
-    v >= 1.5 ? T.green : v >= 0.5 ? `${T.green}99` : v >= 0 ? `${T.cyan}88` : v >= -0.5 ? `${T.amber}99` : T.red
+    v >= 1.5 ? T.green : v >= 0.5 ? `${T.green}99` : v >= 0 ? `${T.green}55` : v >= -0.5 ? `${T.amber}99` : T.red
   )
 
   return (

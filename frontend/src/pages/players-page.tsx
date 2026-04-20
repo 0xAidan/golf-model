@@ -8,12 +8,13 @@ import { useQuery } from "@tanstack/react-query"
 import { Search, User, ChevronRight, X } from "lucide-react"
 
 import {
-  SgSkillBarsChart,
-  SgRollingChart,
-  ApproachBucketsChart,
-  TournamentHistoryChart,
-  SparklineChart,
-} from "@/components/charts"
+  PentagonRadar,
+  BeeswarmStrip,
+  RollingBarLine,
+  ApproachArcGauges,
+  HistoryTable,
+} from "@/components/charts-v2"
+import type { BeeswarmCategory, RollingEvent, ApproachBucket } from "@/components/charts-v2"
 import { api } from "@/lib/api"
 import type { CompositePlayer, StandalonePlayerProfile } from "@/lib/types"
 
@@ -322,7 +323,7 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
   if (profileQuery.isLoading) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10 }}>
-        <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--cyan)", animation: "pulse-glow 1.8s ease-in-out infinite" }} />
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", animation: "pulse-glow 1.8s ease-in-out infinite" }} />
         <div style={{ fontFamily: VAR.mono, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.faint }}>
           Loading {playerDisplay}…
         </div>
@@ -416,171 +417,125 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
       {/* ── Main content ─────────────────────────────────────────── */}
       <div style={{ flex: 1, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-        {/* ── Row 1: SG Skills + Driving ─────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 12 }}>
+        {/* ── Row 1: Pentagon Radar + KPI sidebar ────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
 
-          {/* SG Skill Bars */}
+          {/* Pentagon Radar */}
           <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
             <div className="panel-header">
-              <span className="panel-label">SG Skill Profile</span>
-              <span className="panel-label-dim">Strokes gained per round vs tour average (0.000)</span>
+              <span className="panel-label">Skill Profile</span>
+              <span className="panel-label-dim">Five-axis radar — shape reveals game identity vs tour average</span>
             </div>
             <div style={{ padding: 12 }}>
-              {sgSkills.length > 0 ? (
-                <SgSkillBarsChart skills={sgSkills} height={Math.max(130, sgSkills.length * 30 + 20)} />
-              ) : (
-                <div style={{ padding: "20px 0", fontFamily: VAR.mono, fontSize: 9, color: VAR.faint, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                  SG skill data not available — requires active DataGolf API key
-                </div>
-              )}
+              <PentagonRadar
+                skills={p.sg_skills}
+                playerName={p.player_display}
+                height={240}
+              />
             </div>
           </div>
 
-          {/* Driving + meta stats */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontFamily: VAR.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.muted, marginBottom: 2 }}>
-              Driving
-            </div>
+          {/* Driving + KPI sidebar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint }}>DRIVING</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
               <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} />
               <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} />
             </div>
-
-            <div style={{ fontFamily: VAR.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.muted, marginTop: 4, marginBottom: 2 }}>
-              Rolling Form
-            </div>
-            <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-              {WINDOWS.map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => setRollingWindow(w)}
-                  style={{
-                    flex: 1,
-                    padding: "4px 0",
-                    borderRadius: "var(--r-sm)",
-                    fontFamily: VAR.mono,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    cursor: "pointer",
-                    border: "1px solid",
-                    transition: "all 120ms",
-                    ...(w === rollingWindow
-                      ? { background: "rgba(34,211,238,0.12)", color: "var(--cyan)", borderColor: "rgba(34,211,238,0.25)" }
-                      : { background: "transparent", color: VAR.muted, borderColor: VAR.border }),
-                  }}
-                >
-                  L{w}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <MetricCard
-                label={`Avg SG (L${rollingWindow})`}
-                value={signed(windowValue)}
-                tone={tone(windowValue)}
-                sub="strokes / round"
-              />
-              <MetricCard
-                label="Trend"
-                value={p.trend_series.length > 1
-                  ? signed((p.trend_series[p.trend_series.length - 1] ?? 0) - (p.trend_series[0] ?? 0))
-                  : "—"}
-                tone={p.trend_series.length > 1
-                  ? tone((p.trend_series[p.trend_series.length - 1] ?? 0) - (p.trend_series[0] ?? 0))
-                  : "neutral"}
-                sub="recent vs oldest"
-              />
-            </div>
-
-            {/* Mini sparkline */}
-            {p.trend_series.length > 3 && (
-              <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "8px 10px", marginTop: 4 }}>
-                <div style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
-                  SG Trend (last {Math.min(p.trend_series.length, 50)} rounds)
+            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginTop: 4 }}>ROLLING WINDOWS</div>
+            {(["10", "25", "50"] as const).map(w => {
+              const val = p.rolling_windows?.[w]
+              const t = tone(val)
+              return (
+                <div key={w} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: VAR.bg2, border: `1px solid ${VAR.border}`, borderRadius: 3 }}>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em" }}>L{w}</span>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 13, fontWeight: 700, color: val != null ? (t === "positive" ? "var(--green)" : t === "negative" ? "var(--red)" : VAR.muted) : VAR.faint }}>
+                    {val != null ? signed(val) : "—"}
+                  </span>
                 </div>
-                <SparklineChart values={p.trend_series.slice(-50)} color="var(--cyan)" height={60} />
-              </div>
-            )}
+              )
+            })}
           </div>
         </div>
 
-        {/* ── Row 2: Full Rolling Form Chart ─────────────────────── */}
-        {p.trend_series.length > 0 && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Rolling SG Form</span>
-              <span className="panel-label-dim">SG/round per round (oldest → newest) — dashed = tour avg (0.000)</span>
-            </div>
-            <div style={{ padding: 12 }}>
-              <SgRollingChart values={p.trend_series} height={170} />
-            </div>
+        {/* ── Row 2: Beeswarm field distribution ─────────────────── */}
+        <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+          <div className="panel-header">
+            <span className="panel-label">Field Distribution</span>
+            <span className="panel-label-dim">Player position (green) vs field (grey dots) — quartile ticks at 25/50/75th pct</span>
           </div>
-        )}
-
-        {/* ── Row 3: Approach Buckets ─────────────────────────────── */}
-        {p.approach_buckets.length > 0 && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Approach — Distance Buckets</span>
-              <span className="panel-label-dim">SG per shot by yardage band and lie (fairway vs rough)</span>
-            </div>
-            <div style={{ padding: 12 }}>
-              <ApproachBucketsChart buckets={p.approach_buckets} height={180} />
-            </div>
+          <div style={{ padding: "10px 12px" }}>
+            <BeeswarmStrip
+              categories={[
+                { label: "Total SG",      shortLabel: "TOTAL",   playerValue: p.sg_skills.sg_total },
+                { label: "Approach",       shortLabel: "APP",     playerValue: p.sg_skills.sg_app },
+                { label: "Around Green",   shortLabel: "ARG",     playerValue: p.sg_skills.sg_arg },
+                { label: "Putting",         shortLabel: "PUTT",    playerValue: p.sg_skills.sg_putt },
+                { label: "Off the Tee",    shortLabel: "OTT",     playerValue: p.sg_skills.sg_ott },
+              ] satisfies BeeswarmCategory[]}
+              height={260}
+            />
           </div>
-        )}
+        </div>
 
-        {/* ── Row 4: Tournament History ────────────────────────────── */}
+        {/* ── Row 3: Rolling Bar + Line (event history) ──────────── */}
         {p.recent_events.length > 0 && (
           <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
             <div className="panel-header">
-              <span className="panel-label">Recent Events</span>
-              <span className="panel-label-dim">Avg SG/round per event · green = elite, red = poor/missed cut</span>
+              <span className="panel-label">Event Form</span>
+              <span className="panel-label-dim">Per-event SG bars + moving average — switch stat with tabs</span>
             </div>
             <div style={{ padding: 12 }}>
-              <TournamentHistoryChart events={p.recent_events} height={160} />
+              <RollingBarLine
+                events={p.recent_events as RollingEvent[]}
+                height={180}
+                maWindow={5}
+              />
             </div>
+          </div>
+        )}
 
-            {/* Summary table */}
-            <div style={{ borderTop: `1px solid ${VAR.border}`, overflow: "hidden" }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Event</th>
-                    <th>Date</th>
-                    <th className="center">Finish</th>
-                    <th className="right">Avg SG</th>
-                    <th className="right">Rounds</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {p.recent_events.slice(0, 12).map((evt, i) => {
-                    const sg = evt.avg_sg_total
-                    const t = tone(sg)
-                    return (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 600, color: VAR.text }}>{evt.event_name}</td>
-                        <td style={{ color: VAR.faint, fontSize: 11 }}>{evt.event_completed ?? "—"}</td>
-                        <td className="center">
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: VAR.muted }}>
-                            {evt.fin_text ?? "—"}
-                          </span>
-                        </td>
-                        <td className="right num" style={{ fontWeight: 700, color: toneColor(t) }}>
-                          {signed(sg)}
-                        </td>
-                        <td className="right num" style={{ color: VAR.faint, fontSize: 11 }}>
-                          {evt.rounds_played ?? "—"}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+        {/* ── Row 4: Approach Arc Gauges ──────────────────────────── */}
+        {p.approach_buckets.length > 0 && (() => {
+          // Parse the approach_buckets (FW/Rough pairs) into ApproachBucket[]  
+          const bucketMap: Record<string, { fw?: number; rgh?: number }> = {}
+          for (const b of p.approach_buckets) {
+            const isFw  = b.label.toLowerCase().includes("fw") || b.key.toLowerCase().includes("_fw")
+            const range = b.label.replace(/ ?FW| ?Rgh| ?Rough/gi, "").trim()
+            if (!bucketMap[range]) bucketMap[range] = {}
+            if (isFw) bucketMap[range].fw  = b.value
+            else       bucketMap[range].rgh = b.value
+          }
+          const arcBuckets: ApproachBucket[] = Object.entries(bucketMap)
+            .filter(([, v]) => v.fw != null || v.rgh != null)
+            .map(([label, v]) => ({ label, fw_sg: v.fw ?? 0, rgh_sg: v.rgh ?? 0 }))
+
+          if (!arcBuckets.length) return null
+          return (
+            <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+              <div className="panel-header">
+                <span className="panel-label">Approach by Distance</span>
+                <span className="panel-label-dim">Semicircle arc per yardage bucket — tick marks = tour average</span>
+              </div>
+              <div style={{ padding: 12 }}>
+                <ApproachArcGauges buckets={arcBuckets} />
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ── Row 5: Tournament History Table ────────────────────── */}
+        {p.recent_events.length > 0 && (
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+            <div className="panel-header">
+              <span className="panel-label">Tournament History</span>
+              <span className="panel-label-dim">Win = gold · Top 10 = green · MC = red — inline SG bars per category</span>
+            </div>
+            <div style={{ padding: 12 }}>
+              <HistoryTable
+                events={p.recent_events as any[]}
+                maxRows={10}
+              />
             </div>
           </div>
         )}

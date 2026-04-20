@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, CircleAlert, NotebookPen, Radar, ShieldAlert, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
+import { CourseGuide } from "@/components/course-guide"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { api } from "@/lib/api"
+import { eventToCourseKey, COURSE_MAP, ALL_COURSES } from "@/lib/course-data"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import type {
@@ -346,13 +348,17 @@ export function CoursePage({
 }) {
   const topPlayers = players.slice(0, 10)
 
+  // Resolve the active course from the event name, fall back to Augusta
+  const courseKey = eventToCourseKey(predictionRun?.event_name)
+  const activeCourse = (courseKey ? COURSE_MAP[courseKey] : null) ?? ALL_COURSES[0]
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <PageHeader title="Course Profile" description="Event and field quality diagnostics." />
 
       {/* KPI strip */}
       <div className="kpi-grid">
-        <div className="kpi-tile cyan">
+        <div className="kpi-tile green">
           <div className="kpi-label">Event</div>
           <div className="kpi-value" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
             {predictionRun?.event_name ?? "—"}
@@ -387,6 +393,17 @@ export function CoursePage({
         </div>
       </div>
 
+      {/* Hole-by-hole course guide */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">Hole-by-Hole Guide</div>
+          <div className="card-desc">{activeCourse.name} · {activeCourse.location}</div>
+        </div>
+        <div className="card-body">
+          <CourseGuide course={activeCourse} />
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16 }}>
         {/* Field-fit chart */}
         <div className="card">
@@ -399,7 +416,7 @@ export function CoursePage({
               <BarTrendChart
                 labels={topPlayers.map((p) => p.player_display.split(" ").pop() ?? p.player_display)}
                 values={topPlayers.map((p) => p.composite)}
-                color="#22D3EE"
+                color="#22c55e"
               />
             ) : (
               <EmptyState message="Run a prediction to populate field-fit distributions." />

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 340" 
+     width="200" height="340"
+     role="img" aria-label="Hole 18 — Par 4, 441 yards">
+  <rect width="200" height="340" fill="#0a1a0a"/>
+  <polygon points="82.0,27.2 118.0,27.2 114.0,163.2 86.0,163.2" fill="#1a3320" opacity="0.95"/>
+  <polygon points="86.0,143.2 114.0,143.2 82.0,204.0 58.0,204.0" fill="#1a3320" opacity="0.95"/>
+  <polygon points="56.0,197.2 110.0,180.20000000000002 106.0,224.39999999999998 52.0,237.99999999999997" fill="#1a3320" opacity="0.95"/>
+  <rect x="4" y="180.20000000000002" width="30.0" height="118.99999999999999" rx="5" fill="#0a1e30" opacity="0.9"/>
+  <ellipse cx="68.0" cy="285.59999999999997" rx="22" ry="16" fill="#1a5c30" transform="rotate(0,68.0,285.59999999999997)"/>
+  <line x1="68.0" y1="277.59999999999997" x2="68.0" y2="265.59999999999997" stroke="#e8ecef" stroke-width="1.2"/>
+  <polygon points="68.0,265.59999999999997 77.0,270.59999999999997 68.0,275.59999999999997" fill="#22c55e"/>
+  <ellipse cx="96.0" cy="280.59999999999997" rx="9" ry="6" fill="#7a6445" opacity="0.85"/>
+  <ellipse cx="42.0" cy="290.59999999999997" rx="8" ry="5" fill="#7a6445" opacity="0.85"/>
+  <circle cx="100.0" cy="17.0" r="4" fill="#f5b418"/>
+  <text x="6" y="326" font-family="'JetBrains Mono',monospace" font-size="8" fill="#374349">441y</text>
+  <text x="6" y="335" font-family="'JetBrains Mono',monospace" font-size="8" fill="#374349">P4</text>
+</svg>

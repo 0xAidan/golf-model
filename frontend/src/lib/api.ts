@@ -12,6 +12,7 @@ import type {
   PredictionRunRequest,
   PredictionRunResponse,
   ResearchProposal,
+  StandalonePlayerProfile,
   TrackRecordResponse,
 } from "@/lib/types"
 
