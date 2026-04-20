@@ -105,8 +105,9 @@ SETUP_EOF
         # Build frontend bundle when present so / serves the latest React UI
         if [ -f "frontend/package.json" ]; then
             cd frontend
-            npm ci --silent
-            npm run build --silent
+            export NODE_OPTIONS=--max-old-space-size=2048
+            npm ci 2>&1 | tail -5
+            npm run build 2>&1 | tail -10
             cd /opt/golf-model
         fi
 CLONE_EOF
@@ -257,8 +258,9 @@ update_server() {
         # Build frontend bundle when present so / serves the latest React UI
         if [ -f "frontend/package.json" ]; then
             cd frontend
-            npm ci --silent
-            npm run build --silent
+            export NODE_OPTIONS=--max-old-space-size=2048
+            npm ci 2>&1 | tail -5
+            npm run build 2>&1 | tail -10
             cd "$DEPLOY_PATH"
         fi
 

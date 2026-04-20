@@ -10,5 +10,6 @@ output/archive/
 output/research/
 .DS_Store
 *.egg-info/
-dist/
 build/
+# frontend/dist is committed so the VPS doesn't need to rebuild
+!frontend/dist/
