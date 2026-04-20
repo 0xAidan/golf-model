@@ -604,3 +604,40 @@ export type ResearchProposal = {
   created_at?: string
   expected_edge?: number
 }
+
+export type StandalonePlayerProfile = {
+  player_key: string
+  player_display: string
+  header: {
+    player_display: string
+    dg_rank?: number | null
+    owgr_rank?: number | null
+    dg_skill_estimate?: number | null
+    primary_tour?: string | null
+    rounds_in_db?: number
+    events_tracked?: number
+  }
+  sg_skills: {
+    sg_total?: number | null
+    sg_ott?: number | null
+    sg_app?: number | null
+    sg_arg?: number | null
+    sg_putt?: number | null
+    driving_dist?: number | null
+    driving_acc?: number | null
+  }
+  approach_buckets: Array<{ key: string; label: string; value: number }>
+  rolling_windows: { "10"?: number | null; "25"?: number | null; "50"?: number | null }
+  trend_series: number[]
+  recent_events: Array<{
+    event_name: string
+    event_completed?: string | null
+    fin_text?: string | null
+    avg_sg_total?: number | null
+    rounds_played?: number
+  }>
+  ranking_data?: Record<string, unknown> | null
+  has_skill_data: boolean
+  has_ranking_data: boolean
+  has_approach_data: boolean
+}

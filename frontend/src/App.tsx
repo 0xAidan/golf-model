@@ -24,9 +24,9 @@ import {
   CoursePage,
   GradingPage,
   MatchupsPage,
-  PlayersPage,
   TrackRecordPage,
 } from "@/pages/legacy-routes"
+import { PlayersPage } from "@/pages/players-page"
 import { PredictionWorkspacePage } from "@/pages/prediction-workspace-page"
 
 const DEFAULT_REQUEST: PredictionRunRequest = {
@@ -316,12 +316,9 @@ function App() {
         <Route
           path="/players"
           element={
-            <LegacyRouteGate route="players" mode={predictionTab}><div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><PlayersPage
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}><PlayersPage
                 players={players}
-                selectedPlayerProfile={playerProfileQuery.data}
-                onPlayerSelect={setSelectedPlayerKey}
-                richProfilesEnabled={RICH_PLAYER_PROFILES_ENABLED}
-              /></div></LegacyRouteGate>
+              /></div>
           }
         />
         <Route

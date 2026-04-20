@@ -36,6 +36,10 @@ export const api = {
     request<PlayerProfile>(
       `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum === undefined || courseNum === null ? "" : `&course_num=${courseNum}`}`,
     ),
+  getPlayerStandaloneProfile: (playerKey: string) =>
+    request<StandalonePlayerProfile>(`/api/players/${playerKey}/standalone-profile`),
+  searchPlayers: (q: string) =>
+    request<{ players: Array<{ player_key: string; player_display: string }> }>(`/api/players/search?q=${encodeURIComponent(q)}`),
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),
   getResearchProposals: () => request<ResearchProposal[]>("/api/research/proposals?limit=12"),
   getAutoresearchStatus: () => request<Record<string, unknown>>("/api/autoresearch/status"),

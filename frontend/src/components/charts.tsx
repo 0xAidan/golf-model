@@ -1,109 +1,558 @@
 import ReactECharts from "echarts-for-react"
 
+/* ─── Design tokens (match index.css) ───────────────────────────────── */
+const T = {
+  bg:       "#0d1012",
+  surface:  "#141719",
+  border:   "#1f2426",
+  text:     "#e8ecef",
+  muted:    "#6b7a84",
+  faint:    "#374349",
+  green:    "#22c55e",
+  cyan:     "#22d3ee",
+  gold:     "#f5b418",
+  red:      "#ef4444",
+  amber:    "#f59e0b",
+  mono:     "'JetBrains Mono', 'Fira Code', monospace",
+}
+
+const TOOLTIP_STYLE = {
+  backgroundColor: T.bg,
+  borderColor: T.border,
+  borderWidth: 1,
+  textStyle: { color: T.text, fontSize: 11, fontFamily: T.mono },
+  extraCssText: "border-radius:3px;box-shadow:0 4px 16px rgba(0,0,0,0.5);",
+}
+
+/* ─── Empty placeholder ─────────────────────────────────────────────── */
+function ChartEmpty({ height = 120, message = "No data available" }: { height?: number; message?: string }) {
+  return (
+    <div
+      style={{
+        height,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: T.surface,
+        border: `1px dashed ${T.border}`,
+        borderRadius: 3,
+        fontFamily: T.mono,
+        fontSize: 10,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: T.faint,
+      }}
+    >
+      {message}
+    </div>
+  )
+}
+
+/* ─── 1. Sparkline ──────────────────────────────────────────────────── */
 export function SparklineChart({
   values,
-  color,
+  color = T.cyan,
+  height = 80,
+  showZeroLine = true,
 }: {
   values: number[]
-  color: string
+  color?: string
+  height?: number
+  showZeroLine?: boolean
 }) {
-  if (!values.length) {
-    return <div className="h-[110px] rounded-xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-xs text-slate-400">No trend data yet.</div>
-  }
+  if (!values.length) return <ChartEmpty height={height} />
+
+  const hasNegative = values.some((v) => v < 0)
+  const markLine = showZeroLine && hasNegative
+    ? {
+        silent: true,
+        symbol: ["none", "none"],
+        lineStyle: { color: T.border, width: 1, type: "solid" },
+        data: [{ yAxis: 0 }],
+        label: { show: false },
+      }
+    : undefined
+
   return (
     <ReactECharts
-      style={{ height: 110 }}
+      style={{ height }}
       option={{
         animation: false,
-        grid: { top: 12, right: 6, bottom: 8, left: 6 },
-        xAxis: {
-          type: "category",
-          data: values.map((_, index) => index + 1),
-          show: false,
-        },
-        yAxis: {
-          type: "value",
-          show: false,
-          scale: true,
-        },
+        grid: { top: 8, right: 4, bottom: 4, left: 4 },
+        xAxis: { type: "category", data: values.map((_, i) => i + 1), show: false },
+        yAxis: { type: "value", show: false, scale: true },
         series: [
           {
             data: values,
             type: "line",
-            smooth: true,
+            smooth: 0.4,
             showSymbol: false,
-            lineStyle: { color, width: 3 },
+            lineStyle: { color, width: 2 },
             areaStyle: {
               color: {
-                type: "linear",
-                x: 0,
-                y: 0,
-                x2: 0,
-                y2: 1,
+                type: "linear", x: 0, y: 0, x2: 0, y2: 1,
                 colorStops: [
-                  { offset: 0, color: `${color}55` },
-                  { offset: 1, color: `${color}05` },
+                  { offset: 0, color: `${color}40` },
+                  { offset: 1, color: `${color}04` },
                 ],
               },
             },
+            markLine,
           },
         ],
         tooltip: {
           trigger: "axis",
-          backgroundColor: "#081018",
-          borderColor: "rgba(255,255,255,0.1)",
-          textStyle: { color: "#e2e8f0" },
+          ...TOOLTIP_STYLE,
+          formatter: (params: any[]) => {
+            const v = params[0]?.value
+            return `Round ${params[0]?.dataIndex + 1}<br/><b style="color:${color}">${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(3)} SG</b>`
+          },
         },
       }}
     />
   )
 }
 
-export function BarTrendChart({
-  labels,
+/* ─── 2. SG Rolling Line Chart (with benchmark band) ───────────────── */
+export function SgRollingChart({
   values,
-  color,
+  benchmarkValue,
+  benchmarkLabel = "Benchmark",
+  height = 180,
 }: {
-  labels: string[]
   values: number[]
-  color: string
+  benchmarkValue?: number | null
+  benchmarkLabel?: string
+  height?: number
 }) {
-  if (!labels.length || !values.length) {
-    return <div className="h-[260px] rounded-xl border border-dashed border-white/10 bg-black/15 px-4 py-24 text-center text-sm text-slate-400">No chart data available yet.</div>
+  if (!values.length) return <ChartEmpty height={height} message="No form data" />
+
+  const seriesData = values.map((v, i) => [i + 1, v])
+  const hasNeg = values.some((v) => v < 0)
+
+  const series: any[] = [
+    {
+      name: "SG / Round",
+      type: "line",
+      data: seriesData,
+      smooth: 0.35,
+      showSymbol: values.length <= 15,
+      symbolSize: 4,
+      lineStyle: { color: T.cyan, width: 2 },
+      itemStyle: { color: T.cyan },
+      areaStyle: {
+        color: {
+          type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: `${T.cyan}35` },
+            { offset: 1, color: `${T.cyan}04` },
+          ],
+        },
+      },
+      markLine: {
+        silent: true,
+        symbol: ["none", "none"],
+        lineStyle: { color: T.border, width: 1, type: "dashed" },
+        data: [{ yAxis: 0 }],
+        label: { show: true, formatter: "Tour Avg (0)", fontSize: 9, color: T.faint, fontFamily: T.mono, position: "end" },
+      },
+    },
+  ]
+
+  if (benchmarkValue != null) {
+    series.push({
+      name: benchmarkLabel,
+      type: "line",
+      data: seriesData.map(([x]) => [x, benchmarkValue]),
+      smooth: false,
+      showSymbol: false,
+      lineStyle: { color: T.gold, width: 1.5, type: "dashed" },
+      itemStyle: { color: T.gold },
+    })
   }
+
   return (
     <ReactECharts
-      style={{ height: 260 }}
+      style={{ height }}
       option={{
         animation: false,
-        grid: { top: 18, right: 14, bottom: 30, left: 32 },
+        grid: { top: 16, right: 16, bottom: 28, left: 42 },
+        legend: benchmarkValue != null
+          ? {
+              data: ["SG / Round", benchmarkLabel],
+              textStyle: { color: T.muted, fontSize: 9, fontFamily: T.mono },
+              top: 0,
+              right: 0,
+              itemHeight: 8,
+              itemWidth: 16,
+            }
+          : undefined,
         xAxis: {
-          type: "category",
-          data: labels,
-          axisLabel: { color: "#94a3b8" },
-          axisLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+          type: "value",
+          name: "Round (oldest → newest)",
+          nameTextStyle: { color: T.faint, fontSize: 9, fontFamily: T.mono },
+          min: 1,
+          max: values.length,
+          axisLabel: { color: T.faint, fontSize: 9, fontFamily: T.mono },
+          axisLine: { lineStyle: { color: T.border } },
+          splitLine: { show: false },
         },
         yAxis: {
           type: "value",
-          axisLabel: { color: "#94a3b8" },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+          scale: true,
+          axisLabel: {
+            color: T.muted,
+            fontSize: 9,
+            fontFamily: T.mono,
+            formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
+          },
+          axisLine: { show: false },
+          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
         },
+        series,
         tooltip: {
           trigger: "axis",
-          backgroundColor: "#081018",
-          borderColor: "rgba(255,255,255,0.1)",
-          textStyle: { color: "#e2e8f0" },
+          ...TOOLTIP_STYLE,
+          formatter: (params: any[]) => {
+            return params.map((p: any) => {
+              const v = Array.isArray(p.value) ? p.value[1] : p.value
+              const sign = Number(v) > 0 ? "+" : ""
+              return `<span style="color:${p.color}">●</span> ${p.seriesName}: <b>${sign}${Number(v).toFixed(3)}</b>`
+            }).join("<br/>")
+          },
+        },
+      }}
+    />
+  )
+}
+
+/* ─── 3. SG Skills Diverging Bar Chart ─────────────────────────────── */
+export function SgSkillBarsChart({
+  skills,
+  height = 200,
+}: {
+  skills: Array<{ label: string; value: number; color?: string }>
+  height?: number
+}) {
+  if (!skills.length) return <ChartEmpty height={height} message="No skill data" />
+
+  const labels = skills.map((s) => s.label)
+  const values = skills.map((s) => s.value)
+
+  const itemColors = values.map((v) =>
+    v > 0.3 ? T.green : v > 0 ? `${T.green}bb` : v > -0.3 ? `${T.red}bb` : T.red
+  )
+
+  return (
+    <ReactECharts
+      style={{ height }}
+      option={{
+        animation: false,
+        grid: { top: 8, right: 60, bottom: 8, left: 120 },
+        xAxis: {
+          type: "value",
+          scale: true,
+          axisLabel: {
+            color: T.muted,
+            fontSize: 9,
+            fontFamily: T.mono,
+            formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
+          },
+          axisLine: { lineStyle: { color: T.border } },
+          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          markLine: {
+            data: [{ xAxis: 0 }],
+            lineStyle: { color: T.muted, width: 1 },
+          },
+        },
+        yAxis: {
+          type: "category",
+          data: labels,
+          axisLabel: {
+            color: T.muted,
+            fontSize: 10,
+            fontFamily: T.mono,
+          },
+          axisLine: { lineStyle: { color: T.border } },
+          splitLine: { show: false },
         },
         series: [
           {
             type: "bar",
-            data: values,
-            itemStyle: {
-              color,
-              borderRadius: [8, 8, 0, 0],
+            data: values.map((v, i) => ({
+              value: v,
+              itemStyle: { color: itemColors[i], borderRadius: v >= 0 ? [0, 2, 2, 0] : [2, 0, 0, 2] },
+            })),
+            barMaxWidth: 18,
+            label: {
+              show: true,
+              position: (params: any) => (params.value >= 0 ? "right" : "left"),
+              formatter: (params: any) => {
+                const v = Number(params.value)
+                return `${v > 0 ? "+" : ""}${v.toFixed(3)}`
+              },
+              color: T.muted,
+              fontSize: 9,
+              fontFamily: T.mono,
             },
           },
         ],
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          ...TOOLTIP_STYLE,
+          formatter: (params: any[]) => {
+            const p = params[0]
+            const v = Number(p.value)
+            const sign = v > 0 ? "+" : ""
+            const col = v > 0 ? T.green : T.red
+            return `${p.name}<br/><b style="color:${col}">${sign}${v.toFixed(3)} SG/round</b>`
+          },
+        },
+      }}
+    />
+  )
+}
+
+/* ─── 4. Approach Buckets Grouped Bar Chart ─────────────────────────── */
+export function ApproachBucketsChart({
+  buckets,
+  height = 200,
+}: {
+  buckets: Array<{ label: string; value: number }>
+  height?: number
+}) {
+  if (!buckets.length) return <ChartEmpty height={height} message="No approach data" />
+
+  // Split FW vs Rough
+  const fw = buckets.filter((b) => b.label.includes("FW"))
+  const rgh = buckets.filter((b) => b.label.includes("Rough"))
+  const fwLabels = fw.map((b) => b.label.replace(" (FW)", ""))
+
+  if (!fw.length) return <ChartEmpty height={height} message="No approach buckets" />
+
+  return (
+    <ReactECharts
+      style={{ height }}
+      option={{
+        animation: false,
+        grid: { top: 28, right: 12, bottom: 36, left: 12 },
+        legend: {
+          data: ["Fairway", "Rough"],
+          textStyle: { color: T.muted, fontSize: 9, fontFamily: T.mono },
+          top: 0,
+          itemHeight: 8,
+          itemWidth: 14,
+        },
+        xAxis: {
+          type: "category",
+          data: fwLabels,
+          axisLabel: {
+            color: T.muted,
+            fontSize: 9,
+            fontFamily: T.mono,
+            rotate: 15,
+          },
+          axisLine: { lineStyle: { color: T.border } },
+          splitLine: { show: false },
+        },
+        yAxis: {
+          type: "value",
+          scale: true,
+          axisLabel: {
+            color: T.muted,
+            fontSize: 9,
+            fontFamily: T.mono,
+            formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}`,
+          },
+          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          axisLine: { show: false },
+        },
+        series: [
+          {
+            name: "Fairway",
+            type: "bar",
+            data: fw.map((b) => ({
+              value: b.value,
+              itemStyle: {
+                color: b.value >= 0 ? `${T.cyan}cc` : `${T.red}99`,
+                borderRadius: [2, 2, 0, 0],
+              },
+            })),
+            barGap: "10%",
+          },
+          {
+            name: "Rough",
+            type: "bar",
+            data: rgh.map((b) => ({
+              value: b.value,
+              itemStyle: {
+                color: b.value >= 0 ? `${T.green}99` : `${T.red}66`,
+                borderRadius: [2, 2, 0, 0],
+              },
+            })),
+          },
+        ],
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          ...TOOLTIP_STYLE,
+          formatter: (params: any[]) => {
+            return params.map((p: any) => {
+              const v = Number(p.value)
+              const sign = v >= 0 ? "+" : ""
+              const col = v >= 0 ? T.green : T.red
+              return `<span style="color:${p.color}">●</span> ${p.seriesName}: <b style="color:${col}">${sign}${v.toFixed(3)}</b>`
+            }).join("<br/>")
+          },
+        },
+      }}
+    />
+  )
+}
+
+/* ─── 5. Tournament History Bar Chart (SG per event) ───────────────── */
+export function TournamentHistoryChart({
+  events,
+  height = 160,
+}: {
+  events: Array<{ event_name: string; avg_sg_total: number | null; fin_text?: string | null }>
+  height?: number
+}) {
+  const filtered = events.filter((e) => e.avg_sg_total != null).slice(0, 16).reverse()
+  if (!filtered.length) return <ChartEmpty height={height} message="No event history" />
+
+  const labels = filtered.map((e) => {
+    const name = e.event_name ?? ""
+    // Abbreviate long names
+    const words = name.split(" ")
+    return words.length > 2 ? words.slice(0, 2).join(" ") : name
+  })
+  const values = filtered.map((e) => e.avg_sg_total!)
+
+  const itemColors = values.map((v) =>
+    v >= 1.5 ? T.green : v >= 0.5 ? `${T.green}99` : v >= 0 ? `${T.cyan}88` : v >= -0.5 ? `${T.amber}99` : T.red
+  )
+
+  return (
+    <ReactECharts
+      style={{ height }}
+      option={{
+        animation: false,
+        grid: { top: 8, right: 8, bottom: 60, left: 44 },
+        xAxis: {
+          type: "category",
+          data: labels,
+          axisLabel: {
+            color: T.faint,
+            fontSize: 8,
+            fontFamily: T.mono,
+            rotate: 35,
+            interval: 0,
+          },
+          axisLine: { lineStyle: { color: T.border } },
+          splitLine: { show: false },
+        },
+        yAxis: {
+          type: "value",
+          scale: true,
+          axisLabel: {
+            color: T.muted,
+            fontSize: 9,
+            fontFamily: T.mono,
+            formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
+          },
+          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          axisLine: { show: false },
+        },
+        series: [
+          {
+            type: "bar",
+            data: values.map((v, i) => ({
+              value: v,
+              itemStyle: { color: itemColors[i], borderRadius: v >= 0 ? [2, 2, 0, 0] : [0, 0, 2, 2] },
+            })),
+            barMaxWidth: 28,
+            markLine: {
+              silent: true,
+              symbol: ["none", "none"],
+              lineStyle: { color: T.muted, width: 1, type: "dashed" },
+              data: [{ yAxis: 0 }],
+              label: { show: false },
+            },
+          },
+        ],
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          ...TOOLTIP_STYLE,
+          formatter: (params: any[]) => {
+            const p = params[0]
+            const v = Number(p.value)
+            const sign = v > 0 ? "+" : ""
+            const col = v > 0 ? T.green : T.red
+            const ev = filtered[p.dataIndex]
+            const fin = ev?.fin_text ? ` · ${ev.fin_text}` : ""
+            return `${filtered[p.dataIndex]?.event_name}<br/><b style="color:${col}">${sign}${v.toFixed(3)} SG/round</b>${fin}`
+          },
+        },
+      }}
+    />
+  )
+}
+
+/* ─── 6. Legacy BarTrendChart (kept for matchups page) ─────────────── */
+export function BarTrendChart({
+  labels,
+  values,
+  color = T.green,
+  height = 220,
+}: {
+  labels: string[]
+  values: number[]
+  color?: string
+  height?: number
+}) {
+  if (!labels.length || !values.length) return <ChartEmpty height={height} />
+
+  return (
+    <ReactECharts
+      style={{ height }}
+      option={{
+        animation: false,
+        grid: { top: 16, right: 12, bottom: 36, left: 36 },
+        xAxis: {
+          type: "category",
+          data: labels,
+          axisLabel: { color: T.muted, fontSize: 9, fontFamily: T.mono, rotate: 20 },
+          axisLine: { lineStyle: { color: T.border } },
+          splitLine: { show: false },
+        },
+        yAxis: {
+          type: "value",
+          scale: true,
+          axisLabel: { color: T.muted, fontSize: 9, fontFamily: T.mono },
+          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          axisLine: { show: false },
+        },
+        series: [
+          {
+            type: "bar",
+            data: values.map((v) => ({
+              value: v,
+              itemStyle: {
+                color: v >= 0 ? color : T.red,
+                borderRadius: v >= 0 ? [2, 2, 0, 0] : [0, 0, 2, 2],
+              },
+            })),
+            barMaxWidth: 36,
+          },
+        ],
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          ...TOOLTIP_STYLE,
+        },
       }}
     />
   )

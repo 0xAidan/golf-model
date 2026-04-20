@@ -4428,3 +4428,218 @@ if __name__ == "__main__":
         log_level="warning",
         access_log=not quiet_logs,
     )
+
+# ── Standalone Player Profile (no tournament_id required) ───────────────
+
+@app.get("/api/players/{player_key}/standalone-profile")
+async def get_player_standalone_profile(player_key: str):
+    """
+    Rich player profile that doesn't require an active tournament context.
+    Pulls live skill data from DataGolf API + stored round history from DB.
+    """
+    from src import db as src_db
+    from src.datagolf import (
+        fetch_skill_ratings,
+        fetch_dg_rankings,
+        fetch_approach_skill,
+        normalize_name,
+    )
+    from src.player_normalizer import display_name
+
+    # ── 1. Recent rounds from DB ────────────────────────────────────────
+    recent_rounds = src_db.get_player_recent_rounds_by_key(player_key, limit=50)
+
+    # Resolve dg_id from rounds if available
+    dg_id = None
+    player_display_name = None
+    for r in recent_rounds:
+        if r.get("dg_id"):
+            dg_id = int(r["dg_id"])
+        if r.get("player_name") and not player_display_name:
+            player_display_name = r["player_name"]
+        if dg_id and player_display_name:
+            break
+
+    if not player_display_name:
+        player_display_name = " ".join(p.capitalize() for p in player_key.split("_") if p)
+
+    # ── 2. Live DG skill ratings ────────────────────────────────────────
+    skill_data = None
+    try:
+        skill_players = fetch_skill_ratings()
+        for p in skill_players:
+            pkey = normalize_name(p.get("player_name", ""))
+            if pkey == player_key:
+                skill_data = p
+                if not player_display_name:
+                    player_display_name = display_name(p.get("player_name", ""))
+                break
+    except Exception:
+        skill_data = None
+
+    # ── 3. DG rankings ──────────────────────────────────────────────────
+    ranking_data = None
+    try:
+        rankings = fetch_dg_rankings()
+        for r in rankings:
+            pkey = normalize_name(r.get("player_name", ""))
+            if pkey == player_key:
+                ranking_data = r
+                break
+    except Exception:
+        ranking_data = None
+
+    # ── 4. Approach skill breakdown ─────────────────────────────────────
+    approach_data = None
+    try:
+        approach_players = fetch_approach_skill("l24")
+        for p in approach_players:
+            pkey = normalize_name(p.get("player_name", ""))
+            if pkey == player_key:
+                approach_data = p
+                break
+    except Exception:
+        approach_data = None
+
+    # ── 5. Build SG rolling windows from stored rounds ──────────────────
+    sg_totals = [r["sg_total"] for r in recent_rounds if r.get("sg_total") is not None]
+    sg_rounds_with_meta = []
+    event_seen = {}
+    for r in recent_rounds:
+        if r.get("sg_total") is None:
+            continue
+        evt = r.get("event_name") or r.get("event_id") or "unknown"
+        ev_key = f"{evt}-{r.get('event_completed', '')}"
+        if ev_key not in event_seen:
+            event_seen[ev_key] = {
+                "event_name": r.get("event_name") or evt,
+                "event_completed": r.get("event_completed"),
+                "fin_text": r.get("fin_text"),
+                "sg_values": [],
+                "score_values": [],
+            }
+        event_seen[ev_key]["sg_values"].append(float(r["sg_total"]))
+        if r.get("score") is not None:
+            event_seen[ev_key]["score_values"].append(int(r["score"]))
+
+    recent_events = []
+    for ev_key, ev in list(event_seen.items())[:20]:
+        avg_sg = sum(ev["sg_values"]) / len(ev["sg_values"]) if ev["sg_values"] else None
+        recent_events.append({
+            "event_name": ev["event_name"],
+            "event_completed": ev["event_completed"],
+            "fin_text": ev["fin_text"],
+            "avg_sg_total": round(avg_sg, 3) if avg_sg is not None else None,
+            "rounds_played": len(ev["sg_values"]),
+        })
+
+    def _avg(vals):
+        return round(sum(vals) / len(vals), 3) if vals else None
+
+    windows = {
+        "10": _avg(sg_totals[:10]),
+        "25": _avg(sg_totals[:25]),
+        "50": _avg(sg_totals[:50]),
+    }
+
+    # Rolling trend: per-round SG for sparkline (most recent last for L→R chart)
+    trend_series = list(reversed(sg_totals[:50]))
+
+    # ── 6. Build approach buckets ───────────────────────────────────────
+    approach_buckets = []
+    if approach_data:
+        bucket_map = {
+            "sg_50_100_fw": "50–100 yd (FW)",
+            "sg_100_150_fw": "100–150 yd (FW)",
+            "sg_150_200_fw": "150–200 yd (FW)",
+            "sg_200_fw": "200+ yd (FW)",
+            "sg_50_100_rgh": "50–100 yd (Rough)",
+            "sg_100_150_rgh": "100–150 yd (Rough)",
+            "sg_150_200_rgh": "150–200 yd (Rough)",
+            "sg_200_rgh": "200+ yd (Rough)",
+        }
+        alt_bucket_map = {
+            "sg_fw_50_100": "50–100 yd (FW)",
+            "sg_fw_100_150": "100–150 yd (FW)",
+            "sg_fw_150_200": "150–200 yd (FW)",
+            "sg_fw_200": "200+ yd (FW)",
+            "sg_rgh_50_100": "50–100 yd (Rough)",
+            "sg_rgh_100_150": "100–150 yd (Rough)",
+            "sg_rgh_150_200": "150–200 yd (Rough)",
+            "sg_rgh_200": "200+ yd (Rough)",
+        }
+        for key, label in {**bucket_map, **alt_bucket_map}.items():
+            val = approach_data.get(key)
+            if val is not None:
+                fval = _safe_float(val)
+                if fval is not None:
+                    approach_buckets.append({"key": key, "label": label, "value": round(fval, 3)})
+
+    # ── 7. Assemble skill profile ────────────────────────────────────────
+    sg_skills = {}
+    if skill_data:
+        sg_skills = {
+            "sg_total":      _safe_float(skill_data.get("sg_total")),
+            "sg_ott":        _safe_float(skill_data.get("sg_ott")),
+            "sg_app":        _safe_float(skill_data.get("sg_app")),
+            "sg_arg":        _safe_float(skill_data.get("sg_arg")),
+            "sg_putt":       _safe_float(skill_data.get("sg_putt")),
+            "driving_dist":  _safe_float(skill_data.get("driving_dist")),
+            "driving_acc":   _safe_float(skill_data.get("driving_acc")),
+        }
+
+    header = {
+        "player_display": player_display_name,
+        "dg_rank":         int(ranking_data["datagolf_rank"]) if ranking_data and ranking_data.get("datagolf_rank") else None,
+        "owgr_rank":       int(ranking_data["owgr_rank"]) if ranking_data and ranking_data.get("owgr_rank") else None,
+        "dg_skill_estimate": _safe_float(ranking_data.get("dg_skill_estimate")) if ranking_data else None,
+        "primary_tour":    ranking_data.get("primary_tour") if ranking_data else None,
+        "rounds_in_db":    len(recent_rounds),
+        "events_tracked":  len(recent_events),
+    }
+
+    return {
+        "player_key": player_key,
+        "player_display": player_display_name,
+        "header": header,
+        "sg_skills": sg_skills,
+        "approach_buckets": approach_buckets,
+        "rolling_windows": windows,
+        "trend_series": trend_series,
+        "recent_events": recent_events,
+        "ranking_data": ranking_data,
+        "has_skill_data": skill_data is not None,
+        "has_ranking_data": ranking_data is not None,
+        "has_approach_data": approach_data is not None,
+    }
+
+
+@app.get("/api/players/search")
+async def search_players(q: str = ""):
+    """Search players by name from the rounds database."""
+    from src import db as src_db
+    conn = src_db.get_conn()
+    if q.strip():
+        rows = conn.execute(
+            """
+            SELECT DISTINCT player_key, player_name as player_display
+            FROM rounds
+            WHERE lower(player_name) LIKE lower(?)
+               OR lower(player_key) LIKE lower(?)
+            ORDER BY player_name
+            LIMIT 40
+            """,
+            (f"%{q}%", f"%{q}%"),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT player_key, player_name as player_display
+            FROM rounds
+            ORDER BY player_name
+            LIMIT 200
+            """,
+        ).fetchall()
+    conn.close()
+    return {"players": [dict(r) for r in rows]}
+
