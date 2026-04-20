@@ -20,13 +20,24 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init)
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(text || `Request failed: ${response.status}`)
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(path, { signal: controller.signal, ...init })
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || `Request failed: ${response.status}`)
+    }
+    return (await response.json()) as T
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs / 1000}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
   }
-  return (await response.json()) as T
 }
 
 export const api = {

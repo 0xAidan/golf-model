@@ -4437,6 +4437,15 @@ async def get_player_standalone_profile(player_key: str):
     Rich player profile that doesn't require an active tournament context.
     Pulls live skill data from DataGolf API + stored round history from DB.
     """
+    def _safe_float(v):
+        """Convert a value to float, returning None on failure."""
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     from src import db as src_db
     from src.datagolf import (
         fetch_skill_ratings,

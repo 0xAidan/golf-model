@@ -316,6 +316,8 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
     queryFn: () => api.getPlayerStandaloneProfile(playerKey),
     staleTime: 5 * 60_000,
     gcTime: 15 * 60_000,
+    retry: 1,
+    retryDelay: 1000,
   })
 
   const p = profileQuery.data
