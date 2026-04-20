@@ -20,40 +20,42 @@ export function PlayerSpotlightPanel({
 }) {
   if (!spotlight) {
     return (
-      <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-slate-400">
-        Select a player from rankings, leaderboard, featured plays, or generated picks to load the shared spotlight.
+      <div className="panel-empty" style={{ padding: "32px 12px" }}>
+        <Radar style={{ width: 14, height: 14 }} />
+        <span>Select a player to load spotlight</span>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-              {spotlight.modeLabel} spotlight
-            </p>
-            <h4 className="mt-1 text-2xl font-semibold text-white">{spotlight.playerName}</h4>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">{spotlight.narrative}</p>
+    <div>
+      {/* Player header */}
+      <div className="spotlight-head">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="term-row-eye">{spotlight.modeLabel} spotlight</div>
+            <div className="spotlight-player-name">{spotlight.playerName}</div>
+            {spotlight.narrative ? (
+              <div className="spotlight-narrative">{spotlight.narrative}</div>
+            ) : null}
           </div>
-          <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
+          <div className="tier-badge" style={{ flexShrink: 0, marginTop: "2px" }}>
             {spotlight.eventName}
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {spotlight.sourceBadges.map((badge) => (
-            <span
-              key={badge}
-              className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300"
-            >
-              {badge}
-            </span>
-          ))}
-        </div>
+        {spotlight.sourceBadges.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
+            {spotlight.sourceBadges.map((badge) => (
+              <span key={badge} className="tier-badge">{badge}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      {/* Header stats */}
+      {spotlight.headerStats.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "4px", padding: "8px" }}>
           {spotlight.headerStats.map((item) => (
             <MetricTile
               key={item.label}
@@ -64,73 +66,71 @@ export function PlayerSpotlightPanel({
             />
           ))}
         </div>
-      </div>
+      ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {spotlight.summaryStats.map((item) => (
-          <MetricTile
-            key={item.label}
-            label={item.label}
-            value={item.value}
-            detail={item.detail}
-            tone={item.tone}
-          />
-        ))}
-      </div>
+      {/* Summary stats */}
+      {spotlight.summaryStats.length > 0 ? (
+        <>
+          <div className="term-section-head">Summary Stats</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "4px", padding: "8px" }}>
+            {spotlight.summaryStats.map((item) => (
+              <MetricTile
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                detail={item.detail}
+                tone={item.tone}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
 
-      <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-        <div className="mb-3 flex items-center gap-2 text-slate-200">
-          <ScanSearch className="h-4 w-4 text-cyan-200" />
-          <p className="text-sm font-semibold">Why this player matters now</p>
-        </div>
-        <div className="space-y-3">
-          {spotlight.inventoryNotes.map((note) => (
-            <div key={note.label} className="rounded-2xl border border-white/6 bg-black/15 px-3 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{note.label}</p>
-              <p className="mt-1 text-sm leading-6 text-slate-300">{note.detail}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Inventory notes */}
+      {spotlight.inventoryNotes.length > 0 ? (
+        <>
+          <div className="term-section-head">
+            <ScanSearch style={{ width: 9, height: 9 }} />
+            Why this player matters
+          </div>
+          <div>
+            {spotlight.inventoryNotes.map((note) => (
+              <div key={note.label} className="term-row">
+                <span className="term-row-eye">{note.label}</span>
+                <span className="term-row-det" style={{ WebkitLineClamp: 3 }}>{note.detail}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
 
+      {/* Rich profile sections */}
       {player ? (
         richProfilesEnabled ? (
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.08] px-4 py-3">
-              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-100">
-                <ProfileModeChip icon={Radar} label="Cockpit profile" />
-                <ProfileModeChip icon={Layers3} label="Embedded drill-down" />
-                <ProfileModeChip icon={ActivitySquare} label="Shared spotlight surface" />
-                <ProfileModeChip icon={Trophy} label="Event-aware context" />
-              </div>
+          <div>
+            <div className="term-section-head">
+              <span style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                <Radar style={{ width: 9, height: 9 }} />
+                <ActivitySquare style={{ width: 9, height: 9 }} />
+                <Layers3 style={{ width: 9, height: 9 }} />
+                <Trophy style={{ width: 9, height: 9 }} />
+                Profile Drill-Down
+              </span>
             </div>
-            <PlayerProfileSections player={player} profile={profile} profileReady={profileReady} />
+            <div style={{ padding: "8px" }}>
+              <PlayerProfileSections player={player} profile={profile} profileReady={profileReady} />
+            </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4 text-sm leading-6 text-slate-300">
-            Rich profile sections are disabled by configuration, so the spotlight stays on cockpit-native event context and summary metrics.
+          <div className="term-row">
+            <span className="term-row-det">Rich profiles disabled by configuration — spotlight shows cockpit-native context only.</span>
           </div>
         )
       ) : (
-        <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4 text-sm leading-6 text-slate-300">
-          This player is available through cockpit context, but no ranking row is attached for the embedded rich profile drill-down yet.
+        <div className="term-row">
+          <span className="term-row-det">Player available via cockpit context — no ranking row for embedded profile drill-down.</span>
         </div>
       )}
     </div>
-  )
-}
-
-function ProfileModeChip({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof Radar
-  label: string
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/15 px-2.5 py-1 text-xs font-medium text-slate-200">
-      <Icon className="h-3.5 w-3.5 text-cyan-200" />
-      {label}
-    </span>
   )
 }

@@ -1,7 +1,6 @@
-import { Activity, Columns3, PanelLeftClose, PanelRightClose } from "lucide-react"
-
 import { cn } from "@/lib/utils"
 
+/* ── Three-column cockpit — fills viewport height, columns scroll internally */
 export function CockpitWorkspace({
   leftRail,
   center,
@@ -14,23 +13,35 @@ export function CockpitWorkspace({
   className?: string
 }) {
   return (
-    <div className={cn("grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_360px]", className)}>
-      <div className="space-y-4">
-        <CockpitZoneLabel icon={PanelLeftClose} label="Left area" description="Switchboard, context, and feed." />
+    <div
+      className={cn(className)}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "256px minmax(0,1fr) 300px",
+        gap: 4,
+        padding: 6,
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
+      {/* Left column — scrolls internally */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
         {leftRail}
       </div>
-      <div className="space-y-4">
-        <CockpitZoneLabel icon={Columns3} label="Center modules" description="Primary event story and analytical modules." />
+      {/* Center column */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
         {center}
       </div>
-      <div className="space-y-4">
-        <CockpitZoneLabel icon={PanelRightClose} label="Right rail" description="Player spotlight and supporting context." />
+      {/* Right column */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
         {rightRail}
       </div>
     </div>
   )
 }
 
+/* ── Cockpit module card — fills its grid cell, body scrolls */
 export function CockpitModule({
   title,
   description,
@@ -38,6 +49,7 @@ export function CockpitModule({
   children,
   emptyState,
   className,
+  flex,
   tone = "default",
 }: {
   title: string
@@ -46,37 +58,47 @@ export function CockpitModule({
   children?: React.ReactNode
   emptyState?: string
   className?: string
+  flex?: number
   tone?: "default" | "accent" | "muted"
 }) {
-  const toneClass =
-    tone === "accent"
-      ? "border-cyan-400/20 bg-cyan-400/[0.08]"
-      : tone === "muted"
-        ? "border-white/8 bg-black/20"
-        : "border-white/10 bg-white/[0.04]"
-
   return (
-    <section className={cn("rounded-[24px] border p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]", toneClass, className)}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold text-white">{title}</h3>
-          {description ? <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p> : null}
+    <div
+      className={cn("cockpit-module", className)}
+      style={{
+        flex: flex ?? 1,
+        minHeight: 0,
+        ...(tone === "accent"
+          ? { borderColor: "rgba(34,197,94,0.2)" }
+          : tone === "muted"
+          ? { borderColor: "var(--border)" }
+          : undefined),
+      }}
+    >
+      <div className="cockpit-module-header">
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+          <span className="cockpit-module-title">{title}</span>
+          {description && (
+            <span style={{ fontSize: 9, color: "var(--text-faint)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {description}
+            </span>
+          )}
         </div>
-        {action}
+        {action && <div style={{ flexShrink: 0 }}>{action}</div>}
       </div>
-      <div className="mt-4">
-        {children ? (
-          children
-        ) : emptyState ? (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-slate-400">
-            {emptyState}
-          </div>
-        ) : null}
+      <div className="cockpit-module-body">
+        {children ?? (
+          emptyState ? (
+            <div className="empty-state">
+              <div className="empty-state-title">{emptyState}</div>
+            </div>
+          ) : null
+        )}
       </div>
-    </section>
+    </div>
   )
 }
 
+/* ── Live / Upcoming / Past mode switcher */
 export function CockpitModeSwitch({
   value,
   onChange,
@@ -87,60 +109,44 @@ export function CockpitModeSwitch({
   liveActive?: boolean
 }) {
   const options: Array<{ value: "live" | "upcoming" | "past"; label: string }> = [
-    { value: "live", label: "Live" },
+    { value: "live",     label: "Live" },
     { value: "upcoming", label: "Upcoming" },
-    { value: "past", label: "Past" },
+    { value: "past",     label: "Past" },
   ]
 
   return (
-    <div className="rounded-full border border-white/10 bg-black/25 p-1.5 backdrop-blur" role="tablist" aria-label="Event mode switch">
-      <div className="flex items-center gap-1">
-        {options.map((option) => {
-          const active = option.value === value
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onChange(option.value)}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition",
-                active
-                  ? "bg-cyan-400/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                  : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
-              )}
-            >
-              {option.value === "live" && liveActive ? (
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
-              ) : null}
-              <span>{option.label}</span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function CockpitZoneLabel({
-  icon: Icon,
-  label,
-  description,
-}: {
-  icon: typeof Activity
-  label: string
-  description: string
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-      <div className="rounded-xl bg-white/6 p-2 text-cyan-200">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
-        <p className="text-sm text-slate-300">{description}</p>
-      </div>
+    <div className="mode-switcher" role="tablist" aria-label="Event mode">
+      {options.map((opt) => {
+        const active = opt.value === value
+        const isLive = opt.value === "live"
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.value)}
+            className={cn("mode-tab", active && "active")}
+            data-testid={`mode-btn-${opt.value}`}
+          >
+            {isLive && liveActive && (
+              <span
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: "50%",
+                  background: "var(--green)",
+                  display: "inline-block",
+                  flexShrink: 0,
+                  animation: "pulse-glow 1.8s ease-in-out infinite",
+                }}
+                aria-hidden="true"
+              />
+            )}
+            {opt.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

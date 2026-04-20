@@ -19,13 +19,13 @@ export function CourseWeatherFeedPanel({
   feedItems: CockpitFeedItemModel[]
 }) {
   return (
-    <div className="space-y-4">
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns="sm:grid-cols-1" /> : null}
-      <div className="space-y-3">
+    <div>
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={1} /> : null}
+      <div>
         {feedItems.map((item) => (
-          <div key={`${item.label}-${item.detail}`} className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-300">{item.detail}</p>
+          <div key={`${item.label}-${item.detail}`} className="term-row">
+            <span className="term-row-eye">{item.label}</span>
+            <span className="term-row-det">{item.detail}</span>
           </div>
         ))}
       </div>
@@ -47,39 +47,39 @@ export function LeaderboardPanel({
   onPlayerSelect: (playerKey: string) => void
 }) {
   if (rows.length === 0) {
-    return <PanelEmptyState icon={Radar} message={emptyMessage ?? "No leaderboard rows are available yet."} />
+    return <PanelEmptyState icon={Radar} message={emptyMessage ?? "No leaderboard rows available."} />
   }
 
   return (
-    <div className="space-y-4">
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns="md:grid-cols-3" /> : null}
+    <div>
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       {seededFromRankings ? (
-        <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
-          Pre-tournament board seeded from model rankings. Live scores will replace this once the event starts.
+        <div className="term-notice" style={{ margin: "6px 8px" }}>
+          Pre-tournament board seeded from model rankings. Live scores replace this once the event starts.
         </div>
       ) : null}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] text-sm" role="grid">
+      <div className="table-scroll">
+        <table className="data-table" role="grid">
           <thead>
-            <tr className="border-b border-white/10 text-left text-[10px] uppercase tracking-[0.16em] text-slate-500">
-              <th className="px-3 py-2 font-medium">Pos</th>
-              <th className="px-3 py-2 font-medium">Player</th>
-              <th className="px-3 py-2 text-right font-medium">State</th>
-              <th className="px-3 py-2 text-right font-medium">Round</th>
-              <th className="px-3 py-2 text-right font-medium">Score</th>
+            <tr>
+              <th>Pos</th>
+              <th>Player</th>
+              <th style={{ textAlign: "right" }}>Score</th>
+              <th style={{ textAlign: "right" }}>Rd</th>
+              <th style={{ textAlign: "right" }}>Tot</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={`${row.positionLabel}-${row.playerLabel}`} className="border-t border-white/6 transition hover:bg-white/5">
-                <td className="px-3 py-2.5 text-slate-400">{row.positionLabel}</td>
-                <td className="px-3 py-2.5">
+              <tr key={`${row.positionLabel}-${row.playerLabel}`}>
+                <td style={{ color: "var(--text-muted)" }}>{row.positionLabel}</td>
+                <td>
                   <SelectableInlinePlayer playerKey={row.playerKey} label={row.playerLabel} onPlayerSelect={onPlayerSelect} />
-                  {row.detail ? <p className="mt-1 text-xs text-slate-500">{row.detail}</p> : null}
+                  {row.detail ? <div style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{row.detail}</div> : null}
                 </td>
-                <td className="px-3 py-2.5 text-right text-cyan-200">{row.toParLabel}</td>
-                <td className="px-3 py-2.5 text-right text-slate-300">{row.roundLabel}</td>
-                <td className="px-3 py-2.5 text-right text-slate-300">{row.scoreLabel}</td>
+                <td style={{ textAlign: "right", color: "var(--cyan)", fontFamily: "var(--font-mono)" }}>{row.toParLabel}</td>
+                <td style={{ textAlign: "right" }}>{row.roundLabel}</td>
+                <td style={{ textAlign: "right" }}>{row.scoreLabel}</td>
               </tr>
             ))}
           </tbody>
@@ -101,26 +101,26 @@ export function MarketIntelPanel({
   onPlayerSelect: (playerKey: string) => void
 }) {
   if (rows.length === 0) {
-    return <PanelEmptyState icon={CircleAlert} message={emptyMessage ?? "No market intel rows are available yet."} />
+    return <PanelEmptyState icon={CircleAlert} message={emptyMessage ?? "No market intel rows available."} />
   }
 
   return (
-    <div className="space-y-4">
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns="md:grid-cols-3" /> : null}
-      <div className="space-y-2">
+    <div>
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
+      <div>
         {rows.map((row) => (
-          <div key={`${row.eyebrow}-${row.label}-${row.priceLabel}`} className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{row.eyebrow}</p>
-                <p className="mt-1 text-sm font-medium text-white">
+          <div key={`${row.eyebrow}-${row.label}-${row.priceLabel}`} className="term-row">
+            <div className="term-row-split">
+              <div className="term-row-split-left">
+                <span className="term-row-eye">{row.eyebrow}</span>
+                <div className="term-row-val" style={{ marginTop: "2px" }}>
                   <SelectableInlinePlayer playerKey={row.playerKey} label={row.label} onPlayerSelect={onPlayerSelect} />
-                </p>
-                <p className="mt-1 text-xs text-slate-500">{row.detail}</p>
+                </div>
+                {row.detail ? <span className="term-row-det">{row.detail}</span> : null}
               </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-cyan-200">{row.edgeLabel}</p>
-                <p className="text-xs text-slate-500">{row.priceLabel}</p>
+              <div className="term-row-split-right">
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", fontWeight: 700, color: "var(--cyan)" }}>{row.edgeLabel}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{row.priceLabel}</div>
               </div>
             </div>
           </div>
@@ -140,14 +140,14 @@ export function ReplayTimelinePanel({
   emptyMessage: string | null
 }) {
   return (
-    <div className="space-y-4">
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns="md:grid-cols-3" /> : null}
+    <div>
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       {items.length > 0 ? (
-        <div className="space-y-2">
+        <div>
           {items.map((item) => (
-            <div key={`${item.label}-${item.detail}`} className="rounded-xl border border-white/8 bg-black/20 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-              <p className="mt-2 text-sm leading-6 text-slate-300">{item.detail}</p>
+            <div key={`${item.label}-${item.detail}`} className="term-row">
+              <span className="term-row-eye">{item.label}</span>
+              <span className="term-row-det">{item.detail}</span>
             </div>
           ))}
         </div>
@@ -171,61 +171,63 @@ export function DiagnosticsGradingPanel({
   selectedEventSummary: CockpitSelectedEventSummary | null
 }) {
   return (
-    <div className="space-y-4">
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns="sm:grid-cols-2" /> : null}
+    <div>
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={2} /> : null}
 
-      <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-        <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Diagnostic counters</p>
-        <div className="mt-3 grid gap-2 text-sm text-slate-300">
-          {counters.map((counter) => (
-            <p key={counter}>{counter}</p>
-          ))}
-        </div>
+      {/* Diagnostic counters */}
+      <div className="term-section-head">Diagnostic Counters</div>
+      <div>
+        {counters.map((counter) => (
+          <div key={counter} className="term-row">
+            <span className="term-row-det">{counter}</span>
+          </div>
+        ))}
       </div>
 
       {reasonCodes.length > 0 ? (
-        <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-          <div className="mb-3 flex items-center gap-2 text-slate-200">
-            <ShieldAlert className="h-4 w-4 text-cyan-200" />
-            <p className="text-sm font-semibold">Top exclusion reasons</p>
+        <>
+          <div className="term-section-head" style={{ marginTop: "8px" }}>
+            <ShieldAlert style={{ width: 9, height: 9, color: "var(--cyan)" }} />
+            Top Exclusion Reasons
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "6px 10px" }}>
             {reasonCodes.map((reasonCode) => (
               <span
                 key={`${reasonCode.label}-${reasonCode.count}`}
-                className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300"
+                className="tier-badge"
               >
                 {reasonCode.label} · {reasonCode.count}
               </span>
             ))}
           </div>
-        </div>
+        </>
       ) : null}
 
       {warnings.length > 0 ? (
-        <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+        <div className="term-notice amber" style={{ margin: "6px 8px" }}>
           {warnings.join(" ")}
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected event grading context</p>
-        {selectedEventSummary ? (
-          <div className="mt-3 rounded-xl border border-white/6 bg-black/15 px-4 py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="truncate text-sm text-white">{selectedEventSummary.name}</p>
-                <p className="text-xs text-slate-500">{selectedEventSummary.hitsLabel}</p>
-              </div>
-              <p className="text-sm font-semibold text-emerald-300">{selectedEventSummary.profitLabel}</p>
+      {/* Selected event grading context */}
+      <div className="term-section-head" style={{ marginTop: "8px" }}>Selected Event Context</div>
+      {selectedEventSummary ? (
+        <div className="term-row">
+          <div className="term-row-split">
+            <div className="term-row-split-left">
+              <span className="term-row-val">{selectedEventSummary.name}</span>
+              <span className="term-row-det">{selectedEventSummary.hitsLabel}</span>
+            </div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", fontWeight: 700, color: "var(--green)" }}>
+              {selectedEventSummary.profitLabel}
             </div>
           </div>
-        ) : (
-          <p className="mt-3 text-sm leading-6 text-slate-400">
-            Grade a matching event to attach direct replay-to-results context here.
-          </p>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="term-row">
+          <span className="term-row-det">Grade a matching event to attach replay-to-results context here.</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -235,10 +237,10 @@ function MetricGrid({
   columns,
 }: {
   metrics: CockpitMetricModel[]
-  columns: string
+  columns: number
 }) {
   return (
-    <div className={`grid gap-3 ${columns}`}>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: "4px", padding: "8px" }}>
       {metrics.map((metric) => (
         <MetricTile
           key={`${metric.label}-${metric.value}`}
@@ -269,7 +271,7 @@ function SelectableInlinePlayer({
     <button
       type="button"
       onClick={() => onPlayerSelect(playerKey)}
-      className="text-left underline decoration-transparent underline-offset-4 transition hover:text-cyan-200 hover:decoration-cyan-300"
+      className="player-btn"
     >
       {label}
     </button>
@@ -284,9 +286,9 @@ function PanelEmptyState({
   message: string
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-slate-400">
-      <Icon className="mx-auto mb-3 h-6 w-6 text-slate-600" />
-      {message}
+    <div className="panel-empty">
+      <Icon style={{ width: 16, height: 16 }} />
+      <span>{message}</span>
     </div>
   )
 }
