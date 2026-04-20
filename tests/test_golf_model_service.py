@@ -286,3 +286,100 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
     assert len(result["matchup_bets_all_books"]) == 1
     assert logged["placements"] == 0
     assert logged["matchups"] == 1
+
+
+def test_team_event_short_circuits_pipeline(tmp_path, monkeypatch):
+    """Zurich-style team events skip field/odds/matchup work entirely."""
+    from src.services.golf_model_service import GolfModelService
+
+    forbidden_calls: list[str] = []
+
+    def _forbid(name):
+        def _raise(*args, **kwargs):
+            forbidden_calls.append(name)
+            raise AssertionError(f"Team-event guard failed: {name} was called")
+        return _raise
+
+    # Any of these being called on a team event is a regression.
+    monkeypatch.setattr(GolfModelService, "_backfill_rounds", _forbid("_backfill_rounds"))
+    monkeypatch.setattr(GolfModelService, "_sync_tournament_data", _forbid("_sync_tournament_data"))
+    monkeypatch.setattr(GolfModelService, "_resolve_field_keys", _forbid("_resolve_field_keys"))
+    monkeypatch.setattr(GolfModelService, "_validate_field_data", _forbid("_validate_field_data"))
+    monkeypatch.setattr(GolfModelService, "_run_composite", _forbid("_run_composite"))
+    monkeypatch.setattr(GolfModelService, "_fetch_odds", _forbid("_fetch_odds"))
+    monkeypatch.setattr(GolfModelService, "_compute_value_bets", _forbid("_compute_value_bets"))
+    monkeypatch.setattr(GolfModelService, "_fetch_matchup_value_bets", _forbid("_fetch_matchup_value_bets"))
+    monkeypatch.setattr(GolfModelService, "_fetch_3ball_value_bets", _forbid("_fetch_3ball_value_bets"))
+
+    # Keep DB + run-log side effects quiet.
+    monkeypatch.setattr(
+        "src.services.golf_model_service.db.get_or_create_tournament",
+        lambda name, course=None: 12345,
+    )
+    monkeypatch.setattr(GolfModelService, "_log_run", lambda self, tid, result: None)
+
+    service = GolfModelService(tour="pga")
+    result = service.run_analysis(
+        tournament_name="Zurich Classic of New Orleans",
+        course_name="TPC Louisiana",
+        event_id="480",
+        enable_ai=False,
+        enable_backfill=True,  # proves backfill is skipped despite being enabled
+        include_methodology=True,  # proves methodology path is skipped too
+        output_dir=str(tmp_path),
+        strategy_source="config",
+    )
+
+    assert forbidden_calls == [], f"Pipeline leaked into team event: {forbidden_calls}"
+    assert result["status"] == "complete"
+    assert result["event_format"] == "team"
+    assert result["skipped_reason"] == "team_event"
+    assert result["value_bets"] == {}
+    assert result["matchup_bets"] == []
+    assert result["tournament_id"] == 12345
+    assert result["warnings"], "Team-event guard should attach a warning"
+    assert "card_filepath" in result and result["card_filepath"]
+    # Card content sanity
+    with open(result["card_filepath"]) as fh:
+        card_body = fh.read()
+    assert "Team Event Notice" in card_body
+    assert "Zurich Classic of New Orleans" in card_body
+    assert "Foursomes" in card_body  # explains why we skip
+    # Must not contain placement / matchup recommendations
+    assert "Top 5" not in card_body or "Placement value bets" in card_body  # Top 5 only allowed in the disclaimer table
+    assert "methodology_filepath" not in result  # methodology step not reached
+
+
+def test_individual_event_is_not_affected_by_guard(monkeypatch, tmp_path):
+    """Regular individual events continue through the guard unchanged."""
+    from src.services.golf_model_service import GolfModelService
+
+    # Ensure we get past the guard then bail out at the next reachable step.
+    called = {"reached_backfill": False}
+
+    def _fake_backfill(self, years=None, tournament_name=None):
+        called["reached_backfill"] = True
+        raise RuntimeError("stop-after-guard")
+
+    monkeypatch.setattr(GolfModelService, "_backfill_rounds", _fake_backfill)
+    monkeypatch.setattr(
+        "src.services.golf_model_service.db.get_or_create_tournament",
+        lambda name, course=None: 7,
+    )
+
+    service = GolfModelService(tour="pga")
+    try:
+        service.run_analysis(
+            tournament_name="RBC Heritage",
+            course_name="Harbour Town",
+            event_id="012",
+            enable_ai=False,
+            enable_backfill=True,
+            include_methodology=False,
+            output_dir=str(tmp_path),
+            strategy_source="config",
+        )
+    except RuntimeError as exc:
+        assert "stop-after-guard" in str(exc)
+
+    assert called["reached_backfill"] is True

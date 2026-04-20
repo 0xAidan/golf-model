@@ -692,3 +692,96 @@ def _write_matchup_value_bets(lines: list, matchup_bets: list[dict] | None):
         lines.append("")
         lines.append("*No matchup value bets available this week.*")
         lines.append("")
+
+
+def generate_team_event_card(
+    tournament_name: str,
+    course_name: str,
+    output_dir: str = "output",
+    event_id: str | None = None,
+    composite_results: list[dict] | None = None,
+) -> str:
+    """Generate an informational card for team-format events.
+
+    The full pipeline (placement value, individual H2H matchups, composite
+    scoring) assumes individual stroke play. For team events such as the
+    Zurich Classic we publish a transparent, read-only card that:
+
+    * explains why no placement or H2H recommendations are produced,
+    * optionally lists the top composite scores for reference only, and
+    * flags that pair-level markets are not yet modelled.
+
+    Returns the written file path.
+    """
+    lines: list[str] = []
+    lines.append(f"# {tournament_name} — Team Event Notice")
+    lines.append(f"**Course:** {course_name}")
+    lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    if event_id:
+        lines.append(f"**Event ID:** {event_id}")
+    lines.append("")
+    lines.append("> ⚠️ **Team-format event — no bettable card this week.**")
+    lines.append(">")
+    lines.append(
+        "> This tournament is played as a two-player team event "
+        "(Foursomes + Fourball). The quantitative model, placement markets, "
+        "and individual head-to-head matchup pricing all assume **individual "
+        "stroke play**, so they do not apply here."
+    )
+    lines.append("")
+    lines.append("## What is (and isn't) produced")
+    lines.append("")
+    lines.append("| Output | Status | Reason |")
+    lines.append("|---|---|---|")
+    lines.append("| Placement value bets (Top 5/10/20, Outright) | ❌ Skipped | Not offered / mispriced for team events |")
+    lines.append("| Individual H2H matchup value | ❌ Skipped | Tour does not post individual H2Hs this week |")
+    lines.append("| 3-ball value | ❌ Skipped | Not applicable to team format |")
+    lines.append("| Pair / team matchups | ⚠️ Not yet modelled | Roadmap — see issue tracker |")
+    lines.append("| Composite individual rankings | ℹ️ Reference only | Shown below with no betting recommendation |")
+    lines.append("")
+
+    if composite_results:
+        lines.append("## Reference: Top 20 Composite (Individual, Non-Betting)")
+        lines.append("")
+        lines.append("*Scores are computed as if the event were individual stroke play. "
+                     "**Do not use these for betting this week** — they ignore teammate "
+                     "pairing, alternate-shot dynamics, and fourball scoring.*")
+        lines.append("")
+        lines.append("| Rank | Player | Composite |")
+        lines.append("|---:|---|---:|")
+        sorted_rows = sorted(
+            composite_results,
+            key=lambda r: r.get("composite_score", 0.0),
+            reverse=True,
+        )[:20]
+        for i, row in enumerate(sorted_rows, 1):
+            name = row.get("player_display") or row.get("player_key") or "—"
+            score = row.get("composite_score")
+            score_str = f"{score:.3f}" if isinstance(score, (int, float)) else "—"
+            lines.append(f"| {i} | {name} | {score_str} |")
+        lines.append("")
+
+    lines.append("## Next Week")
+    lines.append("")
+    lines.append(
+        "The regular individual-format pipeline resumes automatically "
+        "when the next non-team event is detected."
+    )
+    lines.append("")
+
+    os.makedirs(output_dir, exist_ok=True)
+    safe_name = tournament_name.lower().replace(" ", "_").replace("'", "")
+
+    try:
+        from src.output_manager import archive_previous
+        archived = archive_previous(output_dir, safe_name, file_type="card")
+        if archived:
+            logger.info("Archived %d previous card(s) for %s", archived, safe_name)
+    except Exception as e:
+        logger.warning("Could not archive previous cards: %s", e)
+
+    filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
+    filepath = os.path.join(output_dir, filename)
+    with open(filepath, "w") as f:
+        f.write("\n".join(lines))
+    return filepath
