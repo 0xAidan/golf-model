@@ -203,7 +203,7 @@ def cmd_backtest(args):
     result = simulate_strategy(strategy, years=years)
     result.compute_metrics()
 
-    print(f"\nBacktest Results:")
+    print("\nBacktest Results:")
     print(f"  Events simulated: {result.events_simulated}")
     print(f"  Total bets: {result.total_bets}")
     print(f"  Wins: {result.wins}")

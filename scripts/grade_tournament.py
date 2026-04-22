@@ -180,7 +180,7 @@ def grade_tournament(
     if not results:
         report["status"] = "error"
         report["message"] = "No results returned from DG API"
-        print(f"  ERROR: No results found")
+        print("  ERROR: No results found")
         return report
     print(f"  Found {len(results)} players")
 
@@ -205,23 +205,23 @@ def grade_tournament(
     report["steps"]["store_results"] = {"stored": len(results)}
 
     # 4. Fetch matchup outcomes for grading
-    print(f"  Fetching matchup outcomes...")
+    print("  Fetching matchup outcomes...")
     matchup_outcomes = fetch_matchup_outcomes(event_id, year)
     report["steps"]["matchup_outcomes"] = {"count": len(matchup_outcomes)}
     if matchup_outcomes:
         print(f"  Found {len(matchup_outcomes)} matchup records")
     else:
-        print(f"  No matchup outcomes available (normal for some events)")
+        print("  No matchup outcomes available (normal for some events)")
 
     # 5. Score picks
-    print(f"  Scoring picks...")
+    print("  Scoring picks...")
     from src.learning import score_picks_for_tournament
     score_result = score_picks_for_tournament(tournament_id)
     report["steps"]["scoring"] = score_result
     print(f"  Scoring: {score_result.get('status', 'done')}")
 
     # 6. Run full post-tournament learning
-    print(f"  Running post-tournament learning pipeline...")
+    print("  Running post-tournament learning pipeline...")
     from src.learning import post_tournament_learn
     learn_result = post_tournament_learn(
         tournament_id,
@@ -278,7 +278,7 @@ def main():
         sys.exit(1)
 
     print("=" * 50)
-    print(f"  Tournament Grading Pipeline")
+    print("  Tournament Grading Pipeline")
     print("=" * 50)
 
     report = grade_tournament(event_id, year, event_name=event_name)
@@ -287,7 +287,7 @@ def main():
     print("=" * 50)
     if report["status"] == "complete":
         scoring = report["steps"].get("scoring", {})
-        print(f"  Status: COMPLETE")
+        print("  Status: COMPLETE")
         print(f"  Picks scored: {scoring.get('total_picks', 0)}")
         print(f"  Wins: {scoring.get('wins', 0)}")
         print(f"  Losses: {scoring.get('losses', 0)}")

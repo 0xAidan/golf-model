@@ -258,7 +258,7 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
             continue
 
         if not has_results:
-            print(f"  Checking for results data...")
+            print("  Checking for results data...")
             ingested = False
 
             # Strategy 1: Use stored event_id (fast, reliable)
@@ -318,12 +318,12 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
             has_results = ingested
 
         if not has_results:
-            print(f"  Tournament may still be in progress or no results available.")
-            print(f"  Skipping post-review for now.")
+            print("  Tournament may still be in progress or no results available.")
+            print("  Skipping post-review for now.")
             continue
 
         # Run the full learning cycle
-        print(f"\n  Running post-tournament learning cycle...")
+        print("\n  Running post-tournament learning cycle...")
 
         try:
             learn_result = post_tournament_learn(
@@ -343,9 +343,9 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
                       f"Hit rate: {hit_rate:.0%}")
                 print(f"    Profit: {profit:+.1f} units")
             elif scoring.get("status") == "no_results":
-                print(f"    No results found for scoring")
+                print("    No results found for scoring")
             elif scoring.get("status") == "no_picks":
-                print(f"    No picks to score (predictions still logged)")
+                print("    No picks to score (predictions still logged)")
 
             cal = learn_result.get("calibration", {})
             if cal.get("brier_score"):
@@ -363,7 +363,7 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
         # Run AI post-tournament review (stores learnings in memory)
         if is_ai_available():
             try:
-                print(f"\n  Running AI post-tournament review...")
+                print("\n  Running AI post-tournament review...")
                 scoring_result = learn_result.get("steps", {}).get("scoring", {})
 
                 ai_review = post_tournament_review(
@@ -375,15 +375,15 @@ def _check_and_run_post_review(skip_tournament_id: int = None):
 
                 summary = ai_review.get("summary", "")
                 if summary:
-                    print(f"\n  AI Review Summary:")
+                    print("\n  AI Review Summary:")
                     for line in _wrap_text(summary, 56):
                         print(f"    {line}")
 
                 learnings = ai_review.get("learnings", [])
                 if learnings:
                     print(f"\n  Learnings stored in memory ({len(learnings)}):")
-                    for l in learnings:
-                        print(f"    [{l['topic']}] {l['insight'][:80]}...")
+                    for learning in learnings:
+                        print(f"    [{learning['topic']}] {learning['insight'][:80]}...")
 
                 wt = ai_review.get("weight_suggestions", {})
                 if wt:
@@ -504,7 +504,7 @@ def main():
                         print("  Use --force to override (odds will be tagged as 'in_play').")
                         sys.exit(1)
                     else:
-                        print(f"\n  ⚠ WARNING: Running mid-tournament (--force). Odds tagged as in_play.")
+                        print("\n  ⚠ WARNING: Running mid-tournament (--force). Odds tagged as in_play.")
                         pipeline_ctx["odds_timing"] = "in_play"
                 else:
                     pipeline_ctx["odds_timing"] = "pre_tournament"
@@ -588,7 +588,7 @@ def main():
                   f"{r['round_count']} rounds, {r['player_count']} players")
 
     # Also try to update current year (2026) — may be empty if season just started
-    print(f"  Updating 2026 data...")
+    print("  Updating 2026 data...")
     raw_2026 = safe_api_call("fetch 2026", fetch_historical_rounds,
                               tour="pga", event_id="all", year=2026)
     if raw_2026:
@@ -599,7 +599,7 @@ def main():
         if after > before:
             print(f"    → {after - before} new 2026 rounds")
         else:
-            print(f"    → No new 2026 rounds yet")
+            print("    → No new 2026 rounds yet")
 
     pipeline_ctx["total_rounds"] = db.get_rounds_count()
     for r in (status or []):
@@ -710,7 +710,7 @@ def main():
     if n_skill:
         print(f"    → {n_skill} skill rating metrics")
     else:
-        print(f"    → No skill ratings stored (may not match field)")
+        print("    → No skill ratings stored (may not match field)")
 
     # DG Rankings — global rank + skill estimate
     print("  Fetching DG rankings...")
@@ -718,7 +718,7 @@ def main():
     if n_rank:
         print(f"    → {n_rank} ranking metrics")
     else:
-        print(f"    → No ranking metrics stored")
+        print("    → No ranking metrics stored")
 
     # Approach Skill — detailed approach by yardage/lie
     print("  Fetching approach skill data...")
@@ -726,7 +726,7 @@ def main():
     if n_app:
         print(f"    → {n_app} approach skill metrics")
     else:
-        print(f"    → No approach skill metrics stored")
+        print("    → No approach skill metrics stored")
 
     _n_baseline = 0
     _n_ch = 0
@@ -788,7 +788,7 @@ def main():
     else:
         # Auto-generate from DG decomposition data
         print(f"  No saved profile for '{primary_course}'")
-        print(f"  Auto-generating from DG decomposition data...")
+        print("  Auto-generating from DG decomposition data...")
         from src.course_profile import generate_profile_from_decompositions
         if decomps:
             profile = generate_profile_from_decompositions(decomps)
@@ -800,12 +800,12 @@ def main():
                     if k in ratings:
                         mult = adj.get(f"course_{k}_mult", 1.0)
                         print(f"    {k}: {ratings[k]} ({mult}x weight)")
-                print(f"  (Saved to data/courses/ for future use)")
-                print(f"  (For more detail, add screenshots to data/course_images/)")
+                print("  (Saved to data/courses/ for future use)")
+                print("  (For more detail, add screenshots to data/course_images/)")
             else:
-                print(f"  Could not auto-generate profile (not enough data)")
+                print("  Could not auto-generate profile (not enough data)")
         else:
-            print(f"  No decomposition data available for auto-generation")
+            print("  No decomposition data available for auto-generation")
 
     # ── Weather forecast ─────────────────────────────────────
     print_header("Step 5b: Weather Forecast")
@@ -872,9 +872,9 @@ def main():
                 else:
                     print(f"  Conditions benign (severity {severity}<10), no weather adjustments")
             else:
-                print(f"  Could not fetch forecast")
+                print("  Could not fetch forecast")
         else:
-            print(f"  No coordinates available for weather lookup")
+            print("  No coordinates available for weather lookup")
     except Exception as e:
         print(f"  Warning: Weather module error: {e}")
 
@@ -931,8 +931,8 @@ def main():
             print(f"  Memory topics: {', '.join(ai_status['memory_topics'][:10])}")
 
         try:
-            print(f"\n  Running pre-tournament analysis...")
-            print(f"  (Sending field, course profile, and memories to AI)")
+            print("\n  Running pre-tournament analysis...")
+            print("  (Sending field, course profile, and memories to AI)")
             ai_pre_analysis = pre_tournament_analysis(
                 tournament_id=tid,
                 composite_results=composite,
@@ -944,21 +944,21 @@ def main():
             # Display AI narrative
             narrative = ai_pre_analysis.get("course_narrative", "")
             if narrative:
-                print(f"\n  AI Narrative:")
+                print("\n  AI Narrative:")
                 # Word-wrap the narrative for terminal
                 for line in _wrap_text(narrative, 56):
                     print(f"    {line}")
 
             key_factors = ai_pre_analysis.get("key_factors", [])
             if key_factors:
-                print(f"\n  Key Factors This Week:")
+                print("\n  Key Factors This Week:")
                 for i, kf in enumerate(key_factors, 1):
                     print(f"    {i}. {kf}")
 
             # Show players to watch
             watch = ai_pre_analysis.get("players_to_watch", [])
             if watch:
-                print(f"\n  Players to Watch (AI sees edge):")
+                print("\n  Players to Watch (AI sees edge):")
                 for p in watch:
                     adj = p.get("adjustment", 0)
                     sign = "+" if adj > 0 else ""
@@ -967,7 +967,7 @@ def main():
             # Show fades
             fades = ai_pre_analysis.get("players_to_fade", [])
             if fades:
-                print(f"\n  Players to Fade (AI sees risk):")
+                print("\n  Players to Fade (AI sees risk):")
                 for p in fades:
                     adj = p.get("adjustment", 0)
                     sign = "+" if adj > 0 else ""
@@ -981,15 +981,15 @@ def main():
             composite = apply_ai_adjustments(composite, ai_pre_analysis)
             new_top3 = [r["player_display"] for r in composite[:3]]
             if old_top3 != new_top3:
-                print(f"\n  ⚡ Rankings shifted after AI adjustments")
+                print("\n  ⚡ Rankings shifted after AI adjustments")
                 print(f"     Before: {', '.join(old_top3)}")
                 print(f"     After:  {', '.join(new_top3)}")
             else:
-                print(f"\n  Rankings unchanged after AI adjustments")
+                print("\n  Rankings unchanged after AI adjustments")
 
         except Exception as e:
             print(f"\n  ⚠ AI analysis error: {e}")
-            print(f"  Continuing without AI adjustments...")
+            print("  Continuing without AI adjustments...")
     else:
         print("  AI not available (no OPENAI_API_KEY set)")
         print("  Running quantitative model only")

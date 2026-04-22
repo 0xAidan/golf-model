@@ -60,7 +60,7 @@ def main():
 
             # Show model weight adjustments
             adjustments = course_to_model_weights(profile)
-            print(f"\n  Model Weight Multipliers:")
+            print("\n  Model Weight Multipliers:")
             for k, v in adjustments.items():
                 if k != "course_profile" and v != 1.0:
                     print(f"    {k}: {v}x")
@@ -79,7 +79,7 @@ def main():
 
         if not os.path.isdir(args.screenshots):
             print(f"\nERROR: Folder not found: {args.screenshots}")
-            print(f"Create the folder and put your course screenshots in it.")
+            print("Create the folder and put your course screenshots in it.")
             sys.exit(1)
 
         print(f"\n{'='*60}")
@@ -102,7 +102,7 @@ def main():
         ratings = data.get("skill_ratings", {})
         stats = data.get("stat_comparisons", [])
 
-        print(f"\n  Summary:")
+        print("\n  Summary:")
         if facts.get("par"):
             print(f"    Par {facts['par']}, {facts.get('yardage', '?')} yards")
         if facts.get("avg_scoring_conditions"):
@@ -110,7 +110,7 @@ def main():
         if facts.get("greens_surface"):
             print(f"    Greens: {facts['greens_surface']}, {facts.get('greens_speed', '?')}")
 
-        print(f"\n  Skill Difficulty Ratings:")
+        print("\n  Skill Difficulty Ratings:")
         for key in ["sg_ott", "sg_app", "sg_arg", "sg_putting"]:
             if key in ratings:
                 label = key.replace("sg_", "SG:").upper().replace("SG:OTT", "SG:OTT").replace("SG:APP", "SG:APP")
@@ -121,13 +121,13 @@ def main():
 
         # Show weight adjustments
         adjustments = course_to_model_weights(data)
-        print(f"\n  Model Weight Multipliers (applied during analysis):")
+        print("\n  Model Weight Multipliers (applied during analysis):")
         for k, v in adjustments.items():
             if k != "course_profile":
                 mult_text = f"{v}x" if v != 1.0 else "1.0x (no change)"
                 print(f"    {k}: {mult_text}")
 
-        print(f"\n  This profile will be used automatically when you run analyze.py")
+        print("\n  This profile will be used automatically when you run analyze.py")
         print(f"  for any tournament at {args.course}.")
         print(f"{'='*60}")
         return

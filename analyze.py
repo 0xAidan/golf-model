@@ -76,8 +76,8 @@ def _run_calibration_dashboard():
     if by_market:
         print("\nWins / Losses by market:")
         for bt, counts in sorted(by_market.items()):
-            w, l = counts["wins"], counts["losses"]
-            print(f"  {bt}: {w}W / {l}L")
+            w, losses = counts["wins"], counts["losses"]
+            print(f"  {bt}: {w}W / {losses}L")
 
     # CLV summary
     try:
@@ -160,7 +160,7 @@ def main():
         return
 
     print(f"{'='*60}")
-    print(f"  GOLF BETTING MODEL")
+    print("  GOLF BETTING MODEL")
     print(f"  Tournament: {args.tournament}")
     print(f"  Course: {args.course or 'Not specified'}")
     print(f"{'='*60}")
@@ -181,7 +181,7 @@ def main():
         not args.no_sync and os.environ.get("DATAGOLF_API_KEY")
     )
     if should_sync:
-        print(f"\nSyncing Data Golf data...")
+        print("\nSyncing Data Golf data...")
         from src.datagolf import sync_tournament
         from src.rolling_stats import compute_rolling_metrics, get_field_from_metrics
         try:
@@ -199,7 +199,7 @@ def main():
                 print(f"  Rolling stats: {rolling.get('total_metrics', 0)} metrics computed")
         except Exception as e:
             print(f"  DG sync error: {e}")
-            print(f"  Continuing with CSV data if available...")
+            print("  Continuing with CSV data if available...")
 
     # ── Step 2: Ingest CSVs (optional — fallback or supplement) ──
     csv_folder = os.path.join(os.path.dirname(__file__), args.folder)
@@ -211,8 +211,8 @@ def main():
         print(f"\nIngesting CSVs from {args.folder}...")
         summary = ingest_folder(csv_folder, tournament_id)
     elif not should_sync:
-        print(f"\nERROR: No data source available.")
-        print(f"  Either: set DATAGOLF_API_KEY and use --sync")
+        print("\nERROR: No data source available.")
+        print("  Either: set DATAGOLF_API_KEY and use --sync")
         print(f"  Or: drop CSVs in {args.folder}")
         sys.exit(1)
     else:
@@ -223,7 +223,7 @@ def main():
     print(f"\n  Players in database: {len(players)}")
 
     # ── Step 4: Run models ──────────────────────────────────────
-    print(f"\nRunning models...")
+    print("\nRunning models...")
     weights = get_active_weights()
     print(f"  Weights: course={weights.get('course_fit', 0.4):.0%}, "
           f"form={weights.get('form', 0.4):.0%}, "
@@ -252,7 +252,7 @@ def main():
         sys.exit(1)
 
     # Print top 10
-    print(f"\n  TOP 10 BY COMPOSITE:")
+    print("\n  TOP 10 BY COMPOSITE:")
     for r in composite[:10]:
         trend = {"hot": "↑↑", "warming": "↑", "cooling": "↓", "cold": "↓↓"}.get(
             r.get("momentum_direction", ""), "—"
@@ -266,7 +266,7 @@ def main():
     # ── Step 5: Fetch odds ──────────────────────────────────────
     value_bets = {}
     if not args.no_odds:
-        print(f"\nFetching odds...")
+        print("\nFetching odds...")
         all_odds = []
 
         # Try API
@@ -309,7 +309,7 @@ def main():
         from src.ai_brain import is_ai_available, pre_tournament_analysis, \
             make_betting_decisions, apply_ai_adjustments
         if is_ai_available():
-            print(f"\nRunning AI brain...")
+            print("\nRunning AI brain...")
 
             # Load course profile
             course_profile = None
@@ -319,7 +319,7 @@ def main():
                     course_profile = profile
 
             # Pre-tournament analysis
-            print(f"  Pre-tournament analysis...")
+            print("  Pre-tournament analysis...")
             pre_analysis = pre_tournament_analysis(
                 tournament_id=tournament_id,
                 composite_results=composite,
@@ -334,7 +334,7 @@ def main():
 
             # Apply AI adjustments to composite
             composite = apply_ai_adjustments(composite, pre_analysis)
-            print(f"  Applied AI adjustments to composite scores")
+            print("  Applied AI adjustments to composite scores")
 
             # Betting decisions disabled — purely quantitative now
             if value_bets:
@@ -347,7 +347,7 @@ def main():
                     course_name=args.course or "",
                 )
                 if decisions is None:
-                    print(f"  AI betting decisions disabled — bet selection is purely quantitative.")
+                    print("  AI betting decisions disabled — bet selection is purely quantitative.")
                 else:
                     n_bets = len(decisions.get("decisions", []))
                     total_units = decisions.get("total_units", 0)
@@ -356,10 +356,10 @@ def main():
                         print(f"      {d['player']} {d['bet_type']} @ {d['odds']} "
                               f"({d['confidence']}) — {d['reasoning'][:60]}...")
         else:
-            print(f"\n  AI brain not available (set OPENAI_API_KEY)")
+            print("\n  AI brain not available (set OPENAI_API_KEY)")
 
     # ── Step 7: Generate card ───────────────────────────────────
-    print(f"\nGenerating betting card...")
+    print("\nGenerating betting card...")
     filepath = generate_card(
         args.tournament,
         args.course or "Unknown",

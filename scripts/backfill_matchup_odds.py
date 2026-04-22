@@ -121,7 +121,7 @@ def main():
     print("  Historical Matchup Odds Backfill")
     print("=" * 50)
 
-    print(f"\n  Fetching event list from DG...")
+    print("\n  Fetching event list from DG...")
     events = fetch_event_list(args.tour)
     if not events:
         print("  ERROR: No events returned from DG API")
@@ -161,7 +161,7 @@ def main():
 
     print()
     print("=" * 50)
-    print(f"  Backfill complete")
+    print("  Backfill complete")
     print(f"  Events processed: {len(events)}")
     print(f"  Total matchups fetched: {total_matchups}")
     print(f"  New rows inserted: {total_inserted}")

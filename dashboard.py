@@ -25,7 +25,7 @@ def show_summary():
     # Tournaments
     tournaments = conn.execute("SELECT * FROM tournaments ORDER BY id").fetchall()
     print(f"\n{'='*60}")
-    print(f"  GOLF MODEL DASHBOARD")
+    print("  GOLF MODEL DASHBOARD")
     print(f"{'='*60}")
     print(f"\n  Tournaments: {len(tournaments)}")
     for t in tournaments:
@@ -40,7 +40,7 @@ def show_summary():
 
     # Overall performance
     analysis = analyze_pick_performance()
-    print(f"\n  OVERALL PERFORMANCE")
+    print("\n  OVERALL PERFORMANCE")
     print(f"  {'─'*40}")
     total = analysis.get("total_picks", 0)
     if total == 0:
@@ -53,14 +53,14 @@ def show_summary():
     print(f"  Hit rate: {analysis['hit_rate']:.1%}")
 
     # By bet type
-    print(f"\n  BY BET TYPE:")
+    print("\n  BY BET TYPE:")
     for bt, stats in sorted(analysis.get("by_bet_type", {}).items()):
         print(f"    {bt:<12} {stats['hits']}/{stats['picks']} = {stats['hit_rate']:.1%}")
 
     # Factor analysis
     fa = analysis.get("factor_analysis", {})
     if fa:
-        print(f"\n  FACTOR ANALYSIS (avg score: hits vs misses):")
+        print("\n  FACTOR ANALYSIS (avg score: hits vs misses):")
         print(f"  {'Factor':<15} {'Avg Hit':>10} {'Avg Miss':>10} {'Edge':>10}")
         print(f"  {'─'*47}")
         for factor, stats in sorted(fa.items()):
@@ -69,7 +69,7 @@ def show_summary():
 
     # Current weights
     weights = get_current_weights()
-    print(f"\n  CURRENT WEIGHTS:")
+    print("\n  CURRENT WEIGHTS:")
     print(f"    Course Fit: {weights.get('course_fit', 0.4):.0%}")
     print(f"    Form:       {weights.get('form', 0.4):.0%}")
     print(f"    Momentum:   {weights.get('momentum', 0.2):.0%}")
@@ -79,7 +79,7 @@ def show_summary():
         "SELECT * FROM weight_sets ORDER BY id DESC LIMIT 5"
     ).fetchall()
     if weight_sets:
-        print(f"\n  WEIGHT HISTORY (last 5):")
+        print("\n  WEIGHT HISTORY (last 5):")
         for ws in weight_sets:
             active = " ← ACTIVE" if ws["active"] else ""
             print(f"    {ws['name'] or 'unnamed'} (#{ws['id']}){active}")
@@ -102,7 +102,7 @@ def do_retune(dry_run: bool = True):
 
     print(f"\n  Based on {analysis['total_picks']} picks ({analysis['total_hits']} hits):")
 
-    print(f"\n  Current → Suggested weights:")
+    print("\n  Current → Suggested weights:")
     for k in ["course_fit", "form", "momentum"]:
         curr = result["current_weights"].get(k, 0)
         sugg = result["suggested_weights"].get(k, 0)
@@ -111,11 +111,11 @@ def do_retune(dry_run: bool = True):
         print(f"    {k:<12} {curr:.1%} → {sugg:.1%}  ({change:+.1%}) {arrow}")
 
     if result.get("saved"):
-        print(f"\n  ✓ New weights saved and activated.")
+        print("\n  ✓ New weights saved and activated.")
     elif not dry_run:
         print(f"\n  {result.get('message', 'Weights not saved.')}")
     else:
-        print(f"\n  Dry run — no changes saved. Remove --dry to apply.")
+        print("\n  Dry run — no changes saved. Remove --dry to apply.")
 
 
 def main():
