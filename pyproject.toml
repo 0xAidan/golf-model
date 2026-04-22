@@ -3,6 +3,17 @@ name = "golf-model"
 version = "4.2.0"
 requires-python = ">=3.11"
 
+[tool.setuptools]
+# Ship versioned prompt templates alongside the package so
+# installed environments pick them up (see src/prompts.py::load_prompt).
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["src*", "backtester*", "workers*", "autoresearch*"]
+
+[tool.setuptools.package-data]
+"*" = ["prompts/**/*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

@@ -72,6 +72,18 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
    - Status: **FIXED** — PR `perf/db-indexes` (Q4). Idempotent migration via
      `_ensure_hot_path_indexes()`; schema unchanged, data untouched.
 
+## Quality / DX defects
+
+- Q6 (FIXED 2026-04-22): LLM prompts were multi-line f-strings embedded in
+  `src/prompts.py`, which made review, diffs, and A/B testing painful. Templates
+  are now externalized to `prompts/v1/*.md` and loaded via
+  `src.prompts.load_prompt(name, version="v1")`. Public function signatures are
+  unchanged and output is bit-for-bit identical — see
+  `tests/test_prompts_externalized.py`. Future prompt revisions land in
+  `prompts/v2/` side-by-side so A/B comparisons need no code change.
+  - Files: `src/prompts.py`, `prompts/v1/*.md`, `tests/test_prompts_externalized.py`,
+    `pyproject.toml`, `MANIFEST.in`
+
 ## Acceptance Criteria per defect
 
 Each fix must include:
