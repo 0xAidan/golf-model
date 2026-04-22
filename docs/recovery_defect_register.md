@@ -118,6 +118,15 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
   - `jinja2` was never a declared dependency; nothing to drop.
   - React SPA (`frontend/dist/`) is the sole UI served at `/`.
 
+## 3. Phase 2 Enablement
+
+### 3.3 Evaluation infrastructure
+
+#### 3.3.1 Champion-challenger dashboard — FIXED
+
+- Files: `src/config.py`, `src/models/base.py`, `src/db.py`, `src/evaluation/*.py`, `src/matchup_value.py`, `src/routes/champion_challenger.py`, `frontend/src/pages/champion-challenger-page.tsx`, `frontend/src/components/shell.tsx`, `tests/test_champion_challenger.py`.
+- Rails that let Phase 2 challengers (T1 shot-level SG, T2 Monte Carlo) be evaluated on Brier / matchup ROI / CLV against the live champion (v4.2) without ever pricing live bets. Champion pipeline output is byte-identical to pre-rails main; verified by a golden SHA-256 hash test on `matchup_value._find_matchup_value_bets_core`. Challenger failures are caught + logged WARNING and never break the pipeline. `CHALLENGERS` is empty by default.
+
 ## Acceptance Criteria per defect
 
 Each fix must include:

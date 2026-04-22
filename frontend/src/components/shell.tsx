@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom"
 import {
   Activity,
+  FlaskConical,
   GraduationCap,
   LayoutDashboard,
   Route,
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "course",       label: "Course",       href: "/course",      icon: Route },
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
   { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
+  { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
 ]
 
 /* ── Logo SVG mark ────────────────────────────── */
@@ -97,7 +99,23 @@ export function SuiteShell({
           ))}
 
           <div className="sidebar-section-label" style={{ marginTop: 8 }}>Records</div>
-          {NAV_ITEMS.slice(4).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(4, 6).map(({ href, icon: Icon, label, id }) => (
+            <NavLink
+              key={href}
+              to={href}
+              end={href === "/"}
+              className={({ isActive }) =>
+                cn("nav-item", isActive && "active")
+              }
+              data-testid={`nav-${id}`}
+            >
+              <Icon size={15} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+
+          <div className="sidebar-section-label" style={{ marginTop: 8 }}>Research</div>
+          {NAV_ITEMS.slice(6).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}

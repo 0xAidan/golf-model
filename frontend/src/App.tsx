@@ -20,6 +20,7 @@ import {
 } from "@/lib/prediction-board"
 import { useLocalStorageState } from "@/lib/storage"
 import type { LiveRefreshSnapshot, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
+import { ChampionChallengerPage } from "@/pages/champion-challenger-page"
 import { LegacyRouteGate } from "@/pages/legacy-route-gate"
 import {
   CoursePage,
@@ -351,6 +352,7 @@ function App() {
         />
         <Route path="/grading" element={<div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><GradingPage gradingHistory={gradingHistory} /></div>} />
         <Route path="/track-record" element={<div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><TrackRecordPage /></div>} />
+        <Route path="/research/champion-challenger" element={<ChampionChallengerPage />} />
       </Routes>
     </SuiteShell>
   )

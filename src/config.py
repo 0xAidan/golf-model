@@ -287,3 +287,15 @@ def get_blend_weights(bet_type: str) -> tuple[float, float]:
     """Return (dg_weight, model_weight) for a bet type."""
     cfg = BLEND_WEIGHTS.get(bet_type, {"dg": 0.95, "model": 0.05})
     return (cfg["dg"], cfg["model"])
+
+
+# ---------------------------------------------------------------------------
+# Champion-challenger rails (recovery defect 3.3.1)
+# ---------------------------------------------------------------------------
+# CHAMPION names the model that actually prices live bets. CHALLENGERS lists
+# models evaluated in shadow mode — their predictions are recorded for offline
+# comparison but MUST NEVER influence any card, snapshot, or bet-selection
+# logic. Default is empty: no challengers in main, so pipeline output is
+# byte-identical to the pre-rails baseline.
+CHAMPION: str = "v4.2"
+CHALLENGERS: list[str] = []

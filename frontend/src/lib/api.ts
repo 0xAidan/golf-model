@@ -1,4 +1,5 @@
 import type {
+  ChampionChallengerSummary,
   DashboardState,
   EventSummary,
   GradingHistoryResponse,
@@ -41,6 +42,8 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): 
 }
 
 export const api = {
+  getChampionChallengerSummary: () =>
+    request<ChampionChallengerSummary>("/api/champion-challenger/summary"),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
   getLatestCompletedEvent: () => request<EventSummary>("/api/events/latest-completed"),
   getGradingHistory: () => request<GradingHistoryResponse>("/api/grading/history"),
