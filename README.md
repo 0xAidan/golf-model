@@ -121,8 +121,7 @@ golf-model/
 │   └── services/
 │       ├── golf_model_service.py
 │       └── live_snapshot_service.py
-├── static/
-├── templates/
+├── frontend/
 ├── tests/
 └── docs/
 ```
