@@ -11,8 +11,8 @@ from optuna.trial import TrialState
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def test_home_page_exposes_live_and_upcoming_tabs():
-    """Top navigation should prioritize live and upcoming tournaments."""
+def test_home_page_serves_built_react_shell():
+    """The root dashboard serves the built React SPA."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -20,9 +20,8 @@ def test_home_page_exposes_live_and_upcoming_tabs():
 
     assert response.status_code == 200
     text = response.text
-    serves_built_shell = '<div id="root"></div>' in text and "/assets/" in text
-    serves_server_shell = "Live Tournament" in text and "Upcoming Tournament" in text and "Ops Controls" in text
-    assert serves_built_shell or serves_server_shell
+    assert '<div id="root"></div>' in text
+    assert "Continuous Optimizer" not in text
 
 
 def test_upcoming_prediction_endpoint_returns_output_file(monkeypatch):
@@ -614,8 +613,8 @@ def test_latest_output_summaries_endpoint_returns_compact_cards(tmp_path, monkey
     assert body["research"]["summary"]["candidate_title"] == "candidate_a"
 
 
-def test_home_page_recent_runs_js_escapes_report_path_safely():
-    """The home page should render a valid dashboard shell."""
+def test_home_page_renders_react_shell_root():
+    """The home page should render the React SPA shell."""
     import app as app_module
 
     client = TestClient(app_module.app)
@@ -623,8 +622,7 @@ def test_home_page_recent_runs_js_escapes_report_path_safely():
 
     assert response.status_code == 200
     text = response.text
-    assert ("/assets/" in text) or ("/static/js/app.js" in text)
-    assert ('<div id="root"></div>' in text) or ("Live Tournament" in text)
+    assert '<div id="root"></div>' in text
 
 
 def test_home_page_prefers_built_react_dashboard_when_frontend_dist_exists(tmp_path, monkeypatch):

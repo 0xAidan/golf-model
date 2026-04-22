@@ -84,6 +84,15 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
   - Files: `src/prompts.py`, `prompts/v1/*.md`, `tests/test_prompts_externalized.py`,
     `pyproject.toml`, `MANIFEST.in`
 
+## Cleanup (Q-series)
+
+- Q7: Delete legacy Jinja UI — FIXED (2026-04-22).
+  - `templates/index.html`, `static/` directory removed.
+  - FastAPI routes `/legacy` and `/legacy-classic` removed; `/static` mount removed.
+  - Inline `HTML_PAGE` / `SIMPLE_HTML_PAGE` fallbacks removed from `app.py`.
+  - `jinja2` was never a declared dependency; nothing to drop.
+  - React SPA (`frontend/dist/`) is the sole UI served at `/`.
+
 ## Acceptance Criteria per defect
 
 Each fix must include:

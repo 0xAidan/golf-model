@@ -11,7 +11,7 @@
 ## 1. Project Summary
 
 - **What it is:** Quantitative golf betting system. Data Golf API → round-level SG data, predictions, odds. Composite model (course fit + form + momentum) scores players; value layer compares model vs market for EV; AI layer does qualitative analysis and persistent memory. Post-tournament: grade picks, calibration, weight nudges, AI learnings. Autoresearch system proposes, backtests, and promotes strategy changes autonomously.
-- **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` and served by FastAPI at `/`. Legacy Jinja UI (`templates/index.html`) still exists but the React SPA is the primary dashboard.
+- **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` and served by FastAPI at `/` — the React SPA is the sole UI.
 - **Key constraints:** Walk-forward backtesting only (no future data). Bootstrap phases (shadow → paper → cautious live → full live). Stopping rules and go-live gates in project charter. See section 8.
 - **CI:** GitHub Actions at `.github/workflows/ci.yml`.
 
@@ -228,8 +228,7 @@ golf-model/
 │   ├── archive/             # Older cards moved here by output_manager
 │   └── backtests/           # Backtest reports (.md and .json)
 │
-├── templates/index.html     # Web UI template (Jinja2)
-├── static/css/main.css      # Web UI styles
+├── frontend/                # React 19 + Vite SPA (sole UI; built to frontend/dist/)
 │
 ├── docs/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
@@ -638,7 +637,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | CI | `.github/workflows/ci.yml` |
 | Deployment | `deploy.sh` (see Section 11) |
 | Live refresh snapshot logic | `backtester/dashboard_runtime.py`, `workers/live_refresh_worker.py` |
-| Legacy Jinja UI (deprecated) | `templates/index.html`, `static/css/main.css` |
+| Frontend (sole UI) | `frontend/` (React 19 + Vite), built to `frontend/dist/` |
 
 ---
 
