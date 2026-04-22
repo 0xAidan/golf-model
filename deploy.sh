@@ -29,6 +29,19 @@ log() { echo -e "${GREEN}[DEPLOY]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
+# Resolve the authoritative DB path by asking ``src.backup`` on the remote host.
+# Falls back to ``<DEPLOY_PATH>/data/golf.db`` if Python/venv isn't available
+# yet (first-time setup, broken venv, etc.). This keeps ops checks correct even
+# if ``src.db._resolve_db_path()`` redirects the DB to a different location.
+remote_db_path() {
+    local resolved
+    resolved=$(ssh "$DEPLOY_HOST" "cd '$DEPLOY_PATH' 2>/dev/null && ./venv/bin/python -m src.backup --print-path 2>/dev/null" || true)
+    if [ -z "$resolved" ]; then
+        resolved="$DEPLOY_PATH/data/golf.db"
+    fi
+    echo "$resolved"
+}
+
 # Configuration
 DEPLOY_HOST="${DEPLOY_HOST:-}"
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/golf-model}"
@@ -238,12 +251,24 @@ update_server() {
 
     ssh "$DEPLOY_HOST" bash << UPDATE_EOF
         set -e
-        cd /opt/golf-model
+        cd "$DEPLOY_PATH"
 
-        # Backup before update
-        if [ -f "data/golf.db" ]; then
+        # Backup before update. Ask ``src.backup`` for the authoritative DB
+        # path rather than assuming ``data/golf.db`` in the project dir
+        # (``_resolve_db_path`` may redirect the DB elsewhere). The backup
+        # script itself is a no-op when the resolved path doesn't exist,
+        # so this is safe on fresh installs.
+        if [ -x venv/bin/python ]; then
             source venv/bin/activate
-            python -m src.backup --keep 14 || true
+            DB_PATH=\$(python -m src.backup --print-path 2>/dev/null || echo "data/golf.db")
+            if [ -f "\$DB_PATH" ]; then
+                echo "[deploy] backing up \$DB_PATH"
+                python -m src.backup --keep 14 || true
+            else
+                echo "[deploy] no DB at \$DB_PATH yet; skipping pre-update backup"
+            fi
+        else
+            echo "[deploy] venv not available; skipping pre-update backup"
         fi
 
         # Pull latest
@@ -282,7 +307,10 @@ UPDATE_EOF
 # ═══════════════════════════════════════════════════════════════
 check_status() {
     log "Checking status on $DEPLOY_HOST..."
-    ssh "$DEPLOY_HOST" bash << 'STATUS_EOF'
+    # Note: double-quoted heredoc so $DEPLOY_PATH expands locally before the
+    # remote shell sees it. Keep ``\$`` for any variable that should be
+    # evaluated on the remote.
+    ssh "$DEPLOY_HOST" bash << STATUS_EOF
         echo "=== Services ==="
         systemctl is-active golf-dashboard || true
         systemctl is-active golf-agent || true
@@ -290,15 +318,22 @@ check_status() {
 
         echo ""
         echo "=== Database ==="
-        if [ -f "/opt/golf-model/data/golf.db" ]; then
-            ls -lh /opt/golf-model/data/golf.db
+        cd "$DEPLOY_PATH" 2>/dev/null || { echo "Deploy path $DEPLOY_PATH not found"; exit 0; }
+        if [ -x venv/bin/python ]; then
+            DB_PATH=\$(./venv/bin/python -m src.backup --print-path 2>/dev/null || echo "$DEPLOY_PATH/data/golf.db")
         else
-            echo "No database found"
+            DB_PATH="$DEPLOY_PATH/data/golf.db"
+        fi
+        echo "Resolved DB path: \$DB_PATH"
+        if [ -f "\$DB_PATH" ]; then
+            ls -lh "\$DB_PATH"
+        else
+            echo "No database found at \$DB_PATH"
         fi
 
         echo ""
         echo "=== Disk ==="
-        df -h /opt/golf-model
+        df -h "$DEPLOY_PATH"
 
         echo ""
         echo "=== Recent Logs ==="

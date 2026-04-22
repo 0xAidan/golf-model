@@ -5,8 +5,10 @@ Creates timestamped backups of the SQLite database.
 Keeps the last N backups and auto-rotates.
 
 Usage:
-    python -m src.backup              # Create a backup now
-    python -m src.backup --keep 10    # Keep last 10 backups
+    python -m src.backup                     # Create a backup now
+    python -m src.backup --keep 10           # Keep last 10 backups
+    python -m src.backup --print-path        # Print authoritative DB path (for shell scripts)
+    python -m src.backup --print-backup-dir  # Print backup directory path
 """
 
 import os
@@ -16,7 +18,20 @@ from datetime import datetime
 
 from src import db
 
-DB_PATH = db.DB_PATH
+
+def _current_db_path() -> str:
+    """Return the authoritative DB path at call time (not at import time).
+
+    ``src.db.DB_PATH`` is set once at import, but tests or ops tooling may
+    mutate it. Always read the live value so callers (shell scripts, tests)
+    stay in sync with whatever :mod:`src.db` considers authoritative.
+    """
+    return db.DB_PATH
+
+
+# Back-compat alias. Some callers/tests import ``DB_PATH`` directly.
+# Prefer ``_current_db_path()`` in new code.
+DB_PATH = _current_db_path()
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
 
 
@@ -30,7 +45,8 @@ def create_backup(keep: int = 7) -> str | None:
     Returns:
         Path to the new backup file, or None if DB doesn't exist.
     """
-    if not os.path.exists(DB_PATH):
+    db_path = _current_db_path()
+    if not os.path.exists(db_path):
         return None
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -38,7 +54,7 @@ def create_backup(keep: int = 7) -> str | None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
 
-    shutil.copy2(DB_PATH, backup_path)
+    shutil.copy2(db_path, backup_path)
 
     # Rotate old backups
     backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")))
@@ -67,12 +83,13 @@ def restore_backup(backup_path: str) -> bool:
         return False
 
     # Create a backup of current DB before restoring
-    if os.path.exists(DB_PATH):
-        pre_restore = DB_PATH + ".pre_restore"
-        shutil.copy2(DB_PATH, pre_restore)
+    db_path = _current_db_path()
+    if os.path.exists(db_path):
+        pre_restore = db_path + ".pre_restore"
+        shutil.copy2(db_path, pre_restore)
         print(f"  Current DB saved to: {pre_restore}")
 
-    shutil.copy2(backup_path, DB_PATH)
+    shutil.copy2(backup_path, db_path)
     print(f"  Restored from: {backup_path}")
     return True
 
@@ -102,9 +119,23 @@ if __name__ == "__main__":
     parser.add_argument("--keep", type=int, default=7, help="Number of backups to keep")
     parser.add_argument("--list", action="store_true", help="List available backups")
     parser.add_argument("--restore", type=str, help="Restore from a backup file")
+    parser.add_argument(
+        "--print-path",
+        action="store_true",
+        help="Print the authoritative DB path and exit (for shell scripts).",
+    )
+    parser.add_argument(
+        "--print-backup-dir",
+        action="store_true",
+        help="Print the backup directory path and exit (for shell scripts).",
+    )
     args = parser.parse_args()
 
-    if args.list:
+    if args.print_path:
+        print(_current_db_path())
+    elif args.print_backup_dir:
+        print(BACKUP_DIR)
+    elif args.list:
         backups = list_backups()
         if not backups:
             print("  No backups found.")
