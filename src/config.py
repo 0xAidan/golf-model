@@ -283,6 +283,20 @@ def get_autoresearch_guardrail_params() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# In-play round matchups (T6 — SHADOW MODE ONLY)
+# ---------------------------------------------------------------------------
+# Evaluate in-play round matchup pricing WITHOUT risking bankroll. A hard
+# staking ban is enforced by runtime assertion in the bet-ticket code path;
+# flipping these flags does NOT enable live staking on this market.
+INPLAY_ROUND_MATCHUPS_SHADOW: bool = os.environ.get(
+    "INPLAY_ROUND_MATCHUPS_SHADOW", "false"
+).strip().lower() in ("1", "true", "yes", "on")
+
+# MUST stay False in this PR. Asserted in staking code paths.
+INPLAY_STAKING_ENABLED: bool = False
+
+
+# ---------------------------------------------------------------------------
 # API / pipeline timing
 # ---------------------------------------------------------------------------
 API_TIMEOUT = 120

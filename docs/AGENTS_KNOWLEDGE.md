@@ -728,3 +728,45 @@ Concrete models subclass `BaseModel`. The champion (v4.2) is wrapped by `Champio
 - **Section 12 (quick reference):** Keep aligned with actual file locations.
 - **Charter changes:** Update section 8 and keep `.cursor/rules/project-charter.mdc` in sync.
 - **Last verified line (top):** Update date, model version, test count, and app.py line count when you verify accuracy.
+
+---
+
+## 14. In-play round matchups (shadow)
+
+**Status: SHADOW ONLY (T6).** In this PR we build the pipeline to price
+and log in-play round matchups, but we do **not** place real bets on this
+market. Live staking is blocked by a runtime assertion in the bet-ticket
+code path (`src.models.inplay_round_matchup.assert_inplay_staking_disabled`).
+
+**Why shadow:** live matchup edge is proven on pre-tournament round
+matchups; in-play is a different market (higher variance, wider book
+margins, much shorter prediction horizon). We want to measure our ability
+to price it WITHOUT risking bankroll.
+
+**Config flags (src/config.py):**
+- `INPLAY_ROUND_MATCHUPS_SHADOW` — default `False`. Gate for the ingest
+  and prediction logging. Safe to flip ON; it never causes staking.
+- `INPLAY_STAKING_ENABLED` — MUST stay `False`. Flipping it will trip the
+  staking-ban assertion (enforced by unit test).
+
+**Pipeline:**
+1. Live refresh flow calls `src.services.inplay_shadow.ingest_inplay_prices`
+   with book rows during active rounds when the flag is on.
+2. Raw prices land in `inplay_round_matchup_prices`.
+3. For each row we compute `predict_inplay_round` — pre-round prior updated
+   via a Brownian bridge on holes remaining, with skill-aware SD.
+4. One prediction row per refresh tick is written to
+   `inplay_round_matchup_predictions`, with a HYPOTHETICAL Kelly fraction
+   recorded for later offline analysis.
+
+**Evaluation (offline):** `src.evaluation.inplay` computes Brier and
+hypothetical-ROI from the shadow table. These are research inputs to a
+future "promote out of shadow" gate, not inputs to live staking.
+
+**Admin endpoint:** `GET /api/research/inplay-shadow?event_id=...` dumps
+predictions for an event as CSV-style JSON. Admin/research use only.
+
+**Promotion gate (future PR):** will require (a) positive Brier vs. a
+market-implied baseline over a meaningful sample, (b) positive hypothetical
+ROI after accounting for book margin, and (c) an explicit config flag that
+replaces `INPLAY_STAKING_ENABLED` with a market-specific allow-list.
