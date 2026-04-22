@@ -1,11 +1,14 @@
 __pycache__/
 *.pyc
 .env
+.venv/
+venv/
 data/golf.db
 data/csvs/*.csv
 data/course_images/
 data/autoresearch_settings.json
 output/*.md
+output/*.json
 output/archive/
 output/research/
 .DS_Store
