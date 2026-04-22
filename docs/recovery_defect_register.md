@@ -84,6 +84,28 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
   - Files: `src/prompts.py`, `prompts/v1/*.md`, `tests/test_prompts_externalized.py`,
     `pyproject.toml`, `MANIFEST.in`
 
+- Q8 (FIXED 2026-04-22): No end-to-end pipeline integration test existed —
+  only unit tests of individual modules. A minimum-viable E2E test now
+  exercises the critical trust path on a synthetic field: DB seed (2
+  tournaments, 8 players, 8 prior rounds/player, DG skill metrics) →
+  `compute_composite` → matchup-first value path
+  (`find_matchup_value_bets_with_all_books` + `find_value_bets` for
+  placement markets) → snapshot JSON write. Asserts on shape and on the
+  `BEST_BETS_MATCHUP_ONLY` invariant (no outright/top-N rows leak into the
+  best-bets list); numeric probabilities are intentionally not pinned so
+  the test survives ordinary model tuning. Deterministic — zero network
+  I/O: `fetch_dg_matchup_all_pairings` is monkeypatched to the empty
+  fallback. Runtime ~1–2 s on CI, well under the 15 s budget.
+  - Files: `tests/integration/__init__.py`,
+    `tests/integration/test_pipeline_e2e.py`,
+    `tests/integration/fixtures/players.json`,
+    `tests/integration/fixtures/odds.json`,
+    `pyproject.toml` (registers the `integration` marker).
+  - Out of scope / follow-ups: full `GolfModelService.run_analysis`
+    orchestration (requires stubbing DG HTTP dependencies), AI narrative /
+    adjustments path, 3-ball value bets, card / methodology Markdown
+    generation.
+
 ## Cleanup (Q-series)
 
 - Q7: Delete legacy Jinja UI — FIXED (2026-04-22).

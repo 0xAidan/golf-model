@@ -17,6 +17,9 @@ include = ["src*", "backtester*", "workers*", "autoresearch*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: end-to-end pipeline tests (no live APIs; tmp SQLite + fixtures).",
+]
 
 [tool.ruff]
 line-length = 120
