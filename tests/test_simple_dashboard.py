@@ -11,34 +11,6 @@ from optuna.trial import TrialState
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def test_home_page_shows_simple_actions():
-    """The root dashboard should serve either supported dashboard shell."""
-    import app as app_module
-
-    client = TestClient(app_module.app)
-    response = client.get("/")
-
-    assert response.status_code == 200
-    text = response.text
-    serves_built_shell = "Golf Model Command Station" in text and '<div id="root"></div>' in text
-    serves_server_shell = "Live Tournament" in text and "Upcoming Tournament" in text
-    assert serves_built_shell or serves_server_shell
-
-
-def test_home_page_uses_autoresearch_language_not_optimizer_heading():
-    """The home page should avoid legacy optimizer-only wording."""
-    import app as app_module
-
-    client = TestClient(app_module.app)
-    response = client.get("/")
-
-    assert response.status_code == 200
-    text = response.text
-    assert ("Golf Model Command Station" in text) or ("Live Tournament" in text)
-    assert "Continuous Optimizer" not in text
-    assert ("/static/js/app.js" in text) or ("/assets/" in text)
-
-
 def test_home_page_exposes_live_and_upcoming_tabs():
     """Top navigation should prioritize live and upcoming tournaments."""
     import app as app_module

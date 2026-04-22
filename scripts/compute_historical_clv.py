@@ -84,7 +84,7 @@ def compute_matchup_clv():
         return
 
     avg_clv = sum(clv_values) / len(clv_values)
-    print(f"  Matchup CLV Analysis:")
+    print("  Matchup CLV Analysis:")
     print(f"    Total lines analyzed: {total}")
     print(f"    Average CLV: {avg_clv:+.2f}%")
     print(f"    Positive CLV: {positive_clv} ({positive_clv/total*100:.1f}%)")
@@ -127,7 +127,7 @@ def compute_placement_clv():
         return
 
     avg_clv = sum(clv_values) / len(clv_values)
-    print(f"  Placement CLV Analysis:")
+    print("  Placement CLV Analysis:")
     print(f"    Total lines analyzed: {total}")
     print(f"    Average CLV: {avg_clv:+.2f}%")
 

@@ -292,16 +292,16 @@ def main():
     if all_value:
         print(f"  v4.1 ROI:    {pnl/len(all_value)*100:.1f}%")
     print()
-    print(f"  v4.0 Record: 1-22")
-    print(f"  v4.0 PNL:    -16.0u")
-    print(f"  v4.0 ROI:    -69.6%")
+    print("  v4.0 Record: 1-22")
+    print("  v4.0 PNL:    -16.0u")
+    print("  v4.0 ROI:    -69.6%")
 
     print()
     print("  === What Changed ===")
     print(f"  Blend: 70/30 -> {int(dg_weight*100)}/{int(model_weight*100)}")
     print(f"  EV thresholds: 2-5% -> 8-15% (x1.5 weak-field = {ev_threshold*100:.0f}%+ effective)")
     print(f"  Total bet cap: none -> {config.MAX_TOTAL_VALUE_BETS_WEAK_FIELD} (weak field)")
-    print(f"  Market selection: none -> prefer safer market")
+    print("  Market selection: none -> prefer safer market")
     print(f"  Bets generated: 23 -> {len(all_value)}")
 
     also_rans = []

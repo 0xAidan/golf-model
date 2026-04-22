@@ -797,7 +797,7 @@ def run_full_backfill(tours: list[str] = None,
     build_courses_from_events()
 
     print(f"\n{'='*60}")
-    print(f"  Backfill Complete")
+    print("  Backfill Complete")
     print(f"  Events: {summary['events_processed']}")
     print(f"  Predictions: {summary['predictions_stored']}")
     print(f"  Odds: {summary['odds_stored']}")

@@ -352,7 +352,7 @@ def main():
                   f"EV {b['ev_pct']:>7s} -> {status}")
 
     # ── Close-to-value (barely missed EV threshold) ──
-    print(f"\n  --- Close to Value (EV > 5% but below threshold) ---")
+    print("\n  --- Close to Value (EV > 5% but below threshold) ---")
     for bt in bet_types_to_test:
         for b in value_bets_by_market.get(bt, []):
             if b.get("is_value") or b.get("suspicious"):
@@ -385,21 +385,21 @@ def main():
     if all_value:
         print(f"  v4.2 ROI:    {pnl/len(all_value)*100:.1f}%")
     print()
-    print(f"  v4.1 Record: 0-6   (contaminated: Feb 28 in-play odds)")
-    print(f"  v4.1 PNL:    -6.0u")
-    print(f"  v4.1 ROI:    -100.0%")
+    print("  v4.1 Record: 0-6   (contaminated: Feb 28 in-play odds)")
+    print("  v4.1 PNL:    -6.0u")
+    print("  v4.1 ROI:    -100.0%")
     print()
-    print(f"  v4.0 Record: 1-22  (no thresholds, no field filter)")
-    print(f"  v4.0 PNL:    -16.0u")
-    print(f"  v4.0 ROI:    -69.6%")
+    print("  v4.0 Record: 1-22  (no thresholds, no field filter)")
+    print("  v4.0 PNL:    -16.0u")
+    print("  v4.0 ROI:    -69.6%")
 
     print()
     print("  === Root Cause Fixes Applied ===")
-    print(f"  1. Odds source:    Feb 28 R3 in-play → Feb 26 pre-tournament only")
+    print("  1. Odds source:    Feb 28 R3 in-play → Feb 26 pre-tournament only")
     print(f"  2. DG field:       182 players (66 phantom) → {len(dg_probs)} confirmed field")
-    print(f"  3. DG renorm:      raw (48.6% wasted) → renormalized to correct sums")
-    print(f"  4. Blend:          70/30 → 95/5 DG-heavy")
-    print(f"  5. EV thresholds:  2-5% → 8-15% (x1.5 weak-field)")
+    print("  3. DG renorm:      raw (48.6% wasted) → renormalized to correct sums")
+    print("  4. Blend:          70/30 → 95/5 DG-heavy")
+    print("  5. EV thresholds:  2-5% → 8-15% (x1.5 weak-field)")
     print(f"  6. Bet volume:     23 bets → capped at {config.MAX_TOTAL_VALUE_BETS_WEAK_FIELD}")
 
 

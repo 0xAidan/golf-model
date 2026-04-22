@@ -163,12 +163,16 @@ def main():
         pos = live.get('pos', 'N/A')
         num = get_pos_num(pos)
         if 'CUT' in str(pos) or pos == 'WD':
-            if i <= 10: top10_mc += 1
+            if i <= 10:
+                top10_mc += 1
             continue
         if i <= 10:
-            if num <= 10: top10_in_t10 += 1
-            if num <= 20: top10_in_t20 += 1
-        if num <= 20: top20_in_t20 += 1
+            if num <= 10:
+                top10_in_t10 += 1
+            if num <= 20:
+                top10_in_t20 += 1
+        if num <= 20:
+            top20_in_t20 += 1
 
     # ── Compute field-filtered accuracy stats ──
     ff_t5_in_t10 = ff_t5_in_t20 = ff_t10_in_t10 = ff_t10_in_t20 = ff_t10_mc = 0
@@ -179,13 +183,21 @@ def main():
         pos = live.get('pos', 'N/A')
         num = get_pos_num(pos)
         if filt_rank <= 5:
-            if 'CUT' in str(pos): ff_t10_mc += 1
-            elif num <= 10: ff_t5_in_t10 += 1; ff_t10_in_t10 += 1
-            elif num <= 20: ff_t5_in_t20 += 1; ff_t10_in_t20 += 1
+            if 'CUT' in str(pos):
+                ff_t10_mc += 1
+            elif num <= 10:
+                ff_t5_in_t10 += 1
+                ff_t10_in_t10 += 1
+            elif num <= 20:
+                ff_t5_in_t20 += 1
+                ff_t10_in_t20 += 1
         elif filt_rank <= 10:
-            if 'CUT' in str(pos): ff_t10_mc += 1
-            elif num <= 10: ff_t10_in_t10 += 1
-            elif num <= 20: ff_t10_in_t20 += 1
+            if 'CUT' in str(pos):
+                ff_t10_mc += 1
+            elif num <= 10:
+                ff_t10_in_t10 += 1
+            elif num <= 20:
+                ff_t10_in_t20 += 1
 
     # ── Value bet scoring ──
     total_hits = total_alive = total_miss = 0
@@ -204,13 +216,17 @@ def main():
         live_prob = live.get(live_prob_key, 0) or 0
 
         if 'CUT' in str(pos) or pos == 'WD':
-            status = "LOST"; total_miss += 1
+            status = "LOST"
+            total_miss += 1
         elif num <= target:
-            status = "WINNING"; total_hits += 1
+            status = "WINNING"
+            total_hits += 1
         elif live_prob > 0.05:
-            status = f"ALIVE ({live_prob:.0%})"; total_alive += 1
+            status = f"ALIVE ({live_prob:.0%})"
+            total_alive += 1
         else:
-            status = "UNLIKELY"; total_miss += 1
+            status = "UNLIKELY"
+            total_miss += 1
 
         bet_results.append((name, market, odds, ev_pct, pos, score_str, status))
 
@@ -225,13 +241,16 @@ def main():
         score = live.get('score', 0)
         score_str = f"{score:+d}" if isinstance(score, (int, float)) else str(score)
         if 'CUT' in str(pos):
-            verdict = "Good fade (MC)"; fades_correct += 1
+            verdict = "Good fade (MC)"
+            fades_correct += 1
         elif pos in ('WD', 'N/A', '?'):
             verdict = "WD/DNS"
         elif num > 40:
-            verdict = "Good fade"; fades_correct += 1
+            verdict = "Good fade"
+            fades_correct += 1
         elif num > 20:
-            verdict = "Marginal"; fades_correct += 1
+            verdict = "Marginal"
+            fades_correct += 1
         else:
             verdict = "Fade was wrong"
         fade_results.append((name, pos, score_str, verdict))
@@ -239,9 +258,9 @@ def main():
     # ── BUILD REPORT ──
     L = []
     L.append("# Cognizant Classic — Backdated Prediction Report")
-    L.append(f"**Model Version:** v4.0 (Post-Overhaul)")
-    L.append(f"**Report Generated:** 2026-02-28 (After R3)")
-    L.append(f"**Predictions Made With:** Pre-tournament data only (no in-play information)")
+    L.append("**Model Version:** v4.0 (Post-Overhaul)")
+    L.append("**Report Generated:** 2026-02-28 (After R3)")
+    L.append("**Predictions Made With:** Pre-tournament data only (no in-play information)")
     L.append(f"**Tournament Status:** R3 Complete — {info.get('last_update', 'unknown')}")
     L.append("")
     L.append("---")
@@ -342,10 +361,14 @@ def main():
         num = get_pos_num(pos)
         score = live.get('score', 0)
         score_str = f"{score:+d}" if isinstance(score, (int, float)) else str(score)
-        if 'CUT' in str(pos): verdict = "❌ Wrong"
-        elif num <= 5: verdict = "✅ Great call"
-        elif num <= 20: verdict = "🟡 Decent"
-        else: verdict = "🔴 Wrong"
+        if 'CUT' in str(pos):
+            verdict = "❌ Wrong"
+        elif num <= 5:
+            verdict = "✅ Great call"
+        elif num <= 20:
+            verdict = "🟡 Decent"
+        else:
+            verdict = "🔴 Wrong"
         L.append(f"| {name} | {adj} | {pos} | {score_str} | {verdict} |")
 
     L.append("")
@@ -360,10 +383,14 @@ def main():
         num = get_pos_num(pos)
         score = live.get('score', 0)
         score_str = f"{score:+d}" if isinstance(score, (int, float)) else str(score)
-        if 'CUT' in str(pos): verdict = "✅ Good fade"
-        elif num > 40: verdict = "✅ Good fade"
-        elif num > 20: verdict = "🟡 Okay"
-        else: verdict = "❌ Should have kept"
+        if 'CUT' in str(pos):
+            verdict = "✅ Good fade"
+        elif num > 40:
+            verdict = "✅ Good fade"
+        elif num > 20:
+            verdict = "🟡 Okay"
+        else:
+            verdict = "❌ Should have kept"
         L.append(f"| {name} | {adj} | {pos} | {score_str} | {verdict} |")
     L.append("")
 
@@ -455,7 +482,7 @@ def main():
     L.append("")
 
     L.append("---")
-    L.append(f"*Report covers R1-R3 only. Final scoring after R4 on Sunday. Generated by model v4.0 backtest framework.*")
+    L.append("*Report covers R1-R3 only. Final scoring after R4 on Sunday. Generated by model v4.0 backtest framework.*")
 
     report = "\n".join(L)
     out_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'output', 'cognizant_classic_backtest_report_20260228.md')
@@ -464,22 +491,22 @@ def main():
 
     print(f"Report saved: {out_path}")
     print(f"\n{'='*60}")
-    print(f"  BACKTEST RESULTS SUMMARY (Cognizant Classic R3)")
+    print("  BACKTEST RESULTS SUMMARY (Cognizant Classic R3)")
     print(f"{'='*60}")
     print(f"  ⚠  FIELD MISMATCH: {n_dns}/20 top players weren't in field")
-    print(f"")
+    print("")
     print(f"  FIELD-FILTERED ACCURACY ({n_in_field} players in field):")
     print(f"  Field top 5 in actual top 10:  {ff_t5_in_t10}/{min(5, n_in_field)}")
     print(f"  Field top 10 in actual top 10: {ff_t10_in_t10}/{min(10, n_in_field)}")
     print(f"  Field top 10 missed cut:       {ff_t10_mc}/{min(10, n_in_field)}")
-    print(f"")
+    print("")
     print(f"  Model top 10 in actual top 10: {top10_in_t10}/10")
-    print(f"  VALUE BETS:")
+    print("  VALUE BETS:")
     print(f"  Hitting:                       {total_hits}/{total_bets}")
     print(f"  Still alive (R4 pending):      {total_alive}/{total_bets}")
     print(f"  Dead:                          {total_miss}/{total_bets}")
-    print(f"")
-    print(f"  OTHER:")
+    print("")
+    print("  OTHER:")
     print(f"  Fade accuracy:                 {fades_correct}/{len(fades)} ({fade_grade})")
     print(f"  Value bet grade:               {value_grade}")
     print(f"{'='*60}")
