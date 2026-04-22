@@ -5,6 +5,45 @@ export type WorkspaceId =
   | "course"
   | "grading"
   | "track-record"
+  | "champion-challenger"
+
+export type ChampionChallengerBrier = {
+  model_name: string
+  brier: number | null
+  n: number
+}
+
+export type ChampionChallengerMatchupRoi = {
+  model_name: string
+  bets: number
+  staked: number
+  pnl: number
+  roi_pct: number | null
+}
+
+export type ChampionChallengerClv = {
+  model_name: string
+  clv_bps: number | null
+  n: number
+}
+
+export type ChampionChallengerWindow = {
+  brier: ChampionChallengerBrier
+  matchup_roi: ChampionChallengerMatchupRoi
+  clv: ChampionChallengerClv
+}
+
+export type ChampionChallengerModelSummary = {
+  model_name: string
+  windows: Record<string, ChampionChallengerWindow>
+}
+
+export type ChampionChallengerSummary = {
+  champion: string
+  challengers: string[]
+  windows_days: number[]
+  models: ChampionChallengerModelSummary[]
+}
 
 export type DashboardState = {
   ai_status: {

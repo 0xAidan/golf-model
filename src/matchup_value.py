@@ -419,6 +419,42 @@ def _find_matchup_value_bets_core(
         else:
             book_lines = _iter_book_odds(matchup)
 
+        # Shadow-record challenger predictions on this matchup (defect 3.3.1).
+        # Must run AFTER champion has priced the matchup (model_win_prob is
+        # the champion number). Failures are swallowed inside record_matchup_shadow
+        # so they can never break live pricing.
+        try:
+            from src.evaluation.shadow import record_matchup_shadow
+
+            p1_win_prob_champion = model_win_prob if pick_side == "p1" else 1.0 - model_win_prob
+            first_book = book_lines[0] if book_lines else (None, None, None)
+            _, _shadow_p1_odds, _shadow_p2_odds = first_book
+            record_matchup_shadow(
+                p1=p1_data,
+                p2=p2_data,
+                features={
+                    "champion_p": p1_win_prob_champion,
+                    "composite_gap": composite_gap,
+                    "dg_prob": dg_prob,
+                    "platt_win_prob": platt_win_prob,
+                },
+                champion_p=p1_win_prob_champion,
+                tournament_id=tournament_id,
+                book=first_book[0] if first_book else None,
+                book_price_p1=(
+                    american_to_implied_prob(_shadow_p1_odds)
+                    if _shadow_p1_odds is not None
+                    else None
+                ),
+                book_price_p2=(
+                    american_to_implied_prob(_shadow_p2_odds)
+                    if _shadow_p2_odds is not None
+                    else None
+                ),
+            )
+        except Exception:
+            logger.warning("Shadow prediction hook raised; continuing", exc_info=True)
+
         for book_name, p1_odds, p2_odds in book_lines:
             normalized_book = str(book_name).strip().lower()
             if normalized_book:

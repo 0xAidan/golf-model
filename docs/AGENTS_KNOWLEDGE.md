@@ -396,7 +396,7 @@ Major sections and key values:
 
 **Backtester / PIT:** `pit_rolling_stats`, `pit_course_stats`, `historical_predictions`, `historical_odds`, `historical_matchup_odds`, `historical_event_info`, `tournament_weather`, `tournament_weather_summary`, `backfill_progress`.
 
-**Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`.
+**Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`, `challenger_predictions` (champion-challenger shadow rows).
 
 **External data:** `equipment_changes`, `intel_events`.
 
@@ -638,6 +638,50 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Deployment | `deploy.sh` (see Section 11) |
 | Live refresh snapshot logic | `backtester/dashboard_runtime.py`, `workers/live_refresh_worker.py` |
 | Frontend (sole UI) | `frontend/` (React 19 + Vite), built to `frontend/dist/` |
+
+---
+
+## 12b. Champion-Challenger Rails (defect 3.3.1)
+
+Infrastructure to compare a candidate ("challenger") model against the live champion on Brier, matchup ROI, and CLV, WITHOUT letting the challenger ever price live bets. Added in PR `feat/champion-challenger-rails`.
+
+**Protocol:** Every model (champion or challenger) implements `ModelProtocol` from `src/models/base.py`:
+```python
+name: str
+version: str
+predict_matchup(p1, p2, features) -> float   # P(p1 wins) in [0, 1]
+predict_outright(player, features) -> float
+```
+Concrete models subclass `BaseModel`. The champion (v4.2) is wrapped by `ChampionModel`, which is a pure adapter — it accepts `features["champion_p"]` and returns it verbatim so no new math is introduced on the hot path.
+
+**Registry:** `src/models/base.py::MODELS` maps names → instances. `register_model(model)` registers a model; `get_champion()` returns the model identified by `config.CHAMPION`; `iter_active_challengers()` returns models whose names appear in `config.CHALLENGERS`.
+
+**Config:** `src/config.py`
+- `CHAMPION: str = "v4.2"` — single source of truth for what's live.
+- `CHALLENGERS: list[str] = []` — list of challenger model names to shadow-evaluate. Empty by default; pipeline output is byte-identical to baseline when empty.
+
+**Shadow hook:** `src/evaluation/shadow.py::record_matchup_shadow` runs every active challenger on the same inputs as the champion, writes one row per model to `challenger_predictions`, and swallows any challenger exception (WARNING log, never breaks the pipeline). Invoked from `src/matchup_value.py::_find_matchup_value_bets_core` immediately after the champion has priced the matchup, before book iteration. Challenger output is NEVER read by live code.
+
+**DB table `challenger_predictions`:**
+`id, model_name, model_version, market_type, matchup_id, tournament_id, p1_key, p2_key, predicted_p, champion_p, book_price_p1, book_price_p2, outcome, ts`. Outcome is set offline by the grading pipeline (not populated in this PR). Indexes on `(model_name, ts)` and `(matchup_id, model_name)`.
+
+**Evaluation:** `src/evaluation/champion_challenger.py`
+- `brier_scores(model, since)` — mean squared error vs outcome; returns `{brier, n}`.
+- `matchup_roi(model, since)` — simulated flat-unit ROI using recorded book price; returns `{bets, staked, pnl, roi_pct}`.
+- `clv_summary(model, since)` — mean `10000 * (model_p - book_p)` on the model-favored side; returns `{clv_bps, n}`.
+- `summarize_all(windows=(14, 30))` — champion + every challenger across both trailing windows.
+
+**API:** `GET /api/champion-challenger/summary` (defined in `src/routes/champion_challenger.py`) returns `summarize_all(windows_days=(14, 30))`.
+
+**Dashboard:** Low-prominence page under sidebar "Research" section at `/research/champion-challenger`. Page renders one row per model with columns Model | Brier (30d) | N | Matchup ROI 14d | Matchup ROI 30d | CLV 30d.
+
+**How to add a challenger:**
+1. Implement a subclass of `BaseModel` in `src/models/` that implements `predict_matchup` and `predict_outright`.
+2. Import it and call `register_model(MyChallenger())` at app startup (e.g., from `src.models.__init__` or wherever champion is registered).
+3. Add its `name` to `config.CHALLENGERS`.
+4. The shadow hook will start writing rows on the next live run; the dashboard picks it up automatically.
+
+**Byte-identical invariant:** `tests/test_champion_challenger.py` runs `matchup_value._find_matchup_value_bets_core` with and without an active challenger and asserts the SHA-256 hash of `{bets, diagnostics}` is identical. This is the critical safety test — break it and the challenger has started leaking into champion output.
 
 ---
 

@@ -784,6 +784,32 @@ def init_db():
             actual_delta REAL,
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        -- ═══ Champion-challenger shadow predictions (defect 3.3.1) ═══
+        -- One row per (model, matchup, prediction call). Challenger rows are
+        -- recorded alongside the champion's prediction for the same inputs so
+        -- Brier / ROI / CLV can be computed offline without touching live
+        -- pricing. `market_type` distinguishes matchup vs outright rows.
+        CREATE TABLE IF NOT EXISTS challenger_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_name TEXT NOT NULL,
+            model_version TEXT,
+            market_type TEXT NOT NULL DEFAULT 'matchup',
+            matchup_id TEXT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            p1_key TEXT,
+            p2_key TEXT,
+            predicted_p REAL NOT NULL,
+            champion_p REAL,
+            book_price_p1 REAL,
+            book_price_p2 REAL,
+            outcome INTEGER,
+            ts TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_challenger_predictions_model_ts
+            ON challenger_predictions(model_name, ts);
+        CREATE INDEX IF NOT EXISTS idx_challenger_predictions_matchup
+            ON challenger_predictions(matchup_id, model_name);
     """)
     conn.commit()
 
@@ -912,6 +938,37 @@ def _run_migrations(conn: sqlite3.Connection):
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_live_model_registry_scope
         ON live_model_registry(scope, is_current, created_at DESC)
+    """)
+    conn.commit()
+
+    # Defect 3.3.1: champion-challenger shadow predictions. Defined in
+    # init_db() for new databases; re-declared here so older databases pick
+    # it up via the migration path.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS challenger_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_name TEXT NOT NULL,
+            model_version TEXT,
+            market_type TEXT NOT NULL DEFAULT 'matchup',
+            matchup_id TEXT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            p1_key TEXT,
+            p2_key TEXT,
+            predicted_p REAL NOT NULL,
+            champion_p REAL,
+            book_price_p1 REAL,
+            book_price_p2 REAL,
+            outcome INTEGER,
+            ts TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_challenger_predictions_model_ts
+        ON challenger_predictions(model_name, ts)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_challenger_predictions_matchup
+        ON challenger_predictions(matchup_id, model_name)
     """)
     conn.commit()
 
