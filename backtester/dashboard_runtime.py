@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from src import db
+from src.atomic_io import atomic_write_json
 from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.live_refresh_policy import resolve_cadence
 from src.services.live_snapshot_service import run_snapshot_analysis
@@ -59,8 +60,7 @@ def _iso_now() -> str:
 
 
 def _write_snapshot(payload: dict[str, Any]) -> None:
-    _SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _SNAPSHOT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic_write_json(_SNAPSHOT_PATH, payload)
 
 
 def read_snapshot() -> dict[str, Any]:

@@ -25,8 +25,9 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
 
 1. Silent fallback to default strategy when active strategy JSON parsing fails.
    - Files: `backtester/experiments.py`, `backtester/model_registry.py`
-2. Non-atomic live snapshot writes can produce torn JSON reads.
-   - Files: `backtester/dashboard_runtime.py`
+2. Non-atomic live snapshot writes can produce torn JSON reads. **FIXED** (defect 2.3.6; see PR `fix/atomic-snapshot-writes`).
+   - Files: `backtester/dashboard_runtime.py`, `src/atomic_io.py`
+   - Resolution: snapshot writes now go through `src.atomic_io.atomic_write_json`, which writes to a sibling temp file in the same directory, fsyncs, then `os.replace`s onto the final path and fsyncs the parent directory. A mid-write crash leaves either the previous file or no file — never a partial/corrupt one. Tests in `tests/test_atomic_io.py` cover happy path, mid-write failure preservation, and concurrent writers.
 3. Dashboard runtime launched with `--reload` in production.
    - Files: `start.py`, `deploy.sh`
 4. Picks insert path can violate unique constraint on reruns.
