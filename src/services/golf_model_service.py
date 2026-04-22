@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Optional
 
 from src import db
+from src.event_format import classify_event_format, EVENT_FORMAT_TEAM
 from src.field_selection import filter_rows_to_field
 from src.player_normalizer import normalize_name, display_name
 from src.run_provenance import write_run_provenance
@@ -99,6 +100,40 @@ class GolfModelService:
         result["event_name"] = tournament_name
         result["course_name"] = course_name
         result["course_num"] = course_num
+
+        # Step 1a: Event-format guard — skip the individual-stroke-play
+        # pipeline for team events (e.g. Zurich Classic). Placement markets
+        # and individual H2H matchups are mispriced or nonexistent for these
+        # events; producing a normal card would leak misleading picks.
+        event_format = classify_event_format(tournament_name, event_id)
+        result["event_format"] = event_format
+        if event_format == EVENT_FORMAT_TEAM:
+            tid = db.get_or_create_tournament(tournament_name, course_name)
+            result["tournament_id"] = tid
+            team_card_path = self._generate_team_event_card(
+                tournament_name=tournament_name,
+                course_name=course_name or "Unknown",
+                output_dir=output_dir,
+                event_id=event_id,
+                composite=None,
+            )
+            result["card_filepath"] = team_card_path
+            warning = (
+                f"Team-format event detected ({tournament_name}); "
+                "skipping placement value, individual H2H matchups, and "
+                "3-ball generation. Informational card written."
+            )
+            logger.warning(warning)
+            result["warnings"].append(warning)
+            result["value_bets"] = {}
+            result["matchup_bets"] = []
+            result["matchup_bets_all_books"] = []
+            result["status"] = "complete"
+            result["skipped_reason"] = "team_event"
+            run_end = datetime.now()
+            result["run_duration_seconds"] = (run_end - run_start).total_seconds()
+            self._log_run(tid, result)
+            return result
 
         # Step 2: Create/get tournament
         tid = db.get_or_create_tournament(tournament_name, course_name)
@@ -1088,6 +1123,28 @@ class GolfModelService:
             )
         except Exception as e:
             logger.warning(f"Card generation error: {e}")
+            return None
+
+    def _generate_team_event_card(
+        self,
+        tournament_name: str,
+        course_name: str,
+        output_dir: str,
+        event_id: str | None = None,
+        composite: list[dict] | None = None,
+    ) -> str | None:
+        """Generate the informational card used for team-format events."""
+        try:
+            from src.card import generate_team_event_card
+            return generate_team_event_card(
+                tournament_name=tournament_name,
+                course_name=course_name,
+                output_dir=output_dir,
+                event_id=event_id,
+                composite_results=composite,
+            )
+        except Exception as e:
+            logger.warning(f"Team-event card generation error: {e}")
             return None
 
     def _log_run(self, tournament_id: int, result: dict):
