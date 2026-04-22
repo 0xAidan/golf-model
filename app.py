@@ -55,21 +55,67 @@ from fastapi.staticfiles import StaticFiles
 _logger = logging.getLogger("golf.app")
 
 
+_DEFAULT_LIVE_REFRESH_PIDFILE = "/tmp/golf_live_refresh.pid"
+
+
+def _live_refresh_pidfile_path() -> str:
+    return os.environ.get("LIVE_REFRESH_PIDFILE", _DEFAULT_LIVE_REFRESH_PIDFILE)
+
+
+def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
+    """Return True if the pidfile points to a live process."""
+    try:
+        with open(pidfile_path, "r", encoding="utf-8") as fh:
+            raw = fh.read().strip()
+        if not raw:
+            return False
+        pid = int(raw)
+    except (FileNotFoundError, ValueError, OSError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     from src.autoresearch_settings import get_settings
     from backtester.dashboard_runtime import start_live_refresh, stop_live_refresh
 
     settings = get_settings().get("live_refresh", {})
-    embedded_autostart_enabled = os.environ.get("LIVE_REFRESH_EMBEDDED_AUTOSTART", "1").strip().lower() not in {
-        "0", "false", "off", "no"
+    embedded_autostart_enabled = os.environ.get("LIVE_REFRESH_EMBEDDED_AUTOSTART", "0").strip().lower() not in {
+        "0", "false", "off", "no", ""
     }
-    if embedded_autostart_enabled and settings.get("enabled") and settings.get("autostart"):
-        start_live_refresh(tour=str(settings.get("tour", "pga")))
+    started_embedded = False
+    if embedded_autostart_enabled:
+        _logger.warning(
+            "LIVE_REFRESH_EMBEDDED_AUTOSTART=1 is set: the in-process live refresh loop will attempt to start. "
+            "The systemd worker (golf-live-refresh.service) is the authoritative owner in production; "
+            "enabling embedded autostart alongside it will cause duplicate API pulls and snapshot write races."
+        )
+        pidfile_path = _live_refresh_pidfile_path()
+        if _live_refresh_worker_is_running(pidfile_path):
+            _logger.warning(
+                "Skipping embedded live-refresh autostart: worker pidfile %s points to a live process. "
+                "Set LIVE_REFRESH_EMBEDDED_AUTOSTART=0 or stop the worker to silence this warning.",
+                pidfile_path,
+            )
+        elif settings.get("enabled") and settings.get("autostart"):
+            start_live_refresh(tour=str(settings.get("tour", "pga")))
+            started_embedded = True
     try:
         yield
     finally:
-        stop_live_refresh()
+        if started_embedded:
+            stop_live_refresh()
 
 
 app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
