@@ -142,6 +142,19 @@ export type LiveTournamentSnapshot = {
   field_size?: number
   tournament_id?: number
   course_num?: number
+  /**
+   * Format of the underlying event. `"team"` indicates a Foursomes/Fourball
+   * team event (e.g. Zurich Classic) for which the individual-stroke-play
+   * pipeline is intentionally skipped; callers should render a notice in
+   * place of placement / matchup boards. Absent or `"individual"` means the
+   * normal pipeline ran.
+   */
+  event_format?: "individual" | "team"
+  /**
+   * When the pipeline short-circuits, the reason code (currently only
+   * `"team_event"`). Safe to ignore when `event_format` is individual.
+   */
+  skipped_reason?: string
   active?: boolean
   completed_replay?: boolean
   leaderboard_source?: string
