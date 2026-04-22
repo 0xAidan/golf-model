@@ -11,6 +11,8 @@ import {
   ReplayTimelinePanel,
 } from "@/components/cockpit/event-modules"
 import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
+import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
+import { isTeamEvent } from "@/lib/event-format"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
@@ -365,6 +367,14 @@ export function PredictionWorkspacePage({
 
   const topPlays = predictionTab === "past" ? pastMatchups : filteredMatchups
 
+  // Team-format events (Zurich Classic) intentionally short-circuit the
+  // pipeline in the backend (see src/event_format.py). Mirror the skip on
+  // the frontend by replacing the bettable-card modules with an explanatory
+  // notice — never show an empty placement / matchup board that implies the
+  // model ran but found nothing.
+  const showTeamEventNotice =
+    (predictionTab === "live" || predictionTab === "upcoming") && isTeamEvent(activeSection)
+
   // Cockpit modules (using exact API signatures from cockpit-event-models.ts)
   const mode = predictionTab as "live" | "upcoming" | "past"
 
@@ -701,6 +711,15 @@ export function PredictionWorkspacePage({
         }
         center={
           <>
+            {showTeamEventNotice && (
+              <TeamEventNotice
+                eventName={eventName}
+                courseName={courseName}
+                mode={predictionTab === "live" ? "live" : "upcoming"}
+              />
+            )}
+            {!showTeamEventNotice && (
+              <>
             {/* ── Top Plays (Matchups) ──────────────── */}
             <div className="card">
               <div className="card-header">
@@ -1008,6 +1027,8 @@ export function PredictionWorkspacePage({
                   onPlayerSelect={onPlayerSelect}
                 />
               </CockpitModule>
+            )}
+              </>
             )}
           </>
         }

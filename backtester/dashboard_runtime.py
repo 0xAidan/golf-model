@@ -1058,6 +1058,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         "field_size": live_result.get("field_size"),
         "tournament_id": live_result.get("tournament_id"),
         "course_num": live_result.get("course_num"),
+        "event_format": live_result.get("event_format"),
+        "skipped_reason": live_result.get("skipped_reason"),
         "rankings": _extract_rankings(
             live_result.get("composite_results") or [],
             finish_states=finish_states,
@@ -1151,6 +1153,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "event_name": upcoming_result.get("event_name") or upcoming_event_name,
             "course_name": upcoming_result.get("course_name"),
             "field_size": upcoming_result.get("field_size"),
+            "event_format": upcoming_result.get("event_format"),
+            "skipped_reason": upcoming_result.get("skipped_reason"),
             "leaderboard": _load_event_leaderboard_rows(
                 upcoming_event_id,
                 year=upcoming_row.get("year"),
