@@ -1,8 +1,34 @@
 """Research proposal routes — /api/research/*"""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(prefix="/api/research", tags=["research"])
+
+
+@router.get("/pair-matchups")
+async def list_pair_matchup_predictions(event_id: str | None = None, limit: int = 500):
+    """T3 Phase 1 (issue #47) research endpoint — shadow pair predictions only.
+
+    Gated behind the same ``PAIR_MATCHUP_V1`` flag as the logging path. When
+    the flag is off this returns 404 so no trace of the feature leaks into
+    production API surfaces. When the flag is on it returns the latest shadow
+    rows for post-hoc inspection. **Nothing here is wired to the card.**
+    """
+    from src import config
+
+    if not config.PAIR_MATCHUP_V1:
+        raise HTTPException(status_code=404, detail="pair matchup v1 not enabled")
+
+    from src.db import ensure_initialized, get_conn
+    from src.models.pair_matchup_v1 import fetch_shadow_predictions
+
+    ensure_initialized()
+    conn = get_conn()
+    try:
+        rows = fetch_shadow_predictions(conn, event_id=event_id, limit=int(limit))
+    finally:
+        conn.close()
+    return {"ok": True, "event_id": event_id, "count": len(rows), "predictions": rows}
 
 
 @router.get("/proposals")

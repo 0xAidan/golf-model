@@ -685,6 +685,38 @@ Concrete models subclass `BaseModel`. The champion (v4.2) is wrapped by `Champio
 
 ---
 
+## 12a. Team / Pair Matchup Model (T3, issue #47)
+
+**Status as of 2026-04-22:** Phase 0 + Phase 1 shipped (analytics-only, flag-gated). Phase 2 (calibration) and Phase 3 (card output / live pricing) deferred.
+
+**Flag:** `PAIR_MATCHUP_V1` in `src/config.py`. Default **OFF**. Env override: `PAIR_MATCHUP_V1=1|true|yes|on`.
+
+**What ships this week (flag OFF — live production default):**
+- Zero behavioural change. The team-event guard in `src/services/golf_model_service.py` still short-circuits, generates the informational card, and returns. No new keys on the result dict. No new DB tables created.
+- The research endpoint `/api/research/pair-matchups` returns **404** when the flag is off.
+
+**What ships this week (flag ON — analytics-only):**
+- Team-event guard additionally ensures the `pair_matchup_predictions` shadow table exists.
+- `src/models/pair_matchup_v1.predict_pair(team_a, team_b, format, features)` is importable. `format` ∈ {`foursomes`, `fourball`}. Returns `P(team_a wins)` in `[0, 1]`.
+- `log_pair_prediction(conn, ...)` appends shadow rows (id, event_id, team_a_p1/p2, team_b_p1/p2, format, predicted_p_a, ts).
+- `GET /api/research/pair-matchups?event_id=…&limit=…` returns shadow rows for post-hoc inspection.
+- **Card, snapshot, and live dashboard are untouched.** A golden test (`tests/test_pair_matchup_v1.py::test_zurich_card_byte_identical_when_flag_toggled`) enforces byte-identity of the team-event card hash and the sanitised result dict between flag OFF and flag ON.
+
+**v1 formulas (see `src/models/pair_matchup_v1.py` docstrings):**
+- Foursomes (alt-shot) → geometric mean of teammates' shifted skill ratings; collapses toward the weaker player.
+- Fourball (best ball) → Gaussian E[max] approximation over per-round score distributions; defaults to `max(skill_a, skill_b)` plus a small tail-bonus term.
+- Logistic maps team-strength difference to win probability. Calibration scale is a v1 stub; Phase 2 fits it to historical pair results.
+- Fallback: when per-player skill is missing, uses the mean of available DG composites. Phase 0 audit (`docs/research/pair_matchup_phase0_audit.md`) documents when the fallback is the only usable path.
+
+**What Phase 3 will add (NOT this week):**
+- Wire shadow predictions into the card alongside DG pair matchup odds.
+- Lift the frontend team-event notice from "no bets this week" to a slim banner.
+- Gate behind the existing research-program ROI / Brier gates before flipping on.
+
+**Running the audit:** `python research/pair_matchup_phase0.py` (read-only, writes `docs/research/pair_matchup_phase0_audit.md`).
+
+---
+
 ## 13. Updating This Document
 
 - **When to update:** Adding entry points, config keys, DB tables, critical modules, new conventions, or deprecating behavior.

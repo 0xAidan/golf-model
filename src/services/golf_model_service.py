@@ -30,6 +30,41 @@ MAJOR_EVENT_NAMES = (
 )
 
 
+def _maybe_log_pair_matchup_shadow(
+    *, event_id: Optional[str], tournament_name: Optional[str]
+) -> None:
+    """T3 Phase 1 (issue #47): shadow-log a placeholder row when the flag is on.
+
+    Strictly flag-gated on ``config.PAIR_MATCHUP_V1`` and swallows all errors
+    so that enabling the flag can never break the team-event guard path. With
+    the flag off this function is a no-op and makes zero DB writes. Real
+    pairing + prediction wiring is Phase 2+; v1 only records the fact that
+    the pipeline saw a team event so we can smoke-test the shadow pipeline
+    without Phase 3 card output.
+    """
+    try:
+        from src import config as _config
+
+        if not _config.PAIR_MATCHUP_V1:
+            return
+        # Imported lazily so the module-level import graph for the guard path
+        # stays identical to main when the flag is off.
+        from src.models.pair_matchup_v1 import ensure_shadow_table
+
+        conn = db.get_conn()
+        try:
+            ensure_shadow_table(conn)
+        finally:
+            conn.close()
+        logger.info(
+            "pair_matchup_v1: shadow table ready for event %s (%s)",
+            event_id,
+            tournament_name,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("pair_matchup_v1: shadow log init failed: %s", exc)
+
+
 class GolfModelService:
     """Orchestrates the full prediction pipeline."""
 
@@ -133,6 +168,10 @@ class GolfModelService:
             run_end = datetime.now()
             result["run_duration_seconds"] = (run_end - run_start).total_seconds()
             self._log_run(tid, result)
+            # T3 Phase 1 — analytics-only pair matchup shadow logging (issue #47).
+            # Flag-gated; strictly isolated from the card / result dict so that
+            # snapshot hashes are byte-identical when the flag is off.
+            _maybe_log_pair_matchup_shadow(event_id=event_id, tournament_name=tournament_name)
             return result
 
         # Step 2: Create/get tournament

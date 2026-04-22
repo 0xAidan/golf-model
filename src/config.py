@@ -15,6 +15,21 @@ from typing import Any
 MODEL_VERSION = "4.2"
 
 # ---------------------------------------------------------------------------
+# T3 — Pair / team matchup model (Zurich Classic). See issue #47.
+# Phase 1 is analytics-only: when this flag is ON and the current event is a
+# team format, predictions are logged to pair_matchup_predictions for post-hoc
+# inspection. Nothing is added to the card, snapshot, or live API. Phase 3
+# (card output / live pricing) is deliberately not shipped this week.
+# Override via env PAIR_MATCHUP_V1=1.
+# ---------------------------------------------------------------------------
+PAIR_MATCHUP_V1: bool = os.environ.get("PAIR_MATCHUP_V1", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+# ---------------------------------------------------------------------------
 # Value / EV / blend (from value.py)
 # ---------------------------------------------------------------------------
 # Default EV threshold; override via env EV_THRESHOLD
