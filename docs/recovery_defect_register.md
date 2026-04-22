@@ -58,6 +58,20 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
 2. Operational docs and deploy defaults drift.
    - Files: `docs/AGENTS_KNOWLEDGE.md`, `deploy.sh`
 
+## Q (performance / query tuning)
+
+1. (reserved)
+2. (reserved)
+3. (reserved)
+4. Missing composite indexes cause full scans on hot-path queries.
+   - Files: `src/db.py`, `tests/test_db_indexes.py`
+   - Indexes added: `idx_rounds_player_event` on `rounds(player_key, event_completed)`,
+     `idx_metrics_tourn_player_cat` on `metrics(tournament_id, player_key, metric_category)`,
+     `idx_historical_odds_event_book_ts` on `historical_odds(event_id, book, year)`
+     (historical_odds has no explicit `ts` column; `year` is the available temporal key).
+   - Status: **FIXED** — PR `perf/db-indexes` (Q4). Idempotent migration via
+     `_ensure_hot_path_indexes()`; schema unchanged, data untouched.
+
 ## Acceptance Criteria per defect
 
 Each fix must include:

@@ -143,6 +143,9 @@ def init_db():
             ON metrics(tournament_id, player_key);
         CREATE INDEX IF NOT EXISTS idx_metrics_category
             ON metrics(tournament_id, metric_category, data_mode, round_window);
+        -- Q4: composite for per-tournament per-player metric fetches (metric_category filter)
+        CREATE INDEX IF NOT EXISTS idx_metrics_tourn_player_cat
+            ON metrics(tournament_id, player_key, metric_category);
 
         CREATE TABLE IF NOT EXISTS picks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,6 +252,9 @@ def init_db():
             ON rounds(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_rounds_player_key
             ON rounds(player_key, event_completed DESC);
+        -- Q4: composite for per-player completed-events lookups
+        CREATE INDEX IF NOT EXISTS idx_rounds_player_event
+            ON rounds(player_key, event_completed);
 
         -- ═══ Course-specific learned weights ═══
         CREATE TABLE IF NOT EXISTS course_weight_profiles (
@@ -717,6 +723,11 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_historical_odds_event
             ON historical_odds(event_id, year);
+        -- Q4: composite for odds-history traversal by (event, book, time).
+        -- historical_odds has no explicit ts column; year is the available
+        -- temporal ordering dimension, so it serves as the traversal key.
+        CREATE INDEX IF NOT EXISTS idx_historical_odds_event_book_ts
+            ON historical_odds(event_id, book, year);
         CREATE INDEX IF NOT EXISTS idx_pit_stats_event
             ON pit_rolling_stats(event_id, year);
         CREATE INDEX IF NOT EXISTS idx_pit_course_stats_event
@@ -956,6 +967,34 @@ def _run_migrations(conn: sqlite3.Connection):
 
     # Add UNIQUE constraints via indexes (safe to run repeatedly)
     _add_unique_constraints(conn)
+
+    # Q4: composite indexes for hot-path queries. Idempotent, index-only.
+    _ensure_hot_path_indexes(conn)
+
+
+def _ensure_hot_path_indexes(conn: sqlite3.Connection) -> None:
+    """Create composite indexes for hot-path queries on existing DBs.
+
+    Idempotent: uses CREATE INDEX IF NOT EXISTS. No data is read or modified.
+    Covers Q4 defect — full scans on rounds / metrics / historical_odds.
+    """
+    statements = (
+        "CREATE INDEX IF NOT EXISTS idx_rounds_player_event "
+        "ON rounds(player_key, event_completed)",
+        "CREATE INDEX IF NOT EXISTS idx_metrics_tourn_player_cat "
+        "ON metrics(tournament_id, player_key, metric_category)",
+        "CREATE INDEX IF NOT EXISTS idx_historical_odds_event_book_ts "
+        "ON historical_odds(event_id, book, year)",
+    )
+    for stmt in statements:
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            # Table may not exist yet on a fresh/partial DB; init_db covers that case.
+            logging.getLogger(__name__).debug(
+                "Skipping hot-path index (table missing): %s", stmt, exc_info=True
+            )
+    conn.commit()
 
 
 def _add_unique_constraints(conn: sqlite3.Connection):
