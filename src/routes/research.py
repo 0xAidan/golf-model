@@ -114,3 +114,26 @@ async def convert_research_proposal(proposal_id: int):
 
     experiment_id = convert_proposal_to_experiment(proposal_id)
     return {"ok": True, "proposal_id": proposal_id, "experiment_id": experiment_id}
+
+
+@router.get("/inplay-shadow")
+async def inplay_shadow_predictions(event_id: str):
+    """
+    Admin-only research endpoint: dump in-play round matchup shadow
+    predictions for an event, joined with settled outcomes when available.
+    Returns CSV-style JSON (list of rows). SHADOW ONLY — no bets are
+    placed off this market in this PR.
+    """
+    from src.db import ensure_initialized
+    ensure_initialized()
+
+    from src.evaluation.inplay import load_predictions_for_event
+
+    rows = load_predictions_for_event(event_id)
+    # Outcome join is best-effort: settled round results may or may not
+    # be present yet; when absent we return `outcome_p1: null`.
+    return {
+        "event_id": event_id,
+        "count": len(rows),
+        "rows": rows,
+    }

@@ -810,6 +810,43 @@ def init_db():
             ON challenger_predictions(model_name, ts);
         CREATE INDEX IF NOT EXISTS idx_challenger_predictions_matchup
             ON challenger_predictions(matchup_id, model_name);
+
+        -- ═══ T6: In-play round matchups (SHADOW MODE ONLY) ═══
+        -- Raw book prices pulled during active rounds. No bets are placed
+        -- off these rows; they exist purely for evaluation.
+        CREATE TABLE IF NOT EXISTS inplay_round_matchup_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            round_num INTEGER NOT NULL,
+            player1 TEXT NOT NULL,
+            player2 TEXT NOT NULL,
+            book TEXT NOT NULL,
+            price1 REAL NOT NULL,
+            price2 REAL NOT NULL,
+            ts TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_inplay_prices_event
+            ON inplay_round_matchup_prices(event_id, round_num);
+
+        -- One row per refresh tick per in-play matchup price.
+        -- kelly_fraction_if_hypothetically is recorded for LATER analysis —
+        -- it is NEVER used to place a real bet (staking is disabled).
+        CREATE TABLE IF NOT EXISTS inplay_round_matchup_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            round_num INTEGER NOT NULL,
+            hole_num_at_prediction INTEGER NOT NULL,
+            player1 TEXT NOT NULL,
+            player2 TEXT NOT NULL,
+            book TEXT NOT NULL,
+            price1 REAL NOT NULL,
+            price2 REAL NOT NULL,
+            predicted_p1 REAL NOT NULL,
+            kelly_fraction_if_hypothetically REAL NOT NULL,
+            ts TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_inplay_preds_event
+            ON inplay_round_matchup_predictions(event_id, round_num);
     """)
     conn.commit()
 
