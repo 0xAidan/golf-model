@@ -100,7 +100,6 @@ function ScoreBar({
 export function PredictionWorkspacePage({
   dashboard,
   liveSnapshot,
-  runtimeStatus: _runtimeStatus,
   snapshotNotice,
   snapshotAgeSeconds,
   predictionTab,

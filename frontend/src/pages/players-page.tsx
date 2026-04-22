@@ -3,7 +3,7 @@
  * Full DataGolf-style player profiles accessible without an active tournament.
  * Route: /players
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Search, User, ChevronRight, X } from "lucide-react"
 
@@ -14,9 +14,9 @@ import {
   ApproachArcGauges,
   HistoryTable,
 } from "@/components/charts-v2"
-import type { BeeswarmCategory, RollingEvent, ApproachBucket } from "@/components/charts-v2"
+import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
 import { api } from "@/lib/api"
-import type { CompositePlayer, StandalonePlayerProfile } from "@/lib/types"
+import type { CompositePlayer } from "@/lib/types"
 
 /* ── Tokens ─────────────────────────────────────────────────────────── */
 const VAR = {
@@ -53,10 +53,6 @@ function signed(v?: number | null, d = 3): string {
   if (v == null) return "—"
   return `${v > 0 ? "+" : ""}${v.toFixed(d)}`
 }
-
-/* ── Window selector ─────────────────────────────────────────────────── */
-type RollingWindow = "10" | "25" | "50"
-const WINDOWS: RollingWindow[] = ["10", "25", "50"]
 
 /* ── KPI Cell ─────────────────────────────────────────────────────────── */
 function KpiCell({
@@ -104,27 +100,6 @@ function MetricCard({ label, value, tone: t = "neutral", sub }: { label: string;
         {value}
       </div>
       {sub && <div style={{ fontFamily: VAR.mono, fontSize: 9, color: VAR.faint, marginTop: 2 }}>{sub}</div>}
-    </div>
-  )
-}
-
-/* ── Section header ───────────────────────────────────────────────────── */
-function SectionHead({ children, actions }: { children: React.ReactNode; actions?: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-      <div style={{ fontFamily: VAR.mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: VAR.muted }}>
-        {children}
-      </div>
-      {actions}
-    </div>
-  )
-}
-
-/* ── ChartLabel ───────────────────────────────────────────────────────── */
-function ChartLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 6, marginTop: 12 }}>
-      {children}
     </div>
   )
 }
@@ -309,7 +284,6 @@ function PlayerSearchSidebar({
 
 /* ── Full Player Profile View ─────────────────────────────────────────── */
 function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; playerDisplay: string }) {
-  const [rollingWindow, setRollingWindow] = useState<RollingWindow>("25")
 
   const profileQuery = useQuery({
     queryKey: ["standalone-profile", playerKey],
@@ -343,17 +317,6 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
       </div>
     )
   }
-
-  /* Build SG skills array for chart */
-  const sgSkills = [
-    { label: "Off the Tee",    value: p.sg_skills.sg_ott ?? null },
-    { label: "Approach",       value: p.sg_skills.sg_app ?? null },
-    { label: "Around Green",   value: p.sg_skills.sg_arg ?? null },
-    { label: "Putting",        value: p.sg_skills.sg_putt ?? null },
-    { label: "Total SG",       value: p.sg_skills.sg_total ?? null },
-  ].filter((s) => s.value != null) as Array<{ label: string; value: number }>
-
-  const windowValue = p.rolling_windows[rollingWindow]
 
   return (
     <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
@@ -535,7 +498,7 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
             </div>
             <div style={{ padding: 12 }}>
               <HistoryTable
-                events={p.recent_events as any[]}
+                events={p.recent_events as HistoryEvent[]}
                 maxRows={10}
               />
             </div>
@@ -589,28 +552,25 @@ export function PlayersPage({
     setSelectedDisplay(display)
   }, [])
 
-  // Auto-select first active player if none selected and field is loaded
-  useEffect(() => {
-    if (!selectedKey && players.length > 0) {
-      const first = players[0]
-      setSelectedKey(first.player_key)
-      setSelectedDisplay(first.player_display)
-    }
-  }, [players, selectedKey])
+  // Auto-select first active player once the field has loaded.
+  // Resolve during render to avoid a setState-in-effect cascade.
+  const first = players[0]
+  const effectiveKey = selectedKey ?? first?.player_key ?? null
+  const effectiveDisplay = selectedKey ? selectedDisplay : (first?.player_display ?? "")
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {/* Sidebar */}
       <PlayerSearchSidebar
         activePlayers={players}
-        selectedKey={selectedKey}
+        selectedKey={effectiveKey}
         onSelect={handleSelect}
       />
 
       {/* Main profile view */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        {selectedKey ? (
-          <PlayerProfileView key={selectedKey} playerKey={selectedKey} playerDisplay={selectedDisplay} />
+        {effectiveKey ? (
+          <PlayerProfileView key={effectiveKey} playerKey={effectiveKey} playerDisplay={effectiveDisplay} />
         ) : (
           <EmptyState />
         )}
