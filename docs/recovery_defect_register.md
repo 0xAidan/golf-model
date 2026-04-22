@@ -54,6 +54,7 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
    - Files: `workers/intel_harvester.py`
 2. Operational docs and deploy defaults drift.
    - Files: `docs/AGENTS_KNOWLEDGE.md`, `deploy.sh`
+   - **Status (2026-04-22): `docs/AGENTS_KNOWLEDGE.md` refreshed (Q9) — counts, file layout, live-refresh ownership note, team-event guard, recent-PR table, CI state all brought in line with main. `deploy.sh` defaults still tracked separately with the in-flight deploy PR.**
 
 ## Acceptance Criteria per defect
 

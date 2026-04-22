@@ -4,14 +4,14 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-04-06. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
+**Last verified:** 2026-04-22. Model version: 4.2 (calibrated value path; 95/5 DG/model blend; matchup-first cards via `BEST_BETS_MATCHUP_ONLY=True`). Test count: 252 (across 49 test files). app.py: 4654 lines. Frontend: React + Vite + TypeScript SPA (pages + hooks under `frontend/src/`).
 
 ---
 
 ## 1. Project Summary
 
 - **What it is:** Quantitative golf betting system. Data Golf API → round-level SG data, predictions, odds. Composite model (course fit + form + momentum) scores players; value layer compares model vs market for EV; AI layer does qualitative analysis and persistent memory. Post-tournament: grade picks, calibration, weight nudges, AI learnings. Autoresearch system proposes, backtests, and promotes strategy changes autonomously.
-- **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` and served by FastAPI at `/`. Legacy Jinja UI (`templates/index.html`) still exists but the React SPA is the primary dashboard.
+- **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` (committed on main) and served by FastAPI at `/`. Legacy Jinja UI (`templates/index.html`) remains only as a fallback when `frontend/dist/index.html` is missing; the React SPA is the primary dashboard.
 - **Key constraints:** Walk-forward backtesting only (no future data). Bootstrap phases (shadow → paper → cautious live → full live). Stopping rules and go-live gates in project charter. See section 8.
 - **CI:** GitHub Actions at `.github/workflows/ci.yml`.
 
@@ -24,7 +24,7 @@ golf-model/
 │
 │ ── ENTRY POINTS ──────────────────────────────────────────────
 ├── run_predictions.py       # CLI: full prediction pipeline (primary entry point)
-├── app.py                   # FastAPI web UI + API (2916 lines; dashboard at :8000, docs at /docs)
+├── app.py                   # FastAPI web UI + API (~4650 lines; dashboard at :8000, docs at /docs)
 ├── start.py                 # Unified launcher (interactive menu + subcommands)
 ├── setup_wizard.py          # First-time setup: backfill data, init DB
 ├── analyze.py               # CLI with own pipeline; --service flag delegates to GolfModelService
@@ -58,6 +58,13 @@ golf-model/
 │   ├── player_normalizer.py # Consistent player key + display name normalization
 │   ├── csv_parser.py        # Legacy Betsperts CSV parser (still functional)
 │   ├── logging_config.py    # Structured logging setup
+│   ├── event_format.py      # Team/format guards (Zurich-style team events) — pipeline skips non-individual events
+│   ├── field_selection.py   # Verified-field enforcement for live rankings
+│   ├── live_refresh_policy.py  # Owner/coordination policy for the live refresh loop (see §11)
+│   ├── run_provenance.py    # Run metadata / provenance tracking
+│   ├── strategy_resolution.py  # Single strategy resolver (CLI + web parity)
+│   ├── autoresearch_env.py  # Autoresearch env var helpers
+│   ├── autoresearch_settings.py # Persisted autoresearch settings (data/autoresearch_settings.json)
 │   │
 │   ├── models/              # SUB-MODELS (6 files)
 │   │   ├── composite.py     # Blends course_fit + form + momentum into single score
@@ -96,15 +103,16 @@ golf-model/
 │   ├── backup.py            # Database backup utilities
 │   │
 │   ├── services/
-│   │   └── golf_model_service.py  # GolfModelService.run_analysis() — orchestration layer
-│   │                               #   Used by run_predictions.py, app.py, analyze.py --service
+│   │   ├── golf_model_service.py  # GolfModelService.run_analysis() — orchestration layer
+│   │   │                           #   Used by run_predictions.py, app.py, analyze.py --service
+│   │   └── live_snapshot_service.py  # Live snapshot persistence / retrieval helpers
 │   └── routes/              # FastAPI route modules (split from app.py)
 │       ├── __init__.py
 │       ├── model_registry.py  # API routes for model registry
 │       └── research.py        # API routes for research/autoresearch
 │
 │ ── backtester/ (WALK-FORWARD BACKTESTING + AUTORESEARCH) ─────
-├── backtester/              # 15 files
+├── backtester/              # 19 files
 │   ├── strategy.py          # Walk-forward strategy replay (StrategyConfig, simulate_strategy)
 │   ├── pit_models.py        # Point-in-time sub-models (imports src.models + config)
 │   ├── pit_stats.py         # PIT stats builder (no future data leakage)
@@ -149,7 +157,7 @@ golf-model/
 │   └── run_autoresearch_holdout.py
 │
 │ ── tests/ (PYTEST SUITE) ─────────────────────────────────────
-├── tests/                   # 138 tests across 35 test files
+├── tests/                   # 265 tests across 49 test files
 │   ├── conftest.py          # Fixtures: tmp_db, sample_tournament, sample_metrics
 │   ├── test_value.py
 │   ├── test_form.py
@@ -197,19 +205,24 @@ golf-model/
 │   ├── index.html            # Vite entry HTML
 │   └── src/
 │       ├── main.tsx          # React root mount
-│       ├── App.tsx           # Main app: dashboard, players, matchups, track record pages
-│       ├── lib/
-│       │   ├── api.ts        # API client (fetch wrappers for /api/* endpoints)
-│       │   ├── types.ts      # TypeScript types for all API responses and domain models
-│       │   ├── utils.ts      # shadcn cn() utility
-│       │   ├── format.ts     # Number/date formatting helpers
-│       │   └── storage.ts    # useLocalStorageState hook
+│       ├── App.tsx           # Event cockpit shell: live / upcoming / completed tabs + route gate
+│       ├── index.css         # Global styles (Tailwind entry)
+│       ├── lib/              # API client, types, cockpit selectors, format/storage helpers,
+│       │                     #   event-format/team-event logic, track-record utilities
+│       │                     #   (pure helpers; unit-tested alongside)
+│       ├── hooks/            # use-cockpit-spotlight, use-live-refresh-runtime, use-prediction-tab
+│       │                     #   (+ colocated tests)
+│       ├── pages/            # players-page, prediction-workspace-page, legacy-route-gate + routes
 │       ├── components/
 │       │   ├── shell.tsx     # App shell layout (sidebar, header, nav)
-│       │   ├── charts.tsx    # Chart components (ECharts wrappers)
-│       │   └── ui/           # shadcn/ui primitives (button, etc.)
-│       └── data/
-│           └── trackRecord.json  # Static fallback for track record (API is primary source)
+│       │   ├── charts.tsx / charts-v2.tsx  # ECharts wrappers + new visual primitives
+│       │   ├── course-guide.tsx            # Course guide + hole SVGs
+│       │   ├── player-profile-sections.tsx # Rich player profile sections
+│       │   ├── cockpit/                    # Cockpit layout / panels
+│       │   └── ui/           # shadcn/ui primitives
+│       ├── data/
+│       │   └── trackRecord.json  # Static fallback for track record (API is primary source)
+│       └── test/             # Shared test setup
 │
 │ ── DATA / OUTPUT / DOCS ──────────────────────────────────────
 ├── data/
@@ -228,8 +241,8 @@ golf-model/
 │   ├── archive/             # Older cards moved here by output_manager
 │   └── backtests/           # Backtest reports (.md and .json)
 │
-├── templates/index.html     # Web UI template (Jinja2)
-├── static/css/main.css      # Web UI styles
+├── templates/index.html     # Legacy Jinja shell — only rendered when frontend/dist/index.html is absent
+├── static/css/main.css      # Legacy Jinja stylesheet (paired with templates/index.html)
 │
 ├── docs/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
@@ -271,7 +284,7 @@ golf-model/
 | Performance dashboard | `python dashboard.py` | View cumulative performance. `--retune` suggests new weights; `--dry` for preview. |
 | Course profile extraction | `python course.py --screenshots data/course_images/ --course "Name"` | AI vision extraction from screenshots. Needs `ANTHROPIC_API_KEY`. |
 | Results grading | `python results.py` | Score/grade tournament results. |
-| Run tests | `pytest` or `python -m pytest` | 138 tests across 35 test files. Key fixtures in `tests/conftest.py`: `tmp_db`, `sample_tournament`, `sample_metrics`. |
+| Run tests | `pytest` or `python -m pytest` | 265 tests across 49 test files. Key fixtures in `tests/conftest.py`: `tmp_db`, `sample_tournament`, `sample_metrics`. |
 
 ### Pipeline Flow (High Level)
 
@@ -303,6 +316,19 @@ Use these fields to separate causes:
 - `diagnostics.selection_counts.all_qualifying_rows` (rows that pass model/EV before card caps)
 - `diagnostics.selection_counts.selected_rows` (card-curated rows after exposure/pair caps)
 - `diagnostics.reason_codes` (where rows were excluded)
+
+### Team / non-individual events
+
+The pipeline guards against non-individual formats (e.g., Zurich Classic team play). `src/event_format.py` classifies the event; team formats are skipped for predictions and the Live/Upcoming tabs surface a "team event — no individual card" notice to the operator rather than a broken card.
+
+### Ownership of live refresh
+
+**Current state (on main):** live-refresh ownership is **not yet single-owner**. Two paths can start the loop:
+
+1. The FastAPI app lifespan in `app.py` honors `LIVE_REFRESH_EMBEDDED_AUTOSTART` (default **`"1"`** on main — i.e., embedded loop starts unless explicitly disabled).
+2. The systemd unit `golf-live-refresh.service` runs `workers/live_refresh_worker.py` independently.
+
+When both are active, snapshot writes and DG fetches can race. Until the single-owner coordination lands, the operational convention is: **on deployed VPS, set `LIVE_REFRESH_EMBEDDED_AUTOSTART=0` and rely on the systemd unit**; locally, leave the embedded loop on and do not start the worker. Policy helpers live in `src/live_refresh_policy.py`.
 
 ### Cockpit dashboard tabs (React SPA)
 
@@ -430,7 +456,7 @@ Notes:
 
 - **AI betting decisions disabled:** `ai_brain.make_betting_decisions()` intentionally returns None. Disabled due to poor performance (concentrated 87% of units on one player, recommended bets on corrupted odds). AI provides pre-tournament adjustments only.
 - **MAX_REASONABLE_ODDS duplicated:** Defined as a market-specific dict in `config.py`, but `odds.py` and `odds_utils.py` also define a global fallback (`50000`). The consuming modules do read from `config`, but the fallback constant creates ambiguity. Centralizing fully is desired.
-- **Large app.py:** 2916 lines. Splitting into `src/routes/` is partially done (model_registry, research routes) but app.py still holds most routes/logic. Long-term goal to split further.
+- **Large app.py:** ~4650 lines and growing. Splitting into `src/routes/` is partially done (model_registry, research routes) but app.py still holds most routes/logic. Long-term goal to split further.
 - **No FK constraints in DB:** `PRAGMA foreign_keys = ON` is set but tables don't define FOREIGN KEY clauses. Adding FK constraints is a future improvement.
 - **No full pipeline integration test:** Unit tests exist; no end-to-end pipeline test. Add one if touching pipeline flow.
 - **Prompts are hardcoded strings:** `src/prompts.py` is all string literals. Moving to external files or DB is desired.
@@ -631,11 +657,37 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | CI | `.github/workflows/ci.yml` |
 | Deployment | `deploy.sh` (see Section 11) |
 | Live refresh snapshot logic | `backtester/dashboard_runtime.py`, `workers/live_refresh_worker.py` |
-| Legacy Jinja UI (deprecated) | `templates/index.html`, `static/css/main.css` |
+| Live refresh ownership policy | `src/live_refresh_policy.py`, `app.py` lifespan (`LIVE_REFRESH_EMBEDDED_AUTOSTART`) |
+| Team/format event guards | `src/event_format.py` |
+| Verified field enforcement | `src/field_selection.py` |
+| Live snapshot persistence | `src/services/live_snapshot_service.py` |
+| Legacy Jinja UI (fallback only) | `templates/index.html`, `static/css/main.css` |
 
 ---
 
-## 13. Updating This Document
+## 13. Recent Merged PRs (shape of current main)
+
+Most impactful PRs landed in the last cycle. Newer numbered PRs (see `gh pr list --state open`) may be in flight — verify with `gh` before relying on their contents.
+
+| PR | Summary |
+|----|---------|
+| #46 | Frontend: team-event notice on Live/Upcoming tabs |
+| #45 | Events: pipeline guard against team-format events (Zurich) via `src/event_format.py` |
+| #44 | Dashboard tab contracts — live PIT rankings, DG in-play leaderboard, completed freeze |
+| #43 | Live refresh: prefer started current event over next future event |
+| #42 | Frontend: unified event cockpit + replay workflow |
+| #41 | Rankings: sectioned rich player profiles |
+| #40 | Expose all qualifying matchup books in dashboard |
+| #38 | Enforce verified field eligibility for live rankings (`src/field_selection.py`) |
+| #33 | End-to-end model trust and runtime reliability recovery |
+
+**CI (current on main):** `.github/workflows/ci.yml` runs three jobs — Python `pytest` (3.11 and 3.12), `ruff` lint (3.11 and 3.12), and a `frontend` job that runs `npm ci`, `npm run lint`, and `npm run build` against `frontend/`.
+
+**Recovery program in flight (not yet on main as of 2026-04-22):** deploy DB-path helper + CLI flags, single-owner live refresh, atomic snapshot writes, composite DB indexes, externalized prompts under `prompts/v1/*.md`. Check open PRs (`gh pr list --state open`) before assuming any of these exist on main.
+
+---
+
+## 14. Updating This Document
 
 - **When to update:** Adding entry points, config keys, DB tables, critical modules, new conventions, or deprecating behavior.
 - **Section 2 (layout):** Keep the tree accurate. Every `.py` file should be listed.
