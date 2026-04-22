@@ -1,10 +1,8 @@
 import { useMemo, useState } from "react"
-import { TrendingUp, TrendingDown, Minus } from "lucide-react"
 
 import {
   SgSkillBarsChart,
   SgRollingChart,
-  ApproachBucketsChart,
   TournamentHistoryChart,
   SparklineChart,
 } from "@/components/charts"

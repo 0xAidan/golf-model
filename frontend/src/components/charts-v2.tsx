@@ -11,7 +11,7 @@
  *  - HistoryTable         — finish chips + inline SG bars
  */
 
-import { useRef, useState, useEffect } from "react"
+import { useState } from "react"
 import ReactECharts from "echarts-for-react"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
@@ -94,7 +94,7 @@ export function PentagonRadar({
     { key: "sg_total","label": "Total SG",     maxAbs: 2.8 },
   ] as const
 
-  const playerVals = axes.map(a => sgToPercentile((skills as any)[a.key], a.maxAbs))
+  const playerVals = axes.map(a => sgToPercentile((skills as Record<string, number | null | undefined>)[a.key], a.maxAbs))
   const avgVals    = axes.map(() => 50) // tour average = 50th percentile on every axis
 
   return (
@@ -170,10 +170,10 @@ export function PentagonRadar({
         tooltip: {
           trigger: "item",
           ...TOOLTIP,
-          formatter: (params: any) => {
+          formatter: (params: { seriesIndex?: number; [k: string]: unknown }) => {
             if (params.seriesIndex === 0) return "Tour Average (50th pct)"
-            const lines = axes.map((a, i) => {
-              const raw = (skills as any)[a.key]
+            const lines = axes.map((a) => {
+              const raw = (skills as Record<string, number | null | undefined>)[a.key]
               const v = raw != null ? raw : null
               const col = v != null ? toneCol(v) : T.muted
               const disp = v != null ? signed(v) : "—"
@@ -424,7 +424,7 @@ export function RollingBarLine({
   const ordered = [...events].reverse() // oldest → newest
 
   const vals = ordered.map(e => {
-    const v = (e as any)[key]
+    const v = (e as unknown as Record<string, unknown>)[key]
     return typeof v === "number" ? v : null
   })
 
@@ -543,9 +543,9 @@ export function RollingBarLine({
             trigger: "axis",
             axisPointer: { type: "shadow" },
             ...TOOLTIP,
-            formatter: (params: any[]) => {
-              const bar = params.find((p: any) => p.seriesName === tab)
-              const ma  = params.find((p: any) => p.seriesName !== tab && p.seriesName !== "_zero")
+            formatter: (params: Array<{ seriesName?: string; value?: number; name?: string; dataIndex?: number; [k: string]: unknown }>) => {
+              const bar = params.find((p) => p.seriesName === tab)
+              const ma  = params.find((p) => p.seriesName !== tab && p.seriesName !== "_zero")
               const ev  = ordered[bar?.dataIndex ?? 0]
               const v   = bar?.value
               const col = v != null ? toneCol(v) : T.muted
@@ -609,17 +609,12 @@ function ArcGauge({
 
   // Value arc
   const vEnd = polar(valA, r)
-  const vLargeArc = Math.abs(valA - startA) > Math.PI / 2 ? 0 : 0
-  const vD = `M ${tStart.x} ${tStart.y} A ${r} ${r} 0 0 1 ${vEnd.x} ${vEnd.y}`
 
   // Tour avg tick
   const avgOuter = polar(avgA, r + 4)
   const avgInner = polar(avgA, r - 4)
 
   const col = value >= 0 ? T.green : T.red
-  const fillAngle = value >= tourAvg
-    ? `M ${tStart.x} ${tStart.y} A ${r} ${r} 0 0 1 ${vEnd.x} ${vEnd.y}`
-    : vD
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>

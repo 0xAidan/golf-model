@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react"
-import type { CourseData, HoleData, HoleShape } from "@/lib/course-data"
+import type { CourseData, HoleData } from "@/lib/course-data"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
 const T = {

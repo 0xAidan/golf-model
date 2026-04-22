@@ -103,9 +103,9 @@ export function SparklineChart({
         tooltip: {
           trigger: "axis",
           ...TOOLTIP_STYLE,
-          formatter: (params: any[]) => {
+          formatter: (params: Array<{ value?: number | number[]; dataIndex?: number; [k: string]: unknown }>) => {
             const v = params[0]?.value
-            return `Round ${params[0]?.dataIndex + 1}<br/><b style="color:${color}">${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(3)} SG</b>`
+            return `Round ${(params[0]?.dataIndex ?? 0) + 1}<br/><b style="color:${color}">${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(3)} SG</b>`
           },
         },
       }}
@@ -128,9 +128,8 @@ export function SgRollingChart({
   if (!values.length) return <ChartEmpty height={height} message="No form data" />
 
   const seriesData = values.map((v, i) => [i + 1, v])
-  const hasNeg = values.some((v) => v < 0)
 
-  const series: any[] = [
+  const series: Array<Record<string, unknown>> = [
     {
       name: "SG / Round",
       type: "line",
@@ -213,8 +212,8 @@ export function SgRollingChart({
         tooltip: {
           trigger: "axis",
           ...TOOLTIP_STYLE,
-          formatter: (params: any[]) => {
-            return params.map((p: any) => {
+          formatter: (params: Array<{ value?: number | number[]; color?: string; seriesName?: string; [k: string]: unknown }>) => {
+            return params.map((p) => {
               const v = Array.isArray(p.value) ? p.value[1] : p.value
               const sign = Number(v) > 0 ? "+" : ""
               return `<span style="color:${p.color}">●</span> ${p.seriesName}: <b>${sign}${Number(v).toFixed(3)}</b>`
@@ -286,8 +285,8 @@ export function SgSkillBarsChart({
             barMaxWidth: 18,
             label: {
               show: true,
-              position: (params: any) => (params.value >= 0 ? "right" : "left"),
-              formatter: (params: any) => {
+              position: (params: { value?: number; [k: string]: unknown }) => ((params.value ?? 0) >= 0 ? "right" : "left"),
+              formatter: (params: { value?: number; [k: string]: unknown }) => {
                 const v = Number(params.value)
                 return `${v > 0 ? "+" : ""}${v.toFixed(3)}`
               },
@@ -301,7 +300,7 @@ export function SgSkillBarsChart({
           trigger: "axis",
           axisPointer: { type: "shadow" },
           ...TOOLTIP_STYLE,
-          formatter: (params: any[]) => {
+          formatter: (params: Array<{ value?: number; name?: string; [k: string]: unknown }>) => {
             const p = params[0]
             const v = Number(p.value)
             const sign = v > 0 ? "+" : ""
@@ -397,8 +396,8 @@ export function ApproachBucketsChart({
           trigger: "axis",
           axisPointer: { type: "shadow" },
           ...TOOLTIP_STYLE,
-          formatter: (params: any[]) => {
-            return params.map((p: any) => {
+          formatter: (params: Array<{ value?: number; color?: string; seriesName?: string; [k: string]: unknown }>) => {
+            return params.map((p) => {
               const v = Number(p.value)
               const sign = v >= 0 ? "+" : ""
               const col = v >= 0 ? T.green : T.red
@@ -486,14 +485,15 @@ export function TournamentHistoryChart({
           trigger: "axis",
           axisPointer: { type: "shadow" },
           ...TOOLTIP_STYLE,
-          formatter: (params: any[]) => {
+          formatter: (params: Array<{ value?: number; dataIndex?: number; [k: string]: unknown }>) => {
             const p = params[0]
             const v = Number(p.value)
             const sign = v > 0 ? "+" : ""
             const col = v > 0 ? T.green : T.red
-            const ev = filtered[p.dataIndex]
+            const idx = p.dataIndex ?? 0
+            const ev = filtered[idx]
             const fin = ev?.fin_text ? ` · ${ev.fin_text}` : ""
-            return `${filtered[p.dataIndex]?.event_name}<br/><b style="color:${col}">${sign}${v.toFixed(3)} SG/round</b>${fin}`
+            return `${filtered[idx]?.event_name}<br/><b style="color:${col}">${sign}${v.toFixed(3)} SG/round</b>${fin}`
           },
         },
       }}

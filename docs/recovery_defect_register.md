@@ -43,8 +43,9 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
    - Files: `backtester/dashboard_runtime.py`, `src/services/live_snapshot_service.py`
 2. Tournaments table lacks uniqueness guard (duplicate event rows possible).
    - Files: `src/db.py`
-3. CI lacks frontend build/lint gates.
+3. CI lacks frontend build/lint gates. — **FIXED (Q3)**
    - Files: `.github/workflows/ci.yml`, `frontend/package.json`
+   - CI now runs `npm ci`, `npm run lint`, `npm run typecheck`, and `npm run build` against the frontend on every push and pull request. A `typecheck` script (`tsc -b --noEmit`) was added to `frontend/package.json`. Pre-existing lint violations (unused imports, implicit `any`, a setState-in-effect) were cleaned up to land the gate green without weakening any rules.
 4. FastAPI lifespan behavior not covered by tests.
    - Files: `tests/`
 
