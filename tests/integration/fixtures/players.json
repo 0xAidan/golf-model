@@ -1,0 +1,28 @@
+{
+  "tournaments": [
+    {
+      "name": "E2E Integration Test Open",
+      "course": "Fixture Country Club",
+      "course_num": 901,
+      "year": 2026,
+      "event_id": "9001"
+    },
+    {
+      "name": "E2E Second Fixture Event",
+      "course": "Second Fixture Course",
+      "course_num": 902,
+      "year": 2026,
+      "event_id": "9002"
+    }
+  ],
+  "players": [
+    {"key": "fixture_alpha",   "display": "Fixture Alpha",   "dg_id": 900001, "skill": 2.10},
+    {"key": "fixture_bravo",   "display": "Fixture Bravo",   "dg_id": 900002, "skill": 1.55},
+    {"key": "fixture_charlie", "display": "Fixture Charlie", "dg_id": 900003, "skill": 1.10},
+    {"key": "fixture_delta",   "display": "Fixture Delta",   "dg_id": 900004, "skill": 0.75},
+    {"key": "fixture_echo",    "display": "Fixture Echo",    "dg_id": 900005, "skill": 0.40},
+    {"key": "fixture_foxtrot", "display": "Fixture Foxtrot", "dg_id": 900006, "skill": 0.05},
+    {"key": "fixture_golf",    "display": "Fixture Golf",    "dg_id": 900007, "skill": -0.30},
+    {"key": "fixture_hotel",   "display": "Fixture Hotel",   "dg_id": 900008, "skill": -0.80}
+  ]
+}

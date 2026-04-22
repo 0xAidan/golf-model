@@ -1,0 +1,43 @@
+{
+  "matchups": [
+    {
+      "p1_player_name": "Fixture Alpha",
+      "p2_player_name": "Fixture Hotel",
+      "odds": {
+        "draftkings": {"p1": -150, "p2": 130},
+        "fanduel":    {"p1": -145, "p2": 125},
+        "bet365":     {"p1": -155, "p2": 135},
+        "datagolf":   {"p1": -220, "p2": 180}
+      }
+    },
+    {
+      "p1_player_name": "Fixture Bravo",
+      "p2_player_name": "Fixture Golf",
+      "odds": {
+        "draftkings": {"p1": -130, "p2": 110},
+        "fanduel":    {"p1": -125, "p2": 105},
+        "betmgm":     {"p1": -135, "p2": 115},
+        "datagolf":   {"p1": -180, "p2": 150}
+      }
+    },
+    {
+      "p1_player_name": "Fixture Charlie",
+      "p2_player_name": "Fixture Foxtrot",
+      "odds": {
+        "draftkings": {"p1": -115, "p2":  -105},
+        "fanduel":    {"p1": -120, "p2":  100},
+        "datagolf":   {"p1": -140, "p2":  120}
+      }
+    }
+  ],
+  "outrights": {
+    "Fixture Alpha":   {"best_price":  600, "best_book": "draftkings", "books": {"draftkings": 600, "fanduel": 550}},
+    "Fixture Bravo":   {"best_price":  900, "best_book": "fanduel",    "books": {"draftkings": 850, "fanduel": 900}},
+    "Fixture Charlie": {"best_price": 1500, "best_book": "bet365",     "books": {"bet365": 1500}},
+    "Fixture Delta":   {"best_price": 2200, "best_book": "draftkings", "books": {"draftkings": 2200}},
+    "Fixture Echo":    {"best_price": 3000, "best_book": "fanduel",    "books": {"fanduel": 3000}},
+    "Fixture Foxtrot": {"best_price": 4500, "best_book": "betmgm",     "books": {"betmgm": 4500}},
+    "Fixture Golf":    {"best_price": 7000, "best_book": "draftkings", "books": {"draftkings": 7000}},
+    "Fixture Hotel":   {"best_price": 12000,"best_book": "fanduel",    "books": {"fanduel": 12000}}
+  }
+}
