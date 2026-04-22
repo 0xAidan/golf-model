@@ -584,6 +584,13 @@ journalctl -u golf-live-refresh -f
 systemctl restart golf-live-refresh
 ```
 
+#### Live Refresh Ownership (single-owner rule)
+
+- The systemd unit `golf-live-refresh` (running `workers/live_refresh_worker.py`) is the **sole authoritative owner** of the live refresh loop in production. Do not start a second loop in-process.
+- The FastAPI dashboard (`app.py`) will **not** start an embedded live-refresh loop by default. Embedded autostart is opt-in via `LIVE_REFRESH_EMBEDDED_AUTOSTART=1` (useful only for local/dev environments where the worker is not running). When opt-in is enabled, the dashboard emits a LOUD `WARNING` log on startup.
+- **Pidfile coordination:** the worker writes its PID to `/tmp/golf_live_refresh.pid` (override via env var `LIVE_REFRESH_PIDFILE`) and removes it on clean shutdown. If `LIVE_REFRESH_EMBEDDED_AUTOSTART=1` is set but the pidfile points to a live process, the dashboard lifespan hook refuses to start a second loop and logs a WARNING.
+- `deploy.sh` sets `LIVE_REFRESH_EMBEDDED_AUTOSTART=0` on `golf-dashboard.service` as defense-in-depth; the repo default is now also `0`.
+
 ### Frontend Build
 
 The React frontend builds to `frontend/dist/` and is served by FastAPI at `/`. On deploy, `npm ci && npm run build` runs automatically. For local development:

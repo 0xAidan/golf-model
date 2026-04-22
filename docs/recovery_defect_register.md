@@ -13,9 +13,10 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
 2. Deploy status checks wrong DB path and can misreport DB missing.
    - Files: `deploy.sh`
    - Risk: false operational confidence.
-3. Dual live-refresh ownership (app lifespan + systemd worker) can run concurrent loops.
+3. Dual live-refresh ownership (app lifespan + systemd worker) can run concurrent loops. **[FIXED — Q10, PR fix/live-refresh-single-owner]**
    - Files: `app.py`, `workers/live_refresh_worker.py`, `deploy.sh`, `src/live_refresh_policy.py`
    - Risk: duplicate API load, snapshot write races, stale/inconsistent runtime state.
+   - Resolution: `LIVE_REFRESH_EMBEDDED_AUTOSTART` default flipped from `1` to `0`; systemd worker is sole owner. Worker writes `/tmp/golf_live_refresh.pid` (override via `LIVE_REFRESH_PIDFILE`); the lifespan hook skips and logs WARNING if the pidfile points to a live process. Opt-in embedded autostart emits a LOUD WARNING. See `tests/test_live_refresh_ownership.py`. Out-of-scope follow-up: worker pidfile cleanup on uncaught crash.
 4. Past-event UI mode is non-functional but appears selectable.
    - Files: `frontend/src/App.tsx`
    - Risk: operator believes they are reviewing a past event while reading live/current data.
