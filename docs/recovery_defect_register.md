@@ -71,6 +71,9 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
      (historical_odds has no explicit `ts` column; `year` is the available temporal key).
    - Status: **FIXED** — PR `perf/db-indexes` (Q4). Idempotent migration via
      `_ensure_hot_path_indexes()`; schema unchanged, data untouched.
+5. **FIXED** — Snapshot-age / data-source chip globally visible.
+   - Files: `backtester/dashboard_runtime.py`, `frontend/src/components/snapshot-chip.tsx`, `frontend/src/App.tsx`
+   - Snapshot payload now carries `generated_at` (already present) and a new `data_source` (`live` | `replay` | `fixture`). A `<SnapshotChip />` mounted in the global app shell shows age ("12s ago", "14m ago", "stale (>60m)") and the source label, updating every second client-side with green/amber/red tone thresholds at 30m/60m.
 
 ## Quality / DX defects
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -57,6 +58,26 @@ def _utc_now() -> datetime:
 
 def _iso_now() -> str:
     return _utc_now().isoformat()
+
+
+_DATA_SOURCE_VALUES = {"live", "replay", "fixture"}
+
+
+def _resolve_data_source() -> str:
+    """Classify the snapshot's data origin so the UI can surface it.
+
+    Derived from the same environment toggles that drive the refresh path:
+    `GOLF_DATA_SOURCE` (explicit override) wins; otherwise any active
+    fixture/replay env markers map to their labels, defaulting to "live".
+    """
+    explicit = (os.environ.get("GOLF_DATA_SOURCE") or "").strip().lower()
+    if explicit in _DATA_SOURCE_VALUES:
+        return explicit
+    if (os.environ.get("GOLF_USE_FIXTURES") or "").strip().lower() in {"1", "true", "yes"}:
+        return "fixture"
+    if (os.environ.get("GOLF_REPLAY_MODE") or "").strip().lower() in {"1", "true", "yes"}:
+        return "replay"
+    return "live"
 
 
 def _write_snapshot(payload: dict[str, Any]) -> None:
@@ -1422,6 +1443,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     snapshot = {
         "snapshot_id": snapshot_id,
         "generated_at": generated_at,
+        "data_source": _resolve_data_source(),
         "cadence_mode": cadence_mode,
         "event_context": {
             "tour": tour,

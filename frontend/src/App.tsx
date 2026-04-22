@@ -5,6 +5,7 @@ import { RefreshCw, Star } from "lucide-react"
 
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
 import { SuiteShell, SidebarStatus } from "@/components/shell"
+import { SnapshotChip } from "@/components/snapshot-chip"
 import { useLiveRefreshRuntime } from "@/hooks/use-live-refresh-runtime"
 import { usePredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
@@ -250,6 +251,10 @@ function App() {
       }
       actions={
         <>
+          <SnapshotChip
+            generatedAt={liveSnapshot?.generated_at ?? liveSnapshotEnvelope?.generated_at ?? null}
+            dataSource={liveSnapshot?.data_source ?? null}
+          />
           <button
             className="btn btn-ghost"
             onClick={() => gradeMutation.mutate()}
