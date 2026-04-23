@@ -1162,14 +1162,20 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             source_event_id=upcoming_event_id,
             tour=tour,
         )
-        upcoming_state = _classify_matchup_state(
-            market_counts=ingest_summary.get("market_counts"),
-            diagnostics_state=upcoming_diag.get("state"),
-            selected_rows=upcoming_selected_rows,
-            errors=upcoming_diag.get("errors"),
-        )
-        if not upcoming_eligibility.get("verified"):
-            upcoming_state = "eligibility_failed"
+        # Mirror the live-section team-event guard: surface 'team_event' rather
+        # than misclassifying the upstream short-circuit as eligibility_failed.
+        upcoming_is_team_event = upcoming_result.get("event_format") == "team"
+        if upcoming_is_team_event:
+            upcoming_state = "team_event"
+        else:
+            upcoming_state = _classify_matchup_state(
+                market_counts=ingest_summary.get("market_counts"),
+                diagnostics_state=upcoming_diag.get("state"),
+                selected_rows=upcoming_selected_rows,
+                errors=upcoming_diag.get("errors"),
+            )
+            if not upcoming_eligibility.get("verified"):
+                upcoming_state = "eligibility_failed"
         upcoming_section = {
             "event_name": upcoming_result.get("event_name") or upcoming_event_name,
             "course_name": upcoming_result.get("course_name"),
@@ -1334,12 +1340,23 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_diag = live_result.get("matchup_diagnostics") or {}
     live_selection_counts = live_diag.get("selection_counts") or {}
     live_selected_rows = int(live_selection_counts.get("all_qualifying_rows", live_selection_counts.get("selected_rows", 0)))
-    live_state = _classify_matchup_state(
-        market_counts=ingest_summary.get("market_counts"),
-        diagnostics_state=live_diag.get("state"),
-        selected_rows=live_selected_rows,
-        errors=live_diag.get("errors"),
-    )
+    # Team-format events (e.g. Zurich Classic) are short-circuited upstream by
+    # GolfModelService.run_analysis (see src/event_format.py). The service
+    # returns status='complete' with event_format='team' but no eligibility /
+    # composite_results, which would otherwise be misclassified as
+    # eligibility_failed / pipeline_error here. Surface a dedicated 'team_event'
+    # state instead so the dashboard renders the TeamEventNotice rather than
+    # the degraded-pipeline banner.
+    live_is_team_event = live_result.get("event_format") == "team"
+    if live_is_team_event:
+        live_state = "team_event"
+    else:
+        live_state = _classify_matchup_state(
+            market_counts=ingest_summary.get("market_counts"),
+            diagnostics_state=live_diag.get("state"),
+            selected_rows=live_selected_rows,
+            errors=live_diag.get("errors"),
+        )
     live_eligibility = base_section.get("eligibility") or {}
     pre_tournament_rankings = _extract_rankings(
         live_result.get("composite_results") or [],
@@ -1392,7 +1409,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_value_bets = base_section.get("value_bets") or {}
     live_verification_error = base_section.get("verification_error")
 
-    if not live_eligibility.get("verified"):
+    if not live_is_team_event and not live_eligibility.get("verified"):
         live_state = "eligibility_failed"
         live_rankings = []
         live_matchups = []

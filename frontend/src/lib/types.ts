@@ -230,7 +230,7 @@ export type LiveTournamentSnapshot = {
     books_with_qualifying_edges?: string[]
     books_after_card_caps?: string[]
     book_stats?: Record<string, { lines_seen?: number; qualifying_edges?: number; card_rows?: number }>
-    state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | string
+    state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | "team_event" | "eligibility_failed" | string
     errors?: string[]
   }
 }

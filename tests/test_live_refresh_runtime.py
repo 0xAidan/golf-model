@@ -1332,3 +1332,163 @@ def test_live_refresh_replay_endpoints_treat_empty_section_as_live(monkeypatch):
     assert market_rows_response.json()["section"] == "live"
     assert market_rows_response.json()["rows"][0]["section"] == "live"
 
+
+
+# ---------------------------------------------------------------------------
+# Team-event guard regression tests (PR #45 + #46 follow-up)
+#
+# GolfModelService.run_analysis short-circuits team-format events (Zurich
+# Classic) upstream, returning status='complete' with event_format='team' and
+# no eligibility / composite_results / matchup_diagnostics. Without an explicit
+# guard in dashboard_runtime, the section was being misclassified as
+# 'eligibility_failed' -> 'pipeline_error', which flipped app.py's snapshot-
+# age endpoint into a "degraded pipeline" banner and hid the TeamEventNotice
+# entirely. These tests lock in the 'team_event' diagnostic state on both the
+# live and upcoming snapshot sections so the frontend renders the notice
+# instead of the degraded banner.
+# ---------------------------------------------------------------------------
+
+
+def _team_event_analysis_result(event_name: str, course_name: str = "TPC Louisiana") -> dict:
+    """Matches the shape GolfModelService.run_analysis returns for a team event."""
+    return {
+        "status": "complete",
+        "event_name": event_name,
+        "course_name": course_name,
+        "field_size": 30,
+        "event_format": "team",
+        "skipped_reason": "team_event",
+        "tournament_id": 999,
+        "composite_results": [],
+        "matchup_bets": [],
+        "matchup_bets_all_books": [],
+        "value_bets": {},
+        "warnings": [
+            f"Team-format event detected ({event_name}); skipping placement value, "
+            "individual H2H matchups, and 3-ball generation. Informational card written."
+        ],
+        "card_filepath": "/tmp/zurich_team_card.md",
+    }
+
+
+def test_run_recompute_live_team_event_surfaces_team_event_state(monkeypatch):
+    """Zurich as the live event must produce state='team_event', not 'pipeline_error'."""
+    from backtester import dashboard_runtime as runtime
+
+    def _fake_run_snapshot_analysis(**kwargs):
+        return _team_event_analysis_result(
+            kwargs.get("tournament_name") or "Zurich Classic of New Orleans"
+        )
+
+    monkeypatch.setattr(runtime, "run_snapshot_analysis", _fake_run_snapshot_analysis)
+    monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
+    monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
+    monkeypatch.setattr(runtime, "fetch_in_play_predictions", lambda **kwargs: {})
+    monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
+    monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
+    monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime, "_load_event_leaderboard_rows", lambda event_id, year=None: [])
+
+    snapshot = runtime._run_recompute(
+        "pga",
+        "live_window",
+        {
+            "event_name": "Zurich Classic of New Orleans",
+            "event_id": "018",
+            "event_year": 2026,
+            "course": "TPC Louisiana",
+            "upcoming_event_names": ["Zurich Classic of New Orleans"],
+            "live_event_active": True,
+            "latest_completed_event_name": "RBC Heritage",
+            "upcoming_event_row": None,
+            "market_counts": {},
+        },
+    )
+
+    live = snapshot["live_tournament"]
+    assert live["event_format"] == "team"
+    assert live["skipped_reason"] == "team_event"
+    assert live["diagnostics"]["state"] == "team_event", (
+        f"expected state='team_event' on live team-event, got {live['diagnostics']['state']!r}. "
+        "This regression would bring back the degraded-pipeline banner for Zurich."
+    )
+    # Critically: not any of the degraded states. app.py treats these two as
+    # pipeline degradation and sets stale_reason accordingly.
+    assert live["diagnostics"]["state"] not in {"pipeline_error", "eligibility_failed"}
+
+
+def test_run_recompute_upcoming_team_event_surfaces_team_event_state(monkeypatch, tmp_path):
+    """Zurich as the upcoming event must produce state='team_event' on the upcoming section."""
+    from backtester import dashboard_runtime as runtime
+
+    def _fake_run_snapshot_analysis(**kwargs):
+        name = kwargs.get("tournament_name") or ""
+        if "Zurich" in name:
+            return _team_event_analysis_result(name)
+        # Current (non-Zurich) event: verified individual-format pass-through.
+        return {
+            "status": "complete",
+            "event_name": name or "RBC Heritage",
+            "course_name": "Harbour Town",
+            "field_size": 132,
+            "event_format": "individual",
+            "field_validation": {
+                "strict_field_verified": True,
+                "field_source": "datagolf_field_updates",
+                "expected_event_id": "017",
+                "failed_invariants": [],
+                "major_event": False,
+                "cross_tour_backfill_used": False,
+            },
+            "composite_results": [
+                {
+                    "player_key": "p_player",
+                    "player_display": "P Player",
+                    "composite": 72.0,
+                    "form": 60.0,
+                    "course_fit": 65.0,
+                    "momentum": 55.0,
+                },
+            ],
+            "matchup_bets": [],
+            "matchup_bets_all_books": [],
+            "value_bets": {},
+        }
+
+    monkeypatch.setattr(runtime, "run_snapshot_analysis", _fake_run_snapshot_analysis)
+    monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
+    monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
+    monkeypatch.setattr(runtime, "fetch_in_play_predictions", lambda **kwargs: {})
+    monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
+    monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
+    monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime, "_load_event_leaderboard_rows", lambda event_id, year=None: [])
+
+    snapshot = runtime._run_recompute(
+        "pga",
+        "off_window",
+        {
+            "event_name": "RBC Heritage",
+            "event_id": "017",
+            "event_year": 2026,
+            "course": "Harbour Town",
+            "upcoming_event_names": ["RBC Heritage", "Zurich Classic of New Orleans"],
+            "live_event_active": False,
+            "latest_completed_event_name": "Masters",
+            "upcoming_event_row": {
+                "event_id": "018",
+                "event_name": "Zurich Classic of New Orleans",
+                "course": "TPC Louisiana",
+                "year": 2026,
+            },
+            "market_counts": {},
+        },
+    )
+
+    upcoming = snapshot["upcoming_tournament"]
+    assert upcoming["event_format"] == "team"
+    assert upcoming["skipped_reason"] == "team_event"
+    assert upcoming["diagnostics"]["state"] == "team_event"
+    assert upcoming["diagnostics"]["state"] not in {"pipeline_error", "eligibility_failed"}
