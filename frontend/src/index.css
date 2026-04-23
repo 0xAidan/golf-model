@@ -536,6 +536,9 @@ body {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   line-height: 1.1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
 }
 
 .kpi-value.green { color: var(--green); }
@@ -546,6 +549,8 @@ body {
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--text-faint);
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -998,8 +1003,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px;
-  height: 28px;
+  padding: 6px 10px;
+  min-height: 28px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
@@ -1013,9 +1018,9 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
+  flex-shrink: 0;
 }
 
 .cockpit-module-body {

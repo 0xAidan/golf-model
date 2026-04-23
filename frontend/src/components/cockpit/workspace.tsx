@@ -75,10 +75,10 @@ export function CockpitModule({
       }}
     >
       <div className="cockpit-module-header">
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 8, rowGap: 2, minWidth: 0, flex: 1 }}>
           <span className="cockpit-module-title">{title}</span>
           {description && (
-            <span style={{ fontSize: 9, color: "var(--text-faint)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span style={{ fontSize: 9, color: "var(--text-faint)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
               {description}
             </span>
           )}
