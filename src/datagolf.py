@@ -1159,6 +1159,24 @@ def fetch_matchup_odds_with_diagnostics(
             diagnostics["result_count"] = len(match_list)
             diagnostics["reason_code"] = "ok" if match_list else "empty_match_list"
             return match_list, diagnostics
+        # DataGolf returns the literal string "no matchups posted." between
+        # tournaments and during the pre-tournament window when matchup books
+        # have not opened yet. That is a normal idle state, not an error —
+        # surface it as `empty_match_list` so downstream UIs render the
+        # "market not posted yet" copy instead of a hard health alarm.
+        if isinstance(match_list, str):
+            normalized = match_list.strip().lower()
+            no_market_phrases = (
+                "no matchups",
+                "no matchup",
+                "no market",
+                "no markets",
+            )
+            if any(phrase in normalized for phrase in no_market_phrases):
+                diagnostics["reason_code"] = "empty_match_list"
+                diagnostics["match_list_type"] = "str"
+                diagnostics["match_list_message"] = match_list
+                return [], diagnostics
         diagnostics["reason_code"] = "invalid_match_list_type"
         diagnostics["match_list_type"] = type(match_list).__name__
         return [], diagnostics

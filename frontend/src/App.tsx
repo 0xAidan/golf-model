@@ -84,8 +84,20 @@ function App() {
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
   const [uiAlert, setUiAlert] = useState<string | null>(null)
 
+  // A single failed poll happens routinely (network blip, deploy restart) and
+  // should not flip the runtime indicator to "error" or surface the alarming
+  // "check API health" banner. We only flag it after the query has retried
+  // multiple times without success — React Query exposes this via
+  // `failureCount`, which resets to 0 on the next successful poll.
+  const SUSTAINED_FAILURE_THRESHOLD = 2
+  const snapshotSustainedFailure =
+    liveSnapshotQuery.isError && liveSnapshotQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
+  const statusSustainedFailure =
+    liveRefreshStatusQuery.isError &&
+    liveRefreshStatusQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
+
   const runtimeStatus = useMemo(() => {
-    if (liveRefreshStatusQuery.isError || liveSnapshotQuery.isError)
+    if (statusSustainedFailure || snapshotSustainedFailure)
       return { label: "Runtime error", tone: "bad" as const }
     if (!liveRuntimeRunning)
       return { label: "Offline", tone: "warn" as const }
@@ -93,14 +105,14 @@ function App() {
       return { label: "Degraded", tone: "warn" as const }
     return { label: "Live", tone: "good" as const }
   }, [
-    liveRefreshStatusQuery.isError,
-    liveSnapshotQuery.isError,
+    statusSustainedFailure,
+    snapshotSustainedFailure,
     liveRuntimeRunning,
     liveSnapshotEnvelope?.stale_reason,
   ])
 
   const snapshotNotice =
-    liveSnapshotQuery.isError
+    snapshotSustainedFailure
       ? "Live snapshot request failed. Retry after checking API health."
       : liveSnapshotEnvelope?.stale_reason ?? liveSnapshotEnvelope?.fallback_reason ?? uiAlert
 

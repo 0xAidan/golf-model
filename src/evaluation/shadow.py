@@ -14,7 +14,7 @@ import logging
 from typing import Any
 
 from src import db
-from src.models.base import iter_active_challengers
+from src.models.base import get_champion, iter_active_challengers
 
 logger = logging.getLogger("evaluation.shadow")
 
@@ -53,8 +53,19 @@ def record_matchup_shadow(
         challengers = iter_active_challengers()
     except Exception:
         logger.warning("Failed to enumerate challengers", exc_info=True)
-        return
-    if not challengers:
+        challengers = []
+
+    # Always self-record the champion so the offline evaluator has data even
+    # when no challengers are configured. This is purely additive — the live
+    # pipeline never reads from `challenger_predictions`, so writing the
+    # champion's own row here cannot influence pricing or selection.
+    try:
+        champion_model = get_champion()
+    except Exception:
+        logger.warning("Failed to resolve champion model for shadow record", exc_info=True)
+        champion_model = None
+
+    if not challengers and champion_model is None:
         return
 
     p1_key = str(p1.get("player_key") or "")
@@ -62,7 +73,33 @@ def record_matchup_shadow(
     matchup_id = _matchup_id(tournament_id, p1_key, p2_key, book)
 
     rows: list[tuple[Any, ...]] = []
+
+    if champion_model is not None:
+        try:
+            champion_self_p = max(0.0, min(1.0, float(champion_p)))
+        except (TypeError, ValueError):
+            champion_self_p = None
+        if champion_self_p is not None:
+            rows.append(
+                (
+                    champion_model.name,
+                    getattr(champion_model, "version", None),
+                    "matchup",
+                    matchup_id,
+                    tournament_id,
+                    p1_key,
+                    p2_key,
+                    champion_self_p,
+                    champion_self_p,
+                    book_price_p1,
+                    book_price_p2,
+                )
+            )
+
     for model in challengers:
+        # Skip if this challenger is also the champion — already recorded above.
+        if champion_model is not None and getattr(model, "name", None) == champion_model.name:
+            continue
         try:
             predicted = float(model.predict_matchup(p1, p2, features))
         except Exception:

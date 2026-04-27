@@ -244,7 +244,12 @@ def test_summarize_all_covers_champion_and_challengers(tmp_db, _reset_challenger
 
 # ─── Shadow hook: empty vs populated CHALLENGERS ────────────────────────────
 
-def test_shadow_hook_noop_when_empty(tmp_db, _reset_challengers):
+def test_shadow_hook_self_records_champion_when_empty(tmp_db, _reset_challengers):
+    """With no challengers configured the champion still self-records so the
+    offline evaluator has data. The recorded `predicted_p` equals the
+    champion's own probability and `champion_p` matches — i.e. Brier vs the
+    champion is zero on each row, which is the correct identity behavior.
+    """
     config.CHALLENGERS = []
     record_matchup_shadow(
         p1={"player_key": "a"},
@@ -255,9 +260,14 @@ def test_shadow_hook_noop_when_empty(tmp_db, _reset_challengers):
         book="dk",
     )
     conn = tmp_db.get_conn()
-    count = conn.execute("SELECT COUNT(*) FROM challenger_predictions").fetchone()[0]
+    rows = conn.execute(
+        "SELECT model_name, predicted_p, champion_p FROM challenger_predictions"
+    ).fetchall()
     conn.close()
-    assert count == 0
+    assert len(rows) == 1
+    assert rows[0]["model_name"] == config.CHAMPION
+    assert rows[0]["predicted_p"] == pytest.approx(0.6)
+    assert rows[0]["champion_p"] == pytest.approx(0.6)
 
 
 def test_shadow_hook_writes_row_for_each_challenger(tmp_db, _reset_challengers):
@@ -274,13 +284,20 @@ def test_shadow_hook_writes_row_for_each_challenger(tmp_db, _reset_challengers):
         book_price_p2=0.5,
     )
     conn = tmp_db.get_conn()
-    rows = conn.execute("SELECT * FROM challenger_predictions").fetchall()
+    rows = conn.execute(
+        "SELECT model_name, predicted_p, champion_p FROM challenger_predictions "
+        "ORDER BY model_name"
+    ).fetchall()
     conn.close()
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["model_name"] == "stub_v0"
-    assert row["predicted_p"] == pytest.approx(0.42)
-    assert row["champion_p"] == pytest.approx(0.55)
+    # Champion self-record + challenger row.
+    assert len(rows) == 2
+    by_name = {r["model_name"]: r for r in rows}
+    assert config.CHAMPION in by_name
+    assert "stub_v0" in by_name
+    assert by_name["stub_v0"]["predicted_p"] == pytest.approx(0.42)
+    assert by_name["stub_v0"]["champion_p"] == pytest.approx(0.55)
+    assert by_name[config.CHAMPION]["predicted_p"] == pytest.approx(0.55)
+    assert by_name[config.CHAMPION]["champion_p"] == pytest.approx(0.55)
 
 
 def test_shadow_hook_swallows_challenger_failure(tmp_db, _reset_challengers):
@@ -303,7 +320,9 @@ def test_shadow_hook_swallows_challenger_failure(tmp_db, _reset_challengers):
         "SELECT model_name FROM challenger_predictions ORDER BY id"
     ).fetchall()
     conn.close()
-    assert [r["model_name"] for r in rows] == ["stub_v0"]
+    # Champion self-record + stub_v0; failing_v0 is swallowed.
+    names = sorted(r["model_name"] for r in rows)
+    assert names == sorted([config.CHAMPION, "stub_v0"])
 
 
 # ─── Byte-identical invariant on matchup value path ─────────────────────────
@@ -417,12 +436,14 @@ def test_matchup_value_byte_identical_with_active_challenger(tmp_db, _reset_chal
     shadow_hash = _golden_hash(bets_shadow, diag_shadow)
     assert shadow_hash == baseline_hash, "Challenger must not alter champion output"
 
-    # AND a row must have been written to challenger_predictions.
+    # AND a row must have been written to challenger_predictions for the
+    # registered challenger. The champion also self-records (defect 3.3.1
+    # follow-up) so we look up the stub row by name rather than by index.
     conn = tmp_db.get_conn()
     rows = conn.execute(
         "SELECT model_name, predicted_p FROM challenger_predictions"
     ).fetchall()
     conn.close()
-    assert len(rows) >= 1
-    assert rows[0]["model_name"] == "stub_v0"
-    assert rows[0]["predicted_p"] == pytest.approx(0.42)
+    by_name = {r["model_name"]: r for r in rows}
+    assert "stub_v0" in by_name
+    assert by_name["stub_v0"]["predicted_p"] == pytest.approx(0.42)

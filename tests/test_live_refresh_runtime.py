@@ -1028,7 +1028,13 @@ def test_live_refresh_past_snapshot_endpoints(monkeypatch):
     monkeypatch.setattr(
         app_module,
         "list_completed_snapshot_events",
-        lambda limit=40: [{"event_id": "18", "event_name": "Zurich Classic", "latest_generated_at": "2026-04-17T20:00:00+00:00"}],
+        lambda limit=40, exclude_event_ids=None: [
+            {
+                "event_id": "18",
+                "event_name": "Zurich Classic",
+                "latest_generated_at": "2026-04-17T20:00:00+00:00",
+            }
+        ],
     )
     monkeypatch.setattr(
         app_module,
