@@ -1771,11 +1771,40 @@ async def get_live_refresh_runtime_status():
 
 @app.get("/api/live-refresh/past-events")
 async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=200)):
-    """List events available for Completed replay (frozen pre-teeoff + live history)."""
+    """List events available for Completed replay (frozen pre-teeoff + live history).
+
+    The currently active live and upcoming event_ids are excluded so the past
+    selector never lists events that have not actually completed. Without this
+    guard the selector mis-labels the upcoming event as a past event because
+    its pre-teeoff snapshots accumulate in `live_snapshot_history`.
+    """
     from src.db import ensure_initialized
 
     ensure_initialized()
-    events = list_completed_snapshot_events(limit=limit)
+
+    exclude_ids: set[str] = set()
+    try:
+        from backtester.dashboard_runtime import get_live_refresh_status
+
+        status = get_live_refresh_status() or {}
+        last_summary = status.get("last_ingest_summary") or {}
+        for key in ("current_event_row", "upcoming_event_row"):
+            row = last_summary.get(key) or {}
+            eid = str(row.get("event_id") or "").strip()
+            if eid:
+                exclude_ids.add(eid)
+        # Also exclude the bare event_id reported in the summary header.
+        bare = str(last_summary.get("event_id") or "").strip()
+        if bare:
+            exclude_ids.add(bare)
+    except Exception:
+        # Status probe is best-effort; fall back to no exclusions.
+        _logger.warning("past-events exclusion probe failed", exc_info=True)
+
+    events = list_completed_snapshot_events(
+        limit=limit,
+        exclude_event_ids=exclude_ids or None,
+    )
     return {"events": events}
 
 

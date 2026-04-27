@@ -1750,28 +1750,63 @@ def store_live_snapshot_sections(
     return len(section_rows)
 
 
-def list_past_snapshot_events(limit: int = 40) -> list[dict]:
-    """List events that have immutable snapshot history for past-event replay."""
+def list_past_snapshot_events(
+    limit: int = 40,
+    *,
+    exclude_event_ids: set[str] | None = None,
+) -> list[dict]:
+    """List events that have immutable snapshot history for past-event replay.
+
+    `event_name` is resolved to the most recently observed name for that
+    event_id (not alphabetical MAX) — events are renamed mid-season (e.g. the
+    Cadillac Championship was historically the WGC Cadillac/Miami Championship)
+    and replay UIs need the current authoritative name.
+
+    `exclude_event_ids`, if provided, drops any matching event_ids from the
+    output. Callers (e.g. the past-events API) use this to keep the currently
+    upcoming or live event from leaking into the past-events selector.
+    """
     conn = get_conn()
+    # Pull a wider candidate window than `limit` so we can post-filter without
+    # losing real past events. The correlated subquery for `event_name` picks
+    # the name from the row with the most recent generated_at per event_id.
     rows = conn.execute(
         """
         SELECT
-            source_event_id AS event_id,
-            COALESCE(MAX(source_event_name), MAX(event_name)) AS event_name,
-            MAX(generated_at) AS latest_generated_at,
+            h.source_event_id AS event_id,
+            (
+                SELECT COALESCE(h2.source_event_name, h2.event_name)
+                FROM live_snapshot_history h2
+                WHERE h2.source_event_id = h.source_event_id
+                  AND h2.section IN ('live', 'upcoming')
+                ORDER BY h2.generated_at DESC, h2.id DESC
+                LIMIT 1
+            ) AS event_name,
+            MAX(h.generated_at) AS latest_generated_at,
             COUNT(*) AS snapshot_count
-        FROM live_snapshot_history
-        WHERE section IN ('live', 'upcoming')
-          AND source_event_id IS NOT NULL
-          AND TRIM(source_event_id) != ''
-        GROUP BY source_event_id
-        ORDER BY latest_generated_at DESC, source_event_id DESC
+        FROM live_snapshot_history h
+        WHERE h.section IN ('live', 'upcoming')
+          AND h.source_event_id IS NOT NULL
+          AND TRIM(h.source_event_id) != ''
+        GROUP BY h.source_event_id
+        ORDER BY latest_generated_at DESC, h.source_event_id DESC
         LIMIT ?
         """,
-        (int(limit),),
+        (max(int(limit) * 3, int(limit) + 5),),
     ).fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+
+    excluded = {str(eid).strip() for eid in (exclude_event_ids or set()) if eid}
+    out: list[dict] = []
+    for row in rows:
+        record = dict(row)
+        eid = str(record.get("event_id") or "").strip()
+        if eid and eid in excluded:
+            continue
+        out.append(record)
+        if len(out) >= int(limit):
+            break
+    return out
 
 
 def get_latest_snapshot_section(event_id: str, *, section: str = "live") -> dict | None:
@@ -2042,11 +2077,24 @@ def insert_pre_teeoff_frozen(
     return inserted
 
 
-def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
-    """Events available for Completed replay (live history + frozen pre-teeoff)."""
+def list_completed_snapshot_events(
+    limit: int = 40,
+    *,
+    exclude_event_ids: set[str] | None = None,
+) -> list[dict]:
+    """Events available for Completed replay (live history + frozen pre-teeoff).
+
+    `exclude_event_ids` are dropped from both the live-snapshot history source
+    and the frozen pre-teeoff source, ensuring the currently active live or
+    upcoming event never leaks into the past-event selector.
+    """
+    excluded = {str(eid).strip() for eid in (exclude_event_ids or set()) if eid}
     conn = get_conn()
     _ensure_pre_teeoff_tables(conn)
-    live_rows = list_past_snapshot_events(limit=max(int(limit) * 3, 120))
+    live_rows = list_past_snapshot_events(
+        limit=max(int(limit) * 3, 120),
+        exclude_event_ids=excluded or None,
+    )
     frozen_rows = conn.execute(
         """
         SELECT event_id, event_name, frozen_at
@@ -2060,7 +2108,7 @@ def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
     merged: dict[str, dict[str, Any]] = {}
     for row in live_rows:
         eid = str(row.get("event_id") or "").strip()
-        if not eid:
+        if not eid or eid in excluded:
             continue
         merged[eid] = {
             "event_id": eid,
@@ -2070,7 +2118,7 @@ def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
         }
     for fr in frozen_rows:
         eid = str(fr["event_id"] or "").strip()
-        if not eid:
+        if not eid or eid in excluded:
             continue
         ts = fr["frozen_at"]
         prev = merged.get(eid)
