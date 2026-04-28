@@ -16,6 +16,7 @@ import { BarTrendChart } from "@/components/charts"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type {
+  FailedMatchupCandidate,
   FlattenedSecondaryBet,
   LiveTournamentSnapshot,
   MatchupBet,
@@ -275,6 +276,114 @@ function DiagStat({ label, value, tone }: { label: string; value: string; tone?:
   )
 }
 
+/* ── Failed candidates table — "show all candidates" view ───────────────── */
+
+function reasonBadge(reasonCode: string) {
+  const map: Record<string, { label: string; color: string }> = {
+    below_ev_threshold: { label: "Below EV", color: "var(--text-muted)" },
+    dg_model_disagreement: { label: "DG disagree", color: "var(--gold)" },
+  }
+  const entry = map[reasonCode] ?? { label: reasonCode, color: "var(--text-muted)" }
+  return (
+    <span
+      style={{
+        fontSize: 9,
+        fontFamily: "var(--font-mono)",
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        padding: "2px 6px",
+        borderRadius: 4,
+        border: "1px solid var(--border)",
+        color: entry.color,
+        background: "var(--surface-2)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {entry.label}
+    </span>
+  )
+}
+
+function FailedCandidatesTable({ candidates }: { candidates: FailedMatchupCandidate[] }) {
+  if (candidates.length === 0) return null
+  return (
+    <div className="card" style={{ marginTop: 8 }} data-testid="failed-candidates-table">
+      <div
+        className="card-header"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <div className="card-title">All candidates considered</div>
+        <div className="card-desc">{candidates.length} rows · ranked by EV (closest to clearing first)</div>
+      </div>
+      <div style={{ overflow: "auto" }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Pick vs Opponent</th>
+              <th>Book</th>
+              <th>Odds</th>
+              <th className="center">Reason</th>
+              <th className="right">EV</th>
+              <th className="right">Win%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.map((cand, idx) => {
+              const winPct =
+                cand.model_win_prob !== undefined && cand.model_win_prob !== null
+                  ? `${(cand.model_win_prob * 100).toFixed(1)}%`
+                  : "—"
+              const evDisplay =
+                cand.ev_pct ??
+                (cand.ev !== null && cand.ev !== undefined ? `${(cand.ev * 100).toFixed(1)}%` : "—")
+              return (
+                <tr key={`${cand.pick}-${cand.opponent}-${cand.book ?? "none"}-${idx}`}>
+                  <td>
+                    <div style={{ fontWeight: 600, color: "var(--text)" }}>{cand.pick}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                      vs {cand.opponent}
+                    </div>
+                  </td>
+                  <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{cand.book ?? "—"}</td>
+                  <td
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--text)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {cand.odds ?? "—"}
+                  </td>
+                  <td className="center">{reasonBadge(cand.reason_code)}</td>
+                  <td
+                    className="right num"
+                    style={{
+                      color:
+                        cand.ev !== null && cand.ev !== undefined && cand.ev >= 0
+                          ? "var(--text)"
+                          : "var(--text-muted)",
+                    }}
+                  >
+                    {evDisplay}
+                  </td>
+                  <td className="right num" style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                    {winPct}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 /* ── Matchups sub-tab ─────────────────────────────────────────────────── */
 
 function MatchupsBoard({
@@ -289,6 +398,9 @@ function MatchupsBoard({
   minEdgePct: number
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const failedCandidates = (diagnostics?.failed_candidates ?? []) as FailedMatchupCandidate[]
+  // Default ON when there are zero qualifying rows so the user immediately sees what was considered.
+  const [showAll, setShowAll] = useState<boolean>(matchups.length === 0)
 
   return (
     <>
@@ -297,6 +409,32 @@ function MatchupsBoard({
         minEdgePct={minEdgePct}
         visibleRowCount={matchups.length}
       />
+      {failedCandidates.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 8,
+            marginBottom: 8,
+            fontSize: 11,
+            fontFamily: "var(--font-mono)",
+            color: "var(--text-muted)",
+          }}
+        >
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+            data-testid="show-all-candidates-toggle"
+          >
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={(e) => setShowAll(e.target.checked)}
+            />
+            Show all candidates ({failedCandidates.length})
+          </label>
+        </div>
+      )}
       <div className="card">
         {matchups.length > 0 ? (
           <div style={{ overflow: "auto" }}>
@@ -460,11 +598,13 @@ function MatchupsBoard({
               >
                 The model ran successfully — see the diagnostic strip above for the full breakdown of
                 candidates examined, books polled, and the reason codes that filtered each row.
+                {failedCandidates.length > 0 && " Toggle 'Show all candidates' above to see the gated rows."}
               </div>
             </EmptyState>
           </div>
         )}
       </div>
+      {showAll && <FailedCandidatesTable candidates={failedCandidates} />}
     </>
   )
 }
