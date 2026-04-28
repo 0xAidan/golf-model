@@ -847,7 +847,9 @@ class GolfModelService:
                 "adaptation_state": "normal",
                 "state": "market_available_no_edges",
                 "errors": [],
+                "failed_candidates": [],
             }
+            FAILED_CANDIDATE_LIMIT = 200
             ev_threshold = self.strategy_config.get("matchup_ev_threshold") if self.strategy_config else None
             if ev_threshold is None:
                 ev_threshold = self.strategy_config.get("ev_threshold") if self.strategy_config else None
@@ -902,6 +904,13 @@ class GolfModelService:
                         )
                         for stat_key in ("lines_seen", "qualifying_edges", "card_rows"):
                             merged[stat_key] = int(merged.get(stat_key, 0)) + int(stats.get(stat_key, 0))
+                    # Aggregate failed candidates across markets, capped to keep payload bounded.
+                    for cand in (selection_diag.get("failed_candidates") or []):
+                        if len(diagnostics["failed_candidates"]) >= FAILED_CANDIDATE_LIMIT:
+                            break
+                        cand_with_market = dict(cand)
+                        cand_with_market["market_type"] = market_key
+                        diagnostics["failed_candidates"].append(cand_with_market)
                     for b in card_bets:
                         b["market_type"] = market_key
                     for b in all_book_bets:
@@ -946,6 +955,11 @@ class GolfModelService:
             diagnostics["books_seen"] = sorted(book for book in books_seen if book)
             diagnostics["books_with_qualifying_edges"] = sorted(book for book in books_with_qualifying_edges if book)
             diagnostics["books_after_card_caps"] = sorted(book for book in books_after_card_caps if book)
+            # Sort the merged failed candidates by best-EV first.
+            diagnostics["failed_candidates"].sort(
+                key=lambda b: (b.get("ev") if b.get("ev") is not None else -999),
+                reverse=True,
+            )
             total_raw_rows = sum(int((entry or {}).get("raw_rows", 0)) for entry in diagnostics["market_counts"].values())
             if diagnostics["errors"]:
                 diagnostics["state"] = "pipeline_error"
@@ -969,6 +983,7 @@ class GolfModelService:
                 "adaptation_state": "unknown",
                 "state": "pipeline_error",
                 "errors": [str(e)],
+                "failed_candidates": [],
             }
 
     def _fetch_3ball_value_bets(self, composite, tid) -> list:

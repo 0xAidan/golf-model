@@ -256,7 +256,12 @@ def _find_matchup_value_bets_core(
         "books_with_qualifying_edges": [],
         "books_after_card_caps": [],
         "book_stats": {},
+        # Below-threshold and disagreement candidates surfaced for transparency UI.
+        # Capped at FAILED_CANDIDATE_LIMIT to keep payload bounded.
+        "failed_candidates": [],
     }
+    failed_candidates: list[dict] = []
+    FAILED_CANDIDATE_LIMIT = 200
     adaptation = None
     if tournament_id:
         try:
@@ -360,6 +365,20 @@ def _find_matchup_value_bets_core(
             if config.REQUIRE_DG_MODEL_AGREEMENT:
                 if (dg_prob > 0.5) != (platt_win_prob > 0.5):
                     diagnostics["reason_codes"]["dg_model_disagreement"] += 1
+                    if len(failed_candidates) < FAILED_CANDIDATE_LIMIT:
+                        failed_candidates.append({
+                            "pick": pick_data["player_display"],
+                            "opponent": opp_data["player_display"],
+                            "composite_gap": round(abs(composite_gap), 1),
+                            "model_win_prob": round(model_win_prob, 4),
+                            "platt_win_prob": round(platt_win_prob, 4),
+                            "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
+                            "reason_code": "dg_model_disagreement",
+                            "book": None,
+                            "odds": None,
+                            "ev": None,
+                            "ev_pct": None,
+                        })
                     continue
 
         # Gaps from the pick's perspective
@@ -470,6 +489,21 @@ def _find_matchup_value_bets_core(
             ev = (model_win_prob / implied_prob) - 1.0
             if ev < ev_threshold:
                 diagnostics["reason_codes"]["below_ev_threshold"] += 1
+                if len(failed_candidates) < FAILED_CANDIDATE_LIMIT:
+                    failed_candidates.append({
+                        "pick": pick_data["player_display"],
+                        "opponent": opp_data["player_display"],
+                        "composite_gap": round(gap, 1),
+                        "model_win_prob": round(model_win_prob, 4),
+                        "platt_win_prob": round(platt_win_prob, 4),
+                        "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
+                        "implied_prob": round(implied_prob, 4),
+                        "book": normalized_book or None,
+                        "odds": pick_odds,
+                        "ev": round(ev, 4),
+                        "ev_pct": f"{ev * 100:.1f}%",
+                        "reason_code": "below_ev_threshold",
+                    })
                 continue
 
             if normalized_book:
@@ -575,6 +609,12 @@ def _find_matchup_value_bets_core(
     diagnostics["books_with_qualifying_edges"] = sorted(books_with_qualifying_edges)
     diagnostics["books_after_card_caps"] = sorted(books_after_card_caps)
     diagnostics["book_stats"] = {book: stats for book, stats in sorted(book_stats.items())}
+    # Sort failed candidates by best-EV first so the UI shows "closest to clearing" near the top.
+    failed_candidates.sort(
+        key=lambda b: (b.get("ev") if b.get("ev") is not None else -999),
+        reverse=True,
+    )
+    diagnostics["failed_candidates"] = failed_candidates
     if diagnostics["input_rows"] == 0:
         diagnostics["selection_state"] = "no_market_rows"
     elif diagnostics["all_qualifying_rows"] == 0:

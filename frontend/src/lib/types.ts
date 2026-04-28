@@ -230,9 +230,26 @@ export type LiveTournamentSnapshot = {
     books_with_qualifying_edges?: string[]
     books_after_card_caps?: string[]
     book_stats?: Record<string, { lines_seen?: number; qualifying_edges?: number; card_rows?: number }>
+    failed_candidates?: FailedMatchupCandidate[]
     state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | string
     errors?: string[]
   }
+}
+
+export type FailedMatchupCandidate = {
+  pick: string
+  opponent: string
+  composite_gap?: number
+  model_win_prob?: number
+  platt_win_prob?: number
+  dg_win_prob?: number | null
+  implied_prob?: number
+  book?: string | null
+  odds?: number | null
+  ev?: number | null
+  ev_pct?: string | null
+  reason_code: "below_ev_threshold" | "dg_model_disagreement" | string
+  market_type?: string
 }
 
 export type DataSource = "live" | "replay" | "fixture"

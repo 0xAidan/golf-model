@@ -1221,6 +1221,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "adaptation_state": upcoming_diag.get("adaptation_state", "normal"),
                 "reason_codes": upcoming_diag.get("reason_codes") or {},
                 "value_filters": upcoming_value_filters,
+                "books_seen": upcoming_diag.get("books_seen") or [],
+                "books_with_qualifying_edges": upcoming_diag.get("books_with_qualifying_edges") or [],
+                "books_after_card_caps": upcoming_diag.get("books_after_card_caps") or [],
+                "book_stats": upcoming_diag.get("book_stats") or {},
+                "failed_candidates": upcoming_diag.get("failed_candidates") or [],
                 "state": upcoming_state,
                 "errors": (
                     (upcoming_diag.get("errors") or [])
@@ -1484,6 +1489,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "adaptation_state": live_diag.get("adaptation_state", "normal"),
                 "reason_codes": live_diag.get("reason_codes") or {},
                 "value_filters": base_value_filters,
+                "books_seen": live_diag.get("books_seen") or [],
+                "books_with_qualifying_edges": live_diag.get("books_with_qualifying_edges") or [],
+                "books_after_card_caps": live_diag.get("books_after_card_caps") or [],
+                "book_stats": live_diag.get("book_stats") or {},
+                "failed_candidates": live_diag.get("failed_candidates") or [],
                 "state": live_state,
                 "errors": [err for err in live_diag_errors if err],
             },
