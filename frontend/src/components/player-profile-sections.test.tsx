@@ -5,10 +5,17 @@ import { describe, expect, it, vi } from "vitest"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import type { CompositePlayer, PlayerProfile } from "@/lib/types"
 
+// Profile sections renders several heavyweight charts. Stub them all out so
+// the test focuses on layout / control wiring rather than the SVG internals.
 vi.mock("@/components/charts", () => ({
   SparklineChart: ({ values }: { values: number[] }) => (
     <div data-testid="sparkline-chart">{values.length}</div>
   ),
+  SgSkillBarsChart: () => <div data-testid="sg-skill-bars-chart" />,
+  SgRollingChart: () => <div data-testid="sg-rolling-chart" />,
+  TournamentHistoryChart: () => <div data-testid="tournament-history-chart" />,
+  ApproachBucketsChart: () => <div data-testid="approach-buckets-chart" />,
+  BarTrendChart: () => <div data-testid="bar-trend-chart" />,
 }))
 
 const basePlayer: CompositePlayer = {
@@ -96,21 +103,31 @@ describe("PlayerProfileSections", () => {
     const user = userEvent.setup()
     render(<PlayerProfileSections player={basePlayer} profile={richProfile} profileReady />)
 
-    expect(screen.getByText("Profile Header")).toBeInTheDocument()
-    expect(screen.getByText("Skill Breakdown")).toBeInTheDocument()
+    // Section labels were tightened during the player-profile redesign:
+    // "Profile Header" → "Player Overview", "Skill Breakdown" →
+    // "SG Skill Profile", "Course/Event Context" → "Recent Tournament History".
+    expect(screen.getByText("Player Overview")).toBeInTheDocument()
+    expect(screen.getByText("SG Skill Profile")).toBeInTheDocument()
     expect(screen.getByText("Rolling Form")).toBeInTheDocument()
-    expect(screen.getByText("Course/Event Context")).toBeInTheDocument()
+    expect(screen.getByText("Recent Tournament History")).toBeInTheDocument()
     expect(screen.getByText("Betting Context")).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Show 10 round view" }))
-    expect(screen.getByText("Player SG (10)")).toBeInTheDocument()
+    // Window selector is now a pill group ("L10" / "L25" / "L50"); clicking
+    // L10 retitles the metric tile to "Avg SG (L10)".
+    await user.click(screen.getByRole("button", { name: "L10" }))
+    expect(screen.getByText("Avg SG (L10)")).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Compare against Top 10" }))
+    // Benchmark selector is also a pill group ("Tour Avg" / "Top 50" /
+    // "Top 10"); clicking Top 10 retitles the comparison tile to "Top 10 SG".
+    await user.click(screen.getByRole("button", { name: "Top 10" }))
     expect(screen.getByText("Top 10 SG")).toBeInTheDocument()
   })
 
   it("shows loading state when profile is not ready", () => {
     render(<PlayerProfileSections player={basePlayer} profile={undefined} profileReady={false} />)
-    expect(screen.getByText("Loading richer profile context...")).toBeInTheDocument()
+    // Loading copy was shortened to "Loading profile…" during the player
+    // profile redesign; the test still guards that a loading affordance
+    // appears when the profile data hasn't arrived yet.
+    expect(screen.getByText(/loading profile/i)).toBeInTheDocument()
   })
 })
