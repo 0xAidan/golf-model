@@ -22,7 +22,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { id: "prediction",   label: "Cockpit",      href: "/",            icon: LayoutDashboard },
   { id: "players",      label: "Players",      href: "/players",     icon: Users },
-  { id: "matchups",     label: "Matchups",     href: "/matchups",    icon: Swords },
+  { id: "matchups",     label: "Picks",        href: "/matchups",    icon: Swords },
   { id: "course",       label: "Course",       href: "/course",      icon: Route },
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
   { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
