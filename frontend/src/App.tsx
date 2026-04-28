@@ -25,9 +25,9 @@ import { LegacyRouteGate } from "@/pages/legacy-route-gate"
 import {
   CoursePage,
   GradingPage,
-  MatchupsPage,
   TrackRecordPage,
 } from "@/pages/legacy-routes"
+import { PicksPage } from "@/pages/picks-page"
 import { PlayersPage } from "@/pages/players-page"
 import { PredictionWorkspacePage } from "@/pages/prediction-workspace-page"
 
@@ -343,9 +343,17 @@ function App() {
           path="/matchups"
           element={
             <LegacyRouteGate route="matchups" mode={predictionTab}>
-              <MatchupsPage
+              <PicksPage
                 matchups={filteredMatchups}
-                emptyMessage={matchupsPageEmptyMessage}
+                matchupsEmptyMessage={matchupsPageEmptyMessage}
+                matchupDiagnostics={
+                  predictionTab === "upcoming"
+                    ? liveSnapshot?.upcoming_tournament?.diagnostics
+                    : liveSnapshot?.live_tournament?.diagnostics
+                }
+                minEdgePct={Math.round(minEdge * 100)}
+                secondaryBets={secondaryBets}
+                onPlayerSelect={setSelectedPlayerKey}
               />
             </LegacyRouteGate>
           }

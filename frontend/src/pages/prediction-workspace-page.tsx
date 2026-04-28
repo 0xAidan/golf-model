@@ -962,12 +962,20 @@ export function PredictionWorkspacePage({
 
             {/* ── Secondary bets ───────────────────── */}
             {displaySecondaryBets.length > 0 && (
-              <div className="card">
+              <div className="card" style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: 320 }}>
                 <div className="card-header">
                   <div className="card-title">Secondary markets</div>
-                  <div className="card-desc">{displaySecondaryBets.length} picks</div>
+                  <div className="card-desc">
+                    {displaySecondaryBets.length} picks
+                    <Link
+                      to="/matchups?tab=secondary"
+                      style={{ marginLeft: 8, color: "var(--cyan)", fontSize: 10, textDecoration: "none" }}
+                    >
+                      All →
+                    </Link>
+                  </div>
                 </div>
-                <div style={{ overflow: "hidden" }}>
+                <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
                   <table className="data-table">
                     <thead>
                       <tr>
@@ -978,30 +986,38 @@ export function PredictionWorkspacePage({
                       </tr>
                     </thead>
                     <tbody>
-                      {displaySecondaryBets.map((bet) => (
-                        <tr
-                          key={`${bet.market}-${bet.player}-${bet.odds}`}
-                          onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}
-                          data-testid={`secondary-row-${bet.player}`}
-                        >
-                          <td className="player-name">
-                            <button onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}>
-                              {bet.player}
-                            </button>
-                          </td>
-                          <td>
-                            <span className="tier-badge LEAN" style={{ fontSize: 9 }}>
-                              {secondaryBadgeLabel(bet.market)}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
-                          </td>
-                          <td className="right">
-                            <EV ev={bet.ev} />
-                          </td>
-                        </tr>
-                      ))}
+                      {displaySecondaryBets.map((bet) => {
+                        const tier = (bet.confidence ?? "LEAN").toUpperCase()
+                        return (
+                          <tr
+                            key={`${bet.market}-${bet.player}-${bet.odds}`}
+                            onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}
+                            data-testid={`secondary-row-${bet.player}`}
+                          >
+                            <td className="player-name">
+                              <button onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}>
+                                {bet.player}
+                              </button>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span className={`tier-badge ${tier}`} style={{ fontSize: 9 }}>
+                                  {tier}
+                                </span>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                  {secondaryBadgeLabel(bet.market)}
+                                </span>
+                              </div>
+                            </td>
+                            <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                              {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
+                            </td>
+                            <td className="right">
+                              <EV ev={bet.ev} />
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
