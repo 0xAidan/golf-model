@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { lazy, Suspense, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
@@ -20,16 +20,52 @@ import {
 } from "@/lib/prediction-board"
 import { useLocalStorageState } from "@/lib/storage"
 import type { LiveRefreshSnapshot, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
-import { ChampionChallengerPage } from "@/pages/champion-challenger-page"
 import { LegacyRouteGate } from "@/pages/legacy-route-gate"
-import {
-  CoursePage,
-  GradingPage,
-  TrackRecordPage,
-} from "@/pages/legacy-routes"
 import { PicksPage } from "@/pages/picks-page"
-import { PlayersPage } from "@/pages/players-page"
 import { PredictionWorkspacePage } from "@/pages/prediction-workspace-page"
+
+// Code-split heavy / rarely-visited routes. The default "/" route
+// (PredictionWorkspacePage) and the primary Picks route stay eager so the
+// cockpit boots without a Suspense flicker. Players, Course, Grading,
+// Track Record, and Champion-Challenger are all secondary nav targets — the
+// operator clicks into them, so a single network round-trip on first visit
+// is acceptable and trims ~400-600 kB off the initial bundle.
+const PlayersPage = lazy(() =>
+  import("@/pages/players-page").then((mod) => ({ default: mod.PlayersPage })),
+)
+const CoursePage = lazy(() =>
+  import("@/pages/legacy-routes").then((mod) => ({ default: mod.CoursePage })),
+)
+const GradingPage = lazy(() =>
+  import("@/pages/legacy-routes").then((mod) => ({ default: mod.GradingPage })),
+)
+const TrackRecordPage = lazy(() =>
+  import("@/pages/legacy-routes").then((mod) => ({ default: mod.TrackRecordPage })),
+)
+const ChampionChallengerPage = lazy(() =>
+  import("@/pages/champion-challenger-page").then((mod) => ({
+    default: mod.ChampionChallengerPage,
+  })),
+)
+
+function RouteFallback() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-faint)",
+        fontSize: 12,
+        fontFamily: "var(--font-mono)",
+      }}
+      data-testid="route-suspense-fallback"
+    >
+      Loading…
+    </div>
+  )
+}
 
 const DEFAULT_REQUEST: PredictionRunRequest = {
   tour: "pga",
@@ -334,9 +370,11 @@ function App() {
         <Route
           path="/players"
           element={
-            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}><PlayersPage
-                players={players}
-              /></div>
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+              <Suspense fallback={<RouteFallback />}>
+                <PlayersPage players={players} />
+              </Suspense>
+            </div>
           }
         />
         <Route
@@ -362,17 +400,44 @@ function App() {
           path="/course"
           element={
             <LegacyRouteGate route="course" mode={predictionTab}>
-              <CoursePage
-                dashboard={dashboard}
-                players={players}
-                predictionRun={effectivePredictionRun}
-              />
+              <Suspense fallback={<RouteFallback />}>
+                <CoursePage
+                  dashboard={dashboard}
+                  players={players}
+                  predictionRun={effectivePredictionRun}
+                />
+              </Suspense>
             </LegacyRouteGate>
           }
         />
-        <Route path="/grading" element={<div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><GradingPage gradingHistory={gradingHistory} /></div>} />
-        <Route path="/track-record" element={<div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><TrackRecordPage /></div>} />
-        <Route path="/research/champion-challenger" element={<ChampionChallengerPage />} />
+        <Route
+          path="/grading"
+          element={
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+              <Suspense fallback={<RouteFallback />}>
+                <GradingPage gradingHistory={gradingHistory} />
+              </Suspense>
+            </div>
+          }
+        />
+        <Route
+          path="/track-record"
+          element={
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+              <Suspense fallback={<RouteFallback />}>
+                <TrackRecordPage />
+              </Suspense>
+            </div>
+          }
+        />
+        <Route
+          path="/research/champion-challenger"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <ChampionChallengerPage />
+            </Suspense>
+          }
+        />
       </Routes>
     </SuiteShell>
   )

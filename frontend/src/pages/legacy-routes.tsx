@@ -13,12 +13,10 @@ import type {
   CompositePlayer,
   DashboardState,
   GradedTournamentSummary,
-  MatchupBet,
   PlayerProfile,
   PredictionRunResponse,
 } from "@/lib/types"
 import {
-  buildMatchupKey,
   TREND_ARROW,
   TREND_COLOR,
 } from "@/pages/page-shared"
@@ -30,16 +28,6 @@ function EmptyState({ message }: { message: string }) {
       <div className="empty-state-title">{message}</div>
     </div>
   )
-}
-
-function EV({ ev, evPct }: { ev: number; evPct?: string }) {
-  const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
-  return <span className={`ev-badge ${cls}`}>{evPct ?? `${(ev * 100).toFixed(1)}%`}</span>
-}
-
-function TierBadge({ tier }: { tier?: string }) {
-  const t = tier ?? "LEAN"
-  return <span className={`tier-badge ${t}`}>{t}</span>
 }
 
 function PageHeader({ title, description }: { title: string; description?: string }) {
@@ -191,144 +179,6 @@ export function PlayersPage({
         ) : (
           <div className="card-body">
             <EmptyState message="No players available yet for this event context." />
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ── Matchups page ──────────────────────────── */
-export function MatchupsPage({
-  matchups,
-  emptyMessage,
-}: {
-  matchups: MatchupBet[]
-  emptyMessage: string
-}) {
-  const [expandedKey, setExpandedKey] = useState<string | null>(null)
-
-  return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <PageHeader
-        title="Matchups"
-        description={`${matchups.length} qualifying lines — click any row to expand`}
-      />
-      <div className="card">
-        {matchups.length > 0 ? (
-          <div style={{ overflow: "hidden" }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Pick vs Opponent</th>
-                  <th>Book</th>
-                  <th>Odds</th>
-                  <th className="center">Tier</th>
-                  <th className="right">EV</th>
-                  <th className="right">Win%</th>
-                  <th style={{ width: 32 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {matchups.map((matchup) => {
-                  const key = buildMatchupKey(matchup)
-                  const isExpanded = expandedKey === key
-                  return (
-                    <>
-                      <tr
-                        key={key}
-                        onClick={() => setExpandedKey(isExpanded ? null : key)}
-                        style={{ cursor: "pointer" }}
-                        data-testid={`matchup-row-${key}`}
-                      >
-                        <td>
-                          <div style={{ fontWeight: 600, color: "var(--text)" }}>{matchup.pick}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>vs {matchup.opponent}</div>
-                        </td>
-                        <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{matchup.book ?? "—"}</td>
-                        <td style={{ fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{matchup.odds}</td>
-                        <td className="center"><TierBadge tier={matchup.tier} /></td>
-                        <td className="right"><EV ev={matchup.ev} evPct={matchup.ev_pct} /></td>
-                        <td className="right num" style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {(matchup.model_win_prob * 100).toFixed(1)}%
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <ChevronDown
-                            size={14}
-                            style={{
-                              color: "var(--text-faint)",
-                              transform: isExpanded ? "rotate(180deg)" : "none",
-                              transition: "transform 180ms ease",
-                            }}
-                          />
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr key={`${key}-detail`}>
-                          <td colSpan={7} style={{ padding: 0 }}>
-                            <div className="matchup-detail">
-                              <div className="matchup-detail-grid">
-                                <div>
-                                  <div className="detail-item-label">Composite gap</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.composite_gap, 2)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Form gap</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.form_gap, 2)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Course gap</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.course_fit_gap, 2)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Implied prob</div>
-                                  <div className="detail-item-value num">{(matchup.implied_prob * 100).toFixed(1)}%</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Conviction</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.conviction, 0)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Momentum</div>
-                                  <div
-                                    className="detail-item-value"
-                                    style={{ color: matchup.momentum_aligned ? "var(--positive)" : "var(--text-muted)" }}
-                                  >
-                                    {matchup.momentum_aligned ? "Aligned ↑" : "Mixed"}
-                                  </div>
-                                </div>
-                              </div>
-                              {matchup.reason && (
-                                <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
-                                  {matchup.reason}
-                                </div>
-                              )}
-                              <div style={{ marginTop: 12 }}>
-                                <BarTrendChart
-                                  labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
-                                  values={[
-                                    matchup.composite_gap,
-                                    matchup.form_gap,
-                                    matchup.course_fit_gap,
-                                    Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
-                                    Number(matchup.conviction ?? 0),
-                                  ]}
-                                  color="#22C55E"
-                                />
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="card-body">
-            <EmptyState message={emptyMessage} />
           </div>
         )}
       </div>

@@ -126,7 +126,9 @@ function PlayerSearchSidebar({
 
   // Show active field players first, then DB search results
   const showSearch = query.length >= 2
-  const searchResults = searchQuery.data?.players ?? []
+  // Wrap in useMemo so referential identity is stable when data is unchanged —
+  // prevents the displayList useMemo below from re-running on every render.
+  const searchResults = useMemo(() => searchQuery.data?.players ?? [], [searchQuery.data])
 
   // Active field players filtered by query
   const filteredActive = useMemo(() => {

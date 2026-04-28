@@ -56,8 +56,11 @@ function renderAppAtRoute(route: string) {
 }
 
 describe("App legacy route replay gating", () => {
+  // /players was intentionally un-gated in commit da76a05 (standalone profile
+  // page no longer depends on tournament_id), so it is no longer in the gated
+  // set. /matchups and /course remain gated until the cockpit-home route
+  // covers their replay-aware variants.
   it.each([
-    ["/players", "Legacy players route unavailable in replay mode"],
     ["/matchups", "Legacy matchups route unavailable in replay mode"],
     ["/course", "Legacy course route unavailable in replay mode"],
   ])("shows replay-safe messaging on %s", async (route: string, title: string) => {

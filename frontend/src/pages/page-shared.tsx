@@ -88,15 +88,43 @@ export function buildMatchupKey(matchup: MatchupBet) {
   ].join("-")
 }
 
+/**
+ * Map a backend market key (e.g. "top5", "outright", "make_cut") to a
+ * human-readable label for the UI. Falls through to the raw key when unknown.
+ */
 export function secondaryBadgeLabel(market: string) {
-  const normalized = market.toLowerCase()
-  if (normalized.includes("miss")) {
-    return "miss-cut"
+  const normalized = market.toLowerCase().trim()
+  // Exact-match well-known market keys produced by the value pipeline.
+  const exact: Record<string, string> = {
+    outright: "Outright",
+    win: "Outright",
+    winner: "Outright",
+    frl: "First-round leader",
+    top5: "Top 5",
+    top_5: "Top 5",
+    top10: "Top 10",
+    top_10: "Top 10",
+    top20: "Top 20",
+    top_20: "Top 20",
+    top30: "Top 30",
+    top_30: "Top 30",
+    top40: "Top 40",
+    top_40: "Top 40",
+    make_cut: "Make cut",
+    makecut: "Make cut",
+    miss_cut: "Miss cut",
+    misscut: "Miss cut",
   }
-  if (normalized.includes("top") || normalized.includes("placement")) {
-    return "placement"
-  }
-  return "mispriced"
+  if (exact[normalized]) return exact[normalized]
+  // Pattern fallbacks for variants like "top_5_finish" or "placement_top10".
+  const topMatch = normalized.match(/top[_\s-]?(\d+)/)
+  if (topMatch) return `Top ${topMatch[1]}`
+  if (normalized.includes("miss") && normalized.includes("cut")) return "Miss cut"
+  if (normalized.includes("make") && normalized.includes("cut")) return "Make cut"
+  if (normalized.includes("first") && normalized.includes("round")) return "First-round leader"
+  if (normalized.includes("outright") || normalized === "win" || normalized === "winner") return "Outright"
+  // Last-resort: title-case the raw key so we never lose information silently.
+  return market.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export function renderTrendValue(direction?: string): ReactNode {

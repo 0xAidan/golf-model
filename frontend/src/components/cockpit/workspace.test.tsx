@@ -63,10 +63,11 @@ describe("CockpitWorkspace", () => {
       />,
     )
 
-    expect(screen.getByText("Left area")).toBeInTheDocument()
-    expect(screen.getByText("Center modules")).toBeInTheDocument()
-    expect(screen.getByText("Right rail")).toBeInTheDocument()
+    // "Left area" / "Center modules" / "Right rail" placeholder labels were
+    // removed when the cockpit shell collapsed to a borderless three-column
+    // layout; test now asserts on the real module titles rendered in each rail.
     expect(screen.getByText("Event switchboard")).toBeInTheDocument()
+    expect(screen.getByText("Context rail")).toBeInTheDocument()
     expect(screen.getByText("Event headline")).toBeInTheDocument()
     expect(screen.getByText("Featured top plays")).toBeInTheDocument()
     expect(screen.getByText("All generated picks")).toBeInTheDocument()
