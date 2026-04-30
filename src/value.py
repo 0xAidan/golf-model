@@ -244,6 +244,7 @@ def find_3ball_value_bets(
     tournament_id: int = None,
     enable_for_live: bool = False,
     required_book: str | None = None,
+    model_variant: str = "baseline",
 ) -> list[dict]:
     """
     Find value in 3-ball markets using softmax over composite scores.
@@ -295,11 +296,15 @@ def find_3ball_value_bets(
         if len(players) != 3:
             continue
 
-        scores = [p["composite"] for p in players]
-        max_s = max(scores)
-        exps = [math.exp((s - max_s) / T) for s in scores]
-        total = sum(exps)
-        model_probs = [e / total for e in exps]
+        if model_variant == "v5":
+            from src.models.v5_probabilities import v5_threeball_probabilities
+            model_probs = v5_threeball_probabilities(players, base_temp=T)
+        else:
+            scores = [p["composite"] for p in players]
+            max_s = max(scores)
+            exps = [math.exp((s - max_s) / T) for s in scores]
+            total = sum(exps)
+            model_probs = [e / total for e in exps]
 
         for i, player in enumerate(players):
             model_prob = model_probs[i]
@@ -359,6 +364,7 @@ def find_3ball_value_bets(
                 "ev_pct": f"{ev_val * 100:.1f}%",
                 "is_value": True,
                 "opponents": " / ".join(opponents),
+                "model_variant": model_variant,
             })
 
     value_bets.sort(key=lambda x: x["ev"], reverse=True)
@@ -370,7 +376,8 @@ def find_value_bets(composite_results: list[dict],
                     bet_type: str = "top20",
                     ev_threshold: float = None,
                     tournament_id: int = None,
-                    field_strength: str = "average") -> list[dict]:
+                    field_strength: str = "average",
+                    model_variant: str = "baseline") -> list[dict]:
     """
     Compare model scores to market odds and find value.
 
@@ -627,6 +634,7 @@ def find_value_bets(composite_results: list[dict],
                 "blend_dg_used": DG_BLEND_WEIGHT,
                 "blend_model_used": MODEL_BLEND_WEIGHT,
                 "calibration_applied": calibration_applied,
+                "model_variant": model_variant,
             })
 
     # Sort by EV descending

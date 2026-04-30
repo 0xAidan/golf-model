@@ -17,7 +17,7 @@ export type CockpitSpotlightModel = {
   playerKey: string
   playerName: string
   eventName: string
-  mode: "live" | "upcoming" | "past"
+  mode: "live" | "upcoming" | "test" | "past"
   modeLabel: string
   sourceBadges: string[]
   narrative: string
@@ -27,7 +27,7 @@ export type CockpitSpotlightModel = {
 }
 
 type BuildCockpitSpotlightInput = {
-  predictionTab: "live" | "upcoming" | "past"
+  predictionTab: "live" | "upcoming" | "test" | "past"
   eventName: string
   selectedPlayerKey: string
   players: CompositePlayer[]
@@ -97,7 +97,14 @@ export function buildCockpitSpotlight({
     playerName: selectedName,
     eventName,
     mode: predictionTab,
-    modeLabel: predictionTab === "live" ? "Live" : predictionTab === "upcoming" ? "Upcoming" : "Past",
+    modeLabel:
+      predictionTab === "live"
+        ? "Live"
+        : predictionTab === "upcoming"
+          ? "Upcoming"
+          : predictionTab === "test"
+            ? "Test (v5)"
+            : "Past",
     sourceBadges,
     narrative: buildNarrative({
       predictionTab,
@@ -168,7 +175,7 @@ function buildNarrative({
   featuredMatchupCount,
   totalGeneratedPickCount,
 }: {
-  predictionTab: "live" | "upcoming" | "past"
+  predictionTab: "live" | "upcoming" | "test" | "past"
   eventName: string
   selectedName: string
   selectedPlayer: CompositePlayer | null
@@ -185,7 +192,7 @@ function buildNarrative({
     return `${liveLead} for ${eventName}${rankTail}. The cockpit is tracking ${featuredMatchupCount} featured play mention${pluralize(featuredMatchupCount)} and ${totalGeneratedPickCount} total generated pick${pluralize(totalGeneratedPickCount)} for this player right now.`
   }
 
-  if (predictionTab === "upcoming") {
+  if (predictionTab === "upcoming" || predictionTab === "test") {
     const composite = selectedPlayer ? formatNumber(selectedPlayer.composite, 1) : "--"
     return `${selectedName} matters on the pre-tournament board for ${eventName}${selectedPlayer ? ` with model rank ${formatRank(selectedPlayer.rank)} and a ${composite} composite score` : ""}. The cockpit is tying that ranking view to ${totalGeneratedPickCount} generated pick${pluralize(totalGeneratedPickCount)} before the event starts.`
   }
@@ -200,7 +207,7 @@ function buildHeaderStats({
   featuredMatchupCount,
   totalGeneratedPickCount,
 }: {
-  predictionTab: "live" | "upcoming" | "past"
+  predictionTab: "live" | "upcoming" | "test" | "past"
   selectedPlayer: CompositePlayer | null
   selectedLeaderboardRow: LiveLeaderboardRow | null
   featuredMatchupCount: number
@@ -238,7 +245,7 @@ function buildSummaryStats({
   selectedLeaderboardRow,
   generatedSecondaryCount,
 }: {
-  predictionTab: "live" | "upcoming" | "past"
+  predictionTab: "live" | "upcoming" | "test" | "past"
   selectedPlayer: CompositePlayer | null
   selectedLeaderboardRow: LiveLeaderboardRow | null
   generatedSecondaryCount: number
@@ -275,7 +282,7 @@ function buildInventoryNotes({
   generatedMatchups,
   generatedSecondary,
 }: {
-  predictionTab: "live" | "upcoming" | "past"
+  predictionTab: "live" | "upcoming" | "test" | "past"
   featuredMatchups: MatchupBet[]
   generatedMatchups: MatchupBet[]
   generatedSecondary: FlattenedSecondaryBet[]

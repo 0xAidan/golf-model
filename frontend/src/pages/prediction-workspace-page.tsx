@@ -160,6 +160,7 @@ export function PredictionWorkspacePage({
   const totalProfit = gradingHistory.reduce((sum, t) => sum + Number(t.total_profit ?? 0), 0)
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
+  const testTournament = liveSnapshot?.test_tournament
   const isLiveActive = Boolean(liveTournament?.active)
 
   const fallbackPastEvents = useMemo<PastSnapshotEvent[]>(
@@ -337,8 +338,10 @@ export function PredictionWorkspacePage({
     predictionTab === "upcoming"
       ? upcomingTournament
       : predictionTab === "live"
-      ? liveTournament
-      : null
+        ? liveTournament
+        : predictionTab === "test"
+          ? testTournament
+          : null
 
   const eventName =
     predictionTab === "past"
@@ -375,7 +378,7 @@ export function PredictionWorkspacePage({
     (predictionTab === "live" || predictionTab === "upcoming") && isTeamEvent(activeSection)
 
   // Cockpit modules (using exact API signatures from cockpit-event-models.ts)
-  const mode = predictionTab as "live" | "upcoming" | "past"
+  const mode = predictionTab as "live" | "upcoming" | "test" | "past"
 
   const leaderboardModel = buildLeaderboardModel({
     mode,

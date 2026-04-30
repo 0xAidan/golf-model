@@ -231,7 +231,7 @@ export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null
 
 export function buildHydratedPredictionRun(
   snapshot: LiveRefreshSnapshot | null,
-  tab: "live" | "upcoming",
+  tab: "live" | "upcoming" | "test",
 ): PredictionRunResponse | null {
   if (!snapshot) {
     return null
@@ -239,8 +239,10 @@ export function buildHydratedPredictionRun(
 
   const source =
     tab === "live"
-      ? (snapshot.live_tournament ?? snapshot.upcoming_tournament)
-      : (snapshot.upcoming_tournament ?? snapshot.live_tournament)
+      ? (snapshot.live_tournament ?? snapshot.upcoming_tournament ?? snapshot.test_tournament)
+      : tab === "test"
+        ? (snapshot.test_tournament ?? snapshot.upcoming_tournament ?? snapshot.live_tournament)
+        : (snapshot.upcoming_tournament ?? snapshot.live_tournament ?? snapshot.test_tournament)
 
   return buildPredictionRunFromSection(source)
 }

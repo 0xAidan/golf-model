@@ -1415,6 +1415,9 @@ async def run_upcoming_prediction(request: Request):
     mode = payload.get("mode", "full")
     if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
         mode = "full"
+    model_variant = str(payload.get("model_variant", "baseline")).strip().lower() or "baseline"
+    if model_variant not in {"baseline", "v5"}:
+        model_variant = "baseline"
     result = run_snapshot_analysis(
         tour=payload.get("tour", "pga"),
         tournament_name=payload.get("tournament"),
@@ -1422,6 +1425,7 @@ async def run_upcoming_prediction(request: Request):
         enable_ai=payload.get("enable_ai", False),
         enable_backfill=payload.get("enable_backfill", False),
         mode=mode,
+        model_variant=model_variant,
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]

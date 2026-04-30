@@ -1336,6 +1336,179 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 or []
             )
 
+    # Experimental v5 lane for A/B testing, isolated from baseline sections.
+    test_target_name = (
+        upcoming_section.get("event_name")
+        or upcoming_event_name
+        or live_event_name
+        or event_name
+    )
+    test_target_event_id = (
+        str(upcoming_section.get("source_event_id") or "").strip()
+        or upcoming_event_id
+        or live_source_event_id
+    )
+    test_target_course = (
+        upcoming_section.get("course_name")
+        or upcoming_course
+        or live_course
+    )
+    test_result: dict[str, Any] = {}
+    if test_target_name:
+        try:
+            test_result = run_snapshot_analysis(
+                tour=tour,
+                event_id=test_target_event_id or None,
+                tournament_name=str(test_target_name).strip() or None,
+                course_name=str(test_target_course).strip() or None,
+                mode=mode if live_is_active else "full",
+                enable_ai=False,
+                enable_backfill=False,
+                model_variant="v5",
+            )
+        except Exception as exc:
+            _logger.warning("Experimental v5 snapshot recompute failed: %s", exc)
+            test_result = {}
+
+    if test_result:
+        test_value_bets, test_value_filters = _extract_board_value_bets(
+            test_result.get("value_bets") or {},
+            return_diagnostics=True,
+        )
+        test_diag = test_result.get("matchup_diagnostics") or {}
+        test_selection_counts = test_diag.get("selection_counts") or {}
+        test_selected_rows = int(
+            test_selection_counts.get("all_qualifying_rows", test_selection_counts.get("selected_rows", 0))
+        )
+        test_eligibility = _build_section_eligibility(
+            test_result,
+            source_event_id=test_target_event_id,
+            tour=tour,
+        )
+        test_state = _classify_matchup_state(
+            market_counts=ingest_summary.get("market_counts"),
+            diagnostics_state=test_diag.get("state"),
+            selected_rows=test_selected_rows,
+            errors=test_diag.get("errors"),
+        )
+        if not test_eligibility.get("verified"):
+            test_state = "eligibility_failed"
+        test_section = {
+            "event_name": test_result.get("event_name") or test_target_name,
+            "course_name": test_result.get("course_name") or test_target_course,
+            "field_size": test_result.get("field_size"),
+            "leaderboard": _load_event_leaderboard_rows(
+                test_target_event_id,
+                year=upcoming_row.get("year") or ingest_summary.get("event_year"),
+            ),
+            "rankings": (
+                _extract_rankings(test_result.get("composite_results") or [], exclude_cut_players=False)
+                if test_eligibility.get("verified")
+                else []
+            ),
+            "matchups": (
+                _extract_matchups(test_result.get("matchup_bets") or [])
+                if test_eligibility.get("verified")
+                else []
+            ),
+            "matchup_bets": (
+                _extract_board_matchup_bets(test_result.get("matchup_bets") or [])
+                if test_eligibility.get("verified")
+                else []
+            ),
+            "matchup_bets_all_books": (
+                _extract_board_matchup_bets(
+                    test_result.get("matchup_bets_all_books") or test_result.get("matchup_bets") or []
+                )
+                if test_eligibility.get("verified")
+                else []
+            ),
+            "value_bets": (test_value_bets if test_eligibility.get("verified") else {}),
+            "card_path": test_result.get("output_file") or test_result.get("card_filepath"),
+            "source_event_id": str(test_target_event_id or ""),
+            "source_event_name": str(test_target_name or ""),
+            "generated_from": "experimental_v5_model",
+            "source_card_path": test_result.get("output_file") or test_result.get("card_filepath"),
+            "ranking_source": "experimental_v5_model",
+            "model_variant": "v5",
+            "eligibility": test_eligibility,
+            "verification_error": test_result.get("verification_error"),
+            "diagnostics": {
+                "market_counts": ingest_summary.get("market_counts") or {},
+                "selection_counts": test_diag.get("selection_counts") or {},
+                "adaptation_state": test_diag.get("adaptation_state", "normal"),
+                "reason_codes": test_diag.get("reason_codes") or {},
+                "value_filters": test_value_filters,
+                "state": test_state,
+                "errors": (
+                    (test_diag.get("errors") or [])
+                    + (
+                        []
+                        if test_eligibility.get("verified")
+                        else [
+                            test_eligibility.get("summary"),
+                            test_eligibility.get("action"),
+                        ]
+                    )
+                ),
+            },
+            "strategy_meta": test_result.get("strategy_meta"),
+        }
+    else:
+        test_section = {
+            "event_name": str(test_target_name or ""),
+            "course_name": str(test_target_course or ""),
+            "field_size": 0,
+            "leaderboard": [],
+            "rankings": [],
+            "matchups": [],
+            "matchup_bets": [],
+            "matchup_bets_all_books": [],
+            "value_bets": {},
+            "source_event_id": str(test_target_event_id or ""),
+            "source_event_name": str(test_target_name or ""),
+            "generated_from": "experimental_v5_unavailable",
+            "ranking_source": "experimental_v5_unavailable",
+            "model_variant": "v5",
+            "eligibility": {
+                "verified": False,
+                "field_event_id": str(test_target_event_id or ""),
+                "field_player_count": 0,
+                "field_source": "unavailable",
+                "failed_invariants": ["analysis_unavailable"],
+                "summary": "Experimental v5 analysis unavailable.",
+                "details": "Could not produce a v5 snapshot in this cycle.",
+                "action": "Retry refresh after data sync completes.",
+                "code": "v5_analysis_unavailable",
+                "retryable": True,
+                "major_event": False,
+                "cross_tour_backfill_used": False,
+                "observed_tour": tour,
+            },
+            "verification_error": {
+                "code": "v5_analysis_unavailable",
+                "summary": "Experimental v5 analysis unavailable.",
+                "details": "Could not produce a v5 snapshot in this cycle.",
+                "action": "Retry refresh after data sync completes.",
+                "retryable": True,
+                "observed_event_id": str(test_target_event_id or ""),
+                "observed_tour": tour,
+            },
+            "diagnostics": {
+                "market_counts": ingest_summary.get("market_counts") or {},
+                "selection_counts": {"selected_rows": 0, "all_qualifying_rows": 0},
+                "adaptation_state": "unknown",
+                "reason_codes": {},
+                "value_filters": {
+                    "missing_display_odds": 0,
+                    "ev_cap_filtered": 0,
+                    "probability_inconsistency_filtered": 0,
+                },
+                "state": "pipeline_error",
+                "errors": ["Experimental v5 recompute failed."],
+            },
+        }
+
     live_diag = live_result.get("matchup_diagnostics") or {}
     live_selection_counts = live_diag.get("selection_counts") or {}
     live_selected_rows = int(live_selection_counts.get("all_qualifying_rows", live_selection_counts.get("selected_rows", 0)))
@@ -1505,10 +1678,18 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "data_mode": "full",
             "source": "upcoming_event_model",
         },
+        "test_tournament": {
+            **test_section,
+            "active": True,
+            "event_name": test_section.get("event_name") or upcoming_section.get("event_name") or upcoming_event_name,
+            "data_mode": "full",
+            "source": "experimental_v5_model",
+        },
         "diagnostics": {
             "market_counts": ingest_summary.get("market_counts") or {},
             "live_state": live_state,
             "upcoming_state": (upcoming_section.get("diagnostics") or {}).get("state"),
+            "test_state": (test_section.get("diagnostics") or {}).get("state"),
         },
     }
     try:
@@ -1566,6 +1747,15 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 tour=tour,
                 section_name="upcoming",
                 section_payload=snapshot.get("upcoming_tournament"),
+            )
+        )
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="test",
+                section_payload=snapshot.get("test_tournament"),
             )
         )
         market_rows_written = db.store_market_prediction_rows(market_rows)

@@ -68,9 +68,10 @@ def _maybe_log_pair_matchup_shadow(
 class GolfModelService:
     """Orchestrates the full prediction pipeline."""
 
-    def __init__(self, tour: str = "pga", strategy_config: dict = None):
+    def __init__(self, tour: str = "pga", strategy_config: dict = None, model_variant: str = "baseline"):
         self.tour = tour
         self.strategy_config = strategy_config or {}
+        self.model_variant = model_variant
         db.ensure_initialized()
 
     def run_analysis(
@@ -106,6 +107,7 @@ class GolfModelService:
             "status": "running",
             "errors": [],
             "warnings": [],
+            "model_variant": self.model_variant,
         }
 
         # Resolve output_dir to project output so app can read card regardless of cwd
@@ -251,6 +253,9 @@ class GolfModelService:
                 self.strategy_config = build_pipeline_strategy_config(strategy)
                 meta = dict(meta or {})
                 meta.setdefault("runtime_settings", self.strategy_config)
+                if self.model_variant != "baseline":
+                    meta["strategy_source"] = f"experimental_{self.model_variant}"
+                    meta["strategy_name"] = f"{self.model_variant}_test_lane"
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
         elif strategy_source == "config" and self.strategy_config:
@@ -817,6 +822,7 @@ class GolfModelService:
                 tournament_id=tid,
                 field_strength=_fstr,
                 ev_threshold=ev_threshold,
+                model_variant=self.model_variant,
             )
             value_bets[bt] = vb
         return value_bets
@@ -877,6 +883,7 @@ class GolfModelService:
                     card_bets, all_book_bets, selection_diag = find_matchup_value_bets_with_all_books(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
                         market_type=market_key,
+                        model_variant=self.model_variant,
                         return_diagnostics=True,
                     )
                     diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))
@@ -996,7 +1003,7 @@ class GolfModelService:
             if not odds:
                 return []
             return find_3ball_value_bets(
-                composite, odds, tournament_id=tid, enable_for_live=True,
+                composite, odds, tournament_id=tid, enable_for_live=True, model_variant=self.model_variant,
             )
         except Exception as e:
             logger.warning("3-ball value bets failed: %s", e)
