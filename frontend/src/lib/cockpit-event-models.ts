@@ -9,7 +9,7 @@ import type {
   PastTimelinePoint,
 } from "@/lib/types"
 
-export type CockpitMode = "live" | "upcoming" | "past"
+export type CockpitMode = "live" | "upcoming" | "test" | "past"
 
 export type CockpitMetricModel = {
   label: string
@@ -257,7 +257,7 @@ export function buildLeaderboardModel({
     }
   }
 
-  if (mode === "upcoming" && players.length > 0) {
+  if ((mode === "upcoming" || mode === "test") && players.length > 0) {
     const rows = players.slice(0, 8).map((player) => ({
       positionLabel: `Model ${player.rank}`,
       playerLabel: player.player_display,
@@ -364,7 +364,9 @@ export function buildMarketIntelModel({
           detail:
             mode === "live"
               ? "Current secondary markets visible in the active cockpit"
-              : "Secondary markets available for the selected event context",
+              : mode === "test"
+                ? "Secondary markets available in the experimental v5 lane"
+                : "Secondary markets available for the selected event context",
         },
         {
           label: "Books seen",
@@ -378,7 +380,12 @@ export function buildMarketIntelModel({
         },
       ],
       rows: sortedBets.slice(0, 8).map((bet) => ({
-        eyebrow: mode === "live" ? "Live market" : mode === "upcoming" ? "Pre-tournament market" : "Latest snapshot",
+        eyebrow:
+          mode === "live"
+            ? "Live market"
+            : mode === "upcoming" || mode === "test"
+              ? "Pre-tournament market"
+              : "Latest snapshot",
         label: bet.player,
         playerKey: bet.player_key,
         edgeLabel: formatPercent(bet.ev),

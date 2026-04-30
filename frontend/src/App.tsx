@@ -256,6 +256,8 @@ function App() {
     const diagnostics =
       predictionTab === "upcoming"
         ? liveSnapshot?.upcoming_tournament?.diagnostics
+        : predictionTab === "test"
+          ? liveSnapshot?.test_tournament?.diagnostics
         : liveSnapshot?.live_tournament?.diagnostics
     return getMatchupStateMessage({
       state: diagnostics?.state,
@@ -387,6 +389,8 @@ function App() {
                 matchupDiagnostics={
                   predictionTab === "upcoming"
                     ? liveSnapshot?.upcoming_tournament?.diagnostics
+                    : predictionTab === "test"
+                      ? liveSnapshot?.test_tournament?.diagnostics
                     : liveSnapshot?.live_tournament?.diagnostics
                 }
                 minEdgePct={Math.round(minEdge * 100)}

@@ -236,6 +236,7 @@ def _find_matchup_value_bets_core(
     tournament_id: int = None,
     required_book: str | None = None,
     market_type: str = "tournament_matchups",
+    model_variant: str = "baseline",
 ) -> tuple[list[dict], list[dict], dict]:
     diagnostics = {
         "input_rows": len(matchup_odds or []),
@@ -339,10 +340,21 @@ def _find_matchup_value_bets_core(
             pick_data, opp_data = p2_data, p1_data
             pick_side = "p2"
 
-        # Model win probability via Platt-style sigmoid: P(win) = 1/(1+exp(A*gap+B))
+        # Model win probability via Platt-style sigmoid (baseline) or v5 uncertainty-aware path.
         gap = abs(composite_gap)
         A, B = _get_platt_params()
-        platt_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+        if model_variant == "v5":
+            from src.models.v5_probabilities import v5_matchup_win_probability
+            platt_win_prob, v5_uncertainty = v5_matchup_win_probability(
+                composite_gap=composite_gap,
+                pick_data=pick_data,
+                opp_data=opp_data,
+                platt_a=A,
+                platt_b=B,
+            )
+        else:
+            platt_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+            v5_uncertainty = None
 
         # Blend with DG's own matchup model probability if available
         model_win_prob = platt_win_prob
@@ -544,6 +556,8 @@ def _find_matchup_value_bets_core(
                 "opp_momentum": round(opp_momentum, 1),
                 "momentum_aligned": momentum_aligned,
                 "conviction": conviction,
+                "model_variant": model_variant,
+                "v5_uncertainty": v5_uncertainty,
             })
 
     all_qualifying_bets.sort(
@@ -632,6 +646,7 @@ def find_matchup_value_bets_with_all_books(
     tournament_id: int = None,
     required_book: str | None = None,
     market_type: str = "tournament_matchups",
+    model_variant: str = "baseline",
     return_diagnostics: bool = False,
 ) -> tuple[list[dict], list[dict]] | tuple[list[dict], list[dict], dict]:
     """Return both card-curated and all-book qualifying matchup edges."""
@@ -642,6 +657,7 @@ def find_matchup_value_bets_with_all_books(
         tournament_id=tournament_id,
         required_book=required_book,
         market_type=market_type,
+        model_variant=model_variant,
     )
     if return_diagnostics:
         return curated_bets, all_qualifying_bets, diagnostics
@@ -655,6 +671,7 @@ def find_matchup_value_bets(
     tournament_id: int = None,
     required_book: str | None = None,
     market_type: str = "tournament_matchups",
+    model_variant: str = "baseline",
     return_diagnostics: bool = False,
 ) -> list[dict] | tuple[list[dict], dict]:
     """
@@ -669,6 +686,7 @@ def find_matchup_value_bets(
         tournament_id=tournament_id,
         required_book=required_book,
         market_type=market_type,
+        model_variant=model_variant,
     )
     if return_diagnostics:
         return curated_bets, diagnostics

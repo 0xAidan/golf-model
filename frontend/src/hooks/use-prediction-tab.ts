@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-export type PredictionTab = "live" | "upcoming" | "past"
+export type PredictionTab = "live" | "upcoming" | "test" | "past"
 
 export function getDefaultPredictionTab(isLiveActive: boolean): PredictionTab {
   return isLiveActive ? "live" : "upcoming"

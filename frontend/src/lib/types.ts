@@ -260,10 +260,12 @@ export type LiveRefreshSnapshot = {
   cadence_mode?: string
   live_tournament?: LiveTournamentSnapshot
   upcoming_tournament?: LiveTournamentSnapshot
+  test_tournament?: LiveTournamentSnapshot
   diagnostics?: {
     market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
     live_state?: string
     upcoming_state?: string
+    test_state?: string
   }
 }
 
