@@ -28,10 +28,13 @@ import {
 } from "@/lib/cockpit-picks"
 import { formatNumber, formatUnits } from "@/lib/format"
 import {
+  EV_BADGE_TOOLTIP,
   GRADING_TABLE_TOOLTIPS,
+  MATCHUP_DETAIL_TOOLTIPS,
   MATCHUP_TABLE_TOOLTIPS,
   POWER_RANKINGS_HELP,
   SG_TRAJECTORY_HELP,
+  TIER_BADGE_TOOLTIP,
 } from "@/lib/metric-tooltips"
 import {
   buildPredictionRunFromSection,
@@ -57,12 +60,20 @@ import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 /* ── Small helpers ────────────────────────────── */
 function EV({ ev, evPct }: { ev: number; evPct?: string }) {
   const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
-  return <span className={`ev-badge ${cls}`}>{evPct ?? `${(ev * 100).toFixed(1)}%`}</span>
+  return (
+    <span className={`ev-badge ${cls}`} title={EV_BADGE_TOOLTIP} style={{ cursor: "help" }}>
+      {evPct ?? `${(ev * 100).toFixed(1)}%`}
+    </span>
+  )
 }
 
 function TierBadge({ tier }: { tier?: string }) {
   const t = tier ?? "LEAN"
-  return <span className={`tier-badge ${t}`}>{t}</span>
+  return (
+    <span className={`tier-badge ${t}`} title={TIER_BADGE_TOOLTIP} style={{ cursor: "help" }}>
+      {t}
+    </span>
+  )
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -843,13 +854,13 @@ export function PredictionWorkspacePage({
                                 {player.player_display}
                               </button>
                             </td>
-                            <td>
+                            <td title={POWER_RANKINGS_HELP.composite}>
                               <ScoreBar value={player.composite} max={100} color="cyan" />
                             </td>
-                            <td>
+                            <td title={POWER_RANKINGS_HELP.form}>
                               <ScoreBar value={player.form} max={100} color="green" />
                             </td>
-                            <td>
+                            <td title={POWER_RANKINGS_HELP.course}>
                               <ScoreBar value={player.course_fit} max={100} color="gold" />
                             </td>
                             <td className="center">
@@ -968,7 +979,7 @@ export function PredictionWorkspacePage({
                               <td className="right">
                                 <EV ev={matchup.ev} evPct={matchup.ev_pct} />
                               </td>
-                              <td className="right num" style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                              <td className="right num" title={MATCHUP_TABLE_TOOLTIPS.winPct} style={{ color: "var(--text-muted)", fontSize: 12, cursor: "help" }}>
                                 {(matchup.model_win_prob * 100).toFixed(1)}%
                               </td>
                               <td style={{ textAlign: "center" }}>
@@ -988,27 +999,39 @@ export function PredictionWorkspacePage({
                                   <div className="matchup-detail">
                                     <div className="matchup-detail-grid">
                                       <div>
-                                        <div className="detail-item-label">Composite gap</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.compositeGap}>
+                                          Composite gap
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.composite_gap, 2)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Form gap</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.formGap}>
+                                          Form gap
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.form_gap, 2)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Course gap</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.courseGap}>
+                                          Course gap
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.course_fit_gap, 2)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Implied prob</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.impliedProb}>
+                                          Implied prob
+                                        </div>
                                         <div className="detail-item-value num">{(matchup.implied_prob * 100).toFixed(1)}%</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Conviction</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.conviction}>
+                                          Conviction
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.conviction, 0)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Momentum</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.momentum}>
+                                          Momentum
+                                        </div>
                                         <div className="detail-item-value" style={{ color: matchup.momentum_aligned ? "var(--positive)" : "var(--text-muted)" }}>
                                           {matchup.momentum_aligned ? "Aligned ↑" : "Mixed"}
                                         </div>

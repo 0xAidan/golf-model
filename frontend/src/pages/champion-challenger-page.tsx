@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
+import { CHAMPION_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
 import type { ChampionChallengerSummary, ChampionChallengerModelSummary } from "@/lib/types"
 
 function formatNumber(value: number | null | undefined, digits = 3): string {
@@ -88,12 +89,24 @@ export function ChampionChallengerPage() {
           >
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
-                <th style={{ padding: "6px 8px" }}>Model</th>
-                <th style={{ padding: "6px 8px" }}>Brier (30d)</th>
-                <th style={{ padding: "6px 8px" }}>N</th>
-                <th style={{ padding: "6px 8px" }}>Matchup ROI 14d</th>
-                <th style={{ padding: "6px 8px" }}>Matchup ROI 30d</th>
-                <th style={{ padding: "6px 8px" }}>CLV 30d</th>
+                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.model}>
+                  Model
+                </th>
+                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.brier30}>
+                  Brier (30d)
+                </th>
+                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.n}>
+                  N
+                </th>
+                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.roi14}>
+                  Matchup ROI 14d
+                </th>
+                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.roi30}>
+                  Matchup ROI 30d
+                </th>
+                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.clv30}>
+                  CLV 30d
+                </th>
               </tr>
             </thead>
             <tbody>

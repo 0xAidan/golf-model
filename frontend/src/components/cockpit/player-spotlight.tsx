@@ -3,6 +3,7 @@ import { ActivitySquare, Layers3, Radar, ScanSearch, Trophy } from "lucide-react
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { MetricTile } from "@/components/shell"
 import type { CockpitSpotlightModel } from "@/lib/cockpit-spotlight"
+import { SPOTLIGHT_NOTE_TOOLTIPS } from "@/lib/metric-tooltips"
 import type { CompositePlayer, PlayerProfile } from "@/lib/types"
 
 export function PlayerSpotlightPanel({
@@ -102,7 +103,9 @@ export function PlayerSpotlightPanel({
           <div>
             {spotlight.inventoryNotes.map((note) => (
               <div key={note.label} className="term-row">
-                <span className="term-row-eye">{note.label}</span>
+                <span className="term-row-eye" title={SPOTLIGHT_NOTE_TOOLTIPS[note.label]}>
+                  {note.label}
+                </span>
                 <span className="term-row-det" style={{ WebkitLineClamp: 3 }}>{note.detail}</span>
               </div>
             ))}

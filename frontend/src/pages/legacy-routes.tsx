@@ -9,9 +9,11 @@ import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import {
+  GRADING_KPI_STRIP_TOOLTIPS,
   GRADING_TABLE_TOOLTIPS,
   MATCHUP_TABLE_TOOLTIPS,
   POWER_RANKINGS_HELP,
+  PLAYER_PROFILE_STAT_TOOLTIPS,
   SG_TRAJECTORY_HELP,
 } from "@/lib/metric-tooltips"
 import type {
@@ -175,7 +177,7 @@ export function PlayersPage({
                                     { label: "Form", value: formatNumber(player.form, 1) },
                                     { label: "Momentum", value: formatNumber(player.momentum, 1) },
                                   ].map(({ label, value }) => (
-                                    <div key={label} className="kpi-tile neutral">
+                                    <div key={label} className="kpi-tile neutral" title={PLAYER_PROFILE_STAT_TOOLTIPS[label]}>
                                       <div className="kpi-label">{label}</div>
                                       <div className="kpi-value num" style={{ fontSize: 18 }}>{value}</div>
                                     </div>
@@ -225,22 +227,22 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
 
       {/* KPI strip */}
       <div className="kpi-grid">
-        <div className="kpi-tile green">
+        <div className="kpi-tile green" title={GRADING_KPI_STRIP_TOOLTIPS["Total P&L"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Total P&L</div>
           <div className={`kpi-value num ${totalProfit >= 0 ? "green" : ""}`}>{formatUnits(totalProfit)}</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Tournaments} style={{ cursor: "help" }}>
           <div className="kpi-label">Tournaments</div>
           <div className="kpi-value num">{gradingHistory.length}</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS["Hit rate"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Hit rate</div>
           <div className="kpi-value num">
             {totalPicks > 0 ? `${((totalHits / totalPicks) * 100).toFixed(0)}%` : "—"}
           </div>
           <div className="kpi-detail">{totalHits}/{totalPicks} picks</div>
         </div>
-        <div className="kpi-tile gold">
+        <div className="kpi-tile gold" title={GRADING_KPI_STRIP_TOOLTIPS["Latest event"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Latest event</div>
           <div className="kpi-value" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
             {gradingHistory[0]?.name ?? "—"}
@@ -312,13 +314,13 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
                 {isExpanded && (
                   <div className="tr-event-body">
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <div className="kpi-tile neutral">
+                      <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Course} style={{ cursor: "help" }}>
                         <div className="kpi-label">Course</div>
                         <div className="kpi-value" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
                           {item.course ?? "—"}
                         </div>
                       </div>
-                      <div className="kpi-tile neutral">
+                      <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Year} style={{ cursor: "help" }}>
                         <div className="kpi-label">Year</div>
                         <div className="kpi-value num" style={{ fontSize: 16 }}>{item.year ?? "—"}</div>
                       </div>
@@ -435,23 +437,23 @@ export function TrackRecordPage() {
 
       {/* Summary strip */}
       <div className="kpi-grid">
-        <div className={`kpi-tile ${totalProfit >= 0 ? "green" : "neutral"}`}>
+        <div className={`kpi-tile ${totalProfit >= 0 ? "green" : "neutral"}`} title={GRADING_KPI_STRIP_TOOLTIPS["Total P&L"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Total P&L</div>
           <div className={`kpi-value num ${totalProfit >= 0 ? "green" : ""}`}>{formatUnits(totalProfit)}</div>
           <div className="kpi-detail">all tournaments</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Tournaments} style={{ cursor: "help" }}>
           <div className="kpi-label">Tournaments</div>
           <div className="kpi-value num">{events.length}</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS["Win rate"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Win rate</div>
           <div className="kpi-value num">
             {totalPicks > 0 ? `${((totalWins / totalPicks) * 100).toFixed(0)}%` : "—"}
           </div>
           <div className="kpi-detail">{totalWins}/{totalPicks} picks</div>
         </div>
-        <div className="kpi-tile gold">
+        <div className="kpi-tile gold" title={GRADING_KPI_STRIP_TOOLTIPS.Wins} style={{ cursor: "help" }}>
           <div className="kpi-label">Wins</div>
           <div className="kpi-value num gold">{totalWins}</div>
           <div className="kpi-detail">outright picks won</div>

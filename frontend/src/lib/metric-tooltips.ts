@@ -108,3 +108,123 @@ export const COCKPIT_METRIC_TOOLTIPS: Partial<Record<string, string>> = {
   "Strategy source": "Which strategy profile or registry entry supplied weights and gates.",
   "Rows selected": "Lines that passed filters into the exportable card for this run.",
 }
+
+/** Expanded matchup row (inline details). */
+export const MATCHUP_DETAIL_TOOLTIPS = {
+  compositeGap: "Difference in composite model score between pick and opponent — overall strength gap.",
+  formGap: "Difference in recent-form sub-score between the two sides.",
+  courseGap: "Difference in course-fit sub-score for this venue/setup.",
+  impliedProb: "Win probability implied by the posted odds (market price converted to %).",
+  conviction: "Model conviction score for this matchup (internal strength-of-signal, not tier).",
+  momentum: "Whether short-term momentum / trajectory lines up with the pick vs mixed signals.",
+} as const
+
+export const EV_BADGE_TOOLTIP =
+  "Expected value: model fair win probability vs the book line — positive means edge over implied odds before vig."
+
+export const TIER_BADGE_TOOLTIP =
+  "Confidence tier from conviction and pipeline filters (e.g. STRONG / GOOD / LEAN). Higher tiers met stricter gates."
+
+/** Players page — header KPI strip (database / DG header). */
+export const PLAYER_PAGE_KPI_TOOLTIPS: Record<string, string> = {
+  "DG Rank": "Data Golf skill-based ranking when available for this player.",
+  OWGR: "Official World Golf Ranking position stored in the profile.",
+  "DG Skill": "Data Golf estimated strokes-gained skill vs an average tour baseline.",
+  "Total SG": "Strokes gained: total — overall vs-field performance from skill estimates.",
+  "Events (DB)": "Tournament events with stored results for this player locally.",
+  "Rounds (DB)": "Round rows saved in the database (drives rolling sample depth).",
+}
+
+/** Metric cards & tiles used on Players page + profile drill-down (label must match UI text). */
+export const PLAYER_PROFILE_STAT_TOOLTIPS: Record<string, string> = {
+  "Model Rank": "Rank on the current event's power rankings board.",
+  Composite: POWER_RANKINGS_HELP.composite,
+  Form: POWER_RANKINGS_HELP.form,
+  "Course Fit": POWER_RANKINGS_HELP.course,
+  "Course fit": POWER_RANKINGS_HELP.course,
+  Momentum: POWER_RANKINGS_HELP.momentum,
+  "DG Rank": PLAYER_PAGE_KPI_TOOLTIPS["DG Rank"],
+  OWGR: PLAYER_PAGE_KPI_TOOLTIPS.OWGR,
+  "DG Skill": PLAYER_PAGE_KPI_TOOLTIPS["DG Skill"],
+  "Primary Tour": "Primary tour affiliation from Data Golf (PGA Tour, DP World, etc.).",
+  Distance: "Driving distance from the skill profile (yards).",
+  Accuracy: "Driving accuracy / effectiveness from the skill profile (share or SG context).",
+}
+
+export const ROLLING_FORM_TILE_TOOLTIPS = {
+  avgSgWindow: "Average strokes gained per round over the selected L10 / L25 / L50 window.",
+  benchmarkSg: "Benchmark cohort SG per round for the same window (tour avg, top 50, or top 10).",
+  edgeVsBench: "Player window SG minus benchmark — quick read vs peer baseline.",
+} as const
+
+export const ROLLING_SG_GRID_HEADER_TOOLTIPS: Record<string, string> = {
+  Window: "Rolling lookback: last N recorded rounds in each row.",
+  TOTAL: "Strokes gained total per round vs the field.",
+  OTT: "Strokes gained off the tee (driving).",
+  APP: "Strokes gained on approach shots.",
+  ARG: "Strokes gained around the green.",
+  PUTT: "Strokes gained putting.",
+  T2G: "Tee-to-green strokes gained (off-tee + approach + around-green).",
+}
+
+export const ROLLING_WINDOW_ROW_TOOLTIP =
+  "Values use only rounds inside that lookback window (L10 = last 10 rounds, etc.)."
+
+export const PROFILE_COURSE_SUMMARY_TOOLTIPS: Record<string, string> = {
+  "Events Tracked": "Count of recent tournaments in the profile history sample.",
+  "Cuts Made": "Cuts made in that recent sample.",
+  "Recent Avg SG": "Mean strokes gained total per round across those recent events.",
+  "Course Avg SG": "Historical mean SG at courses in the profile's course-history sample.",
+}
+
+export const PROFILE_BETTING_SUMMARY_TOOLTIPS: Record<string, string> = {
+  "Linked Bets": "Bets tied to this player in the current card or profile export.",
+  "Avg EV": "Average expected value across those linked lines.",
+  "High Confidence": "How many linked bets used a high-confidence bucket.",
+}
+
+export const CHAMPION_TABLE_TOOLTIPS = {
+  model: "Registry strategy name — champion is live; challengers are shadow-only.",
+  brier30: "Brier score on 30-day window — lower means better probability calibration.",
+  n: "Count of prediction outcomes in the Brier window.",
+  roi14: "Matchup ROI % on trailing 14 days (paper/shadow).",
+  roi30: "Matchup ROI % on trailing 30 days.",
+  clv30: "Closing line value in basis points over 30 days (line vs close).",
+} as const
+
+export const GRADING_KPI_STRIP_TOOLTIPS: Record<string, string> = {
+  "Total P&L": "Sum of graded profit/loss across tournaments in this view.",
+  Tournaments: "Number of graded events represented.",
+  "Hit rate": "Hits divided by graded picks (wins + pushes counted per your grading rules).",
+  "Latest event": "Most recently graded event summary.",
+  Course: "Venue name stored for that graded tournament.",
+  Year: "Season year for the graded event.",
+  "Win rate": "Wins over all resolved picks in the track-record summary.",
+  Wins: "Count of winning picks in the track record summary.",
+}
+
+export const SPOTLIGHT_NOTE_TOOLTIPS: Record<string, string> = {
+  "Featured play": "Line appearing on the live or upcoming top-picks table for this player.",
+  "Captured featured play": "Featured play saved on the past-event replay snapshot.",
+  "Best secondary market": "Strongest EV secondary (prop/top-N) line for this player.",
+  "Generated matchup inventory": "Number of generated matchup rows mentioning this player.",
+  "Cockpit context": "Player is selected for context even without a featured or secondary line.",
+}
+
+export const PROFILE_CHART_LABEL_TOOLTIPS: Record<string, string> = {
+  sgPerRoundBars: "Each bar: strokes gained in that skill bucket vs tour average (0 = baseline).",
+  modelScoreComponents: "Internal model decomposition when Data Golf skill bars are unavailable.",
+  sgRoundTrend: "Chronological rounds: each point is SG:total for one round.",
+  avgSgByEvent: "One column per event — height is mean SG:total for rounds in that event.",
+  courseHistorySpark: "Sequential course-history events by average SG (older toward the left).",
+}
+
+export const ROLLING_UI_TOOLTIPS = {
+  windowPills: "How many recent rounds feed the rolling averages (L10 / L25 / L50).",
+  benchmarkPills: "Cohort baseline for comparison: tour average, top 50, or top 10 SG.",
+} as const
+
+export const SKILL_HIGHLIGHT_TOOLTIPS = {
+  strength: "Skill bucket with the strongest strokes-gained vs tour baseline in this profile.",
+  weakness: "Skill bucket furthest below tour baseline in this profile.",
+} as const

@@ -19,6 +19,14 @@ import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { api } from "@/lib/api"
 import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
 import { computeSgTrajectoryBounds, heatSpectrumFromUnit, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
+import {
+  PLAYER_PAGE_KPI_TOOLTIPS,
+  PLAYER_PROFILE_STAT_TOOLTIPS,
+  POWER_RANKINGS_HELP,
+  ROLLING_SG_GRID_HEADER_TOOLTIPS,
+  ROLLING_WINDOW_ROW_TOOLTIP,
+  SG_TRAJECTORY_HELP,
+} from "@/lib/metric-tooltips"
 
 /* ── Tokens ─────────────────────────────────────────────────────────── */
 const VAR = {
@@ -74,6 +82,7 @@ function KpiCell({
   sub,
   large = false,
   accentUnit,
+  title,
 }: {
   label: string
   value: string | React.ReactNode
@@ -81,15 +90,19 @@ function KpiCell({
   sub?: string
   large?: boolean
   accentUnit?: number
+  /** Native tooltip (metric definition). */
+  title?: string
 }) {
   return (
     <div
+      title={title}
       style={{
         display: "flex",
         flexDirection: "column",
         gap: 2,
         padding: "10px 14px",
         minWidth: 0,
+        cursor: title ? "help" : undefined,
         background: accentUnit != null ? heatSpectrumGradientAlongUnit(accentUnit, "ltr") : undefined,
       }}
     >
@@ -105,9 +118,30 @@ function KpiCell({
 }
 
 /* ── Stat metric card ─────────────────────────────────────────────────── */
-function MetricCard({ label, value, tone: t = "neutral", sub }: { label: string; value: string | React.ReactNode; tone?: Tone; sub?: string }) {
+function MetricCard({
+  label,
+  value,
+  tone: t = "neutral",
+  sub,
+  title: tip,
+}: {
+  label: string
+  value: string | React.ReactNode
+  tone?: Tone
+  sub?: string
+  title?: string
+}) {
   return (
-    <div style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "10px 12px" }}>
+    <div
+      title={tip}
+      style={{
+        background: VAR.surface,
+        border: `1px solid ${VAR.border}`,
+        borderRadius: "var(--r-md)",
+        padding: "10px 12px",
+        cursor: tip ? "help" : undefined,
+      }}
+    >
       <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: VAR.muted, marginBottom: 4 }}>
         {label}
       </div>
@@ -298,9 +332,15 @@ function PlayerSearchSidebar({
               )}
               {p.inField && p.model && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint }}>#{p.model.rank}</span>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.cyan }}>C {formatCompactScore(p.model.composite)}</span>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.green }}>F {formatCompactScore(p.model.form)}</span>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint }} title={POWER_RANKINGS_HELP.rank}>
+                    #{p.model.rank}
+                  </span>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.cyan }} title={POWER_RANKINGS_HELP.composite}>
+                    C {formatCompactScore(p.model.composite)}
+                  </span>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.green }} title={POWER_RANKINGS_HELP.form}>
+                    F {formatCompactScore(p.model.form)}
+                  </span>
                   <span style={{ marginLeft: "auto" }}>
                     <SgTrajectoryMeter
                       momentumTrend={p.model.momentum_trend}
@@ -453,7 +493,7 @@ function PlayerProfileView({
                 borderRight: i < arr.length - 1 ? `1px solid ${VAR.border}` : "none",
               }}
             >
-              <KpiCell {...item} />
+              <KpiCell {...item} title={PLAYER_PAGE_KPI_TOOLTIPS[item.label]} />
             </div>
           ))}
         </div>
@@ -468,11 +508,20 @@ function PlayerProfileView({
               <span className="panel-label-dim">Current field model context for this player</span>
             </div>
             <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
-              <MetricCard label="Model Rank" value={`#${modelPlayer.rank}`} />
-              <MetricCard label="Composite" value={modelPlayer.composite.toFixed(1)} />
-              <MetricCard label="Form" value={modelPlayer.form.toFixed(1)} />
-              <MetricCard label="Course Fit" value={modelPlayer.course_fit.toFixed(1)} />
-              <div style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "8px 10px" }}>
+              <MetricCard label="Model Rank" value={`#${modelPlayer.rank}`} title={PLAYER_PROFILE_STAT_TOOLTIPS["Model Rank"]} />
+              <MetricCard label="Composite" value={modelPlayer.composite.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS.Composite} />
+              <MetricCard label="Form" value={modelPlayer.form.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS.Form} />
+              <MetricCard label="Course Fit" value={modelPlayer.course_fit.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS["Course Fit"]} />
+              <div
+                title={SG_TRAJECTORY_HELP}
+                style={{
+                  cursor: "help",
+                  background: VAR.surface,
+                  border: `1px solid ${VAR.border}`,
+                  borderRadius: "var(--r-md)",
+                  padding: "8px 10px",
+                }}
+              >
                 <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 6 }}>
                   SG Trajectory
                 </div>
@@ -494,10 +543,10 @@ function PlayerProfileView({
               <span className="panel-label-dim">Structured DataGolf ranking context</span>
             </div>
             <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-              <MetricCard label="DG Rank" value={p.ranking_card.dg_rank ? `#${p.ranking_card.dg_rank}` : "—"} />
-              <MetricCard label="OWGR" value={p.ranking_card.owgr_rank ? `#${p.ranking_card.owgr_rank}` : "—"} />
-              <MetricCard label="DG Skill" value={signed(p.ranking_card.dg_skill_estimate, 2)} tone={tone(p.ranking_card.dg_skill_estimate)} />
-              <MetricCard label="Primary Tour" value={p.ranking_card.primary_tour ?? "—"} />
+              <MetricCard label="DG Rank" value={p.ranking_card.dg_rank ? `#${p.ranking_card.dg_rank}` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS["DG Rank"]} />
+              <MetricCard label="OWGR" value={p.ranking_card.owgr_rank ? `#${p.ranking_card.owgr_rank}` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.OWGR} />
+              <MetricCard label="DG Skill" value={signed(p.ranking_card.dg_skill_estimate, 2)} tone={tone(p.ranking_card.dg_skill_estimate)} title={PLAYER_PROFILE_STAT_TOOLTIPS["DG Skill"]} />
+              <MetricCard label="Primary Tour" value={p.ranking_card.primary_tour ?? "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS["Primary Tour"]} />
             </div>
           </div>
         )}
@@ -525,8 +574,8 @@ function PlayerProfileView({
             <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
               <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted }}>Driving</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} />
-                <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} />
+                <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Distance} />
+                <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Accuracy} />
               </div>
               <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted, marginTop: 4 }}>Rolling windows</div>
               {(["10", "25", "50"] as const).map((w) => {
@@ -535,6 +584,7 @@ function PlayerProfileView({
                 return (
                   <div
                     key={w}
+                    title={ROLLING_WINDOW_ROW_TOOLTIP}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -543,6 +593,7 @@ function PlayerProfileView({
                       background: VAR.bg2,
                       border: `1px solid ${VAR.border}`,
                       borderRadius: "var(--r-sm)",
+                      cursor: "help",
                     }}
                   >
                     <span style={{ fontFamily: VAR.mono, fontSize: 11, color: VAR.muted, letterSpacing: "0.06em", fontWeight: 600 }}>
@@ -588,7 +639,11 @@ function PlayerProfileView({
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
                     {["Window", "TOTAL", "OTT", "APP", "ARG", "PUTT", "T2G"].map((head) => (
-                      <th key={head} style={{ textAlign: head === "Window" ? "left" : "center", color: VAR.muted, padding: "8px 10px", letterSpacing: "0.07em", fontWeight: 700 }}>
+                      <th
+                        key={head}
+                        title={ROLLING_SG_GRID_HEADER_TOOLTIPS[head]}
+                        style={{ textAlign: head === "Window" ? "left" : "center", color: VAR.muted, padding: "8px 10px", letterSpacing: "0.07em", fontWeight: 700 }}
+                      >
                         {head}
                       </th>
                     ))}
@@ -606,7 +661,7 @@ function PlayerProfileView({
                     ]
                     return (
                       <tr key={windowKey} style={{ borderBottom: `1px solid ${VAR.divider}` }}>
-                        <td style={{ padding: "8px", color: VAR.text, fontWeight: 700 }}>L{windowKey}</td>
+                        <td title={ROLLING_WINDOW_ROW_TOOLTIP} style={{ padding: "8px", color: VAR.text, fontWeight: 700 }}>L{windowKey}</td>
                         {cells.map((value, index) => {
                           const heatT = heatUnitForSg(value)
                           return (

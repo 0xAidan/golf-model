@@ -7,7 +7,17 @@ import {
   SparklineChart,
 } from "@/components/charts"
 import { formatNumber } from "@/lib/format"
-import { MATCHUP_TABLE_TOOLTIPS, PLAYER_PROFILE_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
+import {
+  MATCHUP_TABLE_TOOLTIPS,
+  PLAYER_PROFILE_STAT_TOOLTIPS,
+  PLAYER_PROFILE_TABLE_TOOLTIPS,
+  PROFILE_BETTING_SUMMARY_TOOLTIPS,
+  PROFILE_CHART_LABEL_TOOLTIPS,
+  PROFILE_COURSE_SUMMARY_TOOLTIPS,
+  ROLLING_FORM_TILE_TOOLTIPS,
+  ROLLING_UI_TOOLTIPS,
+  SKILL_HIGHLIGHT_TOOLTIPS,
+} from "@/lib/metric-tooltips"
 import type { CompositePlayer, PlayerProfile } from "@/lib/types"
 
 /* ── Tokens ─────────────────────────────────────────────────────────── */
@@ -104,7 +114,11 @@ function SectionPanel({
   )
 }
 
-function KpiRow({ items }: { items: Array<{ label: string; value: string | React.ReactNode; tone?: Tone; sub?: string }> }) {
+function KpiRow({
+  items,
+}: {
+  items: Array<{ label: string; value: string | React.ReactNode; tone?: Tone; sub?: string; title?: string }>
+}) {
   return (
     <div
       style={{
@@ -114,15 +128,19 @@ function KpiRow({ items }: { items: Array<{ label: string; value: string | React
         marginBottom: 10,
       }}
     >
-      {items.map((item, i) => (
+      {items.map((item, i) => {
+        const tip = item.title ?? PLAYER_PROFILE_STAT_TOOLTIPS[item.label]
+        return (
         <div
           key={item.label}
+          title={tip}
           style={{
             display: "flex",
             flexDirection: "column",
             gap: 2,
             padding: "8px 12px",
             borderRight: i < items.length - 1 ? `1px solid ${VAR.border}` : "none",
+            cursor: tip ? "help" : undefined,
           }}
         >
           <span
@@ -154,20 +172,36 @@ function KpiRow({ items }: { items: Array<{ label: string; value: string | React
             <span style={{ fontFamily: VAR.mono, fontSize: 9, color: VAR.faint }}>{item.sub}</span>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
-function StatRow({ label, value, tone, mono = true }: { label: string; value: string | React.ReactNode; tone?: Tone; mono?: boolean }) {
+function StatRow({
+  label,
+  value,
+  tone,
+  mono = true,
+  title,
+}: {
+  label: string
+  value: string | React.ReactNode
+  tone?: Tone
+  mono?: boolean
+  title?: string
+}) {
+  const tip = title ?? PLAYER_PROFILE_STAT_TOOLTIPS[label]
   return (
     <div
+      title={tip}
       style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         padding: "5px 0",
         borderBottom: `1px solid ${VAR.divider}`,
+        cursor: tip ? "help" : undefined,
       }}
     >
       <span style={{ fontFamily: VAR.mono, fontSize: 10, color: VAR.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -188,9 +222,10 @@ function StatRow({ label, value, tone, mono = true }: { label: string; value: st
   )
 }
 
-function ChartLabel({ children }: { children: React.ReactNode }) {
+function ChartLabel({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
     <div
+      title={title}
       style={{
         fontFamily: VAR.mono,
         fontSize: 8.5,
@@ -200,6 +235,7 @@ function ChartLabel({ children }: { children: React.ReactNode }) {
         color: VAR.faint,
         marginBottom: 6,
         marginTop: 2,
+        cursor: title ? "help" : undefined,
       }}
     >
       {children}
@@ -292,11 +328,13 @@ function RankingHeaderSection({
         ].map((item) => (
           <div
             key={item.label}
+            title={PLAYER_PROFILE_STAT_TOOLTIPS[item.label]}
             style={{
               background: VAR.surface,
               border: `1px solid ${VAR.border}`,
               borderRadius: "var(--r-md)",
               padding: "8px 10px",
+              cursor: PLAYER_PROFILE_STAT_TOOLTIPS[item.label] ? "help" : undefined,
             }}
           >
             <div style={{ fontFamily: VAR.mono, fontSize: 8.5, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 3 }}>
@@ -333,7 +371,7 @@ function SkillBreakdownSection({ player, profile }: { player: CompositePlayer; p
           {(bestArea || weakestArea) && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
               {bestArea && (
-                <div style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.18)", borderRadius: "var(--r-md)", padding: "7px 10px" }}>
+                <div style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.18)", borderRadius: "var(--r-md)", padding: "7px 10px" }} title={SKILL_HIGHLIGHT_TOOLTIPS.strength}>
                   <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--green)", marginBottom: 2 }}>
                     ▲ Strength
                   </div>
@@ -343,7 +381,7 @@ function SkillBreakdownSection({ player, profile }: { player: CompositePlayer; p
                 </div>
               )}
               {weakestArea && (
-                <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: "var(--r-md)", padding: "7px 10px" }}>
+                <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: "var(--r-md)", padding: "7px 10px" }} title={SKILL_HIGHLIGHT_TOOLTIPS.weakness}>
                   <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--red)", marginBottom: 2 }}>
                     ▼ Weakness
                   </div>
@@ -354,13 +392,13 @@ function SkillBreakdownSection({ player, profile }: { player: CompositePlayer; p
               )}
             </div>
           )}
-          <ChartLabel>SG Per Round vs Tour Average (0.000)</ChartLabel>
+          <ChartLabel title={PROFILE_CHART_LABEL_TOOLTIPS.sgPerRoundBars}>SG Per Round vs Tour Average (0.000)</ChartLabel>
           <SgSkillBarsChart skills={skills} height={Math.max(120, skills.length * 28 + 16)} />
         </>
       ) : (
         <>
           {/* Fallback to player composite components */}
-          <ChartLabel>Model Score Components</ChartLabel>
+          <ChartLabel title={PROFILE_CHART_LABEL_TOOLTIPS.modelScoreComponents}>Model Score Components</ChartLabel>
           <SgSkillBarsChart
             skills={Object.entries(player.details?.course_components ?? {}).map(([k, v]) => ({
               label: k.replaceAll("_", " "),
@@ -411,7 +449,7 @@ function RollingFormSection({ profile }: { profile?: PlayerProfile }) {
     <SectionPanel label="Rolling Form">
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 10 }}>
         <div>
-          <div style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
+          <div title={ROLLING_UI_TOOLTIPS.windowPills} style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, cursor: "help" }}>
             Window
           </div>
           <PillGroup options={WINDOW_OPTS} active={window} color="green" onSelect={setWindow}
@@ -419,7 +457,7 @@ function RollingFormSection({ profile }: { profile?: PlayerProfile }) {
           />
         </div>
         <div>
-          <div style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
+          <div title={ROLLING_UI_TOOLTIPS.benchmarkPills} style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, cursor: "help" }}>
             Benchmark
           </div>
           <PillGroup options={BENCH_OPTS} labels={BENCH_LABELS} active={bench} color="gold" onSelect={setBench} />
@@ -428,17 +466,37 @@ function RollingFormSection({ profile }: { profile?: PlayerProfile }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
         {[
-          { label: `Avg SG (L${window})`, value: signed(windowVal),    tone: toneW,    sub: "strokes gained / round" },
-          { label: `${BENCH_LABELS[bench]} SG`, value: signed(benchVal), tone: "neutral" as Tone, sub: "benchmark" },
-          { label: "Edge vs Bench",   value: signed(edgeVsBench),   tone: toneE,    sub: shortVsMed != null ? `Δ short/med: ${signed(shortVsMed, 3)}` : "" },
+          {
+            label: `Avg SG (L${window})`,
+            value: signed(windowVal),
+            tone: toneW,
+            sub: "strokes gained / round",
+            title: ROLLING_FORM_TILE_TOOLTIPS.avgSgWindow,
+          },
+          {
+            label: `${BENCH_LABELS[bench]} SG`,
+            value: signed(benchVal),
+            tone: "neutral" as Tone,
+            sub: "benchmark",
+            title: ROLLING_FORM_TILE_TOOLTIPS.benchmarkSg,
+          },
+          {
+            label: "Edge vs Bench",
+            value: signed(edgeVsBench),
+            tone: toneE,
+            sub: shortVsMed != null ? `Δ short/med: ${signed(shortVsMed, 3)}` : "",
+            title: ROLLING_FORM_TILE_TOOLTIPS.edgeVsBench,
+          },
         ].map((item) => (
           <div
             key={item.label}
+            title={item.title}
             style={{
               background: VAR.surface,
               border: `1px solid ${VAR.border}`,
               borderRadius: "var(--r-md)",
               padding: "8px 10px",
+              cursor: "help",
             }}
           >
             <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 3 }}>
@@ -452,7 +510,7 @@ function RollingFormSection({ profile }: { profile?: PlayerProfile }) {
         ))}
       </div>
 
-      <ChartLabel>SG / Round Trend (oldest → newest, {trendValues.length} rounds)</ChartLabel>
+      <ChartLabel title={PROFILE_CHART_LABEL_TOOLTIPS.sgRoundTrend}>SG / Round Trend (oldest → newest, {trendValues.length} rounds)</ChartLabel>
       {trendValues.length > 0 ? (
         <SgRollingChart
           values={trendValues}
@@ -491,18 +549,20 @@ function CourseEventSection({ profile }: { profile?: PlayerProfile }) {
     <SectionPanel label="Recent Tournament History">
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
         {[
-          { label: "Events Tracked",  value: String(recentSummary?.events_tracked ?? 0) },
-          { label: "Cuts Made",       value: String(recentSummary?.made_cuts ?? 0) },
-          { label: "Recent Avg SG",   value: signed(recentSummary?.avg_sg_total), tone: toneFn(recentSummary?.avg_sg_total) },
-          { label: "Course Avg SG",   value: signed(courseSummary?.avg_sg_total), tone: toneFn(courseSummary?.avg_sg_total) },
+          { label: "Events Tracked",  value: String(recentSummary?.events_tracked ?? 0), title: PROFILE_COURSE_SUMMARY_TOOLTIPS["Events Tracked"] },
+          { label: "Cuts Made",       value: String(recentSummary?.made_cuts ?? 0), title: PROFILE_COURSE_SUMMARY_TOOLTIPS["Cuts Made"] },
+          { label: "Recent Avg SG",   value: signed(recentSummary?.avg_sg_total), tone: toneFn(recentSummary?.avg_sg_total), title: PROFILE_COURSE_SUMMARY_TOOLTIPS["Recent Avg SG"] },
+          { label: "Course Avg SG",   value: signed(courseSummary?.avg_sg_total), tone: toneFn(courseSummary?.avg_sg_total), title: PROFILE_COURSE_SUMMARY_TOOLTIPS["Course Avg SG"] },
         ].map((item) => (
           <div
             key={item.label}
+            title={item.title}
             style={{
               background: VAR.surface,
               border: `1px solid ${VAR.border}`,
               borderRadius: "var(--r-md)",
               padding: "7px 10px",
+              cursor: "help",
             }}
           >
             <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 2 }}>
@@ -517,14 +577,14 @@ function CourseEventSection({ profile }: { profile?: PlayerProfile }) {
 
       {chartEvents.length > 0 && (
         <>
-          <ChartLabel>Avg SG by Event (most recent right)</ChartLabel>
+          <ChartLabel title={PROFILE_CHART_LABEL_TOOLTIPS.avgSgByEvent}>Avg SG by Event (most recent right)</ChartLabel>
           <TournamentHistoryChart events={chartEvents} height={150} />
         </>
       )}
 
       {courseValues.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <ChartLabel>Course History SG Trend</ChartLabel>
+          <ChartLabel title={PROFILE_CHART_LABEL_TOOLTIPS.courseHistorySpark}>Course History SG Trend</ChartLabel>
           <SparklineChart values={courseValues} color="var(--green)" height={70} />
         </div>
       )}
@@ -586,11 +646,11 @@ function BettingSection({ profile }: { profile?: PlayerProfile }) {
     <SectionPanel label="Betting Context" defaultOpen={false}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
         {[
-          { label: "Linked Bets",       value: String(summary?.linked_bet_count ?? bets.length) },
-          { label: "Avg EV",            value: signed(summary?.average_ev), tone: toneFn(summary?.average_ev) },
-          { label: "High Confidence",   value: String(summary?.high_confidence_count ?? 0) },
+          { label: "Linked Bets",       value: String(summary?.linked_bet_count ?? bets.length), title: PROFILE_BETTING_SUMMARY_TOOLTIPS["Linked Bets"] },
+          { label: "Avg EV",            value: signed(summary?.average_ev), tone: toneFn(summary?.average_ev), title: PROFILE_BETTING_SUMMARY_TOOLTIPS["Avg EV"] },
+          { label: "High Confidence",   value: String(summary?.high_confidence_count ?? 0), title: PROFILE_BETTING_SUMMARY_TOOLTIPS["High Confidence"] },
         ].map((item) => (
-          <div key={item.label} style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "7px 10px" }}>
+          <div key={item.label} title={item.title} style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "7px 10px", cursor: "help" }}>
             <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 2 }}>
               {item.label}
             </div>
