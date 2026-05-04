@@ -32,8 +32,7 @@ function rgbToCss(r: number, g: number, b: number): string {
   return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`
 }
 
-/** Map unit interval → RGB along a smooth red→green spectrum. */
-export function heatSpectrumFromUnit(t: number): string {
+function sampleHeatRgbComponents(t: number): { r: number; g: number; b: number } {
   const x = clamp01(t)
   let i = 0
   while (i < HEAT_STOPS.length - 1 && HEAT_STOPS[i + 1]!.t < x) i += 1
@@ -41,10 +40,27 @@ export function heatSpectrumFromUnit(t: number): string {
   const b = HEAT_STOPS[i + 1] ?? a
   const span = b.t - a.t || 1
   const u = (x - a.t) / span
-  const r = a.rgb[0] + (b.rgb[0] - a.rgb[0]) * u
-  const g = a.rgb[1] + (b.rgb[1] - a.rgb[1]) * u
-  const bl = a.rgb[2] + (b.rgb[2] - a.rgb[2]) * u
-  return rgbToCss(r, g, bl)
+  return {
+    r: a.rgb[0] + (b.rgb[0] - a.rgb[0]) * u,
+    g: a.rgb[1] + (b.rgb[1] - a.rgb[1]) * u,
+    b: a.rgb[2] + (b.rgb[2] - a.rgb[2]) * u,
+  }
+}
+
+function byteToHex(n: number): string {
+  return Math.round(n).toString(16).padStart(2, "0")
+}
+
+/** Map unit interval → RGB along a smooth red→green spectrum. */
+export function heatSpectrumFromUnit(t: number): string {
+  const { r, g, b } = sampleHeatRgbComponents(t)
+  return rgbToCss(r, g, b)
+}
+
+/** Same spectrum as `heatSpectrumFromUnit`, but `#rrggbb` for ECharts/canvas paths that reject `rgb()`. */
+export function heatSpectrumHexFromUnit(t: number): string {
+  const { r, g, b } = sampleHeatRgbComponents(t)
+  return `#${byteToHex(r)}${byteToHex(g)}${byteToHex(b)}`
 }
 
 /**
