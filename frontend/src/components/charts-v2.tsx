@@ -13,7 +13,7 @@
 
 import { useState } from "react"
 import ReactECharts from "echarts-for-react"
-import { heatSpectrumFromUnit, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
+import { heatSpectrumHexFromUnit } from "@/lib/metric-heat"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
 const T = {
@@ -103,7 +103,7 @@ function skillProfileHeatUnit(skills: RadarSkills): number {
 function sgHeatColor(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return RADAR_TOUR_LINE
   const u = Math.min(1, Math.max(0, (v + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
-  return heatSpectrumFromUnit(u)
+  return heatSpectrumHexFromUnit(u)
 }
 
 /**
@@ -137,7 +137,7 @@ export function PentagonRadar({
   const avgVals    = axes.map(() => 50) // tour average = 50th percentile on every axis
 
   const profileHeat = skillProfileHeatUnit(skills)
-  const profileColor = heatSpectrumFromUnit(profileHeat)
+  const profileColor = heatSpectrumHexFromUnit(profileHeat)
 
   return (
     <ReactECharts
@@ -444,6 +444,15 @@ const ROLLING_KEY: Record<RollingTab, keyof RollingEvent> = {
 const ROLLING_SCALE_ABS = 2.5
 const heatUnitForRolling = (value: number) => Math.min(1, Math.max(0, (value + ROLLING_SCALE_ABS) / (ROLLING_SCALE_ABS * 2)))
 
+/** ECharts often ignores `linear-gradient(...)` and `var(--*)` in series styles — use hex / RGBA literals. */
+const ROLLING_EC = {
+  text: "#e8ecef",
+  muted: "#6b7a84",
+  faintAxis: "#8b9aa3",
+  grid: "rgba(139, 156, 169, 0.32)",
+  zeroLine: "rgba(139, 156, 169, 0.45)",
+} as const
+
 function movingAverage(vals: number[], window = 5): (number | null)[] {
   return vals.map((_, i) => {
     const start = Math.max(0, i - window + 1)
@@ -509,9 +518,10 @@ export function RollingBarLine({
 
   const barColors = vals.map((v) => {
     if (v == null) return "transparent"
-    const heatT = heatUnitForRolling(v)
-    return heatSpectrumGradientAlongUnit(heatT, "ltr")
+    return heatSpectrumHexFromUnit(heatUnitForRolling(v))
   })
+
+  const legendBarSwatch = barColors.find((c) => c !== "transparent") ?? heatSpectrumHexFromUnit(0.5)
 
   return (
     <div>
@@ -592,18 +602,18 @@ export function RollingBarLine({
               const n = e.event_name ?? ""
               return view === "events" ? n.split(" ").slice(0, 2).join(" ") : n
             }),
-            axisLabel: { color: T.faint, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
-            axisLine: { lineStyle: { color: T.border } },
+            axisLabel: { color: ROLLING_EC.faintAxis, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
+            axisLine: { lineStyle: { color: ROLLING_EC.grid } },
             splitLine: { show: false },
           },
           yAxis: {
             type: "value",
             scale: true,
             axisLabel: {
-              color: T.muted, fontSize: 9, fontFamily: T.mono,
+              color: ROLLING_EC.muted, fontSize: 9, fontFamily: T.mono,
               formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
             },
-            splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+            splitLine: { lineStyle: { color: ROLLING_EC.grid, type: "dashed" } },
             axisLine: { show: false },
           },
           series: [
@@ -624,8 +634,8 @@ export function RollingBarLine({
               smooth: 0.4,
               showSymbol: false,
               connectNulls: true,
-              lineStyle: { color: T.text, width: 2 },
-              itemStyle: { color: T.text },
+              lineStyle: { color: ROLLING_EC.text, width: 2 },
+              itemStyle: { color: ROLLING_EC.text },
               z: 2,
             },
             // zero line
@@ -634,14 +644,17 @@ export function RollingBarLine({
               type: "line",
               data: vals.map(() => 0),
               showSymbol: false,
-              lineStyle: { color: T.faint, width: 1, type: "dashed" },
+              lineStyle: { color: ROLLING_EC.zeroLine, width: 1, type: "dashed" },
               z: 0,
               tooltip: { show: false },
             },
           ],
           legend: {
-            data: [tab, `${maWindow}-event avg`],
-            textStyle: { color: T.muted, fontSize: 9, fontFamily: T.mono },
+            data: [
+              { name: tab, itemStyle: { color: legendBarSwatch } },
+              { name: `${maWindow}-event avg`, itemStyle: { color: ROLLING_EC.text } },
+            ],
+            textStyle: { color: ROLLING_EC.muted, fontSize: 9, fontFamily: T.mono },
             top: 0, right: 0, itemHeight: 8, itemWidth: 14,
           },
           tooltip: {
@@ -653,11 +666,11 @@ export function RollingBarLine({
               const ma  = params.find((p) => p.seriesName !== tab && p.seriesName !== "_zero")
               const ev  = orderedEvents[bar?.dataIndex ?? 0]
               const v   = bar?.value
-              const col = v != null ? heatSpectrumFromUnit(heatUnitForRolling(v)) : T.muted
-              const fin = view === "events" && ev?.fin_text ? ` <span style="color:${T.muted}">· ${ev.fin_text}</span>` : ""
-              const course = view === "events" && ev?.course_name ? `<br/><span style="color:${T.faint}">${ev.course_name}</span>` : ""
+              const col = v != null ? heatSpectrumHexFromUnit(heatUnitForRolling(v)) : ROLLING_EC.muted
+              const fin = view === "events" && ev?.fin_text ? ` <span style="color:${ROLLING_EC.muted}">· ${ev.fin_text}</span>` : ""
+              const course = view === "events" && ev?.course_name ? `<br/><span style="color:${ROLLING_EC.faintAxis}">${ev.course_name}</span>` : ""
               const maLine = ma?.value != null
-                ? `<br/><span style="color:${T.muted}">MA: ${signed(ma.value)}</span>` : ""
+                ? `<br/><span style="color:${ROLLING_EC.muted}">MA: ${signed(ma.value)}</span>` : ""
               const label = view === "events" ? (ev?.event_name ?? bar?.name) : `Round ${(bar?.dataIndex ?? 0) + 1}`
               return `<b>${label}</b>${fin}${course}<br/>${tab}: <b style="color:${col}">${v != null ? signed(v) : "—"}</b>${maLine}`
             },
