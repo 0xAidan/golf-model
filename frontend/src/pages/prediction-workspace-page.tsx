@@ -326,7 +326,7 @@ export function PredictionWorkspacePage({
     [pastPredictionRun?.composite_results, players, predictionTab],
   )
   const boardTrajectoryBounds = useMemo(
-    () => computeSgTrajectoryBounds(displayPlayers.slice(0, 15)),
+    () => computeSgTrajectoryBounds(displayPlayers),
     [displayPlayers],
   )
   const displaySecondaryBets = predictionTab === "past" ? pastSecondaryBets : secondaryBets
@@ -829,7 +829,7 @@ export function PredictionWorkspacePage({
                       </tr>
                     </thead>
                     <tbody>
-                      {displayPlayers.slice(0, 15).map((player) => {
+                      {displayPlayers.map((player) => {
                         return (
                           <tr
                             key={player.player_key}

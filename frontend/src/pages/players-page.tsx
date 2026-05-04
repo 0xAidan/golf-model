@@ -149,11 +149,11 @@ function PlayerSearchSidebar({
 
   // Active field players filtered by query
   const filteredActive = useMemo(() => {
-    if (!query) return activePlayers.slice(0, 30)
+    if (!query) return activePlayers
     const q = query.toLowerCase()
-    return activePlayers.filter((p) =>
-      p.player_display.toLowerCase().includes(q) || p.player_key.includes(q)
-    ).slice(0, 20)
+    return activePlayers.filter(
+      (p) => p.player_display.toLowerCase().includes(q) || p.player_key.includes(q),
+    )
   }, [activePlayers, query])
 
   // Merge: active field + DB results (deduplicated)
