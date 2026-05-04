@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom"
 import {
   Activity,
+  Beaker,
   FlaskConical,
   GraduationCap,
   History,
@@ -29,6 +30,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
   { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]
+
+const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB === "1"
 
 /* ── Logo SVG mark ────────────────────────────── */
 function LogoMark({ size = 32 }: { size?: number }) {
@@ -84,14 +87,38 @@ export function SuiteShell({
         {/* Navigation */}
         <nav className="sidebar-nav" aria-label="Main navigation">
           <div className="sidebar-section-label">Workspace</div>
-          {NAV_ITEMS.slice(0, 3).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(0, 1).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}
               end={href === "/"}
-              className={({ isActive }) =>
-                cn("nav-item", isActive && "active")
-              }
+              className={({ isActive }) => cn("nav-item", isActive && "active")}
+              data-testid={`nav-${id}`}
+            >
+              <Icon size={15} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+          {COCKPIT_LAB_ENABLED ? (
+            <NavLink
+              to="/cockpit-lab"
+              className={({ isActive }) => cn("nav-item", isActive && "active")}
+              data-testid="nav-cockpit-lab"
+              style={{ opacity: 0.92 }}
+            >
+              <Beaker size={15} />
+              <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, opacity: 0.75 }}>Lab</span>
+                <span>Cockpit (Lab)</span>
+              </span>
+            </NavLink>
+          ) : null}
+          {NAV_ITEMS.slice(1, 3).map(({ href, icon: Icon, label, id }) => (
+            <NavLink
+              key={href}
+              to={href}
+              end={href === "/"}
+              className={({ isActive }) => cn("nav-item", isActive && "active")}
               data-testid={`nav-${id}`}
             >
               <Icon size={15} />

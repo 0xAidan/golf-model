@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Route, Routes } from "react-router-dom"
+import { Route, Routes, Navigate } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
 
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
@@ -20,9 +20,10 @@ import {
 } from "@/lib/prediction-board"
 import { useLocalStorageState } from "@/lib/storage"
 import type { LiveRefreshSnapshot, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
+import { CockpitLabPage } from "@/pages/cockpit-lab-page"
 import { LegacyRouteGate } from "@/pages/legacy-route-gate"
 import { PicksPage } from "@/pages/picks-page"
-import { PredictionWorkspacePage } from "@/pages/prediction-workspace-page"
+import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
 
 // Code-split heavy / rarely-visited routes. The default "/" route
 // (PredictionWorkspacePage) and the primary Picks route stay eager so the
@@ -79,6 +80,7 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
 }
 
 const RICH_PLAYER_PROFILES_ENABLED = import.meta.env.VITE_RICH_PLAYER_PROFILES !== "0"
+const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB === "1"
 
 function App() {
   const queryClient = useQueryClient()
@@ -356,6 +358,64 @@ function App() {
     onError: setUiAlert,
   })
 
+  const cockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
+    () => ({
+      liveSnapshot,
+      runtimeStatus,
+      snapshotNotice,
+      snapshotAgeSeconds: liveSnapshotEnvelope?.age_seconds ?? null,
+      predictionTab,
+      onPredictionTabChange: setPredictionTab,
+      availableBooks,
+      selectedBooks: normalizedSelectedBooks,
+      onSelectedBooksChange: setSelectedBooks,
+      matchupSearch,
+      onMatchupSearchChange: setMatchupSearch,
+      minEdge,
+      onMinEdgeChange: setMinEdge,
+      filteredMatchups,
+      gradingHistory,
+      players,
+      predictionRun: effectivePredictionRun,
+      selectedPlayerKey,
+      onPlayerSelect: setSelectedPlayerKey,
+      selectedPlayerProfile: playerProfileQuery.data,
+      playerProfileState,
+      playerProfileErrorMessage,
+      onPlayerProfileRetry: () => {
+        void playerProfileQuery.refetch()
+      },
+      richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
+      secondaryBets,
+    }),
+    [
+      liveSnapshot,
+      runtimeStatus,
+      snapshotNotice,
+      liveSnapshotEnvelope?.age_seconds,
+      predictionTab,
+      setPredictionTab,
+      availableBooks,
+      normalizedSelectedBooks,
+      setSelectedBooks,
+      matchupSearch,
+      setMatchupSearch,
+      minEdge,
+      setMinEdge,
+      filteredMatchups,
+      gradingHistory,
+      players,
+      effectivePredictionRun,
+      selectedPlayerKey,
+      setSelectedPlayerKey,
+      playerProfileQuery.data,
+      playerProfileState,
+      playerProfileErrorMessage,
+      playerProfileQuery.refetch,
+      secondaryBets,
+    ],
+  )
+
   return (
     <SuiteShell
       headline={effectivePredictionRun?.event_name ?? "No event loaded"}
@@ -413,36 +473,16 @@ function App() {
       <Routes>
         <Route
           path="/"
+          element={<PredictionWorkspacePage {...cockpitWorkspaceProps} />}
+        />
+        <Route
+          path="/cockpit-lab"
           element={
-            <PredictionWorkspacePage
-              liveSnapshot={liveSnapshot}
-              runtimeStatus={runtimeStatus}
-              snapshotNotice={snapshotNotice}
-              snapshotAgeSeconds={liveSnapshotEnvelope?.age_seconds ?? null}
-              predictionTab={predictionTab}
-              onPredictionTabChange={setPredictionTab}
-              availableBooks={availableBooks}
-              selectedBooks={normalizedSelectedBooks}
-              onSelectedBooksChange={setSelectedBooks}
-              matchupSearch={matchupSearch}
-              onMatchupSearchChange={setMatchupSearch}
-              minEdge={minEdge}
-              onMinEdgeChange={setMinEdge}
-              filteredMatchups={filteredMatchups}
-              gradingHistory={gradingHistory}
-              players={players}
-              predictionRun={effectivePredictionRun}
-              selectedPlayerKey={selectedPlayerKey}
-              onPlayerSelect={setSelectedPlayerKey}
-              selectedPlayerProfile={playerProfileQuery.data}
-              playerProfileState={playerProfileState}
-              playerProfileErrorMessage={playerProfileErrorMessage}
-              onPlayerProfileRetry={() => {
-                void playerProfileQuery.refetch()
-              }}
-              richProfilesEnabled={RICH_PLAYER_PROFILES_ENABLED}
-              secondaryBets={secondaryBets}
-            />
+            COCKPIT_LAB_ENABLED ? (
+              <CockpitLabPage cockpitWorkspaceProps={cockpitWorkspaceProps} />
+            ) : (
+              <Navigate to="/" replace />
+            )
           }
         />
         <Route

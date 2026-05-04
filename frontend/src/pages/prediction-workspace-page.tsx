@@ -112,32 +112,7 @@ function ScoreBar({
 }
 
 /* ── Props ────────────────────────────────────── */
-export function PredictionWorkspacePage({
-  liveSnapshot,
-  snapshotNotice,
-  snapshotAgeSeconds,
-  predictionTab,
-  onPredictionTabChange,
-  availableBooks,
-  selectedBooks,
-  onSelectedBooksChange,
-  matchupSearch,
-  onMatchupSearchChange,
-  minEdge,
-  onMinEdgeChange,
-  filteredMatchups,
-  gradingHistory,
-  players,
-  predictionRun,
-  selectedPlayerKey,
-  onPlayerSelect,
-  selectedPlayerProfile,
-  playerProfileState,
-  playerProfileErrorMessage,
-  onPlayerProfileRetry,
-  richProfilesEnabled,
-  secondaryBets,
-}: {
+export type PredictionWorkspacePageProps = {
   liveSnapshot: LiveRefreshSnapshot | null
   runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
   snapshotNotice: string | null
@@ -163,7 +138,34 @@ export function PredictionWorkspacePage({
   onPlayerProfileRetry: () => void
   richProfilesEnabled: boolean
   secondaryBets: FlattenedSecondaryBet[]
-}) {
+}
+
+export function PredictionWorkspacePage({
+  liveSnapshot,
+  snapshotNotice,
+  snapshotAgeSeconds,
+  predictionTab,
+  onPredictionTabChange,
+  availableBooks,
+  selectedBooks,
+  onSelectedBooksChange,
+  matchupSearch,
+  onMatchupSearchChange,
+  minEdge,
+  onMinEdgeChange,
+  filteredMatchups,
+  gradingHistory,
+  players,
+  predictionRun,
+  selectedPlayerKey,
+  onPlayerSelect,
+  selectedPlayerProfile,
+  playerProfileState,
+  playerProfileErrorMessage,
+  onPlayerProfileRetry,
+  richProfilesEnabled,
+  secondaryBets,
+}: PredictionWorkspacePageProps) {
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
   const [pastReplaySection, setPastReplaySection] = useState<"completed" | "live" | "upcoming">(

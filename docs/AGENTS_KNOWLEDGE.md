@@ -320,6 +320,7 @@ Use these fields to separate causes:
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
 - **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses `grid-template-rows: minmax(0, 1fr)` so columns stay within the viewport. Center column: **vertical split panes** (`react-resizable-panels`, `CockpitResizableStack`) between power rankings, top picks, secondary markets, and (live/past only) leaderboard — drag horizontal gutters to resize; each pane scrolls internally. Sizes persist in `localStorage` (`autoSaveId` per layout). Without the `fr` grid row, implicit `auto` rows grow with content and clip the center column.
+- **Cockpit (Lab) — `/cockpit-lab`:** Optional route that renders the same `PredictionWorkspacePage` props as `/` plus a **Research instrumentation** panel (calibration by-market, CLV summary, AB report, shadow MC hints). **Production `/` is unchanged.** Enable for operators by setting **`VITE_COCKPIT_LAB=1`** at Vite build time; when unset, `/cockpit-lab` redirects to `/` and the sidebar link is hidden. Implementation: `frontend/src/pages/cockpit-lab-page.tsx`, `frontend/src/components/cockpit/research-instrumentation-deck.tsx`, `frontend/src/App.tsx`, `frontend/src/components/shell.tsx`.
 
 ---
 
@@ -632,6 +633,8 @@ The React frontend builds to `frontend/dist/` and is served by FastAPI at `/`. O
 cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 ```
 
+**Vite env (baked at build time):** `VITE_RICH_PLAYER_PROFILES` — set to `0` to disable rich player profiles. **`VITE_COCKPIT_LAB=1`** — exposes `/cockpit-lab` and the sidebar “Cockpit (Lab)” link (research instrumentation deck); omit or leave unset so production builds hide the lab surface by default.
+
 ---
 
 ## 12. Quick Reference: Where to Change What
@@ -657,6 +660,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
 | Frontend dashboard (React SPA) | `frontend/src/App.tsx` |
+| Cockpit lab route + research deck | `frontend/src/pages/cockpit-lab-page.tsx`, `frontend/src/components/cockpit/research-instrumentation-deck.tsx` (`VITE_COCKPIT_LAB=1`) |
 | Frontend API client / types | `frontend/src/lib/api.ts`, `frontend/src/lib/types.ts` |
 | Frontend UI components | `frontend/src/components/` |
 | Frontend build config | `frontend/vite.config.ts`, `frontend/tailwind.config.ts` |

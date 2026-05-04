@@ -1,5 +1,6 @@
 export type WorkspaceId =
   | "prediction"
+  | "cockpit-lab"
   | "players"
   | "matchups"
   | "grading"
@@ -235,6 +236,10 @@ export type LiveTournamentSnapshot = {
     failed_candidates?: FailedMatchupCandidate[]
     state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | "team_event" | "eligibility_failed" | string
     errors?: string[]
+    /** Append-only shadow Monte Carlo rows written for this snapshot tick (when flags enabled). */
+    shadow_mc_rows_written?: number
+    market_rows_written?: number
+    market_rows_write_error?: string
   }
 }
 
@@ -775,4 +780,75 @@ export type StandalonePlayerProfile = {
   has_skill_data: boolean
   has_ranking_data: boolean
   has_approach_data: boolean
+}
+
+/** `GET /api/calibration/by-market` */
+export type CalibrationByMarketBucket = {
+  probability_bucket: string
+  predicted_avg: number | null
+  actual_hit_rate: number | null
+  sample_size: number
+  correction_factor: number | null
+  updated_at?: string | null
+}
+
+export type CalibrationByMarketResponse = {
+  bet_types: string[]
+  curves: Record<string, CalibrationByMarketBucket[]>
+  min_sample_for_correction?: number
+}
+
+/** `GET /api/clv/summary` */
+export type ClvSummarySegment = {
+  market_book: string
+  n_bets: number
+  avg_clv_pct: number | null
+  significant: boolean
+}
+
+export type ClvSummaryResponse = {
+  overall: { n_bets: number; avg_clv_pct: number | null; significant: boolean }
+  by_book: ClvSummarySegment[]
+  min_bets_for_significance?: number
+}
+
+/** `GET /api/research/ab-report` */
+export type ResearchAbReportPairedKey = {
+  market_family: string
+  market_type: string
+  player_key: string
+  opponent_key: string
+  book: string
+}
+
+export type ResearchAbReportPairedSample = {
+  key: ResearchAbReportPairedKey
+  v5_model_prob: number | null
+  legacy_model_prob: number | null
+  v5_ev: number | null
+  legacy_ev: number | null
+}
+
+export type ResearchAbReportResponse = {
+  ok: boolean
+  error?: string
+  event_id?: string
+  row_limit?: number
+  counts?: {
+    raw_rows?: number
+    v5_keys?: number
+    legacy_keys?: number
+    paired_keys?: number
+    v5_only_keys?: number
+    legacy_only_keys?: number
+  }
+  paired_metrics?: {
+    mean_model_prob_delta_v5_minus_legacy?: number | null
+    mean_ev_delta_v5_minus_legacy?: number | null
+    n_prob_pairs?: number
+    n_ev_pairs?: number
+  }
+  paired_samples?: ResearchAbReportPairedSample[]
+  truncated_paired_samples?: boolean
+  artifact_paths?: { json?: string; markdown?: string }
 }

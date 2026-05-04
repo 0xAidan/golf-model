@@ -1,5 +1,7 @@
 import type {
+  CalibrationByMarketResponse,
   ChampionChallengerSummary,
+  ClvSummaryResponse,
   DashboardState,
   EventSummary,
   GradingHistoryResponse,
@@ -12,6 +14,7 @@ import type {
   PlayerProfile,
   PredictionRunRequest,
   PredictionRunResponse,
+  ResearchAbReportResponse,
   ResearchProposal,
   StandalonePlayerProfile,
   TrackRecordResponse,
@@ -134,4 +137,13 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload ?? {}),
     }),
+  getCalibrationByMarket: () => request<CalibrationByMarketResponse>("/api/calibration/by-market"),
+  getClvSummary: () => request<ClvSummaryResponse>("/api/clv/summary"),
+  getResearchAbReport: (eventId: string, options?: { persist?: boolean }) => {
+    const params = new URLSearchParams({
+      event_id: eventId,
+      persist: options?.persist === false ? "false" : "true",
+    })
+    return request<ResearchAbReportResponse>(`/api/research/ab-report?${params.toString()}`)
+  },
 }
