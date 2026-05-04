@@ -169,7 +169,7 @@ def _store_displayed_picks_for_grading(
             pick_rows.append({
                 "tournament_id": tournament_id,
                 "model_variant": model_variant,
-                "source": "ui_display",
+                "source": "cockpit",
                 "bet_type": str(bet_type),
                 "player_key": player_key,
                 "player_display": bet.get("player_display") or display_name(player_key),
@@ -204,7 +204,7 @@ def _store_displayed_picks_for_grading(
         pick_rows.append({
             "tournament_id": tournament_id,
             "model_variant": model_variant,
-            "source": "ui_display",
+            "source": "cockpit",
             "bet_type": "matchup",
             "player_key": pick_key,
             "player_display": bet.get("pick") or display_name(pick_key),

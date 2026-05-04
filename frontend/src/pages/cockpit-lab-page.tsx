@@ -28,9 +28,11 @@ export function CockpitLabPage({ cockpitWorkspaceProps }: { cockpitWorkspaceProp
             }}
             data-testid="cockpit-lab-banner"
           >
-            <strong>Cockpit (Lab)</strong> — non-streak, read-only research view. Uses the same live snapshot
-            subscription as production <strong>/</strong> and does not change staking, grading, or the main card
-            pipeline. Production operators should keep using <Link to="/">Cockpit</Link> for the primary surface.
+            <strong>Cockpit (Lab)</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
+            <strong>lab_upcoming_tournament</strong> when the server has{" "}
+            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on. Production{" "}
+            <Link to="/">Cockpit</Link> and <Link to="/matchups">Picks</Link> stay on the main snapshot only.
+            Lab-only picks logging: <Link to="/lab/picks">Lab picks</Link>.
           </div>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>

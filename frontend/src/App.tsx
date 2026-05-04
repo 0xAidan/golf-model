@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Route, Routes, Navigate } from "react-router-dom"
+import { Route, Routes, Navigate, useLocation } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
 
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
@@ -18,9 +18,11 @@ import {
   NON_BOOK_SOURCES,
   normalizeSportsbook,
 } from "@/lib/prediction-board"
+import { mergeLabSnapshotSections } from "@/lib/lab-snapshot"
 import { useLocalStorageState } from "@/lib/storage"
 import type { LiveRefreshSnapshot, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
 import { CockpitLabPage } from "@/pages/cockpit-lab-page"
+import { LabPicksPage } from "@/pages/lab-picks-page"
 import { LegacyRouteGate } from "@/pages/legacy-route-gate"
 import { PicksPage } from "@/pages/picks-page"
 import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
@@ -104,8 +106,8 @@ function App() {
     refetchInterval: 30_000,
   })
   const gradingHistoryQuery = useQuery({
-    queryKey: ["grading-history"],
-    queryFn: api.getGradingHistory,
+    queryKey: ["grading-history", "cockpit"],
+    queryFn: () => api.getGradingHistory({ pickSource: "cockpit" }),
   })
   const liveRefreshStatusQuery = useQuery({
     queryKey: ["live-refresh-status"],
@@ -123,6 +125,10 @@ function App() {
 
   const liveSnapshotEnvelope = liveSnapshotQuery.data
   const liveSnapshot: LiveRefreshSnapshot | null = liveSnapshotEnvelope?.snapshot ?? null
+  const location = useLocation()
+  const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(liveSnapshot), [liveSnapshot])
+  const isCockpitLabRoute = location.pathname.startsWith("/cockpit-lab")
+  const isLabPicksRoute = location.pathname.startsWith("/lab/picks")
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
   const [uiAlert, setUiAlert] = useState<string | null>(null)
 
@@ -179,12 +185,20 @@ function App() {
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
   const availableBooks = useMemo(() => collectAvailableBooks(visiblePredictionRun), [visiblePredictionRun])
-  const profileSection =
+  const prodProfileSection =
     predictionTab === "upcoming"
       ? liveSnapshot?.upcoming_tournament
       : predictionTab === "live"
           ? liveSnapshot?.live_tournament
           : null
+  const profileSection =
+    (isCockpitLabRoute || isLabPicksRoute) && labSnapshotMerged
+      ? predictionTab === "upcoming"
+        ? labSnapshotMerged.upcoming_tournament
+        : predictionTab === "live"
+            ? labSnapshotMerged.live_tournament
+            : null
+      : prodProfileSection
   const profileTournamentId = profileSection?.tournament_id ?? visiblePredictionRun?.tournament_id
   const profileCourseNum = profileSection?.course_num ?? visiblePredictionRun?.course_num
   const hasProfileTournamentContext = profileTournamentId !== null && profileTournamentId !== undefined
@@ -325,6 +339,97 @@ function App() {
     })
   }, [predictionTab, selectedBookSet, visiblePredictionRun])
 
+  const labWorkspaceHydrated = useMemo(() => {
+    if (predictionTab === "past") return null
+    if (!labSnapshotMerged) return null
+    return buildHydratedPredictionRun(labSnapshotMerged, predictionTab)
+  }, [labSnapshotMerged, predictionTab])
+
+  const labVisiblePredictionRun = predictionTab === "past" ? null : labWorkspaceHydrated
+
+  const labFilteredMatchups = useMemo(() => {
+    const sourceMatchups =
+      labVisiblePredictionRun?.matchup_bets_all_books ??
+      labVisiblePredictionRun?.matchup_bets ??
+      []
+    return sourceMatchups.filter((matchup) => {
+      const matchupBook = normalizeSportsbook(matchup.book)
+      if (NON_BOOK_SOURCES.has(matchupBook)) return false
+      const passesBook = selectedBookSet.size === 0 || selectedBookSet.has(matchupBook)
+      const passesSearch = matchupSearch
+        ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
+        : true
+      return passesBook && passesSearch && matchup.ev >= minEdge
+    })
+  }, [
+    labVisiblePredictionRun?.matchup_bets_all_books,
+    labVisiblePredictionRun?.matchup_bets,
+    matchupSearch,
+    minEdge,
+    selectedBookSet,
+  ])
+
+  const labMatchupsEmptyMessage = useMemo(() => {
+    if (predictionTab === "past")
+      return "Use the cockpit home to review past-event matchup replay."
+    if (predictionTab === "live" && !isLiveActive)
+      return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
+    if (!labSnapshotMerged) {
+      return "Lab snapshot lane is off or still recomputing. Enable live_refresh.lab_profile_enabled in autoresearch settings on the server."
+    }
+    const diagnostics =
+      predictionTab === "upcoming"
+        ? labSnapshotMerged.upcoming_tournament?.diagnostics
+        : labSnapshotMerged.live_tournament?.diagnostics
+    return getMatchupStateMessage({
+      state: diagnostics?.state,
+      reasonCodes: diagnostics?.reason_codes,
+      hasFilters: normalizedSelectedBooks.length > 0,
+    })
+  }, [isLiveActive, labSnapshotMerged, normalizedSelectedBooks, predictionTab])
+
+  const labSecondaryBets = useMemo(() => {
+    if (predictionTab === "past") return []
+    return flattenSecondaryBets(labVisiblePredictionRun).filter((bet) => {
+      const betBook = normalizeSportsbook(bet.book)
+      if (betBook && NON_BOOK_SOURCES.has(betBook)) return false
+      if (selectedBookSet.size === 0) return true
+      return betBook ? selectedBookSet.has(betBook) : false
+    })
+  }, [predictionTab, selectedBookSet, labVisiblePredictionRun])
+
+  const labPlayers = predictionTab === "past" ? [] : (labWorkspaceHydrated?.composite_results ?? [])
+
+  const labPicksSection: "lab_live" | "lab_upcoming" | null =
+    predictionTab === "upcoming" ? "lab_upcoming" : predictionTab === "live" ? "lab_live" : null
+  const labPicksEventId =
+    labPicksSection === "lab_upcoming"
+      ? String(liveSnapshot?.lab_upcoming_tournament?.source_event_id ?? "").trim()
+      : labPicksSection === "lab_live"
+        ? String(liveSnapshot?.lab_live_tournament?.source_event_id ?? "").trim()
+        : ""
+
+  const labPicksMarketRowsQuery = useQuery({
+    queryKey: ["live-refresh-past-market-rows", labPicksEventId, labPicksSection, "lab-route"],
+    queryFn: () =>
+      api.getLiveRefreshPastMarketRows(labPicksEventId, {
+        section: labPicksSection ?? "lab_live",
+        limit: 5000,
+      }),
+    enabled: Boolean(isLabPicksRoute && labPicksSection && labPicksEventId),
+    staleTime: 30_000,
+  })
+  const labPicksMarketRows = labPicksMarketRowsQuery.data?.ok ? (labPicksMarketRowsQuery.data.rows ?? []) : []
+  const labPicksMarketRowsError =
+    labPicksMarketRowsQuery.error instanceof Error ? labPicksMarketRowsQuery.error.message : undefined
+
+  const labTournamentIdForPicks =
+    predictionTab === "upcoming"
+      ? liveSnapshot?.lab_upcoming_tournament?.tournament_id
+      : predictionTab === "live"
+        ? liveSnapshot?.lab_live_tournament?.tournament_id
+        : undefined
+
   const picksSection: "live" | "upcoming" | null =
     predictionTab === "upcoming" ? "upcoming" : predictionTab === "live" ? "live" : null
   const picksEventId =
@@ -417,9 +522,72 @@ function App() {
     ],
   )
 
+  const labCockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
+    () => ({
+      liveSnapshot: labSnapshotMerged,
+      runtimeStatus,
+      snapshotNotice,
+      snapshotAgeSeconds: liveSnapshotEnvelope?.age_seconds ?? null,
+      predictionTab,
+      onPredictionTabChange: setPredictionTab,
+      availableBooks: collectAvailableBooks(labVisiblePredictionRun),
+      selectedBooks: normalizedSelectedBooks,
+      onSelectedBooksChange: setSelectedBooks,
+      matchupSearch,
+      onMatchupSearchChange: setMatchupSearch,
+      minEdge,
+      onMinEdgeChange: setMinEdge,
+      filteredMatchups: labFilteredMatchups,
+      gradingHistory,
+      players: labPlayers,
+      predictionRun: labWorkspaceHydrated,
+      selectedPlayerKey,
+      onPlayerSelect: setSelectedPlayerKey,
+      selectedPlayerProfile: playerProfileQuery.data,
+      playerProfileState,
+      playerProfileErrorMessage,
+      onPlayerProfileRetry: () => {
+        void playerProfileQuery.refetch()
+      },
+      richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
+      secondaryBets: labSecondaryBets,
+    }),
+    [
+      labSnapshotMerged,
+      runtimeStatus,
+      snapshotNotice,
+      liveSnapshotEnvelope?.age_seconds,
+      predictionTab,
+      setPredictionTab,
+      labVisiblePredictionRun,
+      normalizedSelectedBooks,
+      setSelectedBooks,
+      matchupSearch,
+      setMatchupSearch,
+      minEdge,
+      setMinEdge,
+      labFilteredMatchups,
+      gradingHistory,
+      labPlayers,
+      labWorkspaceHydrated,
+      selectedPlayerKey,
+      setSelectedPlayerKey,
+      playerProfileQuery.data,
+      playerProfileState,
+      playerProfileErrorMessage,
+      playerProfileQuery.refetch,
+      labSecondaryBets,
+    ],
+  )
+
+  const shellEventName =
+    (isCockpitLabRoute || isLabPicksRoute) && labWorkspaceHydrated?.event_name
+      ? labWorkspaceHydrated.event_name
+      : effectivePredictionRun?.event_name ?? "No event loaded"
+
   return (
     <SuiteShell
-      headline={effectivePredictionRun?.event_name ?? "No event loaded"}
+      headline={shellEventName}
       modeSwitcher={
         <CockpitModeSwitch
           value={predictionTab}
@@ -480,7 +648,33 @@ function App() {
           path="/cockpit-lab"
           element={
             COCKPIT_LAB_ENABLED ? (
-              <CockpitLabPage cockpitWorkspaceProps={cockpitWorkspaceProps} />
+              <CockpitLabPage cockpitWorkspaceProps={labCockpitWorkspaceProps} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
+          path="/lab/picks"
+          element={
+            COCKPIT_LAB_ENABLED ? (
+              <LabPicksPage
+                matchups={labFilteredMatchups}
+                matchupsEmptyMessage={labMatchupsEmptyMessage}
+                matchupDiagnostics={
+                  predictionTab === "upcoming"
+                    ? liveSnapshot?.lab_upcoming_tournament?.diagnostics
+                    : liveSnapshot?.lab_live_tournament?.diagnostics
+                }
+                minEdgePct={Math.round(minEdge * 100)}
+                secondaryBets={labSecondaryBets}
+                onPlayerSelect={setSelectedPlayerKey}
+                marketRows={labPicksMarketRows}
+                marketRowsLoading={labPicksMarketRowsQuery.isLoading || labPicksMarketRowsQuery.isFetching}
+                marketRowsError={labPicksMarketRowsError}
+                tournamentId={labTournamentIdForPicks}
+                predictionRun={labWorkspaceHydrated}
+              />
             ) : (
               <Navigate to="/" replace />
             )
@@ -523,7 +717,7 @@ function App() {
           element={
             <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
               <Suspense fallback={<RouteFallback />}>
-                <GradingPage gradingHistory={gradingHistory} />
+                <GradingPage />
               </Suspense>
             </div>
           }

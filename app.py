@@ -547,11 +547,27 @@ async def get_events_schedule(tour: str = "pga", upcoming_only: bool = True):
 
 
 @app.get("/api/grading/history")
-async def get_grading_history(limit: int = 20):
+async def get_grading_history(
+    limit: int = 20,
+    pick_source: str | None = Query(
+        default=None,
+        description="Filter graded picks: cockpit (includes legacy ui_display), lab, or all",
+    ),
+):
     """Return durable grading history from stored tournaments, results, and pick outcomes."""
+    src = (pick_source or "all").strip().lower()
+    pick_join_filter = ""
+    pick_where = ""
+    if src == "cockpit":
+        pick_join_filter = " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
+        pick_where = " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
+    elif src == "lab":
+        pick_join_filter = " AND p.source IN ('lab_sandbox', 'lab_sandbox_candidate') "
+        pick_where = " AND p.source IN ('lab_sandbox', 'lab_sandbox_candidate') "
+
     conn = get_conn()
     rows = conn.execute(
-        """
+        f"""
         SELECT
             t.id,
             t.name,
@@ -566,7 +582,7 @@ async def get_grading_history(limit: int = 20):
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
         JOIN results r ON r.tournament_id = t.id
-        LEFT JOIN picks p ON p.tournament_id = t.id
+        LEFT JOIN picks p ON p.tournament_id = t.id {pick_join_filter}
         LEFT JOIN pick_outcomes po ON po.pick_id = p.id
         GROUP BY t.id, t.name, t.course, t.year, t.event_id
         ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
@@ -577,10 +593,11 @@ async def get_grading_history(limit: int = 20):
     tournaments = []
     for row in rows:
         picks = conn.execute(
-            """
+            f"""
             SELECT
                 p.id,
                 p.model_variant,
+                p.source,
                 p.bet_type,
                 p.player_display,
                 p.opponent_display,
@@ -595,7 +612,7 @@ async def get_grading_history(limit: int = 20):
                 po.entered_at AS graded_at
             FROM picks p
             JOIN pick_outcomes po ON po.pick_id = p.id
-            WHERE p.tournament_id = ?
+            WHERE p.tournament_id = ? {pick_where}
             ORDER BY po.entered_at, p.id
             """,
             (row["id"],),
@@ -621,6 +638,30 @@ async def get_grading_history(limit: int = 20):
         })
     conn.close()
     return {"tournaments": tournaments}
+
+
+@app.post("/api/lab/log-displayed-picks")
+async def post_lab_log_displayed_picks(request: Request):
+    """Persist displayed lab-sandbox picks for grading (``source=lab_sandbox`` lane)."""
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "Body must be a JSON object"}, status_code=400)
+    try:
+        from src.lab_displayed_picks import persist_lab_logged_picks
+
+        n = persist_lab_logged_picks(body)
+        return {"ok": True, "rows_written": n}
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    except Exception as exc:
+        _logger.warning("Lab log-displayed-picks failed: %s", exc)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
 
 @app.get("/api/track-record")
@@ -1957,12 +1998,12 @@ async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=2
     return {"events": events}
 
 
-_LIVE_REFRESH_REPLAY_SECTIONS = {"live", "upcoming"}
+_LIVE_REFRESH_REPLAY_SECTIONS = {"live", "upcoming", "lab_live", "lab_upcoming"}
 
 
 def _invalid_replay_section_response() -> JSONResponse:
     return JSONResponse(
-        {"ok": False, "error": "section must be one of: live, upcoming"},
+        {"ok": False, "error": "section must be one of: live, upcoming, lab_live, lab_upcoming"},
         status_code=400,
     )
 

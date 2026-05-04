@@ -24,6 +24,8 @@ def default_live_refresh_settings() -> dict:
         "enabled": True,
         "tour": "pga",
         "autostart": True,
+        "lab_profile_enabled": False,
+        "lab_profile_name": "lab_sandbox",
         "mode_override": None,
         "off_window": {
             "ingest_seconds": 1800,
@@ -51,6 +53,11 @@ def normalize_live_refresh_settings(raw: dict | None) -> dict:
         "enabled": bool(payload.get("enabled", defaults["enabled"])),
         "tour": str(payload.get("tour", defaults["tour"]) or "pga").strip().lower()[:20] or "pga",
         "autostart": bool(payload.get("autostart", defaults["autostart"])),
+        "lab_profile_enabled": bool(payload.get("lab_profile_enabled", defaults["lab_profile_enabled"])),
+        "lab_profile_name": str(
+            payload.get("lab_profile_name", defaults["lab_profile_name"]) or defaults["lab_profile_name"]
+        ).strip()[:80]
+        or defaults["lab_profile_name"],
         "mode_override": None,
     }
 

@@ -54,7 +54,17 @@ export const api = {
     request<ChampionChallengerSummary>("/api/champion-challenger/summary"),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
   getLatestCompletedEvent: () => request<EventSummary>("/api/events/latest-completed"),
-  getGradingHistory: () => request<GradingHistoryResponse>("/api/grading/history"),
+  getGradingHistory: (options?: { limit?: number; pickSource?: "all" | "cockpit" | "lab" }) => {
+    const params = new URLSearchParams()
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.pickSource && options.pickSource !== "all") {
+      params.set("pick_source", options.pickSource)
+    }
+    const qs = params.toString()
+    return request<GradingHistoryResponse>(`/api/grading/history${qs ? `?${qs}` : ""}`)
+  },
   getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) =>
     request<PlayerProfile>(
       `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum === undefined || courseNum === null ? "" : `&course_num=${courseNum}`}`,
@@ -103,7 +113,7 @@ export const api = {
     eventId: string,
     options?: {
       marketFamily?: "matchup" | "placement" | string
-      section?: "live" | "upcoming"
+      section?: "live" | "upcoming" | "lab_live" | "lab_upcoming"
       limit?: number
     },
   ) => {
@@ -121,6 +131,12 @@ export const api = {
     }
     return request<PastMarketRowsResponse>(`/api/live-refresh/past-market-rows?${params.toString()}`)
   },
+  postLabLogDisplayedPicks: (body: Record<string, unknown>) =>
+    request<{ ok: boolean; rows_written?: number; error?: string }>("/api/lab/log-displayed-picks", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }),
   refreshLiveSnapshot: () =>
     request<LiveRefreshSnapshotResponse>("/api/live-refresh/refresh", {
       method: "POST",

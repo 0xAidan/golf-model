@@ -205,7 +205,13 @@ export function PlayersPage({
 }
 
 /* ── Grading page ───────────────────────────── */
-export function GradingPage({ gradingHistory }: { gradingHistory: GradedTournamentSummary[] }) {
+export function GradingPage() {
+  const [pickSource, setPickSource] = useState<"all" | "cockpit" | "lab">("cockpit")
+  const gradingHistoryQuery = useQuery({
+    queryKey: ["grading-history", pickSource],
+    queryFn: () => api.getGradingHistory({ pickSource }),
+  })
+  const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const labels = gradingHistory
@@ -224,6 +230,25 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <PageHeader title="Grading History" description="Tournament-by-tournament performance tracking." />
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>Pick source</span>
+        {(["cockpit", "lab", "all"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`btn ${pickSource === value ? "btn-primary" : "btn-ghost"}`}
+            style={{ fontSize: 11 }}
+            onClick={() => setPickSource(value)}
+            data-testid={`grading-source-${value}`}
+          >
+            {value === "cockpit" ? "Cockpit" : value === "lab" ? "Lab" : "All"}
+          </button>
+        ))}
+        {gradingHistoryQuery.isFetching ? (
+          <span style={{ fontSize: 10, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>Updating…</span>
+        ) : null}
+      </div>
 
       {/* KPI strip */}
       <div className="kpi-grid">
@@ -332,6 +357,7 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
                             <tr>
                               <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
                               <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
+                              <th title="Stored pick source">Source</th>
                               <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
                                 Model Win%
                               </th>
@@ -359,6 +385,9 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
                                   </td>
                                   <td style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
                                     {variant}
+                                  </td>
+                                  <td style={{ fontSize: 10, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
+                                    {pick.source ?? "—"}
                                   </td>
                                   <td className="right num">{modelWin}</td>
                                   <td className="right num">{edge}</td>

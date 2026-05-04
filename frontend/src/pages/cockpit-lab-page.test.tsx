@@ -100,8 +100,8 @@ describe("CockpitLabPage", () => {
   it("renders streak-safety banner and research deck headings", async () => {
     renderLab()
 
-    expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/non-streak/i)
-    expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/read-only research/i)
+    expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/lab_live_tournament/i)
+    expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/lab_profile_enabled/i)
     expect(screen.getByTestId("cockpit-stub")).toBeInTheDocument()
 
     expect(await screen.findByText(/research instrumentation/i)).toBeInTheDocument()
