@@ -18,6 +18,10 @@ export function CockpitWorkspace({
       style={{
         display: "grid",
         gridTemplateColumns: "256px minmax(0,1fr) 300px",
+        /* Single fr row keeps the grid within the flex parent height; implicit auto
+           rows grow with max-content and prevent column scrollbars (center content
+           clipped with no way to reach picks below power rankings). */
+        gridTemplateRows: "minmax(0, 1fr)",
         gap: 4,
         padding: 6,
         flex: 1,

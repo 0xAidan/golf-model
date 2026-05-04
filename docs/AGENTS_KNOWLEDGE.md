@@ -4,7 +4,9 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-04-06. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
+**Last verified:** 2026-05-04. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
+
+**Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update`).
 
 ---
 
@@ -263,7 +265,7 @@ golf-model/
 | Intent | Command | Notes |
 |--------|---------|-------|
 | Full prediction pipeline | `python run_predictions.py` | Primary entry. Auto-detects current DG event, runs full pipeline. Uses GolfModelService. |
-| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups are the default card mode; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
+| Web UI + API | `python app.py` | Local: http://localhost:8000; API docs at /docs. **Production:** https://golf.ancc.blog/ (HTTPS at the domain; app binds :8000 on the server behind the proxy). Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups are the default card mode; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
 | First-time setup | `python setup_wizard.py` | Backfills data, initializes DB. Run once. |
 | Unified launcher | `python start.py` | Interactive menu routing to pipeline, backtester, etc. |
 | CLI analysis | `python analyze.py --tournament "Name" --course "Name" --sync` | Own pipeline by default. Add `--service` to use GolfModelService. `--ai` for AI. `--calibration` for dashboard. |
@@ -308,6 +310,7 @@ Use these fields to separate causes:
 - **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`).
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
+- **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses a single `grid-template-rows: minmax(0, 1fr)` row so the three columns stay within the viewport; each column scrolls independently (`overflow-y: auto`). Without the `fr` row, implicit `auto` grid rows grow with content and clip the center column (power rankings consuming the viewport, top picks unreachable).
 
 ---
 
@@ -551,12 +554,15 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 ### Production Server
 
+- **Public URL (HTTPS):** https://golf.ancc.blog/
 - **Host:** `root@204.168.147.6` (VPS)
 - **Remote path:** `/opt/golf-model`
 - **Branch:** `main`
-- **Deploy command:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --update`
+- **Update server (ship code + rebuild frontend + restart services):** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --update`
 - **First-time setup:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --setup`
 - **Status check:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --status`
+
+Ship changes by merging to `main`, then run `./deploy.sh --update` from a machine with SSH access; the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. **https://golf.ancc.blog/** is the public entry point for the same app; TLS and DNS are configured outside this repo (the VPS still runs `golf-dashboard` on port 8000).
 
 ### What `--update` does
 
