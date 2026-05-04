@@ -802,7 +802,7 @@ export function HistoryTable({
 
   return (
     <div>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflow: "auto" }}>
         <table style={{
           width: "100%", borderCollapse: "collapse",
           fontFamily: T.mono, fontSize: 10,
