@@ -924,7 +924,7 @@ def _run_migrations(conn: sqlite3.Connection):
             """
         )
         conn.commit()
-    except sqlite3.OperationalError:
+    except (sqlite3.OperationalError, sqlite3.IntegrityError):
         # Keep startup resilient if this backfill cannot run on a given DB state.
         # Runtime reads use COALESCE(model_hit, hit), so null model_hit is safe.
         pass
@@ -956,8 +956,9 @@ def _run_migrations(conn: sqlite3.Connection):
     conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
     try:
         conn.execute("UPDATE picks SET market_book = '' WHERE market_book IS NULL")
-    except sqlite3.OperationalError:
+    except (sqlite3.OperationalError, sqlite3.IntegrityError):
         # Older/partial schemas can miss this column before migration settles.
+        # Also tolerate uniqueness collisions on legacy duplicate rows.
         pass
     conn.execute("UPDATE picks SET opponent_key = '' WHERE opponent_key IS NULL")
     conn.execute("UPDATE picks SET opponent_display = '' WHERE opponent_display IS NULL")
