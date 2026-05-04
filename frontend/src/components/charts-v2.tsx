@@ -418,10 +418,8 @@ export function BeeswarmStrip({
 
   function positionDots(
     vals: number[],
-    range: [number, number],
     toXCoord: (v: number) => number,
   ): { x: number; y: number; v: number }[] {
-    const [lo, hi] = range
     const toX = (v: number) => toXCoord(v)
 
     const dots: { x: number; y: number; v: number }[] = []
@@ -486,7 +484,7 @@ export function BeeswarmStrip({
           const cy = TOP_PAD + ci * ROW_H
           const fieldVals = cat.fieldValues ?? syntheticField(120, 0.7, ci * 137 + 42)
           const toXPlot = (v: number) => chartLeft + ((v - range[0]) / (range[1] - range[0])) * CHART_W
-          const dots = positionDots(fieldVals, range, toXPlot)
+          const dots = positionDots(fieldVals, toXPlot)
 
           const pv = cat.playerValue
           const px = pv != null ? toXPlot(pv) : null

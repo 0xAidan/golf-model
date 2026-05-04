@@ -183,12 +183,16 @@ function App() {
       visiblePredictionRun?.tournament_id,
       visiblePredictionRun?.course_num,
     ],
-    queryFn: () =>
-      api.getPlayerProfile(
+    queryFn: () => {
+      if (profileTournamentId === null || profileTournamentId === undefined) {
+        throw new Error("Missing tournament context for player profile")
+      }
+      return api.getPlayerProfile(
         selectedPlayerKey,
-        profileTournamentId as number,
+        profileTournamentId,
         visiblePredictionRun?.course_num,
-      ),
+      )
+    },
     enabled:
       RICH_PLAYER_PROFILES_ENABLED &&
       Boolean(selectedPlayerKey && hasProfileTournamentContext),
@@ -217,7 +221,6 @@ function App() {
     }
     return "unavailable"
   }, [
-    RICH_PLAYER_PROFILES_ENABLED,
     hasProfileTournamentContext,
     playerProfileQuery.data,
     playerProfileQuery.isError,

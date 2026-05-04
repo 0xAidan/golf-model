@@ -736,8 +736,7 @@ export function PicksPage({
       next.delete("tab")
       setSearchParams(next, { replace: true })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+  }, [searchParams, setSearchParams, tab])
 
   const description =
     tab === "matchups"

@@ -40,7 +40,7 @@ export function DiagnosticsPage({
     diagnostics:
       predictionTab === "past"
         ? undefined
-        : (activeSection?.diagnostics as Parameters<typeof buildDiagnosticsModel>[0]["diagnostics"]),
+        : activeSection?.diagnostics,
     dashboardAiAvailable: dashboard?.ai_status?.available ?? false,
     strategySource: dashboard?.baseline_provenance?.strategy_source,
     strategyName: dashboard?.baseline_provenance?.live_strategy_name,
