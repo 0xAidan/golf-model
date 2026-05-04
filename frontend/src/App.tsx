@@ -382,7 +382,7 @@ function App() {
       return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
     if (!labSnapshotMerged) {
       if (liveSnapshot) {
-        return "Lab parallel lane is off — showing production snapshot boards. Enable live_refresh.lab_profile_enabled (and wait for the next recompute) for true lab model rows."
+        return "Lab parallel lane is off — showing production snapshot boards. Set LIVE_REFRESH_LAB_PROFILE_ENABLED=1 in .env (or enable live_refresh.lab_profile_enabled in settings), restart the live-refresh worker, and wait for the next recompute."
       }
       return "No live snapshot yet. Start the live-refresh worker or use Refresh, then try again."
     }

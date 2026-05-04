@@ -45,6 +45,28 @@ fi
 
 python -c "from src.db import init_db; init_db()"
 
+# Cockpit (Lab): ensure parallel lab lane is on for the live-refresh worker + API unless
+# operators already set LIVE_REFRESH_LAB_PROFILE_ENABLED in .env (set to 0 on tiny VPS to save CPU).
+venv/bin/python - <<'PY'
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+env_path = Path(".env")
+prior = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+if re.search(r"^\s*LIVE_REFRESH_LAB_PROFILE_ENABLED\s*=", prior, flags=re.MULTILINE):
+    print("[deploy] LIVE_REFRESH_LAB_PROFILE_ENABLED already present in .env; leaving unchanged.")
+else:
+    block = (
+        "\n# Cockpit (Lab): parallel snapshot lane (profiles.yaml lab_sandbox). "
+        "Set to 0/false on very small hosts to skip extra model passes.\n"
+        "LIVE_REFRESH_LAB_PROFILE_ENABLED=1\n"
+    )
+    env_path.write_text(prior + block, encoding="utf-8")
+    print("[deploy] appended LIVE_REFRESH_LAB_PROFILE_ENABLED=1 to .env")
+PY
+
 systemctl restart golf-dashboard golf-agent golf-live-refresh
 
 echo "Update complete."

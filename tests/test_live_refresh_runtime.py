@@ -21,6 +21,25 @@ def test_live_refresh_policy_detects_off_window():
     assert detect_window_mode(now=dt) == "off_window"
 
 
+def test_live_refresh_lab_profile_defaults_on():
+    from src.live_refresh_policy import default_live_refresh_settings, normalize_live_refresh_settings
+
+    assert default_live_refresh_settings()["lab_profile_enabled"] is True
+    assert normalize_live_refresh_settings({})["lab_profile_enabled"] is True
+
+
+def test_live_refresh_lab_profile_env_overrides_persisted(monkeypatch):
+    from src.live_refresh_policy import normalize_live_refresh_settings
+
+    monkeypatch.setenv("LIVE_REFRESH_LAB_PROFILE_ENABLED", "0")
+    assert normalize_live_refresh_settings({"lab_profile_enabled": True})["lab_profile_enabled"] is False
+
+    monkeypatch.setenv("LIVE_REFRESH_LAB_PROFILE_ENABLED", "1")
+    assert normalize_live_refresh_settings({"lab_profile_enabled": False})["lab_profile_enabled"] is True
+
+    monkeypatch.delenv("LIVE_REFRESH_LAB_PROFILE_ENABLED", raising=False)
+
+
 def test_live_refresh_status_endpoint(monkeypatch):
     import app as app_module
 

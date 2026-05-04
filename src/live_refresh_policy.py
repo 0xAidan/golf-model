@@ -4,6 +4,7 @@ Tournament-aware cadence policy for always-on dashboard refresh.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,12 +20,23 @@ class LiveRefreshCadence:
     recompute_seconds: int
 
 
+def _env_lab_profile_enabled() -> bool | None:
+    """When set, forces lab lane on/off regardless of persisted JSON. None = use payload/defaults."""
+    raw = os.environ.get("LIVE_REFRESH_LAB_PROFILE_ENABLED")
+    if raw is None:
+        return None
+    v = str(raw).strip().lower()
+    if v in ("", "0", "false", "off", "no", "n"):
+        return False
+    return True
+
+
 def default_live_refresh_settings() -> dict:
     return {
         "enabled": True,
         "tour": "pga",
         "autostart": True,
-        "lab_profile_enabled": False,
+        "lab_profile_enabled": True,
         "lab_profile_name": "lab_sandbox",
         "mode_override": None,
         "off_window": {
@@ -49,11 +61,16 @@ def default_live_refresh_settings() -> dict:
 def normalize_live_refresh_settings(raw: dict | None) -> dict:
     defaults = default_live_refresh_settings()
     payload = raw if isinstance(raw, dict) else {}
+    env_lab = _env_lab_profile_enabled()
+    if env_lab is not None:
+        lab_enabled = env_lab
+    else:
+        lab_enabled = bool(payload.get("lab_profile_enabled", defaults["lab_profile_enabled"]))
     out = {
         "enabled": bool(payload.get("enabled", defaults["enabled"])),
         "tour": str(payload.get("tour", defaults["tour"]) or "pga").strip().lower()[:20] or "pga",
         "autostart": bool(payload.get("autostart", defaults["autostart"])),
-        "lab_profile_enabled": bool(payload.get("lab_profile_enabled", defaults["lab_profile_enabled"])),
+        "lab_profile_enabled": lab_enabled,
         "lab_profile_name": str(
             payload.get("lab_profile_name", defaults["lab_profile_name"]) or defaults["lab_profile_name"]
         ).strip()[:80]
