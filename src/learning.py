@@ -696,7 +696,7 @@ def post_tournament_learn(tournament_id: int,
             closing = fetch_closing_odds()
             conn = db.get_conn()
             picks = conn.execute(
-                "SELECT player_key, bet_type, market_odds FROM picks WHERE tournament_id = ?",
+                "SELECT player_key, bet_type, market_odds, market_book FROM picks WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
             conn.close()
@@ -736,7 +736,15 @@ def post_tournament_learn(tournament_id: int,
                             outcome = 1 if res["finish_position"] <= 10 else 0
                         elif bt == "top20":
                             outcome = 1 if res["finish_position"] <= 20 else 0
-                    record_clv(tournament_id, pk, bt, odds_taken, closing_dec, outcome)
+                    record_clv(
+                        tournament_id,
+                        pk,
+                        bt,
+                        odds_taken,
+                        closing_dec,
+                        outcome,
+                        market_book=pick["market_book"],
+                    )
                     clv_count += 1
             summary["steps"]["clv_recorded"] = clv_count
     except Exception as e:

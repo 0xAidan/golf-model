@@ -151,7 +151,7 @@ def test_find_value_bets_returns_all_qualifying_books_for_same_player(monkeypatc
         "src.value.model_score_to_prob",
         lambda score, all_scores, bet_type, field_strength="average": 0.6 if score > 70 else 0.08,
     )
-    monkeypatch.setattr("src.value.get_calibration_correction", lambda prob: 1.0)
+    monkeypatch.setattr("src.value.get_calibration_correction", lambda prob, bet_type=None: 1.0)
 
     composite_results = [
         {

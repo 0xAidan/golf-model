@@ -557,6 +557,7 @@ def _find_matchup_value_bets_core(
                 "momentum_aligned": momentum_aligned,
                 "conviction": conviction,
                 "model_variant": model_variant,
+                "uncertainty": v5_uncertainty,
                 "v5_uncertainty": v5_uncertainty,
             })
 
