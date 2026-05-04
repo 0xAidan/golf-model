@@ -79,13 +79,8 @@ export function buildMatchupKey(matchup: MatchupBet) {
   ].join("-")
 }
 
-/**
- * Map a backend market key (e.g. "top5", "outright", "make_cut") to a
- * human-readable label for the UI. Falls through to the raw key when unknown.
- */
 export function secondaryBadgeLabel(market: string) {
   const normalized = market.toLowerCase().trim()
-  // Exact-match well-known market keys produced by the value pipeline.
   const exact: Record<string, string> = {
     outright: "Outright",
     win: "Outright",
@@ -106,15 +101,14 @@ export function secondaryBadgeLabel(market: string) {
     miss_cut: "Miss cut",
     misscut: "Miss cut",
   }
-  if (exact[normalized]) return exact[normalized]
-  // Pattern fallbacks for variants like "top_5_finish" or "placement_top10".
+  const exactMatch = exact[normalized]
+  if (exactMatch) return exactMatch
   const topMatch = normalized.match(/top[_\s-]?(\d+)/)
   if (topMatch) return `Top ${topMatch[1]}`
   if (normalized.includes("miss") && normalized.includes("cut")) return "Miss cut"
   if (normalized.includes("make") && normalized.includes("cut")) return "Make cut"
   if (normalized.includes("first") && normalized.includes("round")) return "First-round leader"
   if (normalized.includes("outright") || normalized === "win" || normalized === "winner") return "Outright"
-  // Last-resort: title-case the raw key so we never lose information silently.
   return market.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
