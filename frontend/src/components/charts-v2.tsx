@@ -61,7 +61,6 @@ function ChartEmpty({ height = 120, msg = "No data" }: { height?: number; msg?: 
 }
 
 function signed(v: number, d = 3) { return `${v > 0 ? "+" : ""}${v.toFixed(d)}` }
-function toneCol(v: number) { return v >= 0 ? T.green : T.red }
 
 /* ══════════════════════════════════════════════════════════════════════
    1. PENTAGON RADAR — 5-axis skill profile
@@ -72,6 +71,39 @@ export type RadarSkills = {
   sg_arg?:  number | null
   sg_putt?: number | null
   sg_total?: number | null
+}
+
+/** ECharts SVG/canvas often ignores `var(--token)` — use concrete RGBA for radar chrome. */
+const RADAR_GRID_LINE = "rgba(139, 156, 169, 0.38)"
+const RADAR_GRID_AXIS = "rgba(139, 156, 169, 0.32)"
+const RADAR_SPLIT_BAND_A = "rgba(107, 122, 132, 0.07)"
+const RADAR_SPLIT_BAND_B = "rgba(107, 122, 132, 0.04)"
+const RADAR_TOUR_LINE = "rgba(155, 170, 180, 0.9)"
+
+const SKILL_PROFILE_HEAT_ABS = 2.5
+
+/** Blend component SG into one heat unit (same ±scale as rolling bars). */
+function skillProfileHeatUnit(skills: RadarSkills): number {
+  const components = [skills.sg_ott, skills.sg_app, skills.sg_arg, skills.sg_putt].filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v),
+  )
+  if (components.length > 0) {
+    const avg = components.reduce((s, v) => s + v, 0) / components.length
+    return Math.min(1, Math.max(0, (avg + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
+  }
+  if (typeof skills.sg_total === "number" && Number.isFinite(skills.sg_total)) {
+    return Math.min(
+      1,
+      Math.max(0, (skills.sg_total + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)),
+    )
+  }
+  return 0.5
+}
+
+function sgHeatColor(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return RADAR_TOUR_LINE
+  const u = Math.min(1, Math.max(0, (v + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
+  return heatSpectrumFromUnit(u)
 }
 
 /**
@@ -104,6 +136,9 @@ export function PentagonRadar({
   const playerVals = axes.map(a => sgToPercentile((skills as Record<string, number | null | undefined>)[a.key], a.maxAbs))
   const avgVals    = axes.map(() => 50) // tour average = 50th percentile on every axis
 
+  const profileHeat = skillProfileHeatUnit(skills)
+  const profileColor = heatSpectrumFromUnit(profileHeat)
+
   return (
     <ReactECharts
       style={{ height }}
@@ -117,22 +152,22 @@ export function PentagonRadar({
           startAngle: 90,
           splitNumber: 4,
           axisName: {
-            color: T.muted,
+            color: RADAR_GRID_LINE,
             fontSize: 10,
             fontFamily: T.mono,
             fontWeight: 600,
             letterSpacing: 1,
           },
           splitLine: {
-            lineStyle: { color: T.border, width: 1 },
+            lineStyle: { color: RADAR_GRID_LINE, width: 1 },
           },
           splitArea: {
             areaStyle: {
-              color: [T.bg1, T.bg2, T.bg1, T.bg2],
+              color: [RADAR_SPLIT_BAND_A, RADAR_SPLIT_BAND_B, RADAR_SPLIT_BAND_A, RADAR_SPLIT_BAND_B],
               opacity: 1,
             },
           },
-          axisLine: { lineStyle: { color: T.border } },
+          axisLine: { lineStyle: { color: RADAR_GRID_AXIS } },
         },
         series: [
           {
@@ -142,27 +177,22 @@ export function PentagonRadar({
               {
                 name: "Tour Average",
                 value: avgVals,
-                lineStyle: { color: T.muted, width: 1.5, type: "dashed" },
-                itemStyle: { color: T.muted },
+                lineStyle: { color: RADAR_TOUR_LINE, width: 1.5, type: "dashed" },
+                itemStyle: { color: RADAR_TOUR_LINE },
                 areaStyle: { color: "transparent" },
                 symbol: "none",
               },
               {
                 name: playerName,
                 value: playerVals,
-                lineStyle: { color: T.green, width: 2 },
-                itemStyle: { color: T.green, borderWidth: 0 },
+                lineStyle: { color: profileColor, width: 2.5 },
+                itemStyle: { color: profileColor, borderWidth: 1, borderColor: "rgba(8, 10, 11, 0.55)" },
                 areaStyle: {
-                  color: {
-                    type: "radial", x: 0.5, y: 0.5, r: 0.5,
-                    colorStops: [
-                      { offset: 0, color: T.greenDim },
-                      { offset: 1, color: T.greenBg },
-                    ],
-                  },
+                  color: profileColor,
+                  opacity: 0.28,
                 },
                 symbol: "circle",
-                symbolSize: 5,
+                symbolSize: 6,
               },
             ],
           },
@@ -182,11 +212,11 @@ export function PentagonRadar({
             const lines = axes.map((a) => {
               const raw = (skills as Record<string, number | null | undefined>)[a.key]
               const v = raw != null ? raw : null
-              const col = v != null ? toneCol(v) : T.muted
+              const col = sgHeatColor(v)
               const disp = v != null ? signed(v) : "—"
               return `${a.label}: <b style="color:${col}">${disp}</b>`
             })
-            return `<b style="color:${T.green}">${playerName}</b><br/>${lines.join("<br/>")}`
+            return `<b style="color:${profileColor}">${playerName}</b><br/>${lines.join("<br/>")}`
           },
         },
       }}
