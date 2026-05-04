@@ -316,6 +316,14 @@ body {
   border-color: var(--border-hi);
 }
 
+.btn:focus-visible,
+.mode-tab:focus-visible,
+.filter-chip:focus-visible,
+.player-btn:focus-visible {
+  outline: 1px solid var(--green);
+  outline-offset: 1px;
+}
+
 .btn.active,
 .btn[data-active="true"] {
   background: var(--green-bg);

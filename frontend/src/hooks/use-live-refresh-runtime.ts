@@ -71,9 +71,12 @@ export function useLiveRefreshRuntime({
     const run = async () => {
       try {
         await ensureLiveRefreshRuntime({ requestedTour })
-      } catch {
+      } catch (error) {
         if (!isCancelled) {
-          onError("Could not verify live runtime automatically. Use 'Check runtime' and inspect status.")
+          const detail = error instanceof Error ? error.message : "unknown error"
+          onError(
+            `Could not verify live runtime automatically (${detail}). Use 'Check runtime' and inspect status.`,
+          )
         }
       }
     }

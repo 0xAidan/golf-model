@@ -64,7 +64,7 @@ setup_server() {
     log "Setting up server at $DEPLOY_HOST..."
 
     ssh "$DEPLOY_HOST" bash << 'SETUP_EOF'
-        set -e
+        set -euo pipefail
 
         # Install system dependencies
         apt-get update -qq
@@ -84,7 +84,7 @@ SETUP_EOF
     # Clone or pull repo
     log "Deploying code..."
     ssh "$DEPLOY_HOST" bash << CLONE_EOF
-        set -e
+        set -euo pipefail
         cd /opt/golf-model
 
         # Trust the Git host key on first use so non-interactive deploys do not fail.
@@ -119,8 +119,8 @@ SETUP_EOF
         if [ -f "frontend/package.json" ]; then
             cd frontend
             export NODE_OPTIONS=--max-old-space-size=2048
-            npm ci 2>&1 | tail -5
-            npm run build 2>&1 | tail -10
+            npm ci
+            npm run build
             cd /opt/golf-model
         fi
 CLONE_EOF
@@ -136,7 +136,7 @@ CLONE_EOF
     # Install systemd services
     log "Installing systemd services..."
     ssh "$DEPLOY_HOST" bash << 'SYSTEMD_EOF'
-        set -e
+        set -euo pipefail
 
         # Dashboard service
         cat > /etc/systemd/system/golf-dashboard.service << 'SVC'
@@ -284,8 +284,8 @@ update_server() {
         if [ -f "frontend/package.json" ]; then
             cd frontend
             export NODE_OPTIONS=--max-old-space-size=2048
-            npm ci 2>&1 | tail -5
-            npm run build 2>&1 | tail -10
+            npm ci
+            npm run build
             cd "$DEPLOY_PATH"
         fi
 
