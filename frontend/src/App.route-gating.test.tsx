@@ -58,15 +58,14 @@ function renderAppAtRoute(route: string) {
 describe("App legacy route replay gating", () => {
   // /players was intentionally un-gated in commit da76a05 (standalone profile
   // page no longer depends on tournament_id), so it is no longer in the gated
-  // set. /matchups remains gated until the cockpit-home route covers its
+  // set. /matchups remains gated until the cockpit-home route covers the
   // replay-aware variant.
-  it.each([["/matchups", "Legacy matchups route unavailable in replay mode"]])(
-    "shows replay-safe messaging on %s",
-    async (route: string, title: string) => {
-      renderAppAtRoute(route)
+  it.each([
+    ["/matchups", "Legacy matchups route unavailable in replay mode"],
+  ])("shows replay-safe messaging on %s", async (route: string, title: string) => {
+    renderAppAtRoute(route)
 
-      expect(await screen.findByText(title)).toBeInTheDocument()
-      expect(screen.getByRole("link", { name: /return to cockpit home/i })).toBeInTheDocument()
-    },
-  )
+    expect(await screen.findByText(title)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /return to cockpit home/i })).toBeInTheDocument()
+  })
 })

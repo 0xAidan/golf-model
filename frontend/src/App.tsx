@@ -26,10 +26,10 @@ import { PredictionWorkspacePage } from "@/pages/prediction-workspace-page"
 
 // Code-split heavy / rarely-visited routes. The default "/" route
 // (PredictionWorkspacePage) and the primary Picks route stay eager so the
-// cockpit boots without a Suspense flicker. Players, Grading, Track Record,
-// and Champion-Challenger are secondary nav targets — the operator clicks
-// into them, so a single network round-trip on first visit is acceptable and
-// trims ~400-600 kB off the initial bundle.
+// cockpit boots without a Suspense flicker. Players, Grading,
+// Track Record, and Champion-Challenger are all secondary nav targets — the
+// operator clicks into them, so a single network round-trip on first visit
+// is acceptable and trims ~400-600 kB off the initial bundle.
 const PlayersPage = lazy(() =>
   import("@/pages/players-page").then((mod) => ({ default: mod.PlayersPage })),
 )
