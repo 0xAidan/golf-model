@@ -31,6 +31,8 @@ export function SgTrajectoryMeter({
     <div
       className="sg-traj-meter"
       title={TRAJECTORY_HELP}
+      role="img"
+      aria-label={`Rolling strokes-gained trajectory ${label}. ${TRAJECTORY_HELP}`}
       style={{ ["--sg-traj-fill" as string]: color }}
     >
       <div className="sg-traj-track" aria-hidden>
