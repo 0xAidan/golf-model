@@ -268,6 +268,8 @@ export function buildPredictionRunFromSection(
       field_size: source.field_size ?? 0,
       tournament_id: source.tournament_id,
       course_num: source.course_num,
+      model_variant: source.model_variant,
+      ranking_source: source.ranking_source,
       composite_results: [],
       matchup_bets: [],
       value_bets: {},
@@ -288,6 +290,8 @@ export function buildPredictionRunFromSection(
     field_size: source.field_size ?? rankings.length,
     tournament_id: source.tournament_id,
     course_num: source.course_num,
+    model_variant: source.model_variant,
+    ranking_source: source.ranking_source,
     composite_results: rankings.map((row) => ({
       player_key: row.player_key ?? normalizeNameForUi(row.player),
       player_display: row.player,

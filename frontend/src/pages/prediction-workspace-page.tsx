@@ -138,6 +138,8 @@ export type PredictionWorkspacePageProps = {
   onPlayerProfileRetry: () => void
   richProfilesEnabled: boolean
   secondaryBets: FlattenedSecondaryBet[]
+  /** When set, shown under power rankings count (e.g. lab model lane). */
+  powerRankingsSubtitle?: string | null
 }
 
 export function PredictionWorkspacePage({
@@ -165,6 +167,7 @@ export function PredictionWorkspacePage({
   onPlayerProfileRetry,
   richProfilesEnabled,
   secondaryBets,
+  powerRankingsSubtitle,
 }: PredictionWorkspacePageProps) {
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
@@ -800,6 +803,9 @@ export function PredictionWorkspacePage({
                     {predictionTab === "past"
                       ? `${displayPlayers.length} players — last rankings before tee off`
                       : `${displayPlayers.length} players ranked by model`}
+                    {powerRankingsSubtitle ? (
+                      <span style={{ display: "block", marginTop: 4, color: "var(--accent)" }}>{powerRankingsSubtitle}</span>
+                    ) : null}
                   </div>
                 </div>
                 <Link
