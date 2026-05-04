@@ -910,19 +910,24 @@ def _run_migrations(conn: sqlite3.Connection):
             default_clause = f" DEFAULT {default}" if default is not None else ""
             conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
             conn.commit()
-    conn.execute(
-        """
-        UPDATE pick_outcomes
-        SET model_hit = CASE
-            WHEN model_hit IS NOT NULL THEN model_hit
-            WHEN COALESCE((SELECT ev FROM picks WHERE picks.id = pick_outcomes.pick_id), 0) < 0
-                THEN CASE WHEN hit = 1 THEN 0 ELSE hit END
-            ELSE hit
-        END
-        WHERE model_hit IS NULL
-        """
-    )
-    conn.commit()
+    try:
+        conn.execute(
+            """
+            UPDATE pick_outcomes
+            SET model_hit = CASE
+                WHEN model_hit IS NOT NULL THEN model_hit
+                WHEN COALESCE((SELECT ev FROM picks WHERE picks.id = pick_outcomes.pick_id), 0) < 0
+                    THEN CASE WHEN hit = 1 THEN 0 ELSE hit END
+                ELSE hit
+            END
+            WHERE model_hit IS NULL
+            """
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Keep startup resilient if this backfill cannot run on a given DB state.
+        # Runtime reads use COALESCE(model_hit, hit), so null model_hit is safe.
+        pass
 
     # Add year column to tournaments if missing
     try:
@@ -949,7 +954,11 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.commit()
     conn.execute("UPDATE picks SET model_variant = 'baseline' WHERE model_variant IS NULL OR TRIM(model_variant) = ''")
     conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
-    conn.execute("UPDATE picks SET market_book = '' WHERE market_book IS NULL")
+    try:
+        conn.execute("UPDATE picks SET market_book = '' WHERE market_book IS NULL")
+    except sqlite3.OperationalError:
+        # Older/partial schemas can miss this column before migration settles.
+        pass
     conn.execute("UPDATE picks SET opponent_key = '' WHERE opponent_key IS NULL")
     conn.execute("UPDATE picks SET opponent_display = '' WHERE opponent_display IS NULL")
     # Rebuild legacy unique index to include model lane + opponent key.
