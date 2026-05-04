@@ -17,7 +17,7 @@ import {
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { api } from "@/lib/api"
-import type { CompositePlayer } from "@/lib/types"
+import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
 import { computeSgTrajectoryBounds, heatSpectrumFromUnit, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
 
 /* ── Tokens ─────────────────────────────────────────────────────────── */
@@ -331,7 +331,7 @@ function PlayerProfileView({
   activePlayers: CompositePlayer[]
 }) {
 
-  const profileQuery = useQuery({
+  const profileQuery = useQuery<StandalonePlayerProfile, Error>({
     queryKey: ["standalone-profile", playerKey],
     queryFn: () => api.getPlayerStandaloneProfile(playerKey),
     staleTime: 5 * 60_000,
@@ -369,7 +369,7 @@ function PlayerProfileView({
     )
   }
 
-  const roundsOldestToNewest = [...(p.recent_rounds_sample ?? [])].reverse()
+  const roundsOldestToNewest: StandaloneRecentRoundSample[] = [...(p.recent_rounds_sample ?? [])].reverse()
   const roundSeriesByMetric = {
     APP: roundsOldestToNewest
       .map((round) => round.sg_app)
@@ -706,7 +706,7 @@ function PlayerProfileView({
                   </tr>
                 </thead>
                 <tbody>
-                  {p.recent_rounds_sample.slice(0, 24).map((round, idx) => {
+                  {p.recent_rounds_sample.slice(0, 24).map((round: StandaloneRecentRoundSample, idx: number) => {
                     const values = [round.sg_total, round.sg_ott, round.sg_app, round.sg_arg, round.sg_putt, round.sg_t2g]
                     return (
                       <tr key={`${round.event_completed ?? "na"}-${round.round_num ?? idx}-${idx}`} style={{ borderBottom: `1px solid ${VAR.divider}` }}>

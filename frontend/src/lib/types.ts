@@ -687,6 +687,28 @@ export type ResearchProposal = {
   expected_edge?: number
 }
 
+/** One row in ``recent_rounds_sample`` on standalone player profiles (API + round log UI). */
+export type StandaloneRecentRoundSample = {
+  round_num?: number | null
+  event_name?: string | null
+  event_completed?: string | null
+  event_id?: string | null
+  course_name?: string | null
+  tour?: string | null
+  score?: number | null
+  sg_total?: number | null
+  sg_ott?: number | null
+  sg_app?: number | null
+  sg_arg?: number | null
+  sg_putt?: number | null
+  sg_t2g?: number | null
+  driving_dist?: number | null
+  driving_acc?: number | null
+  gir?: number | null
+  scrambling?: number | null
+  fin_text?: string | null
+}
+
 export type StandalonePlayerProfile = {
   player_key: string
   player_display: string
@@ -732,26 +754,7 @@ export type StandalonePlayerProfile = {
     avg_sg_t2g?: number | null
     rounds_played?: number
   }>
-  recent_rounds_sample?: Array<{
-    round_num?: number | null
-    event_name?: string | null
-    event_completed?: string | null
-    event_id?: string | null
-    course_name?: string | null
-    tour?: string | null
-    score?: number | null
-    sg_total?: number | null
-    sg_ott?: number | null
-    sg_app?: number | null
-    sg_arg?: number | null
-    sg_putt?: number | null
-    sg_t2g?: number | null
-    driving_dist?: number | null
-    driving_acc?: number | null
-    gir?: number | null
-    scrambling?: number | null
-    fin_text?: string | null
-  }>
+  recent_rounds_sample?: StandaloneRecentRoundSample[]
   course_summaries?: Array<{
     course_name: string
     rounds_played: number
