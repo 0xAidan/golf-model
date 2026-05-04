@@ -11,7 +11,7 @@
  *  - HistoryTable         — finish chips + inline SG bars
  */
 
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import ReactECharts from "echarts-for-react"
 import { heatSpectrumHexFromUnit } from "@/lib/metric-heat"
 
@@ -61,6 +61,16 @@ function ChartEmpty({ height = 120, msg = "No data" }: { height?: number; msg?: 
 }
 
 function signed(v: number, d = 3) { return `${v > 0 ? "+" : ""}${v.toFixed(d)}` }
+
+function ordinalPct(n: number): string {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m100 >= 11 && m100 <= 13) return `${n}th`
+  if (m10 === 1) return `${n}st`
+  if (m10 === 2) return `${n}nd`
+  if (m10 === 3) return `${n}rd`
+  return `${n}th`
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    1. PENTAGON RADAR — 5-axis skill profile
@@ -142,14 +152,14 @@ export function PentagonRadar({
     { key: "sg_total","label": "Total SG",     maxAbs: 2.8 },
   ] as const
 
-  const legendBandH = 30
-  const svgPx = Math.max(140, height - legendBandH)
+  const legendBandH = 36
+  const svgPx = Math.max(160, height - legendBandH)
 
   const n = axes.length
-  const VB_W = 420
-  const VB_H = 300
+  const VB_W = 460
+  const VB_H = 330
   const cx = VB_W / 2
-  const cy = VB_H / 2 + 6
+  const cy = VB_H / 2 + 4
   const R = 100
   const ringFracs = [0.25, 0.5, 0.75, 1]
   /** First axis at top, then clockwise (ECharts radar default). */
@@ -263,7 +273,8 @@ export function PentagonRadar({
         {axes.map((ax, i) => {
           const p = playerPoints[i]!
           const raw = rawByAxis[i]
-          const labelPt = pt(108, i)
+          const LABEL_R_MULT = 1.26
+          const labelPt = pt(100 * LABEL_R_MULT, i)
           const disp = raw != null && Number.isFinite(raw) ? signed(raw) : "—"
           return (
             <g key={ax.key}>
@@ -282,11 +293,11 @@ export function PentagonRadar({
                 y={labelPt.y}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fill={RADAR_GRID_LINE}
-                fontSize={10}
+                fill={T.muted}
+                fontSize={12}
                 fontWeight={600}
                 fontFamily={T.mono}
-                style={{ letterSpacing: "0.06em" }}
+                style={{ letterSpacing: "0.04em" }}
               >
                 {ax.label}
               </text>
@@ -317,7 +328,7 @@ export function PentagonRadar({
             }}
             aria-hidden
           />
-          <span style={{ fontSize: 9, color: T.muted, letterSpacing: "0.06em" }}>Tour Average</span>
+          <span style={{ fontSize: 11, color: T.muted, letterSpacing: "0.04em" }}>Tour Average</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
@@ -329,7 +340,7 @@ export function PentagonRadar({
             }}
             aria-hidden
           />
-          <span style={{ fontSize: 9, color: fillAverage, fontWeight: 600, letterSpacing: "0.04em" }}>{playerName}</span>
+          <span style={{ fontSize: 11, color: fillAverage, fontWeight: 600, letterSpacing: "0.02em", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName}</span>
         </div>
       </div>
     </div>
@@ -370,19 +381,49 @@ export function BeeswarmStrip({
   categories: BeeswarmCategory[]
   height?: number
 }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [measureW, setMeasureW] = useState(720)
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const update = () => {
+      const w = el.getBoundingClientRect().width
+      setMeasureW(Math.max(460, Math.floor(w)))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   if (!categories.length) return <ChartEmpty height={height} msg="No field data" />
 
-  // Layout constants
-  const W = 680, ROW_H = 44, PADDING_L = 90, PADDING_R = 20, CHART_W = W - PADDING_L - PADDING_R
-  const totalH = categories.length * ROW_H + 32
-  const DOT_R = 4, PLAYER_R = 6
+  const LABEL_COL_W = 96
+  const STAT_COL_W = 78
+  const PAD_R_EDGE = 10
+  const W = Math.max(460, measureW)
+  const CHART_W = Math.max(200, W - LABEL_COL_W - STAT_COL_W - PAD_R_EDGE)
+  const ROW_H = 48
+  const TOP_PAD = 18
+  const AXIS_GAP = 14
+  const TICK_BAND = 18
+  const AXIS_TITLE_H = 16
+  const lastRowCenterY = TOP_PAD + (categories.length - 1) * ROW_H
+  const axisY = lastRowCenterY + ROW_H / 2 + AXIS_GAP
+  const tickLabelY = axisY + TICK_BAND
+  const totalH = tickLabelY + AXIS_TITLE_H + 12
+  const DOT_R = 4
+  const PLAYER_R = 6
 
-  // For each category render dots using simple force-y collision
-  function positionDots(vals: number[], range: [number, number]): { x: number; y: number; v: number }[] {
+  function positionDots(
+    vals: number[],
+    range: [number, number],
+    toXCoord: (v: number) => number,
+  ): { x: number; y: number; v: number }[] {
     const [lo, hi] = range
-    const toX = (v: number) => PADDING_L + ((v - lo) / (hi - lo)) * CHART_W
+    const toX = (v: number) => toXCoord(v)
 
-    // Sort by value, stack via simple greedy bin
     const dots: { x: number; y: number; v: number }[] = []
     const sorted = [...vals].map(v => ({ v, x: toX(v) })).sort((a, b) => a.x - b.x)
 
@@ -392,8 +433,12 @@ export function BeeswarmStrip({
       for (let dy = 0; dy <= 16; dy += 2) {
         for (const sign of [1, -1]) {
           const tryY = sign * dy
-          const collide = dots.some(p => Math.abs(p.x - d.x) < DOT_R * 2.2 && Math.abs(p.y - tryY) < DOT_R * 2.2)
-          if (!collide) { y = tryY; placed = true; break }
+          const collide = dots.some((p) => Math.abs(p.x - d.x) < DOT_R * 2.2 && Math.abs(p.y - tryY) < DOT_R * 2.2)
+          if (!collide) {
+            y = tryY
+            placed = true
+            break
+          }
         }
         if (placed) break
       }
@@ -402,8 +447,11 @@ export function BeeswarmStrip({
     return dots
   }
 
-  // Global x range across all categories for consistent scale
-  const allVals = categories.flatMap(c => {
+  const chartLeft = LABEL_COL_W
+  const chartRight = chartLeft + CHART_W
+  const statsLeft = chartRight + 6
+
+  const allVals = categories.flatMap((c) => {
     const field = c.fieldValues ?? syntheticField(120, 0.7, categories.indexOf(c) * 137 + 42)
     return field
   })
@@ -411,110 +459,117 @@ export function BeeswarmStrip({
   const globalHi = Math.max(...allVals) + 0.3
   const range: [number, number] = [Math.min(globalLo, -2), Math.max(globalHi, 2)]
 
-  // Axis ticks
-  const ticks = [-2, -1, 0, 1, 2].filter(t => t >= range[0] && t <= range[1])
-  const toX = (v: number) => PADDING_L + ((v - range[0]) / (range[1] - range[0])) * CHART_W
+  const ticks = [-2, -1, 0, 1, 2].filter((t) => t >= range[0] && t <= range[1])
+  const toXAxis = (v: number) => chartLeft + ((v - range[0]) / (range[1] - range[0])) * CHART_W
 
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
+    <div ref={wrapRef} style={{ width: "100%", minHeight: Math.min(height, totalH), overflowX: "auto" }}>
       <svg
         viewBox={`0 0 ${W} ${totalH}`}
-        style={{ width: "100%", maxWidth: W, display: "block", fontFamily: T.mono }}
+        style={{ width: "100%", display: "block", fontFamily: T.mono }}
         aria-label="Beeswarm field distribution"
       >
-        {/* axis line */}
-        <line x1={PADDING_L} y1={totalH - 16} x2={W - PADDING_R} y2={totalH - 16} stroke={T.border} strokeWidth={1} />
+        <line x1={chartLeft} y1={axisY} x2={chartRight} y2={axisY} stroke={T.border} strokeWidth={1} />
 
-        {/* tick marks + labels */}
-        {ticks.map(t => (
+        {ticks.map((t) => (
           <g key={t}>
-            <line x1={toX(t)} y1={totalH - 19} x2={toX(t)} y2={totalH - 13} stroke={T.faint} strokeWidth={1} />
-            <text x={toX(t)} y={totalH - 4} textAnchor="middle" fill={T.faint} fontSize={8} letterSpacing={0.5}>
+            <line x1={toXAxis(t)} y1={axisY - 3} x2={toXAxis(t)} y2={axisY + 3} stroke={T.faint} strokeWidth={1} />
+            <text x={toXAxis(t)} y={tickLabelY} textAnchor="middle" fill={T.muted} fontSize={10} letterSpacing={0.4}>
               {t > 0 ? `+${t}` : t}
             </text>
           </g>
         ))}
 
-        {/* zero line */}
-        <line x1={toX(0)} y1={8} x2={toX(0)} y2={totalH - 16} stroke={T.border} strokeWidth={1} strokeDasharray="3 3" />
+        <line x1={toXAxis(0)} y1={12} x2={toXAxis(0)} y2={axisY} stroke={T.border} strokeWidth={1} strokeDasharray="3 3" />
 
-        {/* rows */}
         {categories.map((cat, ci) => {
-          const cy = 20 + ci * ROW_H
+          const cy = TOP_PAD + ci * ROW_H
           const fieldVals = cat.fieldValues ?? syntheticField(120, 0.7, ci * 137 + 42)
-          const dots = positionDots(fieldVals, range)
+          const toXPlot = (v: number) => chartLeft + ((v - range[0]) / (range[1] - range[0])) * CHART_W
+          const dots = positionDots(fieldVals, range, toXPlot)
 
           const pv = cat.playerValue
-          const px = pv != null ? toX(pv) : null
+          const px = pv != null ? toXPlot(pv) : null
           const pcol = pv != null ? (pv >= 0 ? T.green : T.red) : T.muted
 
-          // Percentile rank
-          const rank = pv != null
-            ? Math.round((fieldVals.filter(v => v <= pv).length / fieldVals.length) * 100)
-            : null
+          const rank =
+            pv != null
+              ? Math.round((fieldVals.filter((v) => v <= pv).length / fieldVals.length) * 100)
+              : null
 
           return (
             <g key={ci}>
-              {/* row label */}
-              <text x={PADDING_L - 8} y={cy + 2} textAnchor="end" fill={T.muted} fontSize={9} fontWeight={600} letterSpacing={1}>
+              <text
+                x={chartLeft - 10}
+                y={cy + 4}
+                textAnchor="end"
+                fill={T.text}
+                fontSize={11}
+                fontWeight={600}
+                letterSpacing={0.06}
+              >
                 {cat.shortLabel}
               </text>
 
-              {/* field dots */}
               {dots.map((d, di) => (
-                <circle
-                  key={di}
-                  cx={d.x}
-                  cy={cy + d.y}
-                  r={DOT_R - 1}
-                  fill={T.faint}
-                  opacity={0.55}
-                />
+                <circle key={di} cx={d.x} cy={cy + d.y} r={DOT_R - 1} fill={T.faint} opacity={0.55} />
               ))}
 
-              {/* quartile lines */}
-              {[25, 50, 75].map(pct => {
+              {[25, 50, 75].map((pct) => {
                 const sorted = [...fieldVals].sort((a, b) => a - b)
-                const qv = sorted[Math.floor(pct / 100 * sorted.length)]
+                const qv = sorted[Math.floor((pct / 100) * sorted.length)]
                 return (
                   <line
                     key={pct}
-                    x1={toX(qv)} y1={cy - 10} x2={toX(qv)} y2={cy + 10}
-                    stroke={T.border} strokeWidth={1} strokeDasharray={pct === 50 ? "none" : "2 2"}
+                    x1={toXPlot(qv)}
+                    y1={cy - 11}
+                    x2={toXPlot(qv)}
+                    y2={cy + 11}
+                    stroke={T.border}
+                    strokeWidth={1}
+                    strokeDasharray={pct === 50 ? "none" : "2 2"}
                   />
                 )
               })}
 
-              {/* player dot */}
-              {px != null && (
+              {px != null && pv != null && (
                 <>
-                  <circle cx={px} cy={cy} r={PLAYER_R} fill={pcol} opacity={0.9} />
-                  <circle cx={px} cy={cy} r={PLAYER_R + 3} fill="none" stroke={pcol} strokeWidth={1} opacity={0.4} />
-                  {/* value label */}
-                  <text x={px} y={cy - PLAYER_R - 5} textAnchor="middle" fill={pcol} fontSize={8} fontWeight={700}>
-                    {signed(pv!, 2)}
+                  <circle cx={px} cy={cy} r={PLAYER_R} fill={pcol} opacity={0.95} />
+                  <circle cx={px} cy={cy} r={PLAYER_R + 3} fill="none" stroke={pcol} strokeWidth={1} opacity={0.38} />
+                  <text x={statsLeft} y={cy - 5} textAnchor="start" fill={pcol} fontSize={11} fontWeight={700}>
+                    {signed(pv, 2)}
                   </text>
-                  {/* percentile badge */}
                   {rank != null && (
-                    <text x={W - PADDING_R} y={cy + 3} textAnchor="end" fill={rank >= 75 ? T.green : rank >= 50 ? T.muted : T.red} fontSize={8} fontWeight={600}>
-                      {rank}th
+                    <text
+                      x={statsLeft}
+                      y={cy + 9}
+                      textAnchor="start"
+                      fill={rank >= 75 ? T.green : rank >= 50 ? T.muted : T.red}
+                      fontSize={10}
+                      fontWeight={600}
+                    >
+                      {ordinalPct(rank)} pct
                     </text>
                   )}
                 </>
               )}
 
-              {/* row divider */}
               {ci < categories.length - 1 && (
-                <line x1={PADDING_L} y1={cy + ROW_H / 2 + 4} x2={W - PADDING_R} y2={cy + ROW_H / 2 + 4}
-                  stroke={T.divider} strokeWidth={1} />
+                <line
+                  x1={chartLeft}
+                  y1={cy + ROW_H / 2 + 6}
+                  x2={chartRight}
+                  y2={cy + ROW_H / 2 + 6}
+                  stroke={T.divider}
+                  strokeWidth={1}
+                />
               )}
             </g>
           )
         })}
 
-        {/* axis label */}
-        <text x={PADDING_L + CHART_W / 2} y={totalH} textAnchor="middle" fill={T.faint} fontSize={8} letterSpacing={1}>
-          STROKES GAINED / ROUND vs TOUR AVERAGE
+        <text x={chartLeft + CHART_W / 2} y={totalH - 2} textAnchor="middle" fill={T.muted} fontSize={10} letterSpacing={0.06}>
+          Strokes gained / round vs tour average (0)
         </text>
       </svg>
     </div>
