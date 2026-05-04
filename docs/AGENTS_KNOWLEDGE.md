@@ -311,7 +311,7 @@ Use these fields to separate causes:
 - **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`).
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
-- **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses a single `grid-template-rows: minmax(0, 1fr)` row so the three columns stay within the viewport; each column scrolls independently (`overflow-y: auto`). Without the `fr` row, implicit `auto` grid rows grow with content and clip the center column (power rankings consuming the viewport, top picks unreachable).
+- **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses `grid-template-rows: minmax(0, 1fr)` so columns stay within the viewport. Center column: **vertical split panes** (`react-resizable-panels`, `CockpitResizableStack`) between power rankings, top picks, secondary markets, and (live/past only) leaderboard — drag horizontal gutters to resize; each pane scrolls internally. Sizes persist in `localStorage` (`autoSaveId` per layout). Without the `fr` grid row, implicit `auto` rows grow with content and clip the center column.
 
 ---
 
