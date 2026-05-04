@@ -26,7 +26,7 @@ const JSON_HEADERS = {
 
 const LIVE_REFRESH_STATUS_TIMEOUT_MS = 30_000
 const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 35_000
-const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 30_000
+const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 95_000
 const LIVE_REFRESH_START_TIMEOUT_MS = 30_000
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): Promise<T> {
