@@ -1056,6 +1056,14 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     }
 
 
+def _ingest_has_event_context(ingest_summary: dict[str, Any]) -> bool:
+    """True when schedule ingest resolved enough context to run the model."""
+    return bool(
+        str(ingest_summary.get("event_id") or "").strip()
+        or str(ingest_summary.get("event_name") or "").strip()
+    )
+
+
 def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[str, Any] | None:
     """Auto-grade ungraded UI picks for the latest completed event."""
     event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
@@ -1302,15 +1310,12 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or event_name or "").strip()
     resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or live_event_id or "").strip()
     resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip()
-    live_event_name = event_name if live_is_active else (resolved_completed_event_name or event_name)
-    live_source_event_id = str(
-        ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
-    ).strip()
-    live_source_event_year_raw = (
-        ingest_summary.get("event_year")
-        if live_is_active
-        else (ingest_summary.get("latest_completed_event_year") or ingest_summary.get("event_year"))
-    )
+    # Live section is always built from `live_result`, which targets ingest `event_id` / `event_name`.
+    # During off-air weeks we used to substitute latest_completed_* for labels while still serving
+    # the next-event model rows — that produced mismatched titles vs course/rankings/tournament_id.
+    live_event_name = str(event_name or ingest_summary.get("event_name") or "").strip()
+    live_source_event_id = str(ingest_summary.get("event_id") or "").strip()
+    live_source_event_year_raw = ingest_summary.get("event_year")
     try:
         live_source_event_year = int(live_source_event_year_raw) if live_source_event_year_raw is not None else None
     except (TypeError, ValueError):
@@ -1838,7 +1843,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "matchup_bets_all_books": live_board_matchup_bets_all_books,
             "value_bets": live_value_bets,
             "source_event_id": live_source_event_id,
-            "source_event_name": event_name if live_is_active else (resolved_completed_event_name or event_name),
+            "source_event_name": live_event_name or str(ingest_summary.get("event_name") or ""),
             "data_mode": mode,
             "source": "current_event_model",
             "source_card_path": live_source_card_path,
@@ -2028,6 +2033,10 @@ def _run_loop(tour: str) -> None:
                 with _state_lock:
                     _state["last_started_at"] = started_at
                     _state["last_error"] = None
+                if not _ingest_has_event_context(ingest_summary):
+                    ingest_summary = _run_ingest(tour)
+                    with _state_lock:
+                        _state["last_ingest_summary"] = ingest_summary
                 snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
                 finished_at = _iso_now()
                 with _state_lock:
