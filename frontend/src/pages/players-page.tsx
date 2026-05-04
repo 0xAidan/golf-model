@@ -107,14 +107,14 @@ function KpiCell({
 /* ── Stat metric card ─────────────────────────────────────────────────── */
 function MetricCard({ label, value, tone: t = "neutral", sub }: { label: string; value: string | React.ReactNode; tone?: Tone; sub?: string }) {
   return (
-    <div style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "8px 10px" }}>
-      <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 3 }}>
+    <div style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "10px 12px" }}>
+      <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: VAR.muted, marginBottom: 4 }}>
         {label}
       </div>
       <div style={{ fontFamily: VAR.mono, fontSize: 18, fontWeight: 700, color: toneColor(t), letterSpacing: "-0.02em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: VAR.mono, fontSize: 9, color: VAR.faint, marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontFamily: VAR.mono, fontSize: 10, color: VAR.faint, marginTop: 3 }}>{sub}</div>}
     </div>
   )
 }
@@ -502,44 +502,78 @@ function PlayerProfileView({
           </div>
         )}
 
-        {/* ── Row 1: Pentagon Radar + KPI sidebar ────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
-
-          {/* Pentagon Radar */}
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Skill Profile</span>
-              <span className="panel-label-dim">Five-axis radar — shape reveals game identity vs tour average</span>
+        {/* Skill profile row: radar + KPIs beside field distribution when width allows */}
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
+            alignItems: "stretch",
+          }}
+        >
+          <div className="players-skill-radar-row" style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr) minmax(200px, 240px)" }}>
+            <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden", minWidth: 0 }}>
+              <div className="panel-header">
+                <span className="panel-label">Skill Profile</span>
+                <span className="panel-label-dim">Five-axis radar vs tour average (dashed)</span>
+              </div>
+              <div style={{ padding: "12px 14px" }}>
+                <PentagonRadar skills={p.sg_skills} playerName={p.player_display} height={300} />
+              </div>
             </div>
-            <div style={{ padding: 12 }}>
-              <PentagonRadar
-                skills={p.sg_skills}
-                playerName={p.player_display}
-                height={240}
-              />
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+              <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted }}>Driving</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} />
+                <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} />
+              </div>
+              <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted, marginTop: 4 }}>Rolling windows</div>
+              {(["10", "25", "50"] as const).map((w) => {
+                const val = p.rolling_windows?.[w]
+                const heatT = heatUnitForSg(val)
+                return (
+                  <div
+                    key={w}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "7px 10px",
+                      background: VAR.bg2,
+                      border: `1px solid ${VAR.border}`,
+                      borderRadius: "var(--r-sm)",
+                    }}
+                  >
+                    <span style={{ fontFamily: VAR.mono, fontSize: 11, color: VAR.muted, letterSpacing: "0.06em", fontWeight: 600 }}>
+                      L{w}
+                    </span>
+                    <span style={{ fontFamily: VAR.mono, fontSize: 15, fontWeight: 700, color: val != null ? heatSpectrumFromUnit(heatT) : VAR.faint }}>
+                      {val != null ? signed(val) : "—"}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
-          {/* Driving + KPI sidebar */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint }}>DRIVING</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} />
-              <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} />
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden", minWidth: 0 }}>
+            <div className="panel-header">
+              <span className="panel-label">Field distribution</span>
+              <span className="panel-label-dim">You (green ring) vs field (grey)</span>
             </div>
-            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginTop: 4 }}>ROLLING WINDOWS</div>
-            {(["10", "25", "50"] as const).map(w => {
-              const val = p.rolling_windows?.[w]
-              const heatT = heatUnitForSg(val)
-              return (
-                <div key={w} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: VAR.bg2, border: `1px solid ${VAR.border}`, borderRadius: 3 }}>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em" }}>L{w}</span>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 13, fontWeight: 700, color: val != null ? heatSpectrumFromUnit(heatT) : VAR.faint }}>
-                    {val != null ? signed(val) : "—"}
-                  </span>
-                </div>
-              )
-            })}
+            <div style={{ padding: "12px 14px" }}>
+              <BeeswarmStrip
+                categories={[
+                  { label: "Total SG", shortLabel: "TOTAL", playerValue: p.sg_skills.sg_total },
+                  { label: "Approach", shortLabel: "APP", playerValue: p.sg_skills.sg_app },
+                  { label: "Around Green", shortLabel: "ARG", playerValue: p.sg_skills.sg_arg },
+                  { label: "Putting", shortLabel: "PUTT", playerValue: p.sg_skills.sg_putt },
+                  { label: "Off the Tee", shortLabel: "OTT", playerValue: p.sg_skills.sg_ott },
+                ] satisfies BeeswarmCategory[]}
+                height={300}
+              />
+            </div>
           </div>
         </div>
 
@@ -550,11 +584,11 @@ function PlayerProfileView({
               <span className="panel-label-dim">L10 / L25 / L50 by SG category</span>
             </div>
             <div style={{ padding: 12, overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
                     {["Window", "TOTAL", "OTT", "APP", "ARG", "PUTT", "T2G"].map((head) => (
-                      <th key={head} style={{ textAlign: head === "Window" ? "left" : "center", color: VAR.faint, padding: "6px 8px", letterSpacing: "0.08em" }}>
+                      <th key={head} style={{ textAlign: head === "Window" ? "left" : "center", color: VAR.muted, padding: "8px 10px", letterSpacing: "0.07em", fontWeight: 700 }}>
                         {head}
                       </th>
                     ))}
@@ -576,17 +610,18 @@ function PlayerProfileView({
                         {cells.map((value, index) => {
                           const heatT = heatUnitForSg(value)
                           return (
-                            <td key={`${windowKey}-${index}`} style={{ padding: "8px", textAlign: "center" }}>
+                            <td key={`${windowKey}-${index}`} style={{ padding: "10px 8px", textAlign: "center" }}>
                               <span
                                 style={{
                                   display: "inline-block",
-                                  minWidth: 54,
-                                  padding: "3px 6px",
-                                  borderRadius: 3,
+                                  minWidth: 58,
+                                  padding: "5px 8px",
+                                  borderRadius: 4,
                                   border: `1px solid ${VAR.border}`,
                                   background: heatSpectrumGradientAlongUnit(heatT, "ltr"),
                                   color: "var(--bg)",
                                   fontWeight: 700,
+                                  fontSize: 12,
                                 }}
                               >
                                 {signed(value, 2)}
@@ -603,27 +638,7 @@ function PlayerProfileView({
           </div>
         )}
 
-        {/* ── Row 2: Beeswarm field distribution ─────────────────── */}
-        <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-          <div className="panel-header">
-            <span className="panel-label">Field Distribution</span>
-            <span className="panel-label-dim">Player position (green) vs field (grey dots) — quartile ticks at 25/50/75th pct</span>
-          </div>
-          <div style={{ padding: "10px 12px" }}>
-            <BeeswarmStrip
-              categories={[
-                { label: "Total SG",      shortLabel: "TOTAL",   playerValue: p.sg_skills.sg_total },
-                { label: "Approach",       shortLabel: "APP",     playerValue: p.sg_skills.sg_app },
-                { label: "Around Green",   shortLabel: "ARG",     playerValue: p.sg_skills.sg_arg },
-                { label: "Putting",         shortLabel: "PUTT",    playerValue: p.sg_skills.sg_putt },
-                { label: "Off the Tee",    shortLabel: "OTT",     playerValue: p.sg_skills.sg_ott },
-              ] satisfies BeeswarmCategory[]}
-              height={260}
-            />
-          </div>
-        </div>
-
-        {/* ── Row 3: Rolling Bar + Line (event history) ──────────── */}
+        {/* ── Event form: bars + moving average ──────────── */}
         {p.recent_events.length > 0 && (
           <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
             <div className="panel-header">
