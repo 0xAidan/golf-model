@@ -1,21 +1,17 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronDown, CircleAlert, NotebookPen, Radar, ShieldAlert, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
-import { CourseGuide } from "@/components/course-guide"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { api } from "@/lib/api"
-import { eventToCourseKey, COURSE_MAP, ALL_COURSES } from "@/lib/course-data"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import type {
   CompositePlayer,
-  DashboardState,
   GradedTournamentSummary,
   PlayerProfile,
-  PredictionRunResponse,
 } from "@/lib/types"
 import { computeSgTrajectoryBounds } from "@/lib/metric-heat"
 
@@ -184,163 +180,6 @@ export function PlayersPage({
             <EmptyState message="No players available yet for this event context." />
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-/* ── Course page ────────────────────────────── */
-export function CoursePage({
-  dashboard,
-  players,
-  predictionRun,
-}: {
-  dashboard?: DashboardState
-  players: CompositePlayer[]
-  predictionRun: PredictionRunResponse | null
-}) {
-  const topPlayers = players.slice(0, 10)
-
-  // Resolve the active course from the event name, fall back to Augusta
-  const courseKey = eventToCourseKey(predictionRun?.event_name)
-  const activeCourse = (courseKey ? COURSE_MAP[courseKey] : null) ?? ALL_COURSES[0]
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <PageHeader title="Course Profile" description="Event and field quality diagnostics." />
-
-      {/* KPI strip */}
-      <div className="kpi-grid">
-        <div className="kpi-tile green">
-          <div className="kpi-label">Event</div>
-          <div className="kpi-value" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
-            {predictionRun?.event_name ?? "—"}
-          </div>
-        </div>
-        <div className="kpi-tile neutral">
-          <div className="kpi-label">Course</div>
-          <div className="kpi-value" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
-            {predictionRun?.course_name ?? "—"}
-          </div>
-        </div>
-        <div className="kpi-tile neutral">
-          <div className="kpi-label">Cross-tour backfill</div>
-          <div
-            className="kpi-value"
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: predictionRun?.field_validation?.cross_tour_backfill_used
-                ? "var(--warning)"
-                : "var(--text)",
-            }}
-          >
-            {predictionRun?.field_validation?.cross_tour_backfill_used ? "Active" : "Standard"}
-          </div>
-        </div>
-        <div className="kpi-tile neutral">
-          <div className="kpi-label">Last graded</div>
-          <div className="kpi-value" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-            {dashboard?.latest_graded_tournament?.name ?? "—"}
-          </div>
-        </div>
-      </div>
-
-      {/* Hole-by-hole course guide */}
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">Hole-by-Hole Guide</div>
-          <div className="card-desc">{activeCourse.name} · {activeCourse.location}</div>
-        </div>
-        <div className="card-body">
-          <CourseGuide course={activeCourse} />
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16 }}>
-        {/* Field-fit chart */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Field-fit distribution</div>
-            <div className="card-desc">Top players by composite score</div>
-          </div>
-          <div className="card-body">
-            {topPlayers.length > 0 ? (
-              <BarTrendChart
-                labels={topPlayers.map((p) => p.player_display.split(" ").pop() ?? p.player_display)}
-                values={topPlayers.map((p) => p.composite)}
-                color="#22c55e"
-              />
-            ) : (
-              <EmptyState message="Run a prediction to populate field-fit distributions." />
-            )}
-          </div>
-        </div>
-
-        {/* Course risk notes */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Risk notes</div>
-          </div>
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {[
-              {
-                label: "Major event",
-                value: predictionRun?.field_validation?.major_event ? "Yes — cross-tour coverage active" : "No",
-                icon: Radar,
-                warn: predictionRun?.field_validation?.major_event,
-              },
-              {
-                label: "Thin-round players",
-                value: String(predictionRun?.field_validation?.players_with_thin_rounds?.length ?? 0),
-                icon: ShieldAlert,
-                warn: (predictionRun?.field_validation?.players_with_thin_rounds?.length ?? 0) > 0,
-              },
-              {
-                label: "Missing DG skill",
-                value: String(predictionRun?.field_validation?.players_missing_dg_skill?.length ?? 0),
-                icon: CircleAlert,
-                warn: (predictionRun?.field_validation?.players_missing_dg_skill?.length ?? 0) > 0,
-              },
-              {
-                label: "Prediction artifact",
-                value: dashboard?.latest_prediction_artifact?.path ?? "—",
-                icon: NotebookPen,
-                warn: false,
-              },
-            ].map(({ label, value, icon: Icon, warn }) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  padding: "10px 12px",
-                  background: "var(--surface-2)",
-                  border: `1px solid ${warn ? "rgba(245,158,11,0.2)" : "var(--border)"}`,
-                  borderRadius: "var(--r-md)",
-                }}
-              >
-                <Icon
-                  size={14}
-                  style={{
-                    color: warn ? "var(--warning)" : "var(--text-faint)",
-                    marginTop: 1,
-                    flexShrink: 0,
-                  }}
-                />
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-faint)", marginBottom: 2 }}>
-                    {label}
-                  </div>
-                  <div style={{ fontSize: 12, color: warn ? "var(--warning)" : "var(--text)", fontWeight: 500 }}>
-                    {value}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )
