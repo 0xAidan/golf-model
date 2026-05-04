@@ -3397,7 +3397,7 @@ async def get_player_standalone_profile(player_key: str):
     from src.player_normalizer import display_name
 
     # ── 1. Recent rounds from DB ────────────────────────────────────────
-    recent_rounds = src_db.get_player_recent_rounds_by_key(player_key, limit=50)
+    recent_rounds = src_db.get_player_recent_rounds_by_key(player_key, limit=120)
 
     # Resolve dg_id from rounds if available
     dg_id = None
@@ -3451,49 +3451,151 @@ async def get_player_standalone_profile(player_key: str):
     except Exception:
         approach_data = None
 
-    # ── 5. Build SG rolling windows from stored rounds ──────────────────
-    sg_totals = [r["sg_total"] for r in recent_rounds if r.get("sg_total") is not None]
-    sg_rounds_with_meta = []
-    event_seen = {}
-    for r in recent_rounds:
-        if r.get("sg_total") is None:
-            continue
-        evt = r.get("event_name") or r.get("event_id") or "unknown"
-        ev_key = f"{evt}-{r.get('event_completed', '')}"
-        if ev_key not in event_seen:
-            event_seen[ev_key] = {
-                "event_name": r.get("event_name") or evt,
-                "event_completed": r.get("event_completed"),
-                "fin_text": r.get("fin_text"),
-                "sg_values": [],
-                "score_values": [],
-            }
-        event_seen[ev_key]["sg_values"].append(float(r["sg_total"]))
-        if r.get("score") is not None:
-            event_seen[ev_key]["score_values"].append(int(r["score"]))
-
-    recent_events = []
-    for ev_key, ev in list(event_seen.items())[:20]:
-        avg_sg = sum(ev["sg_values"]) / len(ev["sg_values"]) if ev["sg_values"] else None
-        recent_events.append({
-            "event_name": ev["event_name"],
-            "event_completed": ev["event_completed"],
-            "fin_text": ev["fin_text"],
-            "avg_sg_total": round(avg_sg, 3) if avg_sg is not None else None,
-            "rounds_played": len(ev["sg_values"]),
-        })
-
+    # ── 5. Build event summaries + rolling windows from stored rounds ───
     def _avg(vals):
         return round(sum(vals) / len(vals), 3) if vals else None
 
-    windows = {
-        "10": _avg(sg_totals[:10]),
-        "25": _avg(sg_totals[:25]),
-        "50": _avg(sg_totals[:50]),
+    rolling_metric_names = ("sg_total", "sg_ott", "sg_app", "sg_arg", "sg_putt", "sg_t2g")
+    metric_values_by_name = {
+        metric_name: [
+            float(r[metric_name])
+            for r in recent_rounds
+            if r.get(metric_name) is not None
+        ]
+        for metric_name in rolling_metric_names
     }
 
-    # Rolling trend: per-round SG for sparkline (most recent last for L→R chart)
-    trend_series = list(reversed(sg_totals[:50]))
+    event_seen = {}
+    for r in recent_rounds:
+        event_name = r.get("event_name") or r.get("event_id") or "unknown"
+        event_completed = r.get("event_completed")
+        event_id = r.get("event_id")
+        ev_key = f"{event_id or event_name}-{event_completed or ''}"
+        if ev_key not in event_seen:
+            event_seen[ev_key] = {
+                "event_name": event_name,
+                "event_completed": event_completed,
+                "event_id": event_id,
+                "course_name": r.get("course_name"),
+                "tour": r.get("tour"),
+                "fin_text": r.get("fin_text"),
+                "score_values": [],
+                "course_par_values": [],
+                "sg_values": {metric_name: [] for metric_name in rolling_metric_names},
+                "rounds_played": 0,
+            }
+        ev = event_seen[ev_key]
+        ev["rounds_played"] += 1
+        if not ev.get("course_name") and r.get("course_name"):
+            ev["course_name"] = r.get("course_name")
+        if not ev.get("tour") and r.get("tour"):
+            ev["tour"] = r.get("tour")
+        if not ev.get("fin_text") and r.get("fin_text"):
+            ev["fin_text"] = r.get("fin_text")
+        if r.get("score") is not None:
+            ev["score_values"].append(float(r["score"]))
+        if r.get("course_par") is not None:
+            f_course_par = _safe_float(r.get("course_par"))
+            if f_course_par is not None:
+                ev["course_par_values"].append(f_course_par)
+        for metric_name in rolling_metric_names:
+            metric_val = _safe_float(r.get(metric_name))
+            if metric_val is not None:
+                ev["sg_values"][metric_name].append(metric_val)
+
+    recent_events = []
+    sorted_events = sorted(
+        event_seen.values(),
+        key=lambda ev: (ev.get("event_completed") or "", ev.get("event_name") or ""),
+        reverse=True,
+    )
+    for ev in sorted_events[:30]:
+        avg_sg_total = _avg(ev["sg_values"]["sg_total"])
+        avg_score = _avg(ev["score_values"])
+        avg_course_par = _avg(ev["course_par_values"])
+        avg_to_par = round(avg_score - avg_course_par, 3) if avg_score is not None and avg_course_par is not None else None
+        recent_events.append({
+            "event_name": ev["event_name"],
+            "event_completed": ev["event_completed"],
+            "event_id": ev["event_id"],
+            "course_name": ev["course_name"],
+            "tour": ev["tour"],
+            "fin_text": ev["fin_text"],
+            "avg_score": avg_score,
+            "avg_to_par": avg_to_par,
+            "avg_sg_total": avg_sg_total,
+            "avg_sg_ott": _avg(ev["sg_values"]["sg_ott"]),
+            "avg_sg_app": _avg(ev["sg_values"]["sg_app"]),
+            "avg_sg_arg": _avg(ev["sg_values"]["sg_arg"]),
+            "avg_sg_putt": _avg(ev["sg_values"]["sg_putt"]),
+            "avg_sg_t2g": _avg(ev["sg_values"]["sg_t2g"]),
+            "rounds_played": ev["rounds_played"],
+        })
+
+    windows = {
+        "10": _avg(metric_values_by_name["sg_total"][:10]),
+        "25": _avg(metric_values_by_name["sg_total"][:25]),
+        "50": _avg(metric_values_by_name["sg_total"][:50]),
+    }
+    rolling_windows_expanded = {}
+    for metric_name in rolling_metric_names:
+        vals = metric_values_by_name[metric_name]
+        rolling_windows_expanded[metric_name] = {
+            "10": _avg(vals[:10]),
+            "25": _avg(vals[:25]),
+            "50": _avg(vals[:50]),
+        }
+
+    # Rolling trend: per-round SG (most recent last for L→R chart)
+    trend_series = list(reversed(metric_values_by_name["sg_total"][:50]))
+
+    recent_rounds_sample = []
+    for r in recent_rounds[:48]:
+        recent_rounds_sample.append({
+            "round_num": r.get("round_num"),
+            "event_name": r.get("event_name"),
+            "event_completed": r.get("event_completed"),
+            "event_id": r.get("event_id"),
+            "course_name": r.get("course_name"),
+            "tour": r.get("tour"),
+            "score": r.get("score"),
+            "sg_total": _safe_float(r.get("sg_total")),
+            "sg_ott": _safe_float(r.get("sg_ott")),
+            "sg_app": _safe_float(r.get("sg_app")),
+            "sg_arg": _safe_float(r.get("sg_arg")),
+            "sg_putt": _safe_float(r.get("sg_putt")),
+            "sg_t2g": _safe_float(r.get("sg_t2g")),
+            "driving_dist": _safe_float(r.get("driving_dist")),
+            "driving_acc": _safe_float(r.get("driving_acc")),
+            "gir": _safe_float(r.get("gir")),
+            "scrambling": _safe_float(r.get("scrambling")),
+            "fin_text": r.get("fin_text"),
+        })
+
+    course_rollups = {}
+    for r in recent_rounds:
+        course_name = r.get("course_name")
+        if not course_name:
+            continue
+        if course_name not in course_rollups:
+            course_rollups[course_name] = {"course_name": course_name, "rounds_played": 0, "sg_total_values": []}
+        roll = course_rollups[course_name]
+        roll["rounds_played"] += 1
+        sg_total = _safe_float(r.get("sg_total"))
+        if sg_total is not None:
+            roll["sg_total_values"].append(sg_total)
+    course_summaries = sorted(
+        (
+            {
+                "course_name": roll["course_name"],
+                "rounds_played": roll["rounds_played"],
+                "avg_sg_total": _avg(roll["sg_total_values"]),
+            }
+            for roll in course_rollups.values()
+        ),
+        key=lambda row: (row["rounds_played"], row["avg_sg_total"] or -999),
+        reverse=True,
+    )[:8]
 
     # ── 6. Build approach buckets ───────────────────────────────────────
     approach_buckets = []
@@ -3538,14 +3640,30 @@ async def get_player_standalone_profile(player_key: str):
             "driving_acc":   _safe_float(skill_data.get("driving_acc")),
         }
 
+    ranking_card = {
+        "dg_rank": int(ranking_data["datagolf_rank"]) if ranking_data and ranking_data.get("datagolf_rank") else None,
+        "owgr_rank": int(ranking_data["owgr_rank"]) if ranking_data and ranking_data.get("owgr_rank") else None,
+        "dg_skill_estimate": _safe_float(ranking_data.get("dg_skill_estimate")) if ranking_data else None,
+        "primary_tour": ranking_data.get("primary_tour") if ranking_data else None,
+        "player_name": ranking_data.get("player_name") if ranking_data else None,
+        "extra_scalars": {},
+    }
+    if ranking_data:
+        for key, value in ranking_data.items():
+            if key in {"datagolf_rank", "owgr_rank", "dg_skill_estimate", "primary_tour", "player_name"}:
+                continue
+            fval = _safe_float(value)
+            if fval is not None:
+                ranking_card["extra_scalars"][key] = round(fval, 4)
+
     header = {
         "player_display": player_display_name,
-        "dg_rank":         int(ranking_data["datagolf_rank"]) if ranking_data and ranking_data.get("datagolf_rank") else None,
-        "owgr_rank":       int(ranking_data["owgr_rank"]) if ranking_data and ranking_data.get("owgr_rank") else None,
-        "dg_skill_estimate": _safe_float(ranking_data.get("dg_skill_estimate")) if ranking_data else None,
-        "primary_tour":    ranking_data.get("primary_tour") if ranking_data else None,
+        "dg_rank": ranking_card["dg_rank"],
+        "owgr_rank": ranking_card["owgr_rank"],
+        "dg_skill_estimate": ranking_card["dg_skill_estimate"],
+        "primary_tour": ranking_card["primary_tour"],
         "rounds_in_db":    len(recent_rounds),
-        "events_tracked":  len(recent_events),
+        "events_tracked":  len(event_seen),
     }
 
     return {
@@ -3555,8 +3673,12 @@ async def get_player_standalone_profile(player_key: str):
         "sg_skills": sg_skills,
         "approach_buckets": approach_buckets,
         "rolling_windows": windows,
+        "rolling_windows_expanded": rolling_windows_expanded,
         "trend_series": trend_series,
         "recent_events": recent_events,
+        "recent_rounds_sample": recent_rounds_sample,
+        "course_summaries": course_summaries,
+        "ranking_card": ranking_card,
         "ranking_data": ranking_data,
         "has_skill_data": skill_data is not None,
         "has_ranking_data": ranking_data is not None,

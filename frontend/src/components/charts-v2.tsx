@@ -13,22 +13,29 @@
 
 import { useState } from "react"
 import ReactECharts from "echarts-for-react"
+import { heatSpectrumFromUnit, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
 const T = {
-  bg:      "#080a0b",
-  bg1:     "#0d1012",
-  bg2:     "#111416",
-  surface: "#141719",
-  border:  "#1f2426",
-  divider: "#161a1c",
-  text:    "#e8ecef",
-  muted:   "#6b7a84",
-  faint:   "#374349",
-  green:   "#22c55e",
-  gold:    "#f5b418",
-  red:     "#ef4444",
-  mono:    "'JetBrains Mono', 'Fira Code', monospace",
+  bg: "var(--bg)",
+  bg1: "var(--bg-1)",
+  bg2: "var(--bg-2)",
+  surface: "var(--surface)",
+  border: "var(--border)",
+  divider: "var(--divider)",
+  text: "var(--text)",
+  muted: "var(--text-muted)",
+  faint: "var(--text-faint)",
+  green: "var(--green)",
+  greenBg: "var(--green-bg)",
+  greenDim: "var(--green-dim)",
+  gold: "var(--gold)",
+  goldBg: "rgba(245, 180, 24, 0.14)",
+  goldDim: "rgba(245, 180, 24, 0.33)",
+  red: "var(--red)",
+  redBg: "var(--red-bg)",
+  redDim: "rgba(239, 68, 68, 0.22)",
+  mono: "var(--font-mono)",
 }
 
 const TOOLTIP = {
@@ -149,8 +156,8 @@ export function PentagonRadar({
                   color: {
                     type: "radial", x: 0.5, y: 0.5, r: 0.5,
                     colorStops: [
-                      { offset: 0, color: `${T.green}55` },
-                      { offset: 1, color: `${T.green}18` },
+                      { offset: 0, color: T.greenDim },
+                      { offset: 1, color: T.greenBg },
                     ],
                   },
                 },
@@ -382,14 +389,18 @@ export type RollingEvent = {
   avg_sg_app?:    number | null
   avg_sg_arg?:    number | null
   avg_sg_putt?:   number | null
+  avg_sg_t2g?:    number | null
+  avg_to_par?:    number | null
   rounds_played?: number
   fin_text?:      string | null
   event_completed?: string | null
+  course_name?: string | null
 }
 
-type RollingTab = "TOTAL" | "APP" | "ARG" | "PUTT" | "OTT"
+type RollingTab = "TOTAL" | "APP" | "ARG" | "PUTT" | "OTT" | "T2G"
+type RollingView = "events" | "rounds"
 
-const ROLLING_TABS: RollingTab[] = ["TOTAL", "APP", "ARG", "PUTT", "OTT"]
+const ROLLING_TABS: RollingTab[] = ["TOTAL", "APP", "ARG", "PUTT", "OTT", "T2G"]
 
 const ROLLING_KEY: Record<RollingTab, keyof RollingEvent> = {
   TOTAL: "avg_sg_total",
@@ -397,7 +408,11 @@ const ROLLING_KEY: Record<RollingTab, keyof RollingEvent> = {
   ARG:   "avg_sg_arg",
   PUTT:  "avg_sg_putt",
   OTT:   "avg_sg_ott",
+  T2G:   "avg_sg_t2g",
 }
+
+const ROLLING_SCALE_ABS = 2.5
+const heatUnitForRolling = (value: number) => Math.min(1, Math.max(0, (value + ROLLING_SCALE_ABS) / (ROLLING_SCALE_ABS * 2)))
 
 function movingAverage(vals: number[], window = 5): (number | null)[] {
   return vals.map((_, i) => {
@@ -412,68 +427,128 @@ export function RollingBarLine({
   events,
   height = 220,
   maWindow = 5,
+  trendSeries = [],
+  roundSeriesByMetric,
 }: {
   events: RollingEvent[]
   height?: number
   maWindow?: number
+  trendSeries?: number[]
+  roundSeriesByMetric?: Partial<Record<RollingTab, number[]>>
 }) {
   const [tab, setTab] = useState<RollingTab>("TOTAL")
+  const [view, setView] = useState<RollingView>("events")
   if (!events.length) return <ChartEmpty height={height + 32} msg="No event history" />
 
   const key = ROLLING_KEY[tab]
-  const ordered = [...events].reverse() // oldest → newest
+  const orderedEvents = [...events].reverse() // oldest → newest
+  const perRoundForTab = tab === "TOTAL" ? trendSeries : (roundSeriesByMetric?.[tab] ?? [])
 
-  const vals = ordered.map(e => {
+  const eventVals = orderedEvents.map((e) => {
     const v = (e as unknown as Record<string, unknown>)[key]
     return typeof v === "number" ? v : null
   })
+  const roundVals = perRoundForTab.map((v) => (typeof v === "number" ? v : null))
 
-  const ma = movingAverage(vals.filter(v => v != null) as number[], maWindow)
+  const coverageByTab = ROLLING_TABS.reduce(
+    (acc, rollingTab) => {
+      const eventKey = ROLLING_KEY[rollingTab]
+      const eventCoverage = orderedEvents.filter((e) => {
+        const v = (e as unknown as Record<string, unknown>)[eventKey]
+        return typeof v === "number"
+      }).length
+      const roundsCoverage = rollingTab === "TOTAL" ? trendSeries.length : (roundSeriesByMetric?.[rollingTab]?.length ?? 0)
+      acc[rollingTab] = {
+        eventsAvailable: eventCoverage > 0,
+        roundsAvailable: roundsCoverage > 0,
+      }
+      return acc
+    },
+    {} as Record<RollingTab, { eventsAvailable: boolean; roundsAvailable: boolean }>,
+  )
+
+  const vals = view === "events" ? eventVals : roundVals
+  const ma = movingAverage(vals.filter((v): v is number => typeof v === "number"), maWindow)
 
   // Rebuild ma aligned to full vals array (skip nulls)
   let maIdx = 0
-  const maAligned = vals.map(v => {
+  const maAligned = vals.map((v) => {
     if (v == null) return null
     return ma[maIdx++] ?? null
   })
 
-  const barColors = vals.map(v =>
-    v == null ? "transparent" :
-    v >= 1.5  ? T.green :
-    v >= 0    ? `${T.green}99` :
-    v >= -1   ? `${T.red}88` :
-                T.red
-  )
+  const barColors = vals.map((v) => {
+    if (v == null) return "transparent"
+    const heatT = heatUnitForRolling(v)
+    return heatSpectrumGradientAlongUnit(heatT, "ltr")
+  })
 
   return (
     <div>
-      {/* Stat tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 8, paddingLeft: 2 }}>
-        {ROLLING_TABS.map(t => (
+      <div style={{ display: "flex", gap: 4, marginBottom: 8, paddingLeft: 2, alignItems: "center", flexWrap: "wrap" }}>
+        {(["events", "rounds"] as const).map((rollingView) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={rollingView}
+            onClick={() => setView(rollingView)}
             style={{
               fontFamily: T.mono,
               fontSize: 9,
               fontWeight: 700,
               letterSpacing: "0.1em",
               padding: "3px 8px",
-              border: `1px solid ${tab === t ? `${T.green}55` : T.border}`,
+              border: `1px solid ${view === rollingView ? "var(--green-dim)" : T.border}`,
               borderRadius: 3,
-              background: tab === t ? `${T.green}18` : "transparent",
-              color: tab === t ? T.green : T.faint,
+              background: view === rollingView ? "var(--green-bg)" : "transparent",
+              color: view === rollingView ? T.green : T.faint,
               cursor: "pointer",
               transition: "all 120ms",
             }}
           >
-            {t}
+            {rollingView === "events" ? "EVENTS" : "ROUNDS"}
           </button>
         ))}
+        {ROLLING_TABS.map((t) => {
+          const availability = coverageByTab[t]
+          const enabled = view === "events" ? availability.eventsAvailable : availability.roundsAvailable
+          const disabledMessage =
+            view === "events"
+              ? `No ${t} event aggregates in stored rounds`
+              : `No ${t} round series available`
+          return (
+            <button
+              key={t}
+              disabled={!enabled}
+              onClick={() => setTab(t)}
+              style={{
+                fontFamily: T.mono,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                padding: "3px 8px",
+                border: `1px solid ${tab === t ? "var(--green-dim)" : T.border}`,
+                borderRadius: 3,
+                background: tab === t ? "var(--green-bg)" : "transparent",
+                color: tab === t ? T.green : T.faint,
+                cursor: enabled ? "pointer" : "not-allowed",
+                opacity: enabled ? 1 : 0.45,
+                transition: "all 120ms",
+              }}
+              title={!enabled ? disabledMessage : undefined}
+            >
+              {t}
+            </button>
+          )
+        })}
         <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 8, color: T.faint, alignSelf: "center" }}>
-          {maWindow}-event moving avg
+          {maWindow}-{view === "events" ? "event" : "round"} moving avg
         </span>
       </div>
+      {vals.filter((v) => v != null).length === 0 ? (
+        <ChartEmpty
+          height={height}
+          msg={view === "events" ? "No event aggregates for selected tab" : "No round series for selected tab"}
+        />
+      ) : (
 
       <ReactECharts
         style={{ height }}
@@ -483,9 +558,9 @@ export function RollingBarLine({
           grid: { top: 12, right: 16, bottom: 36, left: 44 },
           xAxis: {
             type: "category",
-            data: ordered.map(e => {
+            data: (view === "events" ? orderedEvents : vals.map((_, idx) => ({ event_name: `R${idx + 1}` }))).map(e => {
               const n = e.event_name ?? ""
-              return n.split(" ").slice(0, 2).join(" ")
+              return view === "events" ? n.split(" ").slice(0, 2).join(" ") : n
             }),
             axisLabel: { color: T.faint, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
             axisLine: { lineStyle: { color: T.border } },
@@ -527,7 +602,7 @@ export function RollingBarLine({
             {
               name: "_zero",
               type: "line",
-              data: ordered.map(() => 0),
+              data: vals.map(() => 0),
               showSymbol: false,
               lineStyle: { color: T.faint, width: 1, type: "dashed" },
               z: 0,
@@ -546,17 +621,20 @@ export function RollingBarLine({
             formatter: (params: Array<{ seriesName?: string; value?: number; name?: string; dataIndex?: number; [k: string]: unknown }>) => {
               const bar = params.find((p) => p.seriesName === tab)
               const ma  = params.find((p) => p.seriesName !== tab && p.seriesName !== "_zero")
-              const ev  = ordered[bar?.dataIndex ?? 0]
+              const ev  = orderedEvents[bar?.dataIndex ?? 0]
               const v   = bar?.value
-              const col = v != null ? toneCol(v) : T.muted
-              const fin = ev?.fin_text ? ` <span style="color:${T.muted}">· ${ev.fin_text}</span>` : ""
+              const col = v != null ? heatSpectrumFromUnit(heatUnitForRolling(v)) : T.muted
+              const fin = view === "events" && ev?.fin_text ? ` <span style="color:${T.muted}">· ${ev.fin_text}</span>` : ""
+              const course = view === "events" && ev?.course_name ? `<br/><span style="color:${T.faint}">${ev.course_name}</span>` : ""
               const maLine = ma?.value != null
                 ? `<br/><span style="color:${T.muted}">MA: ${signed(ma.value)}</span>` : ""
-              return `<b>${ev?.event_name ?? bar?.name}</b>${fin}<br/>${tab}: <b style="color:${col}">${v != null ? signed(v) : "—"}</b>${maLine}`
+              const label = view === "events" ? (ev?.event_name ?? bar?.name) : `Round ${(bar?.dataIndex ?? 0) + 1}`
+              return `<b>${label}</b>${fin}${course}<br/>${tab}: <b style="color:${col}">${v != null ? signed(v) : "—"}</b>${maLine}`
             },
           },
         }}
       />
+      )}
     </div>
   )
 }
@@ -676,9 +754,9 @@ export function ApproachArcGauges({
             style={{
               fontFamily: T.mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em",
               padding: "3px 10px",
-              border: `1px solid ${lie === l ? `${T.green}55` : T.border}`,
+              border: `1px solid ${lie === l ? T.greenDim : T.border}`,
               borderRadius: 3,
-              background: lie === l ? `${T.green}18` : "transparent",
+              background: lie === l ? T.greenBg : "transparent",
               color: lie === l ? T.green : T.faint,
               cursor: "pointer", transition: "all 120ms",
             }}
@@ -718,12 +796,16 @@ export function ApproachArcGauges({
 export type HistoryEvent = {
   event_name: string
   event_completed?: string | null
+  course_name?: string | null
   fin_text?: string | null
+  avg_score?: number | null
+  avg_to_par?: number | null
   avg_sg_total?: number | null
   avg_sg_ott?:   number | null
   avg_sg_app?:   number | null
   avg_sg_arg?:   number | null
   avg_sg_putt?:  number | null
+  avg_sg_t2g?:   number | null
   rounds_played?: number
 }
 
@@ -736,10 +818,10 @@ function FinishChip({ fin }: { fin: string | null | undefined }) {
   const isTop25 = !isWin && !isCut && !isTop10 && (parseInt(f.replace("T", "")) <= 25)
 
   let bg = T.surface, color = T.muted, border = T.border
-  if (isWin)   { bg = `${T.gold}22`; color = T.gold;  border = `${T.gold}55` }
-  if (isTop10) { bg = `${T.green}18`; color = T.green; border = `${T.green}44` }
+  if (isWin)   { bg = T.goldBg; color = T.gold; border = T.goldDim }
+  if (isTop10) { bg = T.greenBg; color = T.green; border = T.greenDim }
   if (isTop25) { bg = "transparent"; color = T.muted; border = T.border }
-  if (isCut)   { bg = `${T.red}12`; color = T.red;    border = `${T.red}33` }
+  if (isCut)   { bg = T.redBg; color = T.red; border = T.redDim }
 
   return (
     <span style={{
@@ -809,9 +891,9 @@ export function HistoryTable({
         }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-              {["EVENT", "DATE", "FIN", "TOTAL", "OTT", "APP", "ARG", "PUTT"].map(h => (
+              {["EVENT", "DATE", "COURSE", "RDS", "FIN", "TOTAL", "OTT", "APP", "ARG", "PUTT", "T2G"].map(h => (
                 <th key={h} style={{
-                  padding: "5px 8px", textAlign: h === "EVENT" ? "left" : "center",
+                  padding: "5px 8px", textAlign: h === "EVENT" || h === "COURSE" ? "left" : "center",
                   fontSize: 8, fontWeight: 700, letterSpacing: "0.1em",
                   color: T.faint, whiteSpace: "nowrap",
                 }}>
@@ -832,6 +914,12 @@ export function HistoryTable({
                 <td style={{ padding: "6px 8px", color: T.faint, textAlign: "center", whiteSpace: "nowrap" }}>
                   {e.event_completed ?? "—"}
                 </td>
+                <td style={{ padding: "6px 8px", color: T.muted, whiteSpace: "nowrap", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {e.course_name ?? "—"}
+                </td>
+                <td style={{ padding: "6px 8px", color: T.muted, textAlign: "center", whiteSpace: "nowrap" }}>
+                  {e.rounds_played ?? "—"}
+                </td>
                 <td style={{ padding: "6px 8px", textAlign: "center" }}>
                   <FinishChip fin={e.fin_text} />
                 </td>
@@ -849,6 +937,9 @@ export function HistoryTable({
                 </td>
                 <td style={{ padding: "6px 8px" }}>
                   <SgMiniBar value={e.avg_sg_putt} maxAbs={1.5} />
+                </td>
+                <td style={{ padding: "6px 8px" }}>
+                  <SgMiniBar value={e.avg_sg_t2g} maxAbs={2.5} />
                 </td>
               </tr>
             ))}
