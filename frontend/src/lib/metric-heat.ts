@@ -73,12 +73,22 @@ export function heatHslFromScore(value: number, max: number): string {
   return heatSpectrumFromUnit(value / max)
 }
 
+/** Typical raw `momentum_trend` scale from the model — same anchor every event for cross-week comparability. */
+export const TRAJECTORY_GLOBAL_MIN = -55
+export const TRAJECTORY_GLOBAL_MAX = 55
+
+/**
+ * How much to weight the global scale vs the visible table (0 = table only, 1 = global only).
+ * Blending keeps colors comparable across events while still separating players on the same board.
+ */
+const TRAJECTORY_GLOBAL_BLEND = 0.45
+
 export function computeSgTrajectoryBounds(rows: { momentum_trend?: number }[]): { min: number; max: number } {
   const vals = rows
     .map((r) => r.momentum_trend)
     .filter((v): v is number => v != null && Number.isFinite(v))
   if (vals.length === 0) {
-    return { min: -45, max: 45 }
+    return { min: TRAJECTORY_GLOBAL_MIN, max: TRAJECTORY_GLOBAL_MAX }
   }
   const min = Math.min(...vals)
   const max = Math.max(...vals)
@@ -89,11 +99,11 @@ export function computeSgTrajectoryBounds(rows: { momentum_trend?: number }[]): 
   return { min, max }
 }
 
-/** Minimum span so tight clusters still traverse most of the spectrum. */
+/** Minimum span so tight clusters still traverse most of the spectrum (table-relative leg only). */
 const TRAJECTORY_MIN_SPAN = 34
 
-/** Normalize raw SG trajectory to [0,1] for spectrum lookup. */
-export function heatUnitForTrajectory(raw: number, min: number, max: number): number {
+/** Table-relative normalization only (used inside the global blend). */
+function heatUnitForTrajectoryTableRelative(raw: number, min: number, max: number): number {
   let lo = min
   let hi = max
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return 0.5
@@ -107,6 +117,24 @@ export function heatUnitForTrajectory(raw: number, min: number, max: number): nu
     span = TRAJECTORY_MIN_SPAN
   }
   return clamp01((raw - lo) / span)
+}
+
+/** Fixed-scale normalization on [-55, +55] for comparable hues across events. */
+function heatUnitForTrajectoryGlobal(raw: number): number {
+  const span = TRAJECTORY_GLOBAL_MAX - TRAJECTORY_GLOBAL_MIN
+  if (span <= 0 || !Number.isFinite(raw)) return 0.5
+  return clamp01((raw - TRAJECTORY_GLOBAL_MIN) / span)
+}
+
+/**
+ * Normalize raw SG trajectory to [0,1] for spectrum lookup.
+ * Blends global anchoring with table-relative contrast.
+ */
+export function heatUnitForTrajectory(raw: number, min: number, max: number): number {
+  const tTable = heatUnitForTrajectoryTableRelative(raw, min, max)
+  const tGlobal = heatUnitForTrajectoryGlobal(raw)
+  const w = TRAJECTORY_GLOBAL_BLEND
+  return clamp01(w * tGlobal + (1 - w) * tTable)
 }
 
 /**
