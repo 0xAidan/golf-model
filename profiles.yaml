@@ -18,3 +18,12 @@ profiles:
     enable_backfill: true
     backfill_years: [2020, 2021, 2022, 2023, 2024, 2025, 2026]
     output_dir: output
+
+  # Parallel lab snapshot lane (see live_refresh.lab_profile_* in autoresearch settings).
+  # Uses baseline model variant by default so lab boards differ from production v5 when enabled.
+  lab_sandbox:
+    tour: pga
+    model_variant: baseline
+    enable_ai: false
+    enable_backfill: false
+    output_dir: output

@@ -101,18 +101,32 @@ export function SuiteShell({
             </NavLink>
           ))}
           {COCKPIT_LAB_ENABLED ? (
-            <NavLink
-              to="/cockpit-lab"
-              className={({ isActive }) => cn("nav-item", isActive && "active")}
-              data-testid="nav-cockpit-lab"
-              style={{ opacity: 0.92 }}
-            >
-              <Beaker size={15} />
-              <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, opacity: 0.75 }}>Lab</span>
-                <span>Cockpit (Lab)</span>
-              </span>
-            </NavLink>
+            <>
+              <NavLink
+                to="/cockpit-lab"
+                className={({ isActive }) => cn("nav-item", isActive && "active")}
+                data-testid="nav-cockpit-lab"
+                style={{ opacity: 0.92 }}
+              >
+                <Beaker size={15} />
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, opacity: 0.75 }}>Lab</span>
+                  <span>Cockpit (Lab)</span>
+                </span>
+              </NavLink>
+              <NavLink
+                to="/lab/picks"
+                className={({ isActive }) => cn("nav-item", isActive && "active")}
+                data-testid="nav-lab-picks"
+                style={{ opacity: 0.92 }}
+              >
+                <Beaker size={15} />
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, opacity: 0.75 }}>Lab</span>
+                  <span>Picks (Lab)</span>
+                </span>
+              </NavLink>
+            </>
           ) : null}
           {NAV_ITEMS.slice(1, 3).map(({ href, icon: Icon, label, id }) => (
             <NavLink

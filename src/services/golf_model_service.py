@@ -1147,7 +1147,7 @@ class GolfModelService:
                 pick_rows.append({
                     "tournament_id": tid,
                     "model_variant": self.model_variant,
-                    "source": "ui_display",
+                    "source": "cockpit",
                     "bet_type": str(bet_type),
                     "player_key": player_key,
                     "player_display": bet.get("player_display") or display_name(player_key),
@@ -1182,7 +1182,7 @@ class GolfModelService:
             pick_rows.append({
                 "tournament_id": tid,
                 "model_variant": self.model_variant,
-                "source": "ui_display",
+                "source": "cockpit",
                 "bet_type": "matchup",
                 "player_key": pick_key,
                 "player_display": bet.get("pick") or display_name(pick_key),

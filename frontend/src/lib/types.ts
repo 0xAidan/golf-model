@@ -268,11 +268,16 @@ export type LiveRefreshSnapshot = {
   live_tournament?: LiveTournamentSnapshot
   upcoming_tournament?: LiveTournamentSnapshot
   legacy_tournament?: LiveTournamentSnapshot
+  /** Parallel lab lane (same shape as production sections); null when disabled or failed. */
+  lab_live_tournament?: LiveTournamentSnapshot | null
+  lab_upcoming_tournament?: LiveTournamentSnapshot | null
   diagnostics?: {
     market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
     live_state?: string
     upcoming_state?: string
     legacy_state?: string
+    lab_live_state?: string | null
+    lab_upcoming_state?: string | null
   }
 }
 
@@ -427,6 +432,7 @@ export type GradingHistoryResponse = {
 
 export type TrackRecordPick = {
   model_variant?: string
+  source?: string | null
   player_display: string
   opponent_display?: string
   market_odds?: string

@@ -1547,7 +1547,7 @@ def store_picks(picks: list[dict]):
         normalized_rows.append({
             "tournament_id": pick["tournament_id"],
             "model_variant": (pick.get("model_variant") or "baseline").strip().lower(),
-            "source": pick.get("source") or "ui_display",
+            "source": pick.get("source") or "cockpit",
             "bet_type": pick.get("bet_type"),
             "player_key": pick.get("player_key"),
             "player_display": pick.get("player_display"),
