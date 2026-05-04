@@ -786,6 +786,98 @@ export function PredictionWorkspacePage({
             )}
             {!showTeamEventNotice && (
               <>
+            {/* ── Power Rankings table ──────────────── */}
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">
+                    {predictionTab === "past" ? "Pre-tee-off rankings" : "Power rankings"}
+                  </div>
+                  <div className="card-desc">
+                    {predictionTab === "past"
+                      ? `${displayPlayers.length} players — last rankings before tee off`
+                      : `${displayPlayers.length} players ranked by model`}
+                  </div>
+                </div>
+                <Link
+                  to="/players"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    textDecoration: "none",
+                  }}
+                >
+                  All <ExternalLink size={11} />
+                </Link>
+              </div>
+              <div className="table-scroll">
+                {displayPlayers.length > 0 ? (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 36 }}>#</th>
+                        <th>Player</th>
+                        <th>Composite</th>
+                        <th>Form</th>
+                        <th>Course</th>
+                        <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
+                          SG trajectory
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayPlayers.slice(0, 15).map((player) => {
+                        return (
+                          <tr
+                            key={player.player_key}
+                            onClick={() => onPlayerSelect(player.player_key)}
+                            data-testid={`player-row-${player.player_key}`}
+                          >
+                            <td className="rank-cell">{player.rank}</td>
+                            <td className="player-name">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onPlayerSelect(player.player_key)
+                                }}
+                              >
+                                {player.player_display}
+                              </button>
+                            </td>
+                            <td>
+                              <ScoreBar value={player.composite} max={100} color="cyan" />
+                            </td>
+                            <td>
+                              <ScoreBar value={player.form} max={100} color="green" />
+                            </td>
+                            <td>
+                              <ScoreBar value={player.course_fit} max={100} color="gold" />
+                            </td>
+                            <td className="center">
+                              <SgTrajectoryMeter
+                                momentumTrend={player.momentum_trend}
+                                momentumDirection={player.momentum_direction}
+                                normMin={boardTrajectoryBounds.min}
+                                normMax={boardTrajectoryBounds.max}
+                              />
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="card-body">
+                    <EmptyState message="No rankings available for this event context." />
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* ── Top Plays (Matchups) ──────────────── */}
             <div className="card">
               <div className="card-header">
@@ -938,98 +1030,6 @@ export function PredictionWorkspacePage({
                 ) : (
                   <div className="card-body">
                     <EmptyState message={diagnosticsMessage} />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Power Rankings table ──────────────── */}
-            <div className="card">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">
-                    {predictionTab === "past" ? "Pre-tee-off rankings" : "Power rankings"}
-                  </div>
-                  <div className="card-desc">
-                    {predictionTab === "past"
-                      ? `${displayPlayers.length} players — last rankings before tee off`
-                      : `${displayPlayers.length} players ranked by model`}
-                  </div>
-                </div>
-                <Link
-                  to="/players"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                    textDecoration: "none",
-                  }}
-                >
-                  All <ExternalLink size={11} />
-                </Link>
-              </div>
-              <div className="table-scroll">
-                {displayPlayers.length > 0 ? (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 36 }}>#</th>
-                        <th>Player</th>
-                        <th>Composite</th>
-                        <th>Form</th>
-                        <th>Course</th>
-                        <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
-                          SG trajectory
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayPlayers.slice(0, 15).map((player) => {
-                        return (
-                          <tr
-                            key={player.player_key}
-                            onClick={() => onPlayerSelect(player.player_key)}
-                            data-testid={`player-row-${player.player_key}`}
-                          >
-                            <td className="rank-cell">{player.rank}</td>
-                            <td className="player-name">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  onPlayerSelect(player.player_key)
-                                }}
-                              >
-                                {player.player_display}
-                              </button>
-                            </td>
-                            <td>
-                              <ScoreBar value={player.composite} max={100} color="cyan" />
-                            </td>
-                            <td>
-                              <ScoreBar value={player.form} max={100} color="green" />
-                            </td>
-                            <td>
-                              <ScoreBar value={player.course_fit} max={100} color="gold" />
-                            </td>
-                            <td className="center">
-                              <SgTrajectoryMeter
-                                momentumTrend={player.momentum_trend}
-                                momentumDirection={player.momentum_direction}
-                                normMin={boardTrajectoryBounds.min}
-                                normMax={boardTrajectoryBounds.max}
-                              />
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="card-body">
-                    <EmptyState message="No rankings available for this event context." />
                   </div>
                 )}
               </div>
