@@ -129,6 +129,13 @@ function App() {
   const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(liveSnapshot), [liveSnapshot])
   const isCockpitLabRoute = location.pathname.startsWith("/cockpit-lab")
   const isLabPicksRoute = location.pathname.startsWith("/lab/picks")
+  const labRouteActive = isCockpitLabRoute || isLabPicksRoute
+  /** When the parallel lab lane is off, lab routes still hydrate from production snapshot so the UI is usable. */
+  const labDisplaySnapshot = useMemo(() => {
+    if (!labRouteActive) return null
+    return labSnapshotMerged ?? liveSnapshot ?? null
+  }, [labRouteActive, labSnapshotMerged, liveSnapshot])
+  const labUsingProdSnapshotFallback = Boolean(labRouteActive && !labSnapshotMerged && liveSnapshot)
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
   const [uiAlert, setUiAlert] = useState<string | null>(null)
 
@@ -192,11 +199,11 @@ function App() {
           ? liveSnapshot?.live_tournament
           : null
   const profileSection =
-    (isCockpitLabRoute || isLabPicksRoute) && labSnapshotMerged
+    labRouteActive && labDisplaySnapshot
       ? predictionTab === "upcoming"
-        ? labSnapshotMerged.upcoming_tournament
+        ? labDisplaySnapshot.upcoming_tournament
         : predictionTab === "live"
-            ? labSnapshotMerged.live_tournament
+            ? labDisplaySnapshot.live_tournament
             : null
       : prodProfileSection
   const profileTournamentId = profileSection?.tournament_id ?? visiblePredictionRun?.tournament_id
@@ -340,10 +347,9 @@ function App() {
   }, [predictionTab, selectedBookSet, visiblePredictionRun])
 
   const labWorkspaceHydrated = useMemo(() => {
-    if (predictionTab === "past") return null
-    if (!labSnapshotMerged) return null
-    return buildHydratedPredictionRun(labSnapshotMerged, predictionTab)
-  }, [labSnapshotMerged, predictionTab])
+    if (predictionTab === "past" || !labDisplaySnapshot) return null
+    return buildHydratedPredictionRun(labDisplaySnapshot, predictionTab)
+  }, [labDisplaySnapshot, predictionTab])
 
   const labVisiblePredictionRun = predictionTab === "past" ? null : labWorkspaceHydrated
 
@@ -375,7 +381,10 @@ function App() {
     if (predictionTab === "live" && !isLiveActive)
       return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
     if (!labSnapshotMerged) {
-      return "Lab snapshot lane is off or still recomputing. Enable live_refresh.lab_profile_enabled in autoresearch settings on the server."
+      if (liveSnapshot) {
+        return "Lab parallel lane is off — showing production snapshot boards. Enable live_refresh.lab_profile_enabled (and wait for the next recompute) for true lab model rows."
+      }
+      return "No live snapshot yet. Start the live-refresh worker or use Refresh, then try again."
     }
     const diagnostics =
       predictionTab === "upcoming"
@@ -386,7 +395,7 @@ function App() {
       reasonCodes: diagnostics?.reason_codes,
       hasFilters: normalizedSelectedBooks.length > 0,
     })
-  }, [isLiveActive, labSnapshotMerged, normalizedSelectedBooks, predictionTab])
+  }, [isLiveActive, labSnapshotMerged, liveSnapshot, normalizedSelectedBooks, predictionTab])
 
   const labSecondaryBets = useMemo(() => {
     if (predictionTab === "past") return []
@@ -400,23 +409,53 @@ function App() {
 
   const labPlayers = predictionTab === "past" ? [] : (labWorkspaceHydrated?.composite_results ?? [])
 
-  const labPicksSection: "lab_live" | "lab_upcoming" | null =
-    predictionTab === "upcoming" ? "lab_upcoming" : predictionTab === "live" ? "lab_live" : null
-  const labPicksEventId =
-    labPicksSection === "lab_upcoming"
-      ? String(liveSnapshot?.lab_upcoming_tournament?.source_event_id ?? "").trim()
-      : labPicksSection === "lab_live"
-        ? String(liveSnapshot?.lab_live_tournament?.source_event_id ?? "").trim()
-        : ""
+  const labPicksMarketSection = useMemo<
+    "lab_live" | "lab_upcoming" | "live" | "upcoming" | null
+  >(() => {
+    if (!isLabPicksRoute || predictionTab === "past") return null
+    if (predictionTab === "upcoming") {
+      if (String(liveSnapshot?.lab_upcoming_tournament?.source_event_id ?? "").trim()) {
+        return "lab_upcoming"
+      }
+      return String(liveSnapshot?.upcoming_tournament?.source_event_id ?? "").trim() ? "upcoming" : null
+    }
+    if (predictionTab === "live") {
+      if (String(liveSnapshot?.lab_live_tournament?.source_event_id ?? "").trim()) {
+        return "lab_live"
+      }
+      return String(liveSnapshot?.live_tournament?.source_event_id ?? "").trim() ? "live" : null
+    }
+    return null
+  }, [isLabPicksRoute, predictionTab, liveSnapshot])
+
+  const labPicksMarketEventId = useMemo(() => {
+    if (!labPicksMarketSection) return ""
+    if (labPicksMarketSection === "lab_upcoming") {
+      return (
+        String(liveSnapshot?.lab_upcoming_tournament?.source_event_id ?? "").trim() ||
+        String(liveSnapshot?.upcoming_tournament?.source_event_id ?? "").trim()
+      )
+    }
+    if (labPicksMarketSection === "upcoming") {
+      return String(liveSnapshot?.upcoming_tournament?.source_event_id ?? "").trim()
+    }
+    if (labPicksMarketSection === "lab_live") {
+      return (
+        String(liveSnapshot?.lab_live_tournament?.source_event_id ?? "").trim() ||
+        String(liveSnapshot?.live_tournament?.source_event_id ?? "").trim()
+      )
+    }
+    return String(liveSnapshot?.live_tournament?.source_event_id ?? "").trim()
+  }, [labPicksMarketSection, liveSnapshot])
 
   const labPicksMarketRowsQuery = useQuery({
-    queryKey: ["live-refresh-past-market-rows", labPicksEventId, labPicksSection, "lab-route"],
+    queryKey: ["live-refresh-past-market-rows", labPicksMarketEventId, labPicksMarketSection, "lab-route"],
     queryFn: () =>
-      api.getLiveRefreshPastMarketRows(labPicksEventId, {
-        section: labPicksSection ?? "lab_live",
+      api.getLiveRefreshPastMarketRows(labPicksMarketEventId, {
+        section: (labPicksMarketSection ?? "live") as "live" | "upcoming" | "lab_live" | "lab_upcoming",
         limit: 5000,
       }),
-    enabled: Boolean(isLabPicksRoute && labPicksSection && labPicksEventId),
+    enabled: Boolean(isLabPicksRoute && labPicksMarketSection && labPicksMarketEventId),
     staleTime: 30_000,
   })
   const labPicksMarketRows = labPicksMarketRowsQuery.data?.ok ? (labPicksMarketRowsQuery.data.rows ?? []) : []
@@ -425,9 +464,11 @@ function App() {
 
   const labTournamentIdForPicks =
     predictionTab === "upcoming"
-      ? liveSnapshot?.lab_upcoming_tournament?.tournament_id
+      ? (liveSnapshot?.lab_upcoming_tournament?.tournament_id ??
+          liveSnapshot?.upcoming_tournament?.tournament_id)
       : predictionTab === "live"
-        ? liveSnapshot?.lab_live_tournament?.tournament_id
+        ? (liveSnapshot?.lab_live_tournament?.tournament_id ??
+            liveSnapshot?.live_tournament?.tournament_id)
         : undefined
 
   const picksSection: "live" | "upcoming" | null =
@@ -524,7 +565,7 @@ function App() {
 
   const labCockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
     () => ({
-      liveSnapshot: labSnapshotMerged,
+      liveSnapshot: labDisplaySnapshot,
       runtimeStatus,
       snapshotNotice,
       snapshotAgeSeconds: liveSnapshotEnvelope?.age_seconds ?? null,
@@ -553,7 +594,7 @@ function App() {
       secondaryBets: labSecondaryBets,
     }),
     [
-      labSnapshotMerged,
+      labDisplaySnapshot,
       runtimeStatus,
       snapshotNotice,
       liveSnapshotEnvelope?.age_seconds,
@@ -581,7 +622,7 @@ function App() {
   )
 
   const shellEventName =
-    (isCockpitLabRoute || isLabPicksRoute) && labWorkspaceHydrated?.event_name
+    labRouteActive && labWorkspaceHydrated?.event_name
       ? labWorkspaceHydrated.event_name
       : effectivePredictionRun?.event_name ?? "No event loaded"
 
@@ -648,7 +689,10 @@ function App() {
           path="/cockpit-lab"
           element={
             COCKPIT_LAB_ENABLED ? (
-              <CockpitLabPage cockpitWorkspaceProps={labCockpitWorkspaceProps} />
+              <CockpitLabPage
+                cockpitWorkspaceProps={labCockpitWorkspaceProps}
+                usingProdSnapshotFallback={labUsingProdSnapshotFallback}
+              />
             ) : (
               <Navigate to="/" replace />
             )

@@ -2291,7 +2291,7 @@ async def refresh_live_refresh_snapshot():
     try:
         snapshot = await asyncio.wait_for(
             asyncio.to_thread(generate_snapshot_once, tour=tour),
-            timeout=20.0,
+            timeout=90.0,
         )
     except asyncio.TimeoutError:
         _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
