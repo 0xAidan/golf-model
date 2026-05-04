@@ -2061,25 +2061,42 @@ async def get_live_refresh_snapshot():
     cadence = resolve_cadence(settings)
     stale_after_seconds = max(900, int(cadence.recompute_seconds) + 120)
 
-    def _attempt_fresh_snapshot() -> dict:
-        tour = str(settings.get("tour", "pga"))
-        status = get_live_refresh_status()
-        if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+    tour = str(settings.get("tour", "pga"))
+    status = get_live_refresh_status()
+    runtime_autostarted = False
+    if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+        try:
             start_live_refresh(tour=tour)
-        return generate_snapshot_once(tour=tour)
+            runtime_autostarted = True
+            status = get_live_refresh_status()
+        except Exception as exc:
+            _logger.warning("Live refresh runtime autostart failed: %s", exc)
+
+    async def _attempt_fresh_snapshot(timeout_seconds: float = 8.0) -> dict:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(generate_snapshot_once, tour=tour),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            _logger.warning("On-demand live snapshot generation timed out after %.1fs", timeout_seconds)
+            return {}
+        except Exception as exc:
+            _logger.warning("On-demand live snapshot generation failed: %s", exc)
+            return {}
 
     snapshot = read_snapshot()
     if not snapshot:
-        try:
-            snapshot = _attempt_fresh_snapshot()
-        except Exception as exc:
-            _logger.warning("On-demand live snapshot generation failed: %s", exc)
-            snapshot = {}
+        snapshot = await _attempt_fresh_snapshot()
     if not snapshot:
         return {
             "ok": False,
             "snapshot": None,
-            "stale_reason": "No snapshot generated yet. Start live refresh runtime.",
+            "stale_reason": (
+                "No snapshot generated yet. Live refresh runtime is starting."
+                if runtime_autostarted
+                else "No snapshot generated yet. Start live refresh runtime."
+            ),
         }
     generated_at = snapshot.get("generated_at")
     age_seconds = None
@@ -2088,14 +2105,21 @@ async def get_live_refresh_snapshot():
             age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
         except ValueError:
             age_seconds = None
+    live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
+    upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
+    live_state = (live_section.get("diagnostics") or {}).get("state")
+    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
+    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
+    fallback_sources = {
+        "live_fallback",
+        "verified_snapshot_fallback",
+    }
+    active_section = live_section if live_section.get("active") else upcoming_section
+    fallback_active = active_section.get("ranking_source") in fallback_sources
     # Trust guard: never serve stale snapshot payloads as current rankings.
     # Returning stale rows can leak invalid players from prior events.
     if age_seconds is not None and age_seconds > stale_after_seconds:
-        try:
-            refreshed = _attempt_fresh_snapshot()
-        except Exception as exc:
-            _logger.warning("Stale snapshot refresh failed: %s", exc)
-            refreshed = {}
+        refreshed = await _attempt_fresh_snapshot()
         if refreshed:
             snapshot = refreshed
             generated_at = snapshot.get("generated_at")
@@ -2105,7 +2129,14 @@ async def get_live_refresh_snapshot():
                     age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
                 except ValueError:
                     age_seconds = None
-        if age_seconds is not None and age_seconds > stale_after_seconds:
+            live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
+            upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
+            live_state = (live_section.get("diagnostics") or {}).get("state")
+            upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
+            has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
+            active_section = live_section if live_section.get("active") else upcoming_section
+            fallback_active = active_section.get("ranking_source") in fallback_sources
+        elif fallback_active or has_pipeline_degradation:
             return {
                 "ok": False,
                 "snapshot": None,
@@ -2118,8 +2149,6 @@ async def get_live_refresh_snapshot():
                 ),
                 "fallback_reason": None,
             }
-    live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
-    upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
     verification_messages: list[str] = []
     for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
         eligibility = (section or {}).get("eligibility") or {}
@@ -2127,16 +2156,6 @@ async def get_live_refresh_snapshot():
             summary = str(eligibility.get("summary") or "Field verification failed").strip()
             action = str(eligibility.get("action") or "").strip()
             verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
-
-    live_state = (live_section.get("diagnostics") or {}).get("state")
-    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
-    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
-    fallback_sources = {
-        "live_fallback",
-        "verified_snapshot_fallback",
-    }
-    active_section = live_section if live_section.get("active") else upcoming_section
-    fallback_active = active_section.get("ranking_source") in fallback_sources
     return {
         "ok": True,
         "snapshot": snapshot,
@@ -2147,9 +2166,16 @@ async def get_live_refresh_snapshot():
             " | ".join(verification_messages)
             if verification_messages
             else (
-                "Live snapshot indicates a degraded pipeline state."
-                if has_pipeline_degradation
-                else None
+                (
+                    f"Snapshot is stale (>{stale_after_seconds // 60} minutes); "
+                    "runtime is recomputing in the background."
+                )
+                if (age_seconds is not None and age_seconds > stale_after_seconds)
+                else (
+                    "Live snapshot indicates a degraded pipeline state."
+                    if has_pipeline_degradation
+                    else None
+                )
             )
         ),
         "fallback_reason": (
@@ -2174,7 +2200,18 @@ async def refresh_live_refresh_snapshot():
     if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
         start_live_refresh(tour=tour)
     try:
-        snapshot = generate_snapshot_once(tour=tour)
+        snapshot = await asyncio.wait_for(
+            asyncio.to_thread(generate_snapshot_once, tour=tour),
+            timeout=10.0,
+        )
+    except asyncio.TimeoutError:
+        _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
+        return {
+            "ok": False,
+            "snapshot": None,
+            "stale_reason": "Manual refresh is still running in the background. Snapshot will update shortly.",
+            "fallback_reason": None,
+        }
     except Exception as exc:
         _logger.warning("Manual live snapshot refresh failed: %s", exc)
         return {
