@@ -277,7 +277,7 @@ def _extract_rankings(
     *,
     finish_states: dict[str, str] | None = None,
     exclude_cut_players: bool = False,
-    limit: int = 30,
+    limit: int | None = None,
 ) -> list[dict]:
     rows = sorted(composite or [], key=lambda item: item.get("composite", 0), reverse=True)
     rankings: list[dict] = []
@@ -313,7 +313,7 @@ def _extract_rankings(
             if not entry.get("availability") and details.get("availability"):
                 entry["availability"] = details.get("availability")
         rankings.append(entry)
-        if rank >= limit:
+        if limit is not None and rank >= limit:
             break
     return rankings
 
@@ -391,7 +391,7 @@ def _build_live_point_in_time_rankings(
     scored.sort(key=lambda item: item[0], reverse=True)
     rankings: list[dict] = []
     rank = 0
-    for adjusted, base, row in scored[:30]:
+    for adjusted, base, row in scored:
         rank += 1
         pk = str(row.get("player_key") or "").strip().lower()
         finish_state = finish_state_map.get(pk)
