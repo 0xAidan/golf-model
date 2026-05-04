@@ -1,5 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -11,14 +10,6 @@ const TIER_STYLE: Record<string, string> = {
   STRONG: "bg-emerald-400/12 text-emerald-300",
   GOOD: "bg-green-500/12 text-green-400",
   LEAN: "bg-slate-400/10 text-slate-400",
-}
-
-export const TREND_ARROW: Record<string, string> = { hot: "↑↑", warming: "↑", cooling: "↓", cold: "↓↓" }
-export const TREND_COLOR: Record<string, string> = {
-  hot: "text-emerald-400",
-  warming: "text-emerald-300",
-  cooling: "text-amber-300",
-  cold: "text-red-400",
 }
 
 export const getTierStyle = (tier?: string) => TIER_STYLE[tier ?? ""] ?? TIER_STYLE.LEAN
@@ -125,13 +116,6 @@ export function secondaryBadgeLabel(market: string) {
   if (normalized.includes("outright") || normalized === "win" || normalized === "winner") return "Outright"
   // Last-resort: title-case the raw key so we never lose information silently.
   return market.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-export function renderTrendValue(direction?: string): ReactNode {
-  const arrow = TREND_ARROW[direction ?? ""] ?? "—"
-  const trendColor = TREND_COLOR[direction ?? ""] ?? "text-slate-500"
-
-  return <span className={trendColor}>{arrow}</span>
 }
 
 export function formatCompositeMetric(value: number | null | undefined) {

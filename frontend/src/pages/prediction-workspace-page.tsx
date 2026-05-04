@@ -50,12 +50,9 @@ import type {
   PlayerProfile,
   PredictionRunResponse,
 } from "@/lib/types"
-import {
-  buildMatchupKey,
-  secondaryBadgeLabel,
-  TREND_ARROW,
-  TREND_COLOR,
-} from "@/pages/page-shared"
+import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
+import { computeSgTrajectoryBounds, heatHslFromScore } from "@/lib/metric-heat"
+import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 
 /* ── Small helpers ────────────────────────────── */
 function EV({ ev, evPct }: { ev: number; evPct?: string }) {
@@ -86,10 +83,14 @@ function ScoreBar({
   color?: "green" | "gold" | "cyan"
 }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
+  const heatFill = color === "green" ? heatHslFromScore(value, max) : undefined
   return (
     <div className="score-bar">
       <div className="score-bar-track">
-        <div className={`score-bar-fill ${color}`} style={{ width: `${pct}%` }} />
+        <div
+          className={heatFill ? "score-bar-fill" : `score-bar-fill ${color}`}
+          style={heatFill ? { width: `${pct}%`, background: heatFill } : { width: `${pct}%` }}
+        />
       </div>
       <span className="score-bar-val">{formatNumber(value, 1)}</span>
     </div>
@@ -320,6 +321,10 @@ export function PredictionWorkspacePage({
   const displayPlayers = useMemo(
     () => (predictionTab === "past" ? (pastPredictionRun?.composite_results ?? []) : players),
     [pastPredictionRun?.composite_results, players, predictionTab],
+  )
+  const boardTrajectoryBounds = useMemo(
+    () => computeSgTrajectoryBounds(displayPlayers.slice(0, 15)),
+    [displayPlayers],
   )
   const displaySecondaryBets = predictionTab === "past" ? pastSecondaryBets : secondaryBets
   const displayAvailableBooks = useMemo(() => {
@@ -972,14 +977,13 @@ export function PredictionWorkspacePage({
                         <th>Composite</th>
                         <th>Form</th>
                         <th>Course</th>
-                        <th className="center">Trend</th>
+                        <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
+                          SG trajectory
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {displayPlayers.slice(0, 15).map((player) => {
-                        const dir = player.momentum_direction ?? ""
-                        const arrow = TREND_ARROW[dir] ?? "—"
-                        const trendColor = TREND_COLOR[dir] ?? "var(--text-faint)"
                         return (
                           <tr
                             key={player.player_key}
@@ -1008,9 +1012,12 @@ export function PredictionWorkspacePage({
                               <ScoreBar value={player.course_fit} max={100} color="gold" />
                             </td>
                             <td className="center">
-                              <span style={{ color: trendColor, fontSize: 14, fontWeight: 700 }}>
-                                {arrow}
-                              </span>
+                              <SgTrajectoryMeter
+                                momentumTrend={player.momentum_trend}
+                                momentumDirection={player.momentum_direction}
+                                normMin={boardTrajectoryBounds.min}
+                                normMax={boardTrajectoryBounds.max}
+                              />
                             </td>
                           </tr>
                         )

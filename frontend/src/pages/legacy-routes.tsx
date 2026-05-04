@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, CircleAlert, NotebookPen, Radar, ShieldAlert, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
+import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { CourseGuide } from "@/components/course-guide"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { api } from "@/lib/api"
@@ -16,10 +17,7 @@ import type {
   PlayerProfile,
   PredictionRunResponse,
 } from "@/lib/types"
-import {
-  TREND_ARROW,
-  TREND_COLOR,
-} from "@/pages/page-shared"
+import { computeSgTrajectoryBounds } from "@/lib/metric-heat"
 
 /* ── Shared mini-components ─────────────────── */
 function EmptyState({ message }: { message: string }) {
@@ -56,6 +54,7 @@ export function PlayersPage({
   richProfilesEnabled: boolean
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const trajectoryBounds = useMemo(() => computeSgTrajectoryBounds(players), [players])
 
   const handleToggle = (playerKey: string) => {
     if (expandedKey === playerKey) {
@@ -82,15 +81,14 @@ export function PlayersPage({
                   <th className="right">Course</th>
                   <th className="right">Form</th>
                   <th className="right">Momentum</th>
-                  <th className="center">Trend</th>
+                  <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
+                    SG trajectory
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {players.map((player) => {
                   const isExpanded = player.player_key === expandedKey
-                  const dir = player.momentum_direction ?? ""
-                  const arrow = TREND_ARROW[dir] ?? "—"
-                  const trendColor = TREND_COLOR[dir] ?? "var(--text-faint)"
                   const profileReady =
                     isExpanded &&
                     Boolean(selectedPlayerProfile) &&
@@ -132,7 +130,12 @@ export function PlayersPage({
                           {formatNumber(player.momentum, 1)}
                         </td>
                         <td className="center">
-                          <span style={{ color: trendColor, fontSize: 14, fontWeight: 700 }}>{arrow}</span>
+                          <SgTrajectoryMeter
+                            momentumTrend={player.momentum_trend}
+                            momentumDirection={player.momentum_direction}
+                            normMin={trajectoryBounds.min}
+                            normMax={trajectoryBounds.max}
+                          />
                         </td>
                       </tr>
                       {isExpanded && (
