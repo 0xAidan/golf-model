@@ -2072,7 +2072,7 @@ async def get_live_refresh_snapshot():
         except Exception as exc:
             _logger.warning("Live refresh runtime autostart failed: %s", exc)
 
-    async def _attempt_fresh_snapshot(timeout_seconds: float = 90.0) -> dict:
+    async def _attempt_fresh_snapshot(timeout_seconds: float = 8.0) -> dict:
         try:
             return await asyncio.wait_for(
                 asyncio.to_thread(generate_snapshot_once, tour=tour),
@@ -2119,7 +2119,11 @@ async def get_live_refresh_snapshot():
     # Trust guard: never serve stale snapshot payloads as current rankings.
     # Returning stale rows can leak invalid players from prior events.
     if age_seconds is not None and age_seconds > stale_after_seconds:
-        refreshed = await _attempt_fresh_snapshot()
+        refreshed = {}
+        # Avoid request-path stalls when the live refresh runtime is already running.
+        # In that case, background recompute remains the source of truth.
+        if not status.get("running"):
+            refreshed = await _attempt_fresh_snapshot()
         if refreshed:
             snapshot = refreshed
             generated_at = snapshot.get("generated_at")
@@ -2136,7 +2140,7 @@ async def get_live_refresh_snapshot():
             has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
             active_section = live_section if live_section.get("active") else upcoming_section
             fallback_active = active_section.get("ranking_source") in fallback_sources
-        elif fallback_active or has_pipeline_degradation:
+        elif (fallback_active or has_pipeline_degradation) and not status.get("running"):
             return {
                 "ok": False,
                 "snapshot": None,
@@ -2202,7 +2206,7 @@ async def refresh_live_refresh_snapshot():
     try:
         snapshot = await asyncio.wait_for(
             asyncio.to_thread(generate_snapshot_once, tour=tour),
-            timeout=120.0,
+            timeout=20.0,
         )
     except asyncio.TimeoutError:
         _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
