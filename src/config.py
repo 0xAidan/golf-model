@@ -130,6 +130,20 @@ COURSE_HISTORY_GATED_BLEND_WEIGHT: float = float(
 SHADOW_MC_N_SIMS: int = int(os.environ.get("SHADOW_MC_N_SIMS", "2000"))
 SHADOW_MC_SCORE_NOISE: float = float(os.environ.get("SHADOW_MC_SCORE_NOISE", "2.5"))
 SHADOW_MC_MIN_FIELD: int = int(os.environ.get("SHADOW_MC_MIN_FIELD", "30"))
+# Shadow Monte Carlo v2 (rounds-based SD, field correlation, cut) — same safety as v1.
+SHADOW_MC_FIELD_CORR: float = float(os.environ.get("SHADOW_MC_FIELD_CORR", "0.12"))
+SHADOW_MC_CUT_KEEP_FRAC: float = float(os.environ.get("SHADOW_MC_CUT_KEEP_FRAC", "0.58"))
+
+# Dynamic blend OOS promotion gate (when dynamic_blend + this flag on, model weight
+# cannot increase unless recent Brier history favors the model with enough samples).
+DYNAMIC_BLEND_PROMO_WINDOW: int = int(os.environ.get("DYNAMIC_BLEND_PROMO_WINDOW", "5"))
+DYNAMIC_BLEND_PROMO_MIN_SAMPLES: int = int(os.environ.get("DYNAMIC_BLEND_PROMO_MIN_SAMPLES", "40"))
+DYNAMIC_BLEND_PROMO_MIN_TOURNAMENTS: int = int(
+    os.environ.get("DYNAMIC_BLEND_PROMO_MIN_TOURNAMENTS", "8")
+)
+DYNAMIC_BLEND_PROMO_MODEL_EDGE: float = float(
+    os.environ.get("DYNAMIC_BLEND_PROMO_MODEL_EDGE", "0.02")
+)
 
 # Softmax temperature by bet type (value.py model_score_to_prob)
 SOFTMAX_TEMP_BY_TYPE: dict[str, float] = {

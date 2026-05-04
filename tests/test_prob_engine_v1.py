@@ -32,6 +32,19 @@ def test_run_field_simulation_outright_sums_to_one():
     assert abs(total_win - 1.0) < 1e-9
 
 
+def test_is_any_shadow_respects_v2_flag(monkeypatch):
+    monkeypatch.delenv("SHADOW_MC_V1", raising=False)
+    monkeypatch.setattr("src.feature_flags.is_enabled", lambda _: False)
+    from src.models.prob_engine_v1.shadow_mc import is_any_shadow_monte_carlo_enabled
+
+    assert is_any_shadow_monte_carlo_enabled() is False
+    monkeypatch.setattr(
+        "src.models.prob_engine_v1.shadow_mc_v2.is_shadow_monte_carlo_v2_enabled",
+        lambda: True,
+    )
+    assert is_any_shadow_monte_carlo_enabled() is True
+
+
 def test_is_shadow_monte_carlo_env_overrides_flag(monkeypatch):
     monkeypatch.delenv("SHADOW_MC_V1", raising=False)
     monkeypatch.setattr("src.feature_flags.is_enabled", lambda _: False)

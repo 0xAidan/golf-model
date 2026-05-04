@@ -764,9 +764,10 @@ def _run_shadow_monte_carlo_v1(
     """
     Append-only shadow simulation rows when enabled; never affects EV or card output.
     """
-    from src.models.prob_engine_v1 import is_shadow_monte_carlo_enabled, run_field_simulation_v1
+    from src.models.prob_engine_v1.shadow_dispatch import run_shadow_field_simulation
+    from src.models.prob_engine_v1.shadow_mc import is_any_shadow_monte_carlo_enabled
 
-    if not is_shadow_monte_carlo_enabled():
+    if not is_any_shadow_monte_carlo_enabled():
         return 0
     rows_written = 0
     for section_name, section_key in (
@@ -779,15 +780,15 @@ def _run_shadow_monte_carlo_v1(
         event_id = str(sec.get("source_event_id") or "").strip()
         if not event_id:
             continue
-        field = _rankings_to_shadow_field(sec.get("rankings") or [])
+        rankings = sec.get("rankings") or []
+        field = _rankings_to_shadow_field(rankings)
         if len(field) < int(getattr(config, "SHADOW_MC_MIN_FIELD", 30)):
             continue
         seed = hash(snapshot_id + section_name + event_id) % (2**32)
         try:
-            payload = run_field_simulation_v1(
+            payload = run_shadow_field_simulation(
                 field,
-                n_sims=int(getattr(config, "SHADOW_MC_N_SIMS", 2000)),
-                score_noise=float(getattr(config, "SHADOW_MC_SCORE_NOISE", 2.5)),
+                rankings,
                 seed=seed,
             )
             payload["snapshot_generated_at"] = generated_at

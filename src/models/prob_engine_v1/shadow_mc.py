@@ -84,3 +84,12 @@ def is_shadow_monte_carlo_enabled() -> bool:
     from src.feature_flags import is_enabled
 
     return is_enabled("shadow_monte_carlo_v1")
+
+
+def is_any_shadow_monte_carlo_enabled() -> bool:
+    """True if v1 or v2 shadow engine should run (separate gates)."""
+    if is_shadow_monte_carlo_enabled():
+        return True
+    from src.models.prob_engine_v1 import shadow_mc_v2 as sm2
+
+    return sm2.is_shadow_monte_carlo_v2_enabled()

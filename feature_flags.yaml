@@ -15,3 +15,8 @@ use_confirmed_field_only: true
 
 # Offline shadow Monte Carlo (append-only DB rows); default off.
 shadow_monte_carlo_v1: false
+shadow_monte_carlo_v2: false
+
+# When dynamic_blend is on, require OOS-style evidence before EWA can *increase*
+# model weight vs the prior tournament (see src/dynamic_blend.py).
+dynamic_blend_oos_promotion: false
