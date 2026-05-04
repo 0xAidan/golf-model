@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-05-04. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
+**Last verified:** 2026-05-04. Model version: 4.2. Test count: 372 (pytest). app.py: ~2916 lines. Frontend: React + Vite + TypeScript.
 
 **Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
@@ -62,8 +62,9 @@ golf-model/
 │   ├── csv_parser.py        # Legacy Betsperts CSV parser (still functional)
 │   ├── logging_config.py    # Structured logging setup
 │   │
-│   ├── models/              # SUB-MODELS (6 files)
+│   ├── models/              # SUB-MODELS
 │   │   ├── composite.py     # Blends course_fit + form + momentum into single score
+│   │   ├── prob_engine_v1/  # Shadow/offline probability experiments (Monte Carlo v1)
 │   │   ├── course_fit.py    # Course-specific SG scoring + confidence scaling
 │   │   ├── form.py          # Recent performance (rolling windows, DG skill, rankings)
 │   │   ├── momentum.py      # Trend detection (window comparisons, elite stability)
@@ -376,7 +377,7 @@ Major sections and key values:
 5. **Course profile:** `course_profile.load_course_profile()` from `data/courses/*.json` or AI vision extraction.
 6. **Composite:** `models.composite.compute_composite()` calls `course_fit`, `form`, `momentum`; blends with weights from config or DB `weight_sets`; optional weather adjustments.
 7. **AI pre-tournament:** `ai_brain.pre_tournament_analysis()` → narrative, key factors, player adjustments → `ai_decisions` table. Adjustments applied to composite scores (capped at `config.AI_ADJUSTMENT_CAP` = ±3).
-8. **Value:** `value.find_value_bets()` converts composite → probabilities (softmax), blends with DG calibrated probs (95/5), applies empirical calibration correction when bucket has ≥50 samples (`calibration.get_calibration_correction`), computes EV vs market odds, filters by threshold. Value bet dicts include `calibration_applied`. `matchup_value.find_matchup_value_bets()` uses Platt-sigmoid + DG matchup blend (80/20), conviction scoring, and per-market exposure (tournament 2, round 3). Matchup predictions are logged to `prediction_log` for post-tournament scoring and Platt recalibration.
+8. **Value:** `value.find_value_bets()` converts composite → probabilities (softmax), blends with DG calibrated probs (95/5). When both course-history and baseline sim metrics exist, `value.select_dg_primary_probability` applies a **shrinkage gate** (config `COURSE_HISTORY_*`; set `COURSE_HISTORY_POLICY=legacy` for strict CH-first). Then empirical calibration when bucket has ≥50 samples (`calibration.get_calibration_correction`), EV vs market odds, threshold filters. Value rows may include `dg_ch_shrinkage_gated`, `calibration_applied`. `matchup_value.find_matchup_value_bets()` uses Platt-sigmoid + DG matchup blend (80/20), conviction scoring, and per-market exposure (tournament 2, round 3). Matchup predictions are logged to `prediction_log` for post-tournament scoring and Platt recalibration.
 9. **Portfolio:** `portfolio.enforce_diversification()` + `exposure` caps.
 10. **Output:** `card.generate_card()` → `output/{safe_name}_{YYYYMMDD}.md`. `methodology.generate_methodology()` → `output/{safe_name}_methodology_{YYYYMMDD}.md`. `output_manager.archive_previous()` moves older versions to `output/archive/`.
 
@@ -401,6 +402,8 @@ Major sections and key values:
 **Backtester / PIT:** `pit_rolling_stats`, `pit_course_stats`, `historical_predictions`, `historical_odds`, `historical_matchup_odds`, `historical_event_info`, `tournament_weather`, `tournament_weather_summary`, `backfill_progress`.
 
 **Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`, `challenger_predictions` (champion-challenger shadow rows).
+
+**Shadow Monte Carlo v1 (offline):** `shadow_event_simulations` — optional append-only rows from `src/models/prob_engine_v1` when `SHADOW_MC_V1=1` or feature flag `shadow_monte_carlo_v1`; wired from `backtester/dashboard_runtime.py` after `market_prediction_rows` persistence. Does **not** affect EV, picks, or `GET /api/live-refresh/snapshot` payloads (diagnostic counters only on snapshot `diagnostics.shadow_mc_rows_written`).
 
 **External data:** `equipment_changes`, `intel_events`.
 

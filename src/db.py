@@ -17,6 +17,9 @@ Tables:
   market_performance      – rolling ROI tracking by market type
   calibration_curve       – probability calibration buckets
   ai_adjustments          – tracked AI-driven player adjustments
+  live_snapshot_history   – persisted live/upcoming snapshot sections
+  market_prediction_rows  – dense per-tick betting lines from live refresh
+  shadow_event_simulations – append-only shadow Monte Carlo (prob_engine_v1; offline analytics)
 """
 
 import logging
@@ -338,6 +341,20 @@ def init_db():
             ON market_prediction_rows(event_id, generated_at DESC, market_family);
         CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_snapshot
             ON market_prediction_rows(snapshot_id, section, market_family);
+
+        CREATE TABLE IF NOT EXISTS shadow_event_simulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT,
+            event_id TEXT NOT NULL,
+            section TEXT,
+            tour TEXT,
+            n_sims INTEGER,
+            engine_version TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_shadow_event_sims_event
+            ON shadow_event_simulations(event_id, created_at DESC);
 
         -- ═══ AI brain persistent memory ═══
         CREATE TABLE IF NOT EXISTS ai_memory (
@@ -1063,6 +1080,25 @@ def _run_migrations(conn: sqlite3.Connection):
     conn.commit()
 
     _ensure_pre_teeoff_tables(conn)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS shadow_event_simulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT,
+            event_id TEXT NOT NULL,
+            section TEXT,
+            tour TEXT,
+            n_sims INTEGER,
+            engine_version TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shadow_event_sims_event
+        ON shadow_event_simulations(event_id, created_at DESC)
+    """)
+    conn.commit()
 
     # Create pit_course_stats table if missing
     conn.execute("""
@@ -2237,6 +2273,39 @@ def store_market_prediction_rows(rows: list[dict]) -> int:
     conn.commit()
     conn.close()
     return len(rows)
+
+
+def append_shadow_event_simulation(
+    *,
+    snapshot_id: str,
+    event_id: str,
+    section: str,
+    tour: str | None,
+    n_sims: int,
+    engine_version: str,
+    payload_json: dict[str, Any],
+) -> int:
+    """Append one shadow MC result row (append-only; no updates)."""
+    conn = get_conn()
+    conn.execute(
+        """
+        INSERT INTO shadow_event_simulations
+            (snapshot_id, event_id, section, tour, n_sims, engine_version, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            snapshot_id,
+            event_id,
+            section,
+            tour,
+            n_sims,
+            engine_version,
+            json.dumps(payload_json),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return 1
 
 
 def get_market_prediction_rows_for_event(

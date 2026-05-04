@@ -12,3 +12,6 @@ dead_heat_adjustment: true
 
 # Safe defaults for existing behavior
 use_confirmed_field_only: true
+
+# Offline shadow Monte Carlo (append-only DB rows); default off.
+shadow_monte_carlo_v1: false
