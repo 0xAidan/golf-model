@@ -530,7 +530,7 @@ function CourseEventSection({ profile }: { profile?: PlayerProfile }) {
 
       {/* Recent starts table */}
       {recentStarts.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 12, overflow: "auto" }}>
           <table className="data-table" style={{ fontSize: 11 }}>
             <thead>
               <tr>
@@ -596,6 +596,7 @@ function BettingSection({ profile }: { profile?: PlayerProfile }) {
         ))}
       </div>
       {bets.length > 0 ? (
+        <div style={{ overflow: "auto" }}>
         <table className="data-table" style={{ fontSize: 11 }}>
           <thead>
             <tr>
@@ -628,6 +629,7 @@ function BettingSection({ profile }: { profile?: PlayerProfile }) {
             })}
           </tbody>
         </table>
+        </div>
       ) : (
         <div style={{ fontFamily: VAR.mono, fontSize: 10, color: VAR.faint, padding: "8px 0" }}>
           No linked bets in current run.

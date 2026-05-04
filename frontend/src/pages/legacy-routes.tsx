@@ -72,7 +72,7 @@ export function PlayersPage({
       <PageHeader title="Player Rankings" description="Full model board — click any row to expand the player's full projection profile." />
       <div className="card">
         {players.length > 0 ? (
-          <div style={{ overflow: "hidden" }}>
+          <div style={{ overflow: "auto" }}>
             <table className="data-table">
               <thead>
                 <tr>

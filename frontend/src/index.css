@@ -442,7 +442,8 @@ body {
 .card-body {
   padding: 10px;
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--surface-3) transparent;
 }
@@ -792,7 +793,7 @@ body {
 .tr-event-body {
   border-top: 1px solid var(--border);
   background: var(--bg-2);
-  overflow-x: auto;
+  overflow: auto;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -1114,8 +1115,7 @@ body {
    ───────────────────────────────────────────────────── */
 .table-scroll {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: auto;
   min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--surface-3) transparent;

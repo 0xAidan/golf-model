@@ -26,15 +26,15 @@ export function CockpitWorkspace({
       }}
     >
       {/* Left column — scrolls internally */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         {leftRail}
       </div>
       {/* Center column */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         {center}
       </div>
       {/* Right column */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         {rightRail}
       </div>
     </div>

@@ -721,7 +721,7 @@ export function PredictionWorkspacePage({
                   All →
                 </Link>
               </div>
-              <div style={{ overflow: "hidden" }}>
+              <div className="table-scroll">
                 {gradingHistory.length > 0 ? (
                   <table className="data-table">
                     <thead>
@@ -803,7 +803,7 @@ export function PredictionWorkspacePage({
                 </button>
               </div>
 
-              <div style={{ overflow: "hidden" }}>
+              <div className="table-scroll">
                 {predictionTab === "live" && !isLiveActive ? (
                   <div className="card-body">
                     <div className="empty-state">
@@ -962,7 +962,7 @@ export function PredictionWorkspacePage({
                   All <ExternalLink size={11} />
                 </Link>
               </div>
-              <div style={{ overflow: "hidden" }}>
+              <div className="table-scroll">
                 {displayPlayers.length > 0 ? (
                   <table className="data-table">
                     <thead>
@@ -1027,7 +1027,7 @@ export function PredictionWorkspacePage({
 
             {/* ── Secondary bets ───────────────────── */}
             {displaySecondaryBets.length > 0 && (
-              <div className="card" style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: 320 }}>
+              <div className="card" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
                 <div className="card-header">
                   <div className="card-title">Secondary markets</div>
                   <div className="card-desc">
@@ -1040,7 +1040,7 @@ export function PredictionWorkspacePage({
                     </Link>
                   </div>
                 </div>
-                <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
+                <div className="table-scroll">
                   <table className="data-table">
                     <thead>
                       <tr>

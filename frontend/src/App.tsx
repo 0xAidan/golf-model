@@ -373,7 +373,7 @@ function App() {
         <Route
           path="/players"
           element={
-            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{flex:1,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
               <Suspense fallback={<RouteFallback />}>
                 <PlayersPage players={players} />
               </Suspense>

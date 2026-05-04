@@ -570,7 +570,7 @@ export function PlayersPage({
       />
 
       {/* Main profile view */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, minHeight: 0 }}>
         {effectiveKey ? (
           <PlayerProfileView key={effectiveKey} playerKey={effectiveKey} playerDisplay={effectiveDisplay} />
         ) : (
