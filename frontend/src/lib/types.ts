@@ -710,61 +710,14 @@ export type StandalonePlayerProfile = {
   }
   approach_buckets: Array<{ key: string; label: string; value: number }>
   rolling_windows: { "10"?: number | null; "25"?: number | null; "50"?: number | null }
-  rolling_windows_expanded?: Record<
-    "sg_total" | "sg_ott" | "sg_app" | "sg_arg" | "sg_putt" | "sg_t2g",
-    { "10"?: number | null; "25"?: number | null; "50"?: number | null }
-  >
   trend_series: number[]
   recent_events: Array<{
     event_name: string
     event_completed?: string | null
-    event_id?: string | null
-    course_name?: string | null
-    tour?: string | null
     fin_text?: string | null
-    avg_score?: number | null
-    avg_to_par?: number | null
     avg_sg_total?: number | null
-    avg_sg_ott?: number | null
-    avg_sg_app?: number | null
-    avg_sg_arg?: number | null
-    avg_sg_putt?: number | null
-    avg_sg_t2g?: number | null
     rounds_played?: number
   }>
-  recent_rounds_sample?: Array<{
-    round_num?: number | null
-    event_name?: string | null
-    event_completed?: string | null
-    event_id?: string | null
-    course_name?: string | null
-    tour?: string | null
-    score?: number | null
-    sg_total?: number | null
-    sg_ott?: number | null
-    sg_app?: number | null
-    sg_arg?: number | null
-    sg_putt?: number | null
-    sg_t2g?: number | null
-    driving_dist?: number | null
-    driving_acc?: number | null
-    gir?: number | null
-    scrambling?: number | null
-    fin_text?: string | null
-  }>
-  course_summaries?: Array<{
-    course_name: string
-    rounds_played: number
-    avg_sg_total?: number | null
-  }>
-  ranking_card?: {
-    dg_rank?: number | null
-    owgr_rank?: number | null
-    dg_skill_estimate?: number | null
-    primary_tour?: string | null
-    player_name?: string | null
-    extra_scalars?: Record<string, number>
-  }
   ranking_data?: Record<string, unknown> | null
   has_skill_data: boolean
   has_ranking_data: boolean
