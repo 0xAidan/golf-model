@@ -7,6 +7,11 @@ type StaticTrackRecordPick = {
   odds: string
   result: string
   pl: number
+  modelVariant?: string
+  edgePct?: number | null
+  winProbPct?: number | null
+  finish?: string | null
+  gradedAt?: string | null
 }
 
 type StaticTrackRecordEvent = {
@@ -98,10 +103,15 @@ export function mergeTrackRecordEvents(apiEvents: TrackRecordEvent[], staticEven
 
     const apiPicks = (apiEvent.picks ?? []).map((pick) => ({
       pick: pick.player_display,
-      opponent: pick.opponent_display,
+      opponent: pick.opponent_display ?? "—",
       odds: String(pick.market_odds ?? "--"),
-      result: pick.hit === 1 ? "win" : pick.profit === 0 ? "push" : "loss",
+      result: pick.outcome ?? (pick.hit === 1 ? "win" : pick.profit === 0 ? "push" : "loss"),
       pl: pick.profit,
+      modelVariant: pick.model_variant ?? "baseline",
+      edgePct: pick.ev != null ? Number(pick.ev) * 100 : null,
+      winProbPct: pick.model_prob != null ? Number(pick.model_prob) * 100 : null,
+      finish: pick.actual_finish ?? null,
+      gradedAt: pick.graded_at ?? null,
     }))
 
     const staticMatch = staticEvents.find((event) => event.name.toLowerCase().trim() === key)

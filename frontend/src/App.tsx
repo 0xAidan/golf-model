@@ -201,6 +201,7 @@ function App() {
       setUiAlert(null)
       void queryClient.invalidateQueries({ queryKey: ["dashboard-state"] })
       void queryClient.invalidateQueries({ queryKey: ["grading-history"] })
+      void queryClient.invalidateQueries({ queryKey: ["track-record"] })
     },
     onError: () => {
       setUiAlert("Grading failed. Check backend logs and retry.")

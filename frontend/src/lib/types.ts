@@ -410,6 +410,8 @@ export type GradedTournamentSummary = {
   hits?: number
   total_profit?: number
   last_graded_at?: string | null
+  variant_stats?: Record<string, { picks: number; hits: number; profit: number }>
+  picks?: TrackRecordPick[]
 }
 
 export type GradingHistoryResponse = {
@@ -417,12 +419,19 @@ export type GradingHistoryResponse = {
 }
 
 export type TrackRecordPick = {
+  model_variant?: string
   player_display: string
-  opponent_display: string
-  market_odds: string
+  opponent_display?: string
+  market_odds?: string
   bet_type?: string
+  model_prob?: number | null
+  ev?: number | null
+  reasoning?: string | null
   hit: number
   profit: number
+  actual_finish?: string | null
+  graded_at?: string | null
+  outcome?: "win" | "loss" | "push"
 }
 
 export type TrackRecordEvent = {

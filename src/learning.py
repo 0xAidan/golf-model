@@ -74,10 +74,12 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
 
         # Determine opponent finish for matchups
         opp_finish = None
+        opp_finish_text = None
         if bt == "matchup":
             opp_key = pick.get("opponent_key")
             opp_result = result_map.get(opp_key)
             opp_finish = opp_result.get("finish_position") if opp_result else None
+            opp_finish_text = opp_result.get("finish_text") if opp_result else None
 
         outcome = determine_outcome(
             bt, finish, finish_text, made_cut, all_results_list,
@@ -99,13 +101,19 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
             "SELECT id FROM pick_outcomes WHERE pick_id = ?", (pick["id"],)
         ).fetchone()
 
+        actual_finish = r.get("finish_text")
+        notes = None
+        if bt == "matchup" and opp_finish_text:
+            actual_finish = f"{r.get('finish_text')} vs {opp_finish_text}"
+            notes = f"Matchup result: {pick.get('player_display')} {r.get('finish_text')} vs {pick.get('opponent_display')} {opp_finish_text}"
+
         if not existing:
             conn.execute(
                 """INSERT INTO pick_outcomes
-                   (pick_id, hit, actual_finish, odds_decimal, stake, profit)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (pick["id"], hit, r.get("finish_text"),
-                 odds_decimal, stake, profit),
+                   (pick_id, hit, actual_finish, odds_decimal, stake, profit, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (pick["id"], hit, actual_finish,
+                 odds_decimal, stake, profit, notes),
             )
             scored += 1
             if hit:
