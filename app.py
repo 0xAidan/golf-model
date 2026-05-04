@@ -14,6 +14,7 @@ import asyncio
 import logging
 import shutil
 import tempfile
+import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,23 @@ def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
         return True
     except OSError:
         return False
+    # Guard against stale pidfile false positives when PID gets reused.
+    # Treat the worker as running only if the process command matches the
+    # dedicated live refresh worker entrypoint.
+    try:
+        probe = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=1.5,
+        )
+        command = (probe.stdout or "").strip().lower()
+        if command and "live_refresh_worker.py" not in command:
+            return False
+    except Exception:
+        # Fall back to liveness-only semantics when command inspection fails.
+        pass
     return True
 
 

@@ -13,6 +13,7 @@ of the live-refresh loop. The FastAPI lifespan hook must:
 from __future__ import annotations
 
 import os
+import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,8 +119,18 @@ def test_lifespan_skips_when_pidfile_points_to_live_process(
     monkeypatch, patched_refresh, pidfile_path, caplog
 ):
     _reset_autostart_env(monkeypatch, "1")
-    # Own PID is guaranteed to be alive — emulate worker's pidfile.
-    pidfile_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    # Emulate a live worker process by PID + command probe.
+    pidfile_path.write_text("4242\n", encoding="utf-8")
+    monkeypatch.setattr("app.os.kill", lambda pid, sig: None)
+    monkeypatch.setattr(
+        "app.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=["ps", "-p", "4242", "-o", "command="],
+            returncode=0,
+            stdout="python /opt/golf-model/workers/live_refresh_worker.py\n",
+            stderr="",
+        ),
+    )
 
     import app as app_module
 
@@ -176,3 +187,43 @@ def test_worker_pidfile_helpers_roundtrip(tmp_path, monkeypatch):
     assert not path.exists()
     # Idempotent: removing a missing pidfile must not raise.
     live_refresh_worker._remove_pidfile(str(path))
+
+
+def test_pid_probe_rejects_reused_non_worker_pid(tmp_path, monkeypatch):
+    import app as app_module
+
+    pidfile = tmp_path / "live_refresh.pid"
+    pidfile.write_text("4242\n", encoding="utf-8")
+
+    monkeypatch.setattr(app_module.os, "kill", lambda pid, sig: None)
+
+    def _fake_ps(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["ps", "-p", "4242", "-o", "command="],
+            returncode=0,
+            stdout="python /opt/golf-model/start.py dashboard --port 8000\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(app_module.subprocess, "run", _fake_ps)
+    assert app_module._live_refresh_worker_is_running(str(pidfile)) is False
+
+
+def test_pid_probe_accepts_live_refresh_worker_process(tmp_path, monkeypatch):
+    import app as app_module
+
+    pidfile = tmp_path / "live_refresh.pid"
+    pidfile.write_text("4343\n", encoding="utf-8")
+
+    monkeypatch.setattr(app_module.os, "kill", lambda pid, sig: None)
+
+    def _fake_ps(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["ps", "-p", "4343", "-o", "command="],
+            returncode=0,
+            stdout="python /opt/golf-model/workers/live_refresh_worker.py\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(app_module.subprocess, "run", _fake_ps)
+    assert app_module._live_refresh_worker_is_running(str(pidfile)) is True
