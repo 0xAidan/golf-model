@@ -508,8 +508,52 @@ async def get_grading_history(limit: int = 20):
         """,
         (limit,),
     ).fetchall()
+    tournaments = []
+    for row in rows:
+        picks = conn.execute(
+            """
+            SELECT
+                p.id,
+                p.model_variant,
+                p.bet_type,
+                p.player_display,
+                p.opponent_display,
+                p.market_odds,
+                p.model_prob,
+                p.ev,
+                p.reasoning,
+                po.hit,
+                po.actual_finish,
+                ROUND(COALESCE(po.profit, 0), 2) AS profit,
+                po.entered_at AS graded_at
+            FROM picks p
+            JOIN pick_outcomes po ON po.pick_id = p.id
+            WHERE p.tournament_id = ?
+            ORDER BY po.entered_at, p.id
+            """,
+            (row["id"],),
+        ).fetchall()
+        variant_stats: dict[str, dict[str, float | int]] = {}
+        pick_payloads = []
+        for pick in picks:
+            variant = str(pick["model_variant"] or "baseline")
+            stat = variant_stats.setdefault(variant, {"picks": 0, "hits": 0, "profit": 0.0})
+            stat["picks"] += 1
+            stat["hits"] += int(pick["hit"] or 0)
+            stat["profit"] = round(float(stat["profit"]) + float(pick["profit"] or 0), 2)
+            profit = float(pick["profit"] or 0)
+            outcome = "win" if int(pick["hit"] or 0) == 1 else ("push" if profit == 0 else "loss")
+            pick_payloads.append({
+                **dict(pick),
+                "outcome": outcome,
+            })
+        tournaments.append({
+            **dict(row),
+            "variant_stats": variant_stats,
+            "picks": pick_payloads,
+        })
     conn.close()
-    return {"tournaments": [dict(row) for row in rows]}
+    return {"tournaments": tournaments}
 
 
 @app.get("/api/track-record")
@@ -541,8 +585,18 @@ async def get_track_record(limit: int = 20):
         picks = conn.execute(
             """
             SELECT
-                p.player_display, p.opponent_display, p.market_odds,
-                p.bet_type, po.hit, ROUND(po.profit, 2) AS profit
+                p.model_variant,
+                p.player_display,
+                p.opponent_display,
+                p.market_odds,
+                p.bet_type,
+                p.model_prob,
+                p.ev,
+                p.reasoning,
+                po.hit,
+                po.actual_finish,
+                ROUND(po.profit, 2) AS profit,
+                po.entered_at AS graded_at
             FROM picks p
             JOIN pick_outcomes po ON po.pick_id = p.id
             WHERE p.tournament_id = ?
@@ -550,9 +604,16 @@ async def get_track_record(limit: int = 20):
             """,
             (event["id"],),
         ).fetchall()
+        pick_payloads = []
+        for pick in picks:
+            payload = dict(pick)
+            profit = float(payload.get("profit") or 0)
+            hit = int(payload.get("hit") or 0)
+            payload["outcome"] = "win" if hit == 1 else ("push" if profit == 0 else "loss")
+            pick_payloads.append(payload)
         result.append({
             **dict(event),
-            "picks": [dict(p) for p in picks],
+            "picks": pick_payloads,
         })
     conn.close()
     return {"events": result}
@@ -1625,6 +1686,8 @@ async def run_analysis(
             for bt in ["outright", "top5", "top10", "top20"]:
                 pick_rows.append({
                     "tournament_id": tournament_id,
+                    "model_variant": "baseline",
+                    "source": "legacy_upload",
                     "bet_type": bt,
                     "player_key": r["player_key"],
                     "player_display": r["player_display"],
@@ -2756,48 +2819,11 @@ async def enter_results(request: Request):
 
     store_results(tid, parsed)
 
-    # Score picks
-    conn = get_conn()
-    picks = conn.execute("SELECT * FROM picks WHERE tournament_id = ?", (tid,)).fetchall()
-    results_rows = conn.execute("SELECT * FROM results WHERE tournament_id = ?", (tid,)).fetchall()
+    from src.learning import score_picks_for_tournament
 
-    result_map = {r["player_key"]: dict(r) for r in results_rows}
-    all_results_list = [dict(r) for r in results_rows]
-    scored = 0
-    hits = 0
-    for pick in picks:
-        pk = pick["player_key"]
-        bt = pick["bet_type"]
-        r = result_map.get(pk)
-        if not r:
-            continue
-
-        # Determine opponent finish for matchups
-        opp_finish = None
-        if bt == "matchup":
-            opp_key = pick.get("opponent_key")
-            opp_result = result_map.get(opp_key) if opp_key else None
-            opp_finish = opp_result.get("finish_position") if opp_result else None
-
-        outcome = determine_outcome(
-            bt,
-            r.get("finish_position"),
-            r.get("finish_text"),
-            r.get("made_cut", 0),
-            all_results_list,
-            opponent_finish=opp_finish,
-        )
-        hit = outcome["hit"]
-
-        conn.execute(
-            "INSERT INTO pick_outcomes (pick_id, hit, actual_finish) VALUES (?, ?, ?)",
-            (pick["id"], hit, r.get("finish_text")),
-        )
-        scored += 1
-        hits += hit
-
-    conn.commit()
-    conn.close()
+    score_result = score_picks_for_tournament(tid)
+    scored = int(score_result.get("scored", 0) or 0)
+    hits = int(score_result.get("hits", 0) or 0)
 
     return {
         "success": True,

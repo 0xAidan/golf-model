@@ -46,6 +46,8 @@ def _default_state() -> dict[str, Any]:
         "next_recompute_at": None,
         "last_ingest_summary": None,
         "last_snapshot_generated_at": None,
+        "last_auto_grade_at": None,
+        "last_auto_grade_status": None,
     }
 
 
@@ -965,6 +967,98 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     }
 
 
+def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[str, Any] | None:
+    """Auto-grade ungraded UI picks for the latest completed event."""
+    event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
+    raw_year = ingest_summary.get("latest_completed_event_year")
+    if not event_id:
+        return None
+    try:
+        year = int(raw_year)
+    except (TypeError, ValueError):
+        year = datetime.now(timezone.utc).year
+
+    conn = db.get_conn()
+    try:
+        tournament = conn.execute(
+            "SELECT id, name FROM tournaments WHERE event_id = ? AND year = ? ORDER BY id DESC LIMIT 1",
+            (event_id, year),
+        ).fetchone()
+        if not tournament:
+            return {
+                "status": "skipped",
+                "reason": "tournament_not_found",
+                "event_id": event_id,
+                "year": year,
+            }
+        tournament_id = int(tournament["id"])
+        picks_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM picks WHERE tournament_id = ?",
+                (tournament_id,),
+            ).fetchone()["count"]
+            or 0
+        )
+        graded_count = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM pick_outcomes po
+                JOIN picks p ON p.id = po.pick_id
+                WHERE p.tournament_id = ?
+                """,
+                (tournament_id,),
+            ).fetchone()["count"]
+            or 0
+        )
+    finally:
+        conn.close()
+
+    if picks_count == 0:
+        return {
+            "status": "skipped",
+            "reason": "no_tracked_picks",
+            "event_id": event_id,
+            "year": year,
+            "tournament_id": tournament_id,
+        }
+    if graded_count >= picks_count:
+        return {
+            "status": "skipped",
+            "reason": "already_graded",
+            "event_id": event_id,
+            "year": year,
+            "tournament_id": tournament_id,
+            "picks_count": picks_count,
+            "graded_count": graded_count,
+        }
+
+    from scripts.grade_tournament import grade_tournament
+
+    _logger.info(
+        "Auto-grading latest completed event %s/%s (tournament_id=%s, picks=%s, graded=%s)",
+        event_id,
+        year,
+        tournament_id,
+        picks_count,
+        graded_count,
+    )
+    report = grade_tournament(
+        event_id=event_id,
+        year=year,
+        tournament_id=tournament_id,
+        event_name=ingest_summary.get("latest_completed_event_name"),
+    )
+    return {
+        "status": report.get("status", "unknown"),
+        "event_id": event_id,
+        "year": year,
+        "tournament_id": tournament_id,
+        "picks_count": picks_count,
+        "graded_count_before": graded_count,
+    }
+
+
 def _build_section_eligibility(
     analysis_result: dict[str, Any],
     *,
@@ -1833,6 +1927,16 @@ def _run_loop(tour: str) -> None:
                     _state["last_snapshot_generated_at"] = snapshot.get("generated_at")
                     _state["next_recompute_at"] = datetime.fromtimestamp(now_epoch + cadence.recompute_seconds, timezone.utc).isoformat()
                 next_recompute = now_epoch + cadence.recompute_seconds
+                try:
+                    auto_grade_result = _maybe_auto_grade_completed_event(ingest_summary)
+                    with _state_lock:
+                        _state["last_auto_grade_at"] = _iso_now()
+                        _state["last_auto_grade_status"] = auto_grade_result
+                except Exception as exc:  # pragma: no cover - defensive
+                    _logger.warning("Auto-grading check failed: %s", exc)
+                    with _state_lock:
+                        _state["last_auto_grade_at"] = _iso_now()
+                        _state["last_auto_grade_status"] = {"status": "error", "message": str(exc)}
         except Exception as exc:
             _logger.exception("Live refresh cycle failed")
             with _state_lock:

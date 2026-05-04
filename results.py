@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src import db
 from src.player_normalizer import normalize_name, display_name
-from src.scoring import determine_outcome
+from src.learning import score_picks_for_tournament
 
 
 def parse_finish(text: str) -> tuple:
@@ -110,73 +110,16 @@ def score_picks(tournament_id: int):
     """
     Compare logged picks against results to determine hits/misses.
     """
-    conn = db.get_conn()
-
-    # Get picks for this tournament
-    picks = conn.execute(
-        "SELECT * FROM picks WHERE tournament_id = ?", (tournament_id,)
-    ).fetchall()
-
-    # Get results for this tournament
-    results = conn.execute(
-        "SELECT * FROM results WHERE tournament_id = ?", (tournament_id,)
-    ).fetchall()
-
-    if not picks:
+    result = score_picks_for_tournament(tournament_id)
+    status = result.get("status")
+    if status == "no_picks":
         print("\n  No picks logged for this tournament.")
-        conn.close()
         return
-    if not results:
+    if status == "no_results":
         print("\n  No results entered yet.")
-        conn.close()
         return
-
-    # Build results lookup
-    result_map = {}
-    for r in results:
-        result_map[r["player_key"]] = dict(r)
-    all_results_list = [dict(r) for r in results]
-
-    # Score each pick using unified scoring module
-    scored = 0
-    hits = 0
-    for pick in picks:
-        pk = pick["player_key"]
-        bt = pick["bet_type"]
-        r = result_map.get(pk)
-
-        if not r:
-            print(f"    WARNING: No results found for {pk} ({bt})")
-            continue
-
-        # Determine opponent finish for matchups
-        opp_finish = None
-        if bt == "matchup":
-            opp_key = pick.get("opponent_key")
-            opp_result = result_map.get(opp_key)
-            opp_finish = opp_result.get("finish_position") if opp_result else None
-
-        outcome = determine_outcome(
-            bt,
-            r.get("finish_position"),
-            r.get("finish_text"),
-            r.get("made_cut", 0),
-            all_results_list,
-            opponent_finish=opp_finish,
-        )
-        hit = outcome["hit"]
-
-        # Store outcome
-        conn.execute(
-            """INSERT INTO pick_outcomes (pick_id, hit, actual_finish)
-               VALUES (?, ?, ?)""",
-            (pick["id"], hit, r.get("finish_text")),
-        )
-        scored += 1
-        hits += hit
-
-    conn.commit()
-    conn.close()
+    scored = int(result.get("scored", 0) or 0)
+    hits = int(result.get("hits", 0) or 0)
 
     print(f"\n  Scored {scored} picks: {hits} hits, {scored - hits} misses")
     if scored > 0:

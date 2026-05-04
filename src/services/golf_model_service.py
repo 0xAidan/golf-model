@@ -419,6 +419,12 @@ class GolfModelService:
         result["ai_decisions"] = ai_decisions
 
         # Step 12: Log predictions for calibration (skipped if quality check fails)
+        self._store_displayed_picks(
+            tid=tid,
+            value_bets=value_bets,
+            matchup_bets=matchup_bets,
+            composite=composite,
+        )
         if value_bets and placement_logging_allowed:
             self._log_predictions(tid, value_bets)
         elif value_bets and not placement_logging_allowed:
@@ -1068,6 +1074,8 @@ class GolfModelService:
 
             pick_rows.append({
                 "tournament_id": tid,
+                "model_variant": self.model_variant,
+                "source": "ai_decision",
                 "bet_type": bet_type,
                 "player_key": pk,
                 "player_display": d.get("player", ""),
@@ -1098,6 +1106,92 @@ class GolfModelService:
             log_predictions_for_tournament(tid, value_bets)
         except Exception as e:
             logger.warning(f"Prediction logging error: {e}")
+
+    def _store_displayed_picks(self, *, tid: int, value_bets: dict, matchup_bets: list[dict], composite: list[dict]):
+        """Persist every UI-displayed pick so grading has complete coverage."""
+        comp_lookup = {row.get("player_key"): row for row in (composite or [])}
+        pick_rows: list[dict] = []
+
+        for bet_type, bets in (value_bets or {}).items():
+            for bet in bets or []:
+                player_key = (bet.get("player_key") or "").strip()
+                if not player_key:
+                    continue
+                comp = comp_lookup.get(player_key, {})
+                best_odds = bet.get("best_odds")
+                odds_text = None
+                if isinstance(best_odds, (int, float)):
+                    odds_int = int(best_odds)
+                    odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+                elif best_odds is not None:
+                    odds_text = str(best_odds)
+                reasoning_parts = []
+                if bet.get("best_book"):
+                    reasoning_parts.append(f"book={bet.get('best_book')}")
+                if bet.get("ev_pct"):
+                    reasoning_parts.append(f"edge={bet.get('ev_pct')}")
+
+                pick_rows.append({
+                    "tournament_id": tid,
+                    "model_variant": self.model_variant,
+                    "source": "ui_display",
+                    "bet_type": str(bet_type),
+                    "player_key": player_key,
+                    "player_display": bet.get("player_display") or display_name(player_key),
+                    "opponent_key": "",
+                    "opponent_display": "",
+                    "composite_score": comp.get("composite"),
+                    "course_fit_score": comp.get("course_fit"),
+                    "form_score": comp.get("form"),
+                    "momentum_score": comp.get("momentum"),
+                    "model_prob": bet.get("model_prob"),
+                    "market_odds": odds_text,
+                    "market_implied_prob": bet.get("market_prob"),
+                    "ev": bet.get("ev"),
+                    "confidence": bet.get("confidence") or bet.get("tier"),
+                    "reasoning": "; ".join(reasoning_parts) or None,
+                })
+
+        for bet in matchup_bets or []:
+            pick_key = (bet.get("pick_key") or "").strip() or normalize_name(str(bet.get("pick", "")))
+            if not pick_key:
+                continue
+            opponent_key = (bet.get("opponent_key") or "").strip() or normalize_name(str(bet.get("opponent", "")))
+            comp = comp_lookup.get(pick_key, {})
+            odds_val = bet.get("odds")
+            odds_text = None
+            if isinstance(odds_val, (int, float)):
+                odds_int = int(odds_val)
+                odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+            elif odds_val is not None:
+                odds_text = str(odds_val)
+            pick_rows.append({
+                "tournament_id": tid,
+                "model_variant": self.model_variant,
+                "source": "ui_display",
+                "bet_type": "matchup",
+                "player_key": pick_key,
+                "player_display": bet.get("pick") or display_name(pick_key),
+                "opponent_key": opponent_key,
+                "opponent_display": bet.get("opponent") or display_name(opponent_key),
+                "composite_score": comp.get("composite"),
+                "course_fit_score": comp.get("course_fit"),
+                "form_score": comp.get("form"),
+                "momentum_score": comp.get("momentum"),
+                "model_prob": bet.get("model_prob"),
+                "market_odds": odds_text,
+                "market_implied_prob": bet.get("market_prob"),
+                "ev": bet.get("ev"),
+                "confidence": bet.get("tier"),
+                "reasoning": bet.get("why"),
+            })
+
+        if not pick_rows:
+            return
+        try:
+            db.store_picks(pick_rows)
+        except Exception as exc:
+            logger.warning("Displayed pick persistence failed: %s", exc)
 
     def _log_matchup_predictions(self, tid, matchup_bets):
         """Log matchup predictions for calibration tracking."""

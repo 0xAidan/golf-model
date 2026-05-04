@@ -150,6 +150,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS picks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tournament_id INTEGER REFERENCES tournaments(id),
+            model_variant TEXT DEFAULT 'baseline',
+            source TEXT DEFAULT 'ui_display',
             bet_type TEXT,           -- 'outright', 'top5', 'top10', 'top20', 'matchup', 'group'
             player_key TEXT,
             player_display TEXT,
@@ -913,6 +915,25 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE tournaments ADD COLUMN year INTEGER")
         conn.commit()
 
+    # Add model lane/source fields to picks if missing
+    try:
+        conn.execute("SELECT model_variant FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN model_variant TEXT DEFAULT 'baseline'")
+        conn.commit()
+    try:
+        conn.execute("SELECT source FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN source TEXT DEFAULT 'ui_display'")
+        conn.commit()
+    conn.execute("UPDATE picks SET model_variant = 'baseline' WHERE model_variant IS NULL OR TRIM(model_variant) = ''")
+    conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
+    conn.execute("UPDATE picks SET opponent_key = '' WHERE opponent_key IS NULL")
+    conn.execute("UPDATE picks SET opponent_display = '' WHERE opponent_display IS NULL")
+    # Rebuild legacy unique index to include model lane + opponent key.
+    conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
+    conn.commit()
+
     # Add event_id column to tournaments if missing
     try:
         conn.execute("SELECT event_id FROM tournaments LIMIT 1")
@@ -1102,7 +1123,7 @@ def _add_unique_constraints(conn: sqlite3.Connection):
         (
             "idx_picks_unique",
             "picks",
-            "(tournament_id, player_key, bet_type)",
+            "(tournament_id, model_variant, player_key, bet_type, opponent_key)",
         ),
         (
             "idx_prediction_log_unique",
@@ -1416,20 +1437,42 @@ def get_player_display_names(tournament_id: int) -> dict:
 def store_picks(picks: list[dict]):
     if not picks:
         return
+    normalized_rows = []
+    for pick in picks:
+        normalized_rows.append({
+            "tournament_id": pick["tournament_id"],
+            "model_variant": (pick.get("model_variant") or "baseline").strip().lower(),
+            "source": pick.get("source") or "ui_display",
+            "bet_type": pick.get("bet_type"),
+            "player_key": pick.get("player_key"),
+            "player_display": pick.get("player_display"),
+            "opponent_key": pick.get("opponent_key") or "",
+            "opponent_display": pick.get("opponent_display") or "",
+            "composite_score": pick.get("composite_score"),
+            "course_fit_score": pick.get("course_fit_score"),
+            "form_score": pick.get("form_score"),
+            "momentum_score": pick.get("momentum_score"),
+            "model_prob": pick.get("model_prob"),
+            "market_odds": pick.get("market_odds"),
+            "market_implied_prob": pick.get("market_implied_prob"),
+            "ev": pick.get("ev"),
+            "confidence": pick.get("confidence"),
+            "reasoning": pick.get("reasoning"),
+        })
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO picks
-           (tournament_id, bet_type, player_key, player_display,
+        """INSERT OR IGNORE INTO picks
+           (tournament_id, model_variant, source, bet_type, player_key, player_display,
             opponent_key, opponent_display,
             composite_score, course_fit_score, form_score, momentum_score,
             model_prob, market_odds, market_implied_prob, ev,
             confidence, reasoning)
-           VALUES (:tournament_id, :bet_type, :player_key, :player_display,
+           VALUES (:tournament_id, :model_variant, :source, :bet_type, :player_key, :player_display,
                     :opponent_key, :opponent_display,
                     :composite_score, :course_fit_score, :form_score, :momentum_score,
                     :model_prob, :market_odds, :market_implied_prob, :ev,
                     :confidence, :reasoning)""",
-        picks,
+        normalized_rows,
     )
     conn.commit()
     conn.close()
