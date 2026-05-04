@@ -64,7 +64,7 @@ golf-model/
 │   │
 │   ├── models/              # SUB-MODELS
 │   │   ├── composite.py     # Blends course_fit + form + momentum into single score
-│   │   ├── prob_engine_v1/  # Shadow/offline probability experiments (Monte Carlo v1)
+│   │   ├── prob_engine_v1/  # Shadow/offline MC v1+v2 (append-only; never live EV)
 │   │   ├── course_fit.py    # Course-specific SG scoring + confidence scaling
 │   │   ├── form.py          # Recent performance (rolling windows, DG skill, rankings)
 │   │   ├── momentum.py      # Trend detection (window comparisons, elite stability)
@@ -253,7 +253,7 @@ golf-model/
 | Layer | File(s) | What it controls |
 |-------|---------|------------------|
 | Secrets/API | `.env` | API keys, `AI_BRAIN_PROVIDER`, `EV_THRESHOLD`, `MATCHUP_EV_THRESHOLD`, optional `PREFERRED_BOOK` metadata |
-| Feature toggles | `feature_flags.yaml` | `kelly_sizing`, `clv_tracking`, `exposure_caps`, `dynamic_blend`, `dead_heat_adjustment`, `3ball`, `use_confirmed_field_only` |
+| Feature toggles | `feature_flags.yaml` | `kelly_sizing`, `clv_tracking`, `exposure_caps`, `dynamic_blend`, `dynamic_blend_oos_promotion`, `dead_heat_adjustment`, `3ball`, `use_confirmed_field_only`, `shadow_monte_carlo_v1`, `shadow_monte_carlo_v2` |
 | Run profiles | `profiles.yaml` | `tour`, `enable_ai`, `enable_backfill`, `backfill_years`, `output_dir` (profiles: default, quick, full) |
 | Model tuning | `src/config.py` | EV thresholds, blend weights, adaptation states, matchup params, default weights, weather/confidence/integrity constants |
 
@@ -410,7 +410,9 @@ Major sections and key values:
 
 **Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`, `challenger_predictions` (champion-challenger shadow rows).
 
-**Shadow Monte Carlo v1 (offline):** `shadow_event_simulations` — optional append-only rows from `src/models/prob_engine_v1` when `SHADOW_MC_V1=1` or feature flag `shadow_monte_carlo_v1`; wired from `backtester/dashboard_runtime.py` after `market_prediction_rows` persistence. Does **not** affect EV, picks, or `GET /api/live-refresh/snapshot` payloads (diagnostic counters only on snapshot `diagnostics.shadow_mc_rows_written`).
+**Shadow Monte Carlo (offline):** `shadow_event_simulations` — optional append-only rows from `src/models/prob_engine_v1` when **v1** (`SHADOW_MC_V1=1` or `shadow_monte_carlo_v1`) **or v2** (`SHADOW_MC_ENGINE=v2` or `shadow_monte_carlo_v2`) is enabled; `dashboard_runtime` uses `is_any_shadow_monte_carlo_enabled()` then dispatches **v2** (rounds-based per-player SD, field correlation, proportional cut + `p_make_cut`, contextual summary JSON) or **v1** (composite noise only). Tuning: `SHADOW_MC_*`, `SHADOW_MC_FIELD_CORR`, `SHADOW_MC_CUT_KEEP_FRAC`. Does **not** affect EV, picks, or snapshot payloads except `diagnostics.shadow_mc_rows_written` when a row is written.
+
+**Dynamic blend OOS promotion:** when `dynamic_blend` and `dynamic_blend_oos_promotion` are true, `src/dynamic_blend.get_blend_ratio` will not **increase** model weight via EWA unless recent `blend_history` rows show the model Brier beating DG Brier (with margin) with enough tournaments and sample counts (`DYNAMIC_BLEND_PROMO_*` in `src/config.py`). Default flag is **false** so behavior matches pre-gate unless you opt in.
 
 **External data:** `equipment_changes`, `intel_events`.
 
