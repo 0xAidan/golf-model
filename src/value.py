@@ -504,7 +504,7 @@ def find_value_bets(composite_results: list[dict],
 
         # Empirical calibration: correct probability using historical hit rates by bucket.
         # get_calibration_correction returns 1.0 when bucket has < 50 samples (no change).
-        correction = get_calibration_correction(model_prob)
+        correction = get_calibration_correction(model_prob, bet_type=bet_type)
         corrected_prob = model_prob * correction
         corrected_prob = max(0.001, min(0.999, corrected_prob))
         calibration_applied = abs(correction - 1.0) > 1e-6
@@ -600,6 +600,10 @@ def find_value_bets(composite_results: list[dict],
             odds_text = f"+{book_price}" if book_price > 0 else str(book_price)
             has_display_odds = bool(odds_text)
 
+            uncertainty_val = r.get("uncertainty")
+            if uncertainty_val is None:
+                uncertainty_val = r.get("v5_uncertainty")
+
             value_bets.append({
                 "player_key": pkey,
                 "player_display": pdisp,
@@ -635,6 +639,8 @@ def find_value_bets(composite_results: list[dict],
                 "blend_model_used": MODEL_BLEND_WEIGHT,
                 "calibration_applied": calibration_applied,
                 "model_variant": model_variant,
+                "uncertainty": uncertainty_val,
+                "v5_uncertainty": uncertainty_val,
             })
 
     # Sort by EV descending

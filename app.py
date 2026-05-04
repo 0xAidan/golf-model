@@ -3264,6 +3264,26 @@ async def get_calibration():
     return compute_calibration()
 
 
+@app.get("/api/calibration/by-market")
+async def get_calibration_by_market():
+    """Empirical calibration buckets per ``bet_type`` (plus global aggregate)."""
+    from src.db import ensure_initialized
+    from src.calibration import fetch_calibration_curves_grouped
+
+    ensure_initialized()
+    return fetch_calibration_curves_grouped()
+
+
+@app.get("/api/clv/summary")
+async def get_clv_summary_api():
+    """Closing line value: overall and per sportsbook."""
+    from src.db import ensure_initialized
+    from src.clv import compute_clv_summary_by_book
+
+    ensure_initialized()
+    return compute_clv_summary_by_book()
+
+
 @app.post("/api/run-service")
 async def run_service_analysis(request: Request):
     """Run the full unified pipeline via GolfModelService."""

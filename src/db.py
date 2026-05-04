@@ -15,7 +15,7 @@ Tables:
   ai_memory               – persistent AI brain memory
   ai_decisions            – logged AI analysis/decisions
   market_performance      – rolling ROI tracking by market type
-  calibration_curve       – probability calibration buckets
+  calibration_curve       – probability calibration buckets (keyed by bet_type + bucket)
   ai_adjustments          – tracked AI-driven player adjustments
 """
 
@@ -404,6 +404,7 @@ def init_db():
             tournament_id INTEGER,
             player_key TEXT,
             bet_type TEXT,
+            market_book TEXT,
             odds_taken_decimal REAL,
             closing_odds_decimal REAL,
             implied_taken REAL,
@@ -770,6 +771,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS calibration_curve (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bet_type TEXT NOT NULL DEFAULT '',
             probability_bucket TEXT NOT NULL,
             predicted_avg REAL NOT NULL,
             actual_hit_rate REAL NOT NULL,
@@ -992,6 +994,41 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.execute("SELECT theory_metadata_json FROM research_proposals LIMIT 1")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE research_proposals ADD COLUMN theory_metadata_json TEXT")
+        conn.commit()
+
+    # v5 Milestone A: calibration_curve keyed by (bet_type, probability_bucket)
+    try:
+        conn.execute("SELECT bet_type FROM calibration_curve LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute(
+            "ALTER TABLE calibration_curve ADD COLUMN bet_type TEXT NOT NULL DEFAULT ''"
+        )
+        conn.commit()
+    try:
+        conn.execute(
+            """
+            DELETE FROM calibration_curve
+            WHERE id NOT IN (
+                SELECT MAX(id) FROM calibration_curve
+                GROUP BY bet_type, probability_bucket
+            )
+            """
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_curve_type_bucket "
+            "ON calibration_curve(bet_type, probability_bucket)"
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        logging.getLogger(__name__).debug(
+            "calibration_curve unique index migration skipped", exc_info=True
+        )
+
+    # v5 Milestone A: CLV rows optionally tagged with sportsbook
+    try:
+        conn.execute("SELECT market_book FROM clv_log LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE clv_log ADD COLUMN market_book TEXT")
         conn.commit()
 
     conn.execute("""

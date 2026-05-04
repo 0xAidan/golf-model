@@ -116,6 +116,25 @@ async def convert_research_proposal(proposal_id: int):
     return {"ok": True, "proposal_id": proposal_id, "experiment_id": experiment_id}
 
 
+@router.get("/ab-report")
+async def research_ab_report(event_id: str, persist: bool = True):
+    """Compare v5 vs legacy snapshot lanes using dense ``market_prediction_rows``.
+
+    When ``persist`` is true (default), writes JSON + markdown under
+    ``output/research/ab_reports/`` (ignored by git).
+    """
+    from pathlib import Path
+
+    from src.db import ensure_initialized
+
+    ensure_initialized()
+
+    from src.research.ab_compare import build_ab_report
+
+    out_dir = Path("output/research/ab_reports")
+    return build_ab_report(event_id, output_dir=out_dir, write_files=bool(persist))
+
+
 @router.get("/inplay-shadow")
 async def inplay_shadow_predictions(event_id: str):
     """
