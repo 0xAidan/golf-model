@@ -59,7 +59,7 @@ from src.rolling_stats import compute_rolling_metrics
 from src.models.composite import compute_composite
 from src.course_profile import load_course_profile, course_to_model_weights
 from src.odds import get_best_odds
-from src.value import find_value_bets
+from src.value import find_value_bets, model_score_to_prob
 from src.card import generate_card
 from src.methodology import generate_methodology
 from src.portfolio import enforce_diversification
@@ -93,7 +93,6 @@ def _run_data_integrity_gates(tournament_id: int, field_size: int,
     elif field_size > config.FIELD_SIZE_MAX:
         print(f"  ⚠ Data integrity: field size {field_size} > {config.FIELD_SIZE_MAX} (max). Unusual.")
     if composite_results and len(composite_results) > 0:
-        from src.value import model_score_to_prob
         all_scores = [r["composite"] for r in composite_results]
         outright_sum = sum(
             model_score_to_prob(r["composite"], all_scores, "outright")

@@ -213,7 +213,7 @@ def _read_dossier_content(artifact_markdown_path: str | None) -> str | None:
         if not path.exists():
             return None
         return path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeError):
         return None
 
 
@@ -228,7 +228,7 @@ def _extract_roi_metrics_from_dossier_file(artifact_markdown_path: str | None) -
         candidate_roi = float(candidate_match.group(1)) if candidate_match else None
         baseline_roi = float(baseline_match.group(1)) if baseline_match else None
         return (candidate_roi, baseline_roi)
-    except Exception:
+    except (TypeError, ValueError):
         return (None, None)
 
 
@@ -1522,15 +1522,13 @@ async def run_upcoming_prediction(request: Request):
         result["output_file"] = result["card_filepath"]
     if result.get("card_filepath"):
         result["card_content_path"] = _relative_output_path(result["card_filepath"])
-        # Include card markdown in response so frontend can show it without a second request
         card_path_abs = _safe_output_path(result["card_content_path"])
         if not card_path_abs and result["card_filepath"] and os.path.isabs(result["card_filepath"]):
             card_path_abs = result["card_filepath"]
         if card_path_abs and os.path.isfile(card_path_abs):
             try:
-                with open(card_path_abs, "r", encoding="utf-8") as f:
-                    result["card_content"] = f.read()
-            except Exception:
+                result["card_content"] = Path(card_path_abs).read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
                 result["card_content"] = None
         else:
             result["card_content"] = None
