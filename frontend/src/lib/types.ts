@@ -571,6 +571,10 @@ export type PredictionRunResponse = {
   course_name?: string
   course_num?: number
   tournament_id?: number
+  /** Snapshot model lane (e.g. lab ``baseline`` vs production ``v5``). */
+  model_variant?: string
+  /** Snapshot ranking provenance when present (e.g. DG in-play vs model-only). */
+  ranking_source?: string
   field_size?: number
   card_content?: string | null
   card_content_path?: string | null

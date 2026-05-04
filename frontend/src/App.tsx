@@ -563,6 +563,18 @@ function App() {
     ],
   )
 
+  const labPowerRankingsSubtitle = useMemo(() => {
+    if (!isCockpitLabRoute) return null
+    if (!labSnapshotMerged) {
+      return "Using the main snapshot until lab sections populate (live-refresh worker with lab lane enabled)."
+    }
+    const mv = labWorkspaceHydrated?.model_variant
+    if (mv) {
+      return `This board uses model variant "${mv}" from profiles.yaml (lab_sandbox). Production cockpit defaults to v5 — power rankings and edges can differ.`
+    }
+    return "Parallel lab lane — power rankings use the lab profile’s model variant from profiles.yaml."
+  }, [isCockpitLabRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant])
+
   const labCockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
     () => ({
       liveSnapshot: labDisplaySnapshot,
@@ -592,6 +604,7 @@ function App() {
       },
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets: labSecondaryBets,
+      powerRankingsSubtitle: labPowerRankingsSubtitle,
     }),
     [
       labDisplaySnapshot,
@@ -618,6 +631,7 @@ function App() {
       playerProfileErrorMessage,
       playerProfileQuery.refetch,
       labSecondaryBets,
+      labPowerRankingsSubtitle,
     ],
   )
 

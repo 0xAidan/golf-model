@@ -20,7 +20,7 @@ profiles:
     output_dir: output
 
   # Parallel lab snapshot lane (see live_refresh.lab_profile_* in autoresearch settings).
-  # Uses baseline model variant by default so lab boards differ from production v5 when enabled.
+  # model_variant: baseline vs production v5 — change to v5 to A/B two v5 configs if needed.
   lab_sandbox:
     tour: pga
     model_variant: baseline

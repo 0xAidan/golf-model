@@ -50,6 +50,29 @@ describe("buildHydratedPredictionRun", () => {
     expect(player?.details?.course_components?.driving).toBe(1.2)
   })
 
+  it("passes model_variant and ranking_source from the snapshot section", () => {
+    const run = buildPredictionRunFromSection({
+      event_name: "Test Open",
+      model_variant: "baseline",
+      ranking_source: "lab_current_event_model",
+      rankings: [
+        {
+          rank: 1,
+          player_key: "scottie_scheffler",
+          player: "Scottie Scheffler",
+          composite: 90,
+          course_fit: 88,
+          form: 87,
+          momentum: 85,
+        },
+      ],
+      matchup_bets: [],
+      value_bets: {},
+    })
+    expect(run?.model_variant).toBe("baseline")
+    expect(run?.ranking_source).toBe("lab_current_event_model")
+  })
+
   it("returns empty rankings and warning when eligibility fails", () => {
     const snapshot: LiveRefreshSnapshot = {
       live_tournament: {
