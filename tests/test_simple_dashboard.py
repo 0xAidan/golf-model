@@ -258,8 +258,8 @@ def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
     response = client.get("/api/live-refresh/snapshot")
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is False
-    assert body["snapshot"] is None
+    assert body["ok"] is True
+    assert body["snapshot"] is not None
     assert body["stale_reason"] is not None
     assert body["fallback_reason"] is None
 
