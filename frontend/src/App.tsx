@@ -173,15 +173,24 @@ function App() {
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
   const availableBooks = useMemo(() => collectAvailableBooks(visiblePredictionRun), [visiblePredictionRun])
-  const profileTournamentId = visiblePredictionRun?.tournament_id
+  const profileSection =
+    predictionTab === "upcoming"
+      ? liveSnapshot?.upcoming_tournament
+      : predictionTab === "test"
+        ? liveSnapshot?.test_tournament
+        : predictionTab === "live"
+          ? liveSnapshot?.live_tournament
+          : null
+  const profileTournamentId = profileSection?.tournament_id ?? visiblePredictionRun?.tournament_id
+  const profileCourseNum = profileSection?.course_num ?? visiblePredictionRun?.course_num
   const hasProfileTournamentContext = profileTournamentId !== null && profileTournamentId !== undefined
 
   const playerProfileQuery = useQuery({
     queryKey: [
       "player-profile",
       selectedPlayerKey,
-      visiblePredictionRun?.tournament_id,
-      visiblePredictionRun?.course_num,
+      profileTournamentId,
+      profileCourseNum,
     ],
     queryFn: () => {
       if (profileTournamentId === null || profileTournamentId === undefined) {
@@ -190,7 +199,7 @@ function App() {
       return api.getPlayerProfile(
         selectedPlayerKey,
         profileTournamentId,
-        visiblePredictionRun?.course_num,
+        profileCourseNum,
       )
     },
     enabled:

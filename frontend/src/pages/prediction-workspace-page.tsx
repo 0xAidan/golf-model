@@ -82,7 +82,7 @@ function ScoreBar({
       ? heatSpectrumGradientAlongUnit(Math.min(1, Math.max(0, value / max)), "ltr")
       : undefined
   return (
-    <div className="score-bar">
+    <div className="score-bar-wrap">
       <div className="score-bar-track">
         <div
           className={heatFill ? "score-bar-fill" : `score-bar-fill ${color}`}
@@ -798,7 +798,7 @@ export function PredictionWorkspacePage({
               </div>
               <div className="table-scroll">
                 {displayPlayers.length > 0 ? (
-                  <table className="data-table">
+                  <table className="data-table rankings-table">
                     <thead>
                       <tr>
                         <th style={{ width: 36 }}>#</th>
@@ -807,7 +807,7 @@ export function PredictionWorkspacePage({
                         <th>Form</th>
                         <th>Course</th>
                         <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
-                          SG trajectory
+                          SG traj
                         </th>
                       </tr>
                     </thead>
@@ -820,7 +820,7 @@ export function PredictionWorkspacePage({
                             data-testid={`player-row-${player.player_key}`}
                           >
                             <td className="rank-cell">{player.rank}</td>
-                            <td className="player-name">
+                            <td className="player-name rankings-player-name">
                               <button
                                 type="button"
                                 onClick={(event) => {
