@@ -6,7 +6,7 @@
 
 **Last verified:** 2026-05-04. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
 
-**Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update`).
+**Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
 ---
 
@@ -43,7 +43,8 @@ golf-model/
 ├── pyproject.toml           # Project metadata
 ├── requirements.txt         # Python dependencies (pinned)
 ├── setup.py                 # Legacy setup script
-├── deploy.sh                # One-command VPS deployment (--setup, --update, --status)
+├── deploy.sh                # VPS deploy: --setup, --update (SSH), --update-local (on-server)
+├── scripts/deploy-update-steps.sh  # Shared pull/build/restart steps (used by deploy.sh)
 ├── .pre-commit-config.yaml  # Pre-commit hooks
 ├── .github/workflows/ci.yml # GitHub Actions CI
 ├── README.md                # Human-readable project overview
@@ -554,15 +555,16 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 ### Production Server
 
-- **Public URL (HTTPS):** https://golf.ancc.blog/
+- **Public URL (HTTPS):** https://golf.ancc.blog/ — DNS/TLS only; deployment still uses SSH to the VPS below (not the public hostname).
 - **Host:** `root@204.168.147.6` (VPS)
 - **Remote path:** `/opt/golf-model`
 - **Branch:** `main`
-- **Update server (ship code + rebuild frontend + restart services):** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --update`
-- **First-time setup:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --setup`
-- **Status check:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --status`
+- **Update from laptop (SSH):** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --update`
+- **Update while already SSH’d on the VPS (no SSH round-trip):** `cd /opt/golf-model && ./deploy.sh --update-local` — same steps as `--update` but runs in place; **do not** use `--update` from the server with `DEPLOY_HOST` set to the same machine’s IP (that runs `ssh` to yourself and prompts for host keys).
+- **First-time setup:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --setup`
+- **Status check:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --status`
 
-Ship changes by merging to `main`, then run `./deploy.sh --update` from a machine with SSH access; the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. **https://golf.ancc.blog/** is the public entry point for the same app; TLS and DNS are configured outside this repo (the VPS still runs `golf-dashboard` on port 8000).
+Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
 
 ### What `--update` does
 
