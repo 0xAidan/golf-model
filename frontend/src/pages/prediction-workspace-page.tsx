@@ -51,7 +51,7 @@ import type {
   PredictionRunResponse,
 } from "@/lib/types"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
-import { computeSgTrajectoryBounds, heatHslFromScore } from "@/lib/metric-heat"
+import { computeSgTrajectoryBounds, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
 import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 
 /* ── Small helpers ────────────────────────────── */
@@ -83,7 +83,10 @@ function ScoreBar({
   color?: "green" | "gold" | "cyan"
 }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
-  const heatFill = color === "green" ? heatHslFromScore(value, max) : undefined
+  const heatFill =
+    color === "green" && max > 0 && Number.isFinite(value)
+      ? heatSpectrumGradientAlongUnit(Math.min(1, Math.max(0, value / max)), "ltr")
+      : undefined
   return (
     <div className="score-bar">
       <div className="score-bar-track">
