@@ -1,4 +1,5 @@
 import { formatNumber } from "@/lib/format"
+import { SPOTLIGHT_STAT_TOOLTIPS } from "@/lib/metric-tooltips"
 import type { CompositePlayer, FlattenedSecondaryBet, LiveLeaderboardRow, MatchupBet } from "@/lib/types"
 
 export type SpotlightStat = {
@@ -6,6 +7,8 @@ export type SpotlightStat = {
   value: string
   detail?: string
   tone?: "default" | "positive" | "warning"
+  /** Native tooltip on the metric tile */
+  title?: string
 }
 
 export type SpotlightInventoryNote = {
@@ -121,13 +124,13 @@ export function buildCockpitSpotlight({
       selectedLeaderboardRow,
       featuredMatchupCount: featuredMatchups.length,
       totalGeneratedPickCount,
-    }),
+    }).map(withSpotlightTooltip),
     summaryStats: buildSummaryStats({
       predictionTab,
       selectedPlayer,
       selectedLeaderboardRow,
       generatedSecondaryCount: generatedSecondaryByName.length,
-    }),
+    }).map(withSpotlightTooltip),
     inventoryNotes: buildInventoryNotes({
       predictionTab,
       featuredMatchups,
@@ -135,6 +138,11 @@ export function buildCockpitSpotlight({
       generatedSecondary: generatedSecondaryByName,
     }),
   }
+}
+
+function withSpotlightTooltip(stat: SpotlightStat): SpotlightStat {
+  const title = SPOTLIGHT_STAT_TOOLTIPS[stat.label]
+  return title === undefined ? stat : { ...stat, title }
 }
 
 function buildSourceBadges({

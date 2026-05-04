@@ -67,6 +67,7 @@ export function PlayerSpotlightPanel({
               value={item.value}
               detail={item.detail}
               tone={item.tone}
+              title={item.title}
             />
           ))}
         </div>
@@ -84,6 +85,7 @@ export function PlayerSpotlightPanel({
                 value={item.value}
                 detail={item.detail}
                 tone={item.tone}
+                title={item.title}
               />
             ))}
           </div>

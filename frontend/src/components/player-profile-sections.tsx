@@ -7,6 +7,7 @@ import {
   SparklineChart,
 } from "@/components/charts"
 import { formatNumber } from "@/lib/format"
+import { MATCHUP_TABLE_TOOLTIPS, PLAYER_PROFILE_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
 import type { CompositePlayer, PlayerProfile } from "@/lib/types"
 
 /* ── Tokens ─────────────────────────────────────────────────────────── */
@@ -534,10 +535,14 @@ function CourseEventSection({ profile }: { profile?: PlayerProfile }) {
           <table className="data-table" style={{ fontSize: 11 }}>
             <thead>
               <tr>
-                <th>Event</th>
-                <th>Date</th>
-                <th className="center">Finish</th>
-                <th className="right">Avg SG</th>
+                <th title={PLAYER_PROFILE_TABLE_TOOLTIPS.event}>Event</th>
+                <th title={PLAYER_PROFILE_TABLE_TOOLTIPS.date}>Date</th>
+                <th className="center" title={PLAYER_PROFILE_TABLE_TOOLTIPS.finish}>
+                  Finish
+                </th>
+                <th className="right" title={PLAYER_PROFILE_TABLE_TOOLTIPS.avgSg}>
+                  Avg SG
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -600,10 +605,12 @@ function BettingSection({ profile }: { profile?: PlayerProfile }) {
         <table className="data-table" style={{ fontSize: 11 }}>
           <thead>
             <tr>
-              <th>Bet</th>
-              <th>Odds</th>
-              <th className="right">EV</th>
-              <th>Confidence</th>
+              <th title={PLAYER_PROFILE_TABLE_TOOLTIPS.bet}>Bet</th>
+              <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
+              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                EV
+              </th>
+              <th title={PLAYER_PROFILE_TABLE_TOOLTIPS.confidence}>Confidence</th>
             </tr>
           </thead>
           <tbody>

@@ -14,6 +14,7 @@ import { ChevronDown } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
 import { formatNumber } from "@/lib/format"
+import { MATCHUP_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
 import { cn } from "@/lib/utils"
 import type {
   FailedMatchupCandidate,
@@ -324,12 +325,18 @@ function FailedCandidatesTable({ candidates }: { candidates: FailedMatchupCandid
         <table className="data-table">
           <thead>
             <tr>
-              <th>Pick vs Opponent</th>
-              <th>Book</th>
-              <th>Odds</th>
-              <th className="center">Reason</th>
-              <th className="right">EV</th>
-              <th className="right">Win%</th>
+              <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
+              <th title={MATCHUP_TABLE_TOOLTIPS.book}>Book</th>
+              <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
+              <th className="center" title={MATCHUP_TABLE_TOOLTIPS.reason}>
+                Reason
+              </th>
+              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                EV
+              </th>
+              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
+                Win%
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -441,12 +448,18 @@ function MatchupsBoard({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Pick vs Opponent</th>
-                  <th>Book</th>
-                  <th>Odds</th>
-                  <th className="center">Tier</th>
-                  <th className="right">EV</th>
-                  <th className="right">Win%</th>
+                  <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
+                  <th title={MATCHUP_TABLE_TOOLTIPS.book}>Book</th>
+                  <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
+                  <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
+                    Tier
+                  </th>
+                  <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                    EV
+                  </th>
+                  <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
+                    Win%
+                  </th>
                   <th style={{ width: 32 }} />
                 </tr>
               </thead>
@@ -670,10 +683,14 @@ function SecondaryBoard({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Player</th>
-                  <th className="center">Tier</th>
-                  <th>Book · Odds</th>
-                  <th className="right">EV</th>
+                  <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
+                  <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
+                    Tier
+                  </th>
+                  <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
+                  <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                    EV
+                  </th>
                 </tr>
               </thead>
               <tbody>

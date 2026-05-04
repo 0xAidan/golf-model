@@ -8,6 +8,12 @@ import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
+import {
+  GRADING_TABLE_TOOLTIPS,
+  MATCHUP_TABLE_TOOLTIPS,
+  POWER_RANKINGS_HELP,
+  SG_TRAJECTORY_HELP,
+} from "@/lib/metric-tooltips"
 import type {
   CompositePlayer,
   GradedTournamentSummary,
@@ -71,13 +77,23 @@ export function PlayersPage({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}>#</th>
-                  <th>Player</th>
-                  <th className="right">Composite</th>
-                  <th className="right">Course</th>
-                  <th className="right">Form</th>
-                  <th className="right">Momentum</th>
-                  <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
+                  <th style={{ width: 40 }} title={POWER_RANKINGS_HELP.rank}>
+                    #
+                  </th>
+                  <th title={POWER_RANKINGS_HELP.player}>Player</th>
+                  <th className="right" title={POWER_RANKINGS_HELP.composite}>
+                    Composite
+                  </th>
+                  <th className="right" title={POWER_RANKINGS_HELP.course}>
+                    Course
+                  </th>
+                  <th className="right" title={POWER_RANKINGS_HELP.form}>
+                    Form
+                  </th>
+                  <th className="right" title={POWER_RANKINGS_HELP.momentum}>
+                    Momentum
+                  </th>
+                  <th className="center" title={SG_TRAJECTORY_HELP}>
                     SG trajectory
                   </th>
                 </tr>
@@ -312,12 +328,20 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
                         <table className="data-table">
                           <thead>
                             <tr>
-                              <th>Pick</th>
-                              <th>Lane</th>
-                              <th className="right">Model Win%</th>
-                              <th className="right">Edge%</th>
-                              <th className="center">Result</th>
-                              <th className="right">P&L</th>
+                              <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
+                              <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
+                              <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
+                                Model Win%
+                              </th>
+                              <th className="right" title={GRADING_TABLE_TOOLTIPS.edgePct}>
+                                Edge%
+                              </th>
+                              <th className="center" title={GRADING_TABLE_TOOLTIPS.result}>
+                                Result
+                              </th>
+                              <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
+                                P&L
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -488,14 +512,22 @@ export function TrackRecordPage() {
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>Pick</th>
-                          <th>Lane</th>
-                          <th>Opponent</th>
-                          <th>Odds</th>
-                          <th className="right">Model Win%</th>
-                          <th className="right">Edge%</th>
-                          <th className="center">Result / Finish</th>
-                          <th className="right">P&L</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.opponent}>Opponent</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
+                          <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
+                            Model Win%
+                          </th>
+                          <th className="right" title={GRADING_TABLE_TOOLTIPS.edgePct}>
+                            Edge%
+                          </th>
+                          <th className="center" title={GRADING_TABLE_TOOLTIPS.result}>
+                            Result / Finish
+                          </th>
+                          <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
+                            P&L
+                          </th>
                         </tr>
                       </thead>
                       <tbody>

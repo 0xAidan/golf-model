@@ -4,9 +4,7 @@ import {
   heatUnitForTrajectory,
   nominalTrajectoryFromDirection,
 } from "@/lib/metric-heat"
-
-const TRAJECTORY_HELP =
-  "Rolling SG:TOT rank movement across time windows (vs career-long baseline). Not the same as last week’s tournament finish."
+import { SG_TRAJECTORY_HELP as TRAJECTORY_HELP } from "@/lib/metric-tooltips"
 
 export function SgTrajectoryMeter({
   momentumTrend,

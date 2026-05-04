@@ -28,6 +28,12 @@ import {
 } from "@/lib/cockpit-picks"
 import { formatNumber, formatUnits } from "@/lib/format"
 import {
+  GRADING_TABLE_TOOLTIPS,
+  MATCHUP_TABLE_TOOLTIPS,
+  POWER_RANKINGS_HELP,
+  SG_TRAJECTORY_HELP,
+} from "@/lib/metric-tooltips"
+import {
   buildPredictionRunFromSection,
   collectAvailableBooks,
   flattenSecondaryBets,
@@ -705,9 +711,13 @@ export function PredictionWorkspacePage({
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Event</th>
-                        <th className="right">P&L</th>
-                        <th className="right">Hit%</th>
+                        <th title={GRADING_TABLE_TOOLTIPS.event}>Event</th>
+                        <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
+                          P&L
+                        </th>
+                        <th className="right" title={GRADING_TABLE_TOOLTIPS.hitPct}>
+                          Hit%
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -801,12 +811,14 @@ export function PredictionWorkspacePage({
                   <table className="data-table rankings-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 36 }}>#</th>
-                        <th>Player</th>
-                        <th>Composite</th>
-                        <th>Form</th>
-                        <th>Course</th>
-                        <th className="center" title="Rolling SG rank vs longer windows — not last week’s finish.">
+                        <th style={{ width: 36 }} title={POWER_RANKINGS_HELP.rank}>
+                          #
+                        </th>
+                        <th title={POWER_RANKINGS_HELP.player}>Player</th>
+                        <th title={POWER_RANKINGS_HELP.composite}>Composite</th>
+                        <th title={POWER_RANKINGS_HELP.form}>Form</th>
+                        <th title={POWER_RANKINGS_HELP.course}>Course</th>
+                        <th className="center" title={SG_TRAJECTORY_HELP}>
                           SG traj
                         </th>
                       </tr>
@@ -909,11 +921,17 @@ export function PredictionWorkspacePage({
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Pick</th>
-                        <th>Book · Odds</th>
-                        <th className="center">Tier</th>
-                        <th className="right">EV</th>
-                        <th className="right">Win%</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
+                        <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
+                          Tier
+                        </th>
+                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                          EV
+                        </th>
+                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
+                          Win%
+                        </th>
                         <th style={{ width: 32 }} />
                       </tr>
                     </thead>
@@ -1037,10 +1055,12 @@ export function PredictionWorkspacePage({
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Player</th>
-                        <th>Market</th>
-                        <th>Book · Odds</th>
-                        <th className="right">EV</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.market}>Market</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
+                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                          EV
+                        </th>
                       </tr>
                     </thead>
                     <tbody>

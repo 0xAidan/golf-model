@@ -203,17 +203,25 @@ export function MetricTile({
   value,
   detail,
   tone = "default",
+  title,
 }: {
   label: string
   value: string
   detail?: string
   tone?: "default" | "positive" | "warning"
+  /** Hover explanation (native tooltip). */
+  title?: string
 }) {
   const colorClass =
     tone === "positive" ? "green" : tone === "warning" ? "gold" : "neutral"
 
   return (
-    <div className={cn("kpi-tile", colorClass)} data-testid="metric-tile">
+    <div
+      className={cn("kpi-tile", colorClass)}
+      data-testid="metric-tile"
+      title={title}
+      style={title ? { cursor: "help" } : undefined}
+    >
       <div className="kpi-label">{label}</div>
       <div className={cn("kpi-value", colorClass)}>{value}</div>
       {detail && <div className="kpi-detail">{detail}</div>}
