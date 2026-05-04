@@ -320,7 +320,7 @@ Use these fields to separate causes:
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
 - **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses `grid-template-rows: minmax(0, 1fr)` so columns stay within the viewport. Center column: **vertical split panes** (`react-resizable-panels`, `CockpitResizableStack`) between power rankings, top picks, secondary markets, and (live/past only) leaderboard — drag horizontal gutters to resize; each pane scrolls internally. Sizes persist in `localStorage` (`autoSaveId` per layout). Without the `fr` grid row, implicit `auto` rows grow with content and clip the center column.
-- **Cockpit (Lab) — `/cockpit-lab`:** Optional route that renders the same `PredictionWorkspacePage` props as `/` plus a **Research instrumentation** panel (calibration by-market, CLV summary, AB report, shadow MC hints). **Production `/` is unchanged.** Enable for operators by setting **`VITE_COCKPIT_LAB=1`** at Vite build time; when unset, `/cockpit-lab` redirects to `/` and the sidebar link is hidden. Implementation: `frontend/src/pages/cockpit-lab-page.tsx`, `frontend/src/components/cockpit/research-instrumentation-deck.tsx`, `frontend/src/App.tsx`, `frontend/src/components/shell.tsx`.
+- **Cockpit (Lab) — `/cockpit-lab`:** Optional route that renders the same `PredictionWorkspacePage` props as `/` plus a **Research instrumentation** panel (calibration by-market, CLV summary, AB report, shadow MC hints). **Production `/` is unchanged.** The lab appears when **`VITE_COCKPIT_LAB=1`** is set at Vite build time; otherwise `/cockpit-lab` redirects to `/` and the sidebar link is hidden. **VPS deploy** (`scripts/deploy-update-steps.sh`) defaults this to **`1`** so operators see the lab after deploy; use **`VITE_COCKPIT_LAB=0`** before deploy to omit it. Implementation: `frontend/src/pages/cockpit-lab-page.tsx`, `frontend/src/components/cockpit/research-instrumentation-deck.tsx`, `frontend/src/App.tsx`, `frontend/src/components/shell.tsx`.
 
 ---
 
@@ -633,7 +633,7 @@ The React frontend builds to `frontend/dist/` and is served by FastAPI at `/`. O
 cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 ```
 
-**Vite env (baked at build time):** `VITE_RICH_PLAYER_PROFILES` — set to `0` to disable rich player profiles. **`VITE_COCKPIT_LAB=1`** — exposes `/cockpit-lab` and the sidebar “Cockpit (Lab)” link (research instrumentation deck); omit or leave unset so production builds hide the lab surface by default.
+**Vite env (baked at build time):** `VITE_RICH_PLAYER_PROFILES` — set to `0` to disable rich player profiles. **`VITE_COCKPIT_LAB=1`** — exposes `/cockpit-lab` and the sidebar “Cockpit (Lab)” link (research instrumentation deck); omit or leave unset so production builds hide the lab surface by default. **Operator VPS:** `scripts/deploy-update-steps.sh` sets `VITE_COCKPIT_LAB` to **`1` by default** during `npm run build` so the lab appears after `./deploy.sh --update` / `--update-local`; set **`VITE_COCKPIT_LAB=0`** in the environment before deploy to keep the lab off.
 
 ---
 
