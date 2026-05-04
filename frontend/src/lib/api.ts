@@ -24,6 +24,11 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
 }
 
+const LIVE_REFRESH_STATUS_TIMEOUT_MS = 15_000
+const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 25_000
+const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 30_000
+const LIVE_REFRESH_START_TIMEOUT_MS = 20_000
+
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -61,8 +66,18 @@ export const api = {
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),
   getResearchProposals: () => request<ResearchProposal[]>("/api/research/proposals?limit=12"),
   getAutoresearchStatus: () => request<Record<string, unknown>>("/api/autoresearch/status"),
-  getLiveRefreshStatus: () => request<LiveRefreshStatusResponse>("/api/live-refresh/status"),
-  getLiveRefreshSnapshot: () => request<LiveRefreshSnapshotResponse>("/api/live-refresh/snapshot"),
+  getLiveRefreshStatus: () =>
+    request<LiveRefreshStatusResponse>(
+      "/api/live-refresh/status",
+      undefined,
+      LIVE_REFRESH_STATUS_TIMEOUT_MS,
+    ),
+  getLiveRefreshSnapshot: () =>
+    request<LiveRefreshSnapshotResponse>(
+      "/api/live-refresh/snapshot",
+      undefined,
+      LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS,
+    ),
   getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
   getLiveRefreshPastSnapshot: (
     eventId: string,
@@ -111,13 +126,13 @@ export const api = {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({}),
-    }),
+    }, LIVE_REFRESH_REFRESH_TIMEOUT_MS),
   startLiveRefresh: (payload?: { tour?: string; live_refresh?: Record<string, unknown> }) =>
     request<Record<string, unknown>>("/api/live-refresh/start", {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify(payload ?? {}),
-    }),
+    }, LIVE_REFRESH_START_TIMEOUT_MS),
   patchAutoresearchSettings: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/api/autoresearch/settings", {
       method: "PATCH",
