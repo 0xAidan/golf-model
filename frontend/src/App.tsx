@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { lazy, Suspense, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
@@ -20,16 +20,55 @@ import {
 } from "@/lib/prediction-board"
 import { useLocalStorageState } from "@/lib/storage"
 import type { LiveRefreshSnapshot, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
-import { ChampionChallengerPage } from "@/pages/champion-challenger-page"
 import { LegacyRouteGate } from "@/pages/legacy-route-gate"
-import {
-  CoursePage,
-  GradingPage,
-  MatchupsPage,
-  TrackRecordPage,
-} from "@/pages/legacy-routes"
-import { PlayersPage } from "@/pages/players-page"
+import { PicksPage } from "@/pages/picks-page"
 import { PredictionWorkspacePage } from "@/pages/prediction-workspace-page"
+
+// Code-split heavy / rarely-visited routes. The default "/" route
+// (PredictionWorkspacePage) and the primary Picks route stay eager so the
+// cockpit boots without a Suspense flicker. Players, Grading,
+// Track Record, and Champion-Challenger are all secondary nav targets — the
+// operator clicks into them, so a single network round-trip on first visit
+// is acceptable and trims ~400-600 kB off the initial bundle.
+const PlayersPage = lazy(() =>
+  import("@/pages/players-page").then((mod) => ({ default: mod.PlayersPage })),
+)
+const GradingPage = lazy(() =>
+  import("@/pages/legacy-routes").then((mod) => ({ default: mod.GradingPage })),
+)
+const TrackRecordPage = lazy(() =>
+  import("@/pages/legacy-routes").then((mod) => ({ default: mod.TrackRecordPage })),
+)
+const ChampionChallengerPage = lazy(() =>
+  import("@/pages/champion-challenger-page").then((mod) => ({
+    default: mod.ChampionChallengerPage,
+  })),
+)
+const LegacyModelPage = lazy(() =>
+  import("@/pages/legacy-model-page").then((mod) => ({ default: mod.LegacyModelPage })),
+)
+const DiagnosticsPage = lazy(() =>
+  import("@/pages/diagnostics-page").then((mod) => ({ default: mod.DiagnosticsPage })),
+)
+
+function RouteFallback() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-faint)",
+        fontSize: 12,
+        fontFamily: "var(--font-mono)",
+      }}
+      data-testid="route-suspense-fallback"
+    >
+      Loading…
+    </div>
+  )
+}
 
 const DEFAULT_REQUEST: PredictionRunRequest = {
   tour: "pga",
@@ -84,8 +123,20 @@ function App() {
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
   const [uiAlert, setUiAlert] = useState<string | null>(null)
 
+  // A single failed poll happens routinely (network blip, deploy restart) and
+  // should not flip the runtime indicator to "error" or surface the alarming
+  // "check API health" banner. We only flag it after the query has retried
+  // multiple times without success — React Query exposes this via
+  // `failureCount`, which resets to 0 on the next successful poll.
+  const SUSTAINED_FAILURE_THRESHOLD = 2
+  const snapshotSustainedFailure =
+    liveSnapshotQuery.isError && liveSnapshotQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
+  const statusSustainedFailure =
+    liveRefreshStatusQuery.isError &&
+    liveRefreshStatusQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
+
   const runtimeStatus = useMemo(() => {
-    if (liveRefreshStatusQuery.isError || liveSnapshotQuery.isError)
+    if (statusSustainedFailure || snapshotSustainedFailure)
       return { label: "Runtime error", tone: "bad" as const }
     if (!liveRuntimeRunning)
       return { label: "Offline", tone: "warn" as const }
@@ -93,14 +144,14 @@ function App() {
       return { label: "Degraded", tone: "warn" as const }
     return { label: "Live", tone: "good" as const }
   }, [
-    liveRefreshStatusQuery.isError,
-    liveSnapshotQuery.isError,
+    statusSustainedFailure,
+    snapshotSustainedFailure,
     liveRuntimeRunning,
     liveSnapshotEnvelope?.stale_reason,
   ])
 
   const snapshotNotice =
-    liveSnapshotQuery.isError
+    snapshotSustainedFailure
       ? "Live snapshot request failed. Retry after checking API health."
       : liveSnapshotEnvelope?.stale_reason ?? liveSnapshotEnvelope?.fallback_reason ?? uiAlert
 
@@ -125,26 +176,70 @@ function App() {
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
   const availableBooks = useMemo(() => collectAvailableBooks(visiblePredictionRun), [visiblePredictionRun])
+  const profileSection =
+    predictionTab === "upcoming"
+      ? liveSnapshot?.upcoming_tournament
+      : predictionTab === "live"
+          ? liveSnapshot?.live_tournament
+          : null
+  const profileTournamentId = profileSection?.tournament_id ?? visiblePredictionRun?.tournament_id
+  const profileCourseNum = profileSection?.course_num ?? visiblePredictionRun?.course_num
+  const hasProfileTournamentContext = profileTournamentId !== null && profileTournamentId !== undefined
 
   const playerProfileQuery = useQuery({
     queryKey: [
       "player-profile",
       selectedPlayerKey,
-      visiblePredictionRun?.tournament_id,
-      visiblePredictionRun?.course_num,
+      profileTournamentId,
+      profileCourseNum,
     ],
-    queryFn: () =>
-      api.getPlayerProfile(
+    queryFn: () => {
+      if (profileTournamentId === null || profileTournamentId === undefined) {
+        throw new Error("Missing tournament context for player profile")
+      }
+      return api.getPlayerProfile(
         selectedPlayerKey,
-        visiblePredictionRun?.tournament_id ?? 0,
-        visiblePredictionRun?.course_num,
-      ),
+        profileTournamentId,
+        profileCourseNum,
+      )
+    },
     enabled:
       RICH_PLAYER_PROFILES_ENABLED &&
-      Boolean(selectedPlayerKey && visiblePredictionRun?.tournament_id),
+      Boolean(selectedPlayerKey && hasProfileTournamentContext),
     staleTime: 60_000,
     gcTime: 10 * 60_000,
   })
+
+  const playerProfileState: "loading" | "ready" | "error" | "unavailable" = useMemo(() => {
+    if (!RICH_PLAYER_PROFILES_ENABLED) {
+      return "unavailable"
+    }
+    if (!selectedPlayerKey || !hasProfileTournamentContext) {
+      return "unavailable"
+    }
+    if (playerProfileQuery.isPending || playerProfileQuery.isFetching) {
+      return "loading"
+    }
+    if (playerProfileQuery.isError) {
+      return "error"
+    }
+    if (
+      playerProfileQuery.data &&
+      playerProfileQuery.data.player_key === selectedPlayerKey
+    ) {
+      return "ready"
+    }
+    return "unavailable"
+  }, [
+    hasProfileTournamentContext,
+    playerProfileQuery.data,
+    playerProfileQuery.isError,
+    playerProfileQuery.isFetching,
+    playerProfileQuery.isPending,
+    selectedPlayerKey,
+  ])
+  const playerProfileErrorMessage =
+    playerProfileQuery.error instanceof Error ? playerProfileQuery.error.message : undefined
 
   const gradeMutation = useMutation({
     mutationFn: () =>
@@ -153,6 +248,7 @@ function App() {
       setUiAlert(null)
       void queryClient.invalidateQueries({ queryKey: ["dashboard-state"] })
       void queryClient.invalidateQueries({ queryKey: ["grading-history"] })
+      void queryClient.invalidateQueries({ queryKey: ["track-record"] })
     },
     onError: () => {
       setUiAlert("Grading failed. Check backend logs and retry.")
@@ -226,6 +322,32 @@ function App() {
     })
   }, [predictionTab, selectedBookSet, visiblePredictionRun])
 
+  const picksSection: "live" | "upcoming" | null =
+    predictionTab === "upcoming" ? "upcoming" : predictionTab === "live" ? "live" : null
+  const picksEventId =
+    picksSection === "upcoming"
+      ? String(liveSnapshot?.upcoming_tournament?.source_event_id ?? "").trim()
+      : picksSection === "live"
+        ? String(liveSnapshot?.live_tournament?.source_event_id ?? "").trim()
+        : ""
+  const picksMarketRowsQuery = useQuery({
+    queryKey: ["live-refresh-past-market-rows", picksEventId, picksSection],
+    queryFn: () =>
+      api.getLiveRefreshPastMarketRows(picksEventId, {
+        section: picksSection ?? "live",
+        limit: 5000,
+      }),
+    enabled: Boolean(picksSection && picksEventId),
+    staleTime: 30_000,
+  })
+  const picksMarketRows = picksMarketRowsQuery.data?.ok
+    ? (picksMarketRowsQuery.data.rows ?? [])
+    : []
+  const picksMarketRowsError =
+    picksMarketRowsQuery.error instanceof Error
+      ? picksMarketRowsQuery.error.message
+      : undefined
+
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const dashboard = dashboardQuery.data
 
@@ -293,7 +415,6 @@ function App() {
           path="/"
           element={
             <PredictionWorkspacePage
-              dashboard={dashboard}
               liveSnapshot={liveSnapshot}
               runtimeStatus={runtimeStatus}
               snapshotNotice={snapshotNotice}
@@ -314,6 +435,11 @@ function App() {
               selectedPlayerKey={selectedPlayerKey}
               onPlayerSelect={setSelectedPlayerKey}
               selectedPlayerProfile={playerProfileQuery.data}
+              playerProfileState={playerProfileState}
+              playerProfileErrorMessage={playerProfileErrorMessage}
+              onPlayerProfileRetry={() => {
+                void playerProfileQuery.refetch()
+              }}
               richProfilesEnabled={RICH_PLAYER_PROFILES_ENABLED}
               secondaryBets={secondaryBets}
             />
@@ -322,37 +448,87 @@ function App() {
         <Route
           path="/players"
           element={
-            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}><PlayersPage
-                players={players}
-              /></div>
+            <div style={{flex:1,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+              <Suspense fallback={<RouteFallback />}>
+                <PlayersPage players={players} />
+              </Suspense>
+            </div>
           }
         />
         <Route
           path="/matchups"
           element={
             <LegacyRouteGate route="matchups" mode={predictionTab}>
-              <MatchupsPage
+              <PicksPage
                 matchups={filteredMatchups}
-                emptyMessage={matchupsPageEmptyMessage}
+                matchupsEmptyMessage={matchupsPageEmptyMessage}
+                matchupDiagnostics={
+                  predictionTab === "upcoming"
+                    ? liveSnapshot?.upcoming_tournament?.diagnostics
+                    : liveSnapshot?.live_tournament?.diagnostics
+                }
+                minEdgePct={Math.round(minEdge * 100)}
+                secondaryBets={secondaryBets}
+                onPlayerSelect={setSelectedPlayerKey}
+                marketRows={picksMarketRows}
+                marketRowsLoading={picksMarketRowsQuery.isLoading || picksMarketRowsQuery.isFetching}
+                marketRowsError={picksMarketRowsError}
               />
             </LegacyRouteGate>
           }
         />
         <Route
-          path="/course"
+          path="/grading"
           element={
-            <LegacyRouteGate route="course" mode={predictionTab}>
-              <CoursePage
-                dashboard={dashboard}
-                players={players}
-                predictionRun={effectivePredictionRun}
-              />
-            </LegacyRouteGate>
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+              <Suspense fallback={<RouteFallback />}>
+                <GradingPage gradingHistory={gradingHistory} />
+              </Suspense>
+            </div>
           }
         />
-        <Route path="/grading" element={<div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><GradingPage gradingHistory={gradingHistory} /></div>} />
-        <Route path="/track-record" element={<div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}><TrackRecordPage /></div>} />
-        <Route path="/research/champion-challenger" element={<ChampionChallengerPage />} />
+        <Route
+          path="/track-record"
+          element={
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+              <Suspense fallback={<RouteFallback />}>
+                <TrackRecordPage />
+              </Suspense>
+            </div>
+          }
+        />
+        <Route
+          path="/research/legacy-model"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <LegacyModelPage liveSnapshot={liveSnapshot} />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/research/champion-challenger"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <ChampionChallengerPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/research/diagnostics"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <DiagnosticsPage
+                dashboard={dashboard}
+                liveSnapshot={liveSnapshot}
+                predictionTab={predictionTab}
+                isLiveActive={isLiveActive}
+                gradingHistory={gradingHistory}
+                predictionRun={effectivePredictionRun}
+                secondaryBets={secondaryBets}
+              />
+            </Suspense>
+          }
+        />
       </Routes>
     </SuiteShell>
   )

@@ -3,9 +3,14 @@
 # Golf Model — One-Command VPS Deployment
 #
 # Usage:
-#   ./deploy.sh                    # Deploy to configured server
-#   ./deploy.sh --setup            # First-time server setup
-#   ./deploy.sh --update           # Pull latest code and restart
+#   ./deploy.sh                        # Show usage
+#   ./deploy.sh --setup                # First-time server setup (from your laptop)
+#   ./deploy.sh --update               # SSH to VPS, pull, build, restart
+#   ./deploy.sh --update-local        # Run on the VPS itself (no SSH); same steps as --update
+#
+# Public site URL (HTTPS) is independent — e.g. golf.ancc.blog can point here while
+# DEPLOY_HOST stays user@server-ip for SSH. Do not run ``--update`` from the VPS
+# unless you want SSH-to-self; use ``--update-local`` instead.
 #
 # Prerequisites:
 #   - SSH access to your VPS (e.g., Hetzner)
@@ -18,6 +23,9 @@
 #   DEPLOY_BRANCH - Git branch (default: main)
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UPDATE_STEPS="$SCRIPT_DIR/scripts/deploy-update-steps.sh"
 
 # Colors
 GREEN='\033[0;32m'
@@ -48,14 +56,25 @@ DEPLOY_PATH="${DEPLOY_PATH:-/opt/golf-model}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 REPO_URL=$(git remote get-url origin 2>/dev/null || echo "")
 
-if [ -z "$DEPLOY_HOST" ]; then
-    echo -n "Enter SSH host (e.g., root@1.2.3.4): "
-    read DEPLOY_HOST
-fi
+cmd="${1:-}"
 
-if [ -z "$DEPLOY_HOST" ]; then
-    error "No deploy host specified"
-fi
+require_ssh_host() {
+    if [ -z "$DEPLOY_HOST" ]; then
+        echo -n "Enter SSH host (e.g., root@1.2.3.4): "
+        read -r DEPLOY_HOST
+    fi
+    if [ -z "$DEPLOY_HOST" ]; then
+        error "No deploy host specified"
+    fi
+}
+
+case "$cmd" in
+    --update-local)
+        ;;
+    --setup|--update|--status)
+        require_ssh_host
+        ;;
+esac
 
 # ═══════════════════════════════════════════════════════════════
 #  First-time Setup
@@ -64,7 +83,7 @@ setup_server() {
     log "Setting up server at $DEPLOY_HOST..."
 
     ssh "$DEPLOY_HOST" bash << 'SETUP_EOF'
-        set -e
+        set -euo pipefail
 
         # Install system dependencies
         apt-get update -qq
@@ -84,7 +103,7 @@ SETUP_EOF
     # Clone or pull repo
     log "Deploying code..."
     ssh "$DEPLOY_HOST" bash << CLONE_EOF
-        set -e
+        set -euo pipefail
         cd /opt/golf-model
 
         # Trust the Git host key on first use so non-interactive deploys do not fail.
@@ -119,8 +138,8 @@ SETUP_EOF
         if [ -f "frontend/package.json" ]; then
             cd frontend
             export NODE_OPTIONS=--max-old-space-size=2048
-            npm ci 2>&1 | tail -5
-            npm run build 2>&1 | tail -10
+            npm ci
+            npm run build
             cd /opt/golf-model
         fi
 CLONE_EOF
@@ -136,7 +155,7 @@ CLONE_EOF
     # Install systemd services
     log "Installing systemd services..."
     ssh "$DEPLOY_HOST" bash << 'SYSTEMD_EOF'
-        set -e
+        set -euo pipefail
 
         # Dashboard service
         cat > /etc/systemd/system/golf-dashboard.service << 'SVC'
@@ -248,56 +267,24 @@ SYSTEMD_EOF
 # ═══════════════════════════════════════════════════════════════
 update_server() {
     log "Updating $DEPLOY_HOST..."
+    if [ ! -f "$UPDATE_STEPS" ]; then
+        error "Missing $UPDATE_STEPS (repo incomplete?)"
+    fi
+    q_path=$(printf '%q' "$DEPLOY_PATH")
+    q_branch=$(printf '%q' "$DEPLOY_BRANCH")
+    ssh "$DEPLOY_HOST" "env DEPLOY_PATH=$q_path DEPLOY_BRANCH=$q_branch bash -s" < "$UPDATE_STEPS"
 
-    ssh "$DEPLOY_HOST" bash << UPDATE_EOF
-        set -e
-        cd "$DEPLOY_PATH"
+    log "Update deployed successfully."
+}
 
-        # Backup before update. Ask ``src.backup`` for the authoritative DB
-        # path rather than assuming ``data/golf.db`` in the project dir
-        # (``_resolve_db_path`` may redirect the DB elsewhere). The backup
-        # script itself is a no-op when the resolved path doesn't exist,
-        # so this is safe on fresh installs.
-        if [ -x venv/bin/python ]; then
-            source venv/bin/activate
-            DB_PATH=\$(python -m src.backup --print-path 2>/dev/null || echo "data/golf.db")
-            if [ -f "\$DB_PATH" ]; then
-                echo "[deploy] backing up \$DB_PATH"
-                python -m src.backup --keep 14 || true
-            else
-                echo "[deploy] no DB at \$DB_PATH yet; skipping pre-update backup"
-            fi
-        else
-            echo "[deploy] venv not available; skipping pre-update backup"
-        fi
-
-        # Pull latest
-        git fetch origin
-        git checkout $DEPLOY_BRANCH
-        git pull origin $DEPLOY_BRANCH
-
-        # Install deps
-        source venv/bin/activate
-        pip install -q -r requirements.txt
-
-        # Build frontend bundle when present so / serves the latest React UI
-        if [ -f "frontend/package.json" ]; then
-            cd frontend
-            export NODE_OPTIONS=--max-old-space-size=2048
-            npm ci 2>&1 | tail -5
-            npm run build 2>&1 | tail -10
-            cd "$DEPLOY_PATH"
-        fi
-
-        # Initialize DB (runs migrations)
-        python -c "from src.db import init_db; init_db()"
-
-        # Restart services
-        systemctl restart golf-dashboard golf-agent golf-live-refresh
-
-        echo "Update complete."
-UPDATE_EOF
-
+# Run the same steps as ``update_server`` but on the current machine (no SSH).
+# Use this when you are already logged into the VPS under ``$DEPLOY_PATH``.
+update_server_local() {
+    log "Updating in place at $DEPLOY_PATH (no SSH)..."
+    if [ ! -f "$UPDATE_STEPS" ]; then
+        error "Missing $UPDATE_STEPS (run from repo root?)"
+    fi
+    env DEPLOY_PATH="$DEPLOY_PATH" DEPLOY_BRANCH="$DEPLOY_BRANCH" bash "$UPDATE_STEPS"
     log "Update deployed successfully."
 }
 
@@ -345,12 +332,15 @@ STATUS_EOF
 # ═══════════════════════════════════════════════════════════════
 #  Main
 # ═══════════════════════════════════════════════════════════════
-case "${1:-}" in
+case "$cmd" in
     --setup)
         setup_server
         ;;
     --update)
         update_server
+        ;;
+    --update-local)
+        update_server_local
         ;;
     --status)
         check_status
@@ -361,12 +351,13 @@ case "${1:-}" in
         echo "====================="
         echo ""
         echo "Usage:"
-        echo "  $0 --setup     First-time server setup"
-        echo "  $0 --update    Pull latest code and restart"
-        echo "  $0 --status    Check server status"
+        echo "  $0 --setup          First-time server setup (from laptop; uses SSH)"
+        echo "  $0 --update         Pull, build, restart via SSH to DEPLOY_HOST"
+        echo "  $0 --update-local   Same as --update but run ON the VPS (no SSH)"
+        echo "  $0 --status         Check server status via SSH"
         echo ""
         echo "Configuration:"
-        echo "  DEPLOY_HOST=$DEPLOY_HOST"
+        echo "  DEPLOY_HOST=${DEPLOY_HOST:-"(required for --setup / --update / --status)"}"
         echo "  DEPLOY_PATH=$DEPLOY_PATH"
         echo "  DEPLOY_BRANCH=$DEPLOY_BRANCH"
         echo ""

@@ -8,7 +8,8 @@ Expected Value (EV) = (model_prob * decimal_odds) - 1
   Negative EV = overpriced
 
 Probability priority:
-  1. Data Golf course-history model (best calibrated)
+  1. Data Golf course-history model (calibrated), with optional shrinkage vs baseline
+     when both exist (see ``config.COURSE_HISTORY_*``; ``legacy`` restores strict CH > baseline).
   2. Data Golf baseline model
   3. Betsperts sim probabilities
   4. Softmax approximation from composite scores (fallback)
@@ -217,25 +218,92 @@ def _get_dg_probabilities(tournament_id: int,
     return player_probs
 
 
+def _positive_prob(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def select_dg_primary_probability(
+    player_probs: dict,
+    bet_type: str,
+) -> tuple[float | None, dict[str, object]]:
+    """
+    Choose Data Golf win/place probability for a market when both course-history
+    and baseline sim columns exist.
+
+    - ``shrinkage_gate`` (default): use raw course-history if it is within a
+      relative+absolute band of the baseline; otherwise blend CH toward baseline
+      (see config COURSE_HISTORY_*).
+    - ``legacy``: strict priority course-history > baseline (previous behavior).
+    """
+    meta: dict[str, object] = {
+        "source": None,
+        "shrinkage_gated": False,
+        "p_ch": None,
+        "p_base": None,
+    }
+    if not player_probs:
+        return None, meta
+
+    ch_key = f"{bet_type}_ch"
+    p_ch = _positive_prob(player_probs.get(ch_key))
+    p_base = _positive_prob(player_probs.get(bet_type))
+    meta["p_ch"] = p_ch
+    meta["p_base"] = p_base
+
+    policy = str(getattr(config, "COURSE_HISTORY_POLICY", "shrinkage_gate") or "").lower()
+    if policy == "legacy":
+        if p_ch is not None:
+            meta["source"] = "datagolf_ch"
+            return p_ch, meta
+        if p_base is not None:
+            meta["source"] = "datagolf"
+            return p_base, meta
+        return None, meta
+
+    if p_ch is None and p_base is None:
+        return None, meta
+    if p_ch is not None and p_base is None:
+        meta["source"] = "datagolf_ch"
+        return p_ch, meta
+    if p_ch is None and p_base is not None:
+        meta["source"] = "datagolf"
+        return p_base, meta
+
+    gate_rel = float(getattr(config, "COURSE_HISTORY_SHRINK_GATE_REL", 0.35))
+    gate_abs = float(getattr(config, "COURSE_HISTORY_SHRINK_GATE_ABS", 0.02))
+    w_ch = float(getattr(config, "COURSE_HISTORY_GATED_BLEND_WEIGHT", 0.5))
+    w_ch = max(0.0, min(1.0, w_ch))
+
+    assert p_ch is not None and p_base is not None
+    max_delta = max(gate_abs, gate_rel * p_base)
+    delta = abs(p_ch - p_base)
+    meta["delta"] = delta
+    meta["gate_threshold"] = max_delta
+
+    if delta <= max_delta:
+        meta["source"] = "datagolf_ch"
+        return p_ch, meta
+
+    blended = w_ch * p_ch + (1.0 - w_ch) * p_base
+    meta["shrinkage_gated"] = True
+    meta["source"] = "datagolf_ch_shrinkage_blend"
+    return blended, meta
+
+
 def _get_best_prob(player_probs: dict, bet_type: str) -> float | None:
     """
-    Get the best available probability for a bet type.
+    Get the best available probability for a bet type (legacy wrapper).
 
-    Priority: course-history model > baseline model > None.
+    Prefer :func:`select_dg_primary_probability` for diagnostics.
     """
-    if not player_probs:
-        return None
-
-    # Check course-history version first
-    ch_key = f"{bet_type}_ch"
-    if ch_key in player_probs and player_probs[ch_key] > 0:
-        return player_probs[ch_key]
-
-    # Fall back to baseline
-    if bet_type in player_probs and player_probs[bet_type] > 0:
-        return player_probs[bet_type]
-
-    return None
+    p, _meta = select_dg_primary_probability(player_probs, bet_type)
+    return p
 
 
 def find_3ball_value_bets(
@@ -244,6 +312,7 @@ def find_3ball_value_bets(
     tournament_id: int = None,
     enable_for_live: bool = False,
     required_book: str | None = None,
+    model_variant: str = "baseline",
 ) -> list[dict]:
     """
     Find value in 3-ball markets using softmax over composite scores.
@@ -295,11 +364,15 @@ def find_3ball_value_bets(
         if len(players) != 3:
             continue
 
-        scores = [p["composite"] for p in players]
-        max_s = max(scores)
-        exps = [math.exp((s - max_s) / T) for s in scores]
-        total = sum(exps)
-        model_probs = [e / total for e in exps]
+        if model_variant == "v5":
+            from src.models.v5_probabilities import v5_threeball_probabilities
+            model_probs = v5_threeball_probabilities(players, base_temp=T)
+        else:
+            scores = [p["composite"] for p in players]
+            max_s = max(scores)
+            exps = [math.exp((s - max_s) / T) for s in scores]
+            total = sum(exps)
+            model_probs = [e / total for e in exps]
 
         for i, player in enumerate(players):
             model_prob = model_probs[i]
@@ -359,6 +432,7 @@ def find_3ball_value_bets(
                 "ev_pct": f"{ev_val * 100:.1f}%",
                 "is_value": True,
                 "opponents": " / ".join(opponents),
+                "model_variant": model_variant,
             })
 
     value_bets.sort(key=lambda x: x["ev"], reverse=True)
@@ -370,7 +444,8 @@ def find_value_bets(composite_results: list[dict],
                     bet_type: str = "top20",
                     ev_threshold: float = None,
                     tournament_id: int = None,
-                    field_strength: str = "average") -> list[dict]:
+                    field_strength: str = "average",
+                    model_variant: str = "baseline") -> list[dict]:
     """
     Compare model scores to market odds and find value.
 
@@ -461,13 +536,16 @@ def find_value_bets(composite_results: list[dict],
         # DG is preferred; model adds course_fit, weather, momentum signals.
         dg_prob_raw = None
         prob_source = "softmax"
+        dg_ch_meta: dict[str, object] = {}
 
         # 1. DG calibrated probabilities from pre-tournament predictions (best)
         if pkey in dg_probs:
-            dg_candidate = _get_best_prob(dg_probs[pkey], bet_type)
+            dg_candidate, dg_ch_meta = select_dg_primary_probability(dg_probs[pkey], bet_type)
             if dg_candidate and dg_candidate > 0:
                 dg_prob_raw = dg_candidate
-                prob_source = "datagolf_ch" if f"{bet_type}_ch" in dg_probs[pkey] else "datagolf"
+                prob_source = str(dg_ch_meta.get("source") or (
+                    "datagolf_ch" if f"{bet_type}_ch" in dg_probs[pkey] else "datagolf"
+                ))
 
         # 2. DG model prices from odds endpoint (for FRL and other markets)
         if dg_prob_raw is None:
@@ -497,7 +575,7 @@ def find_value_bets(composite_results: list[dict],
 
         # Empirical calibration: correct probability using historical hit rates by bucket.
         # get_calibration_correction returns 1.0 when bucket has < 50 samples (no change).
-        correction = get_calibration_correction(model_prob)
+        correction = get_calibration_correction(model_prob, bet_type=bet_type)
         corrected_prob = model_prob * correction
         corrected_prob = max(0.001, min(0.999, corrected_prob))
         calibration_applied = abs(correction - 1.0) > 1e-6
@@ -593,6 +671,10 @@ def find_value_bets(composite_results: list[dict],
             odds_text = f"+{book_price}" if book_price > 0 else str(book_price)
             has_display_odds = bool(odds_text)
 
+            uncertainty_val = r.get("uncertainty")
+            if uncertainty_val is None:
+                uncertainty_val = r.get("v5_uncertainty")
+
             value_bets.append({
                 "player_key": pkey,
                 "player_display": pdisp,
@@ -622,11 +704,15 @@ def find_value_bets(composite_results: list[dict],
                 "needs_review": ev > 1.0,
                 "suspicious": suspicious,
                 "prob_source": prob_source,
+                "dg_ch_shrinkage_gated": bool(dg_ch_meta.get("shrinkage_gated")),
                 "adaptation_state": adaptation["state"] if adaptation else "normal",
                 "stake_multiplier": adaptation["stake_multiplier"] if adaptation else 1.0,
                 "blend_dg_used": DG_BLEND_WEIGHT,
                 "blend_model_used": MODEL_BLEND_WEIGHT,
                 "calibration_applied": calibration_applied,
+                "model_variant": model_variant,
+                "uncertainty": uncertainty_val,
+                "v5_uncertainty": uncertainty_val,
             })
 
     # Sort by EV descending

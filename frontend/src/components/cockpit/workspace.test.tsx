@@ -24,7 +24,7 @@ describe("SuiteShell", () => {
     expect(screen.getByText("Live / Upcoming / Past")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /cockpit/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /players/i })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /matchups/i })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /picks/i })).toBeInTheDocument()
     expect(screen.getByText("Runtime active · 12s old")).toBeInTheDocument()
     expect(screen.getByText("Cockpit body")).toBeInTheDocument()
   })
@@ -63,10 +63,11 @@ describe("CockpitWorkspace", () => {
       />,
     )
 
-    expect(screen.getByText("Left area")).toBeInTheDocument()
-    expect(screen.getByText("Center modules")).toBeInTheDocument()
-    expect(screen.getByText("Right rail")).toBeInTheDocument()
+    // "Left area" / "Center modules" / "Right rail" placeholder labels were
+    // removed when the cockpit shell collapsed to a borderless three-column
+    // layout; test now asserts on the real module titles rendered in each rail.
     expect(screen.getByText("Event switchboard")).toBeInTheDocument()
+    expect(screen.getByText("Context rail")).toBeInTheDocument()
     expect(screen.getByText("Event headline")).toBeInTheDocument()
     expect(screen.getByText("Featured top plays")).toBeInTheDocument()
     expect(screen.getByText("All generated picks")).toBeInTheDocument()

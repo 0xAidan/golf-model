@@ -14,6 +14,7 @@ Usage:
 import os
 import shutil
 import glob
+import sqlite3
 from datetime import datetime
 
 from src import db
@@ -54,7 +55,13 @@ def create_backup(keep: int = 7) -> str | None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
 
-    shutil.copy2(db_path, backup_path)
+    source_conn = sqlite3.connect(db_path)
+    backup_conn = sqlite3.connect(backup_path)
+    try:
+        source_conn.backup(backup_conn)
+    finally:
+        backup_conn.close()
+        source_conn.close()
 
     # Rotate old backups
     backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")))

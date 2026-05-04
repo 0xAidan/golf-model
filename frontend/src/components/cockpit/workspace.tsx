@@ -17,7 +17,11 @@ export function CockpitWorkspace({
       className={cn(className)}
       style={{
         display: "grid",
-        gridTemplateColumns: "256px minmax(0,1fr) 300px",
+        gridTemplateColumns: "240px minmax(0,1fr) 380px",
+        /* Single fr row keeps the grid within the flex parent height; implicit auto
+           rows grow with max-content and prevent column scrollbars (center content
+           clipped with no way to reach picks below power rankings). */
+        gridTemplateRows: "minmax(0, 1fr)",
         gap: 4,
         padding: 6,
         flex: 1,
@@ -26,15 +30,25 @@ export function CockpitWorkspace({
       }}
     >
       {/* Left column — scrolls internally */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         {leftRail}
       </div>
-      {/* Center column */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
+      {/* Center column — bounded height; main tables use vertical split panes */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          minHeight: 0,
+          height: "100%",
+          overflow: "hidden",
+          overflowX: "hidden",
+        }}
+      >
         {center}
       </div>
       {/* Right column */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         {rightRail}
       </div>
     </div>
@@ -109,13 +123,13 @@ export function CockpitModeSwitch({
   liveActive?: boolean
 }) {
   const options: Array<{ value: "live" | "upcoming" | "past"; label: string }> = [
-    { value: "live",     label: "Live" },
+    { value: "live", label: "Live" },
     { value: "upcoming", label: "Upcoming" },
-    { value: "past",     label: "Past" },
+    { value: "past", label: "Past" },
   ]
 
   return (
-    <div className="mode-switcher" role="tablist" aria-label="Event mode">
+    <div className="mode-switcher" role="radiogroup" aria-label="Event mode">
       {options.map((opt) => {
         const active = opt.value === value
         const isLive = opt.value === "live"
@@ -123,8 +137,8 @@ export function CockpitModeSwitch({
           <button
             key={opt.value}
             type="button"
-            role="tab"
-            aria-selected={active}
+            role="radio"
+            aria-checked={active}
             onClick={() => onChange(opt.value)}
             className={cn("mode-tab", active && "active")}
             data-testid={`mode-btn-${opt.value}`}

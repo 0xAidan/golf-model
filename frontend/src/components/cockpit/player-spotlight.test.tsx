@@ -36,14 +36,16 @@ describe("PlayerSpotlightPanel", () => {
         spotlight={null}
         player={null}
         profile={undefined}
-        profileReady={false}
+        profileState="unavailable"
         richProfilesEnabled={false}
       />,
     )
 
-    expect(
-      screen.getByText("Select a player from rankings, leaderboard, featured plays, or generated picks to load the shared spotlight."),
-    ).toBeInTheDocument()
+    // Empty-state copy was tightened during the cockpit redesign — the panel
+    // now renders a short "Select a player to load spotlight" prompt instead
+    // of the verbose original. The test still guards that the empty state is
+    // not blank.
+    expect(screen.getByText(/select a player/i)).toBeInTheDocument()
   })
 
   it("renders spotlight context even when no ranking row is attached", () => {
@@ -52,15 +54,20 @@ describe("PlayerSpotlightPanel", () => {
         spotlight={spotlight}
         player={null}
         profile={undefined}
-        profileReady={false}
+        profileState="unavailable"
         richProfilesEnabled={false}
       />,
     )
 
+    // Spotlight now renders the player name plus the model narrative as the
+    // primary context strip; the verbose "Why this player matters now" /
+    // "This player is available through cockpit context..." headings were
+    // replaced with a tighter "no ranking row" hint when no ranking is
+    // attached. Assertions track the current rendered copy.
     expect(screen.getByText("Scottie Scheffler")).toBeInTheDocument()
-    expect(screen.getByText("Why this player matters now")).toBeInTheDocument()
+    expect(screen.getByText(spotlight.narrative!)).toBeInTheDocument()
     expect(
-      screen.getByText("This player is available through cockpit context, but no ranking row is attached for the embedded rich profile drill-down yet."),
+      screen.getByText(/no ranking row/i),
     ).toBeInTheDocument()
   })
 })

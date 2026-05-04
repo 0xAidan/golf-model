@@ -1,0 +1,95 @@
+{
+  "generated_at": "2026-04-13T16:05:58.411866+00:00",
+  "window_name": "best_recent_window_v1",
+  "description": "Reference events and cards used to benchmark recovery quality before cutover.",
+  "events": [
+    {
+      "event": "Arnold Palmer Invitational",
+      "label": "arnold_archive_matchup_positive",
+      "card_path": "output/archive/arnold_palmer_invitational_presented_by_mastercard_20260304.md",
+      "card_exists": true,
+      "methodology_path": "output/arnold_palmer_invitational_presented_by_mastercard_methodology_20260304.md",
+      "methodology_exists": true,
+      "card_date": "20260304",
+      "expected": {
+        "focus": "matchups",
+        "record": "10-4",
+        "roi_pct": 46.2
+      },
+      "observed": {
+        "matchup_lines": 24,
+        "placement_lines": 1,
+        "total_bullet_bets": 42,
+        "has_best_bets_section": true,
+        "has_matchup_section": true,
+        "has_methodology_marker": true
+      }
+    },
+    {
+      "event": "Cognizant Classic",
+      "label": "cognizant_archive_matchup_positive",
+      "card_path": "output/archive/cognizant_classic_20260226.md",
+      "card_exists": true,
+      "methodology_path": "output/archive/cognizant_classic_methodology_20260226.md",
+      "methodology_exists": true,
+      "card_date": "20260226",
+      "expected": {
+        "focus": "matchups",
+        "record": "6-7-2",
+        "roi_pct": 8.9
+      },
+      "observed": {
+        "matchup_lines": 24,
+        "placement_lines": 1,
+        "total_bullet_bets": 50,
+        "has_best_bets_section": false,
+        "has_matchup_section": true,
+        "has_methodology_marker": false
+      }
+    },
+    {
+      "event": "AT&T Pebble Beach Pro-Am",
+      "label": "pebble_archive_positive",
+      "card_path": "output/archive/at&t_pebble_beach_pro-am_20260211.md",
+      "card_exists": true,
+      "methodology_path": null,
+      "methodology_exists": false,
+      "card_date": "20260211",
+      "expected": {
+        "focus": "placements",
+        "record": "1-2",
+        "roi_pct": 55.6
+      },
+      "observed": {
+        "matchup_lines": 32,
+        "placement_lines": 0,
+        "total_bullet_bets": 47,
+        "has_best_bets_section": false,
+        "has_matchup_section": true,
+        "has_methodology_marker": false
+      }
+    },
+    {
+      "event": "Valero Texas Open",
+      "label": "valero_recent_local_good",
+      "card_path": "output/archive/valero_texas_open_20260331.md",
+      "card_exists": true,
+      "methodology_path": null,
+      "methodology_exists": false,
+      "card_date": "20260331",
+      "expected": {
+        "focus": "mixed",
+        "record": null,
+        "roi_pct": null
+      },
+      "observed": {
+        "matchup_lines": 0,
+        "placement_lines": 1,
+        "total_bullet_bets": 21,
+        "has_best_bets_section": false,
+        "has_matchup_section": true,
+        "has_methodology_marker": true
+      }
+    }
+  ]
+}

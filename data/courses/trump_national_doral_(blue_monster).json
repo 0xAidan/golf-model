@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Cadillac Championship",
+    "course_name": "Trump National Doral (Blue Monster)",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Very Easy",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.6692,
+    "app_impact": 0.2339,
+    "arg_impact": 0.0143,
+    "putt_impact": 0.1669,
+    "total_fit_spread": 0.5733,
+    "sg_category_spread": 0.5563
+  },
+  "characteristics": {}
+}

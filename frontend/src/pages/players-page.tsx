@@ -3,7 +3,7 @@
  * Full DataGolf-style player profiles accessible without an active tournament.
  * Route: /players
  */
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Search, User, ChevronRight, X } from "lucide-react"
 
@@ -15,8 +15,18 @@ import {
   HistoryTable,
 } from "@/components/charts-v2"
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
+import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { api } from "@/lib/api"
-import type { CompositePlayer } from "@/lib/types"
+import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
+import { computeSgTrajectoryBounds, heatSpectrumFromUnit, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
+import {
+  PLAYER_PAGE_KPI_TOOLTIPS,
+  PLAYER_PROFILE_STAT_TOOLTIPS,
+  POWER_RANKINGS_HELP,
+  ROLLING_SG_GRID_HEADER_TOOLTIPS,
+  ROLLING_WINDOW_ROW_TOOLTIP,
+  SG_TRAJECTORY_HELP,
+} from "@/lib/metric-tooltips"
 
 /* ── Tokens ─────────────────────────────────────────────────────────── */
 const VAR = {
@@ -54,6 +64,16 @@ function signed(v?: number | null, d = 3): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(d)}`
 }
 
+function heatUnitForSg(v?: number | null, maxAbs = 2.5): number {
+  if (v == null) return 0.5
+  return Math.min(1, Math.max(0, (v + maxAbs) / (maxAbs * 2)))
+}
+
+function formatCompactScore(v?: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "—"
+  return v.toFixed(1)
+}
+
 /* ── KPI Cell ─────────────────────────────────────────────────────────── */
 function KpiCell({
   label,
@@ -61,45 +81,74 @@ function KpiCell({
   tone: t = "neutral",
   sub,
   large = false,
+  accentUnit,
+  title,
 }: {
   label: string
   value: string | React.ReactNode
   tone?: Tone
   sub?: string
   large?: boolean
+  accentUnit?: number
+  /** Native tooltip (metric definition). */
+  title?: string
 }) {
   return (
     <div
+      title={title}
       style={{
         display: "flex",
         flexDirection: "column",
         gap: 2,
         padding: "10px 14px",
         minWidth: 0,
+        cursor: title ? "help" : undefined,
+        background: accentUnit != null ? heatSpectrumGradientAlongUnit(accentUnit, "ltr") : undefined,
       }}
     >
-      <span style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: VAR.faint }}>
+      <span style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: accentUnit != null ? "var(--bg)" : VAR.faint }}>
         {label}
       </span>
-      <span style={{ fontFamily: VAR.mono, fontSize: large ? 22 : 17, fontWeight: 700, color: toneColor(t), letterSpacing: "-0.02em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontFamily: VAR.mono, fontSize: large ? 22 : 17, fontWeight: 700, color: accentUnit != null ? "var(--bg)" : toneColor(t), letterSpacing: "-0.02em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
         {value}
       </span>
-      {sub && <span style={{ fontFamily: VAR.mono, fontSize: 9, color: VAR.faint }}>{sub}</span>}
+      {sub && <span style={{ fontFamily: VAR.mono, fontSize: 9, color: accentUnit != null ? "var(--bg)" : VAR.faint }}>{sub}</span>}
     </div>
   )
 }
 
 /* ── Stat metric card ─────────────────────────────────────────────────── */
-function MetricCard({ label, value, tone: t = "neutral", sub }: { label: string; value: string | React.ReactNode; tone?: Tone; sub?: string }) {
+function MetricCard({
+  label,
+  value,
+  tone: t = "neutral",
+  sub,
+  title: tip,
+}: {
+  label: string
+  value: string | React.ReactNode
+  tone?: Tone
+  sub?: string
+  title?: string
+}) {
   return (
-    <div style={{ background: VAR.surface, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", padding: "8px 10px" }}>
-      <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 3 }}>
+    <div
+      title={tip}
+      style={{
+        background: VAR.surface,
+        border: `1px solid ${VAR.border}`,
+        borderRadius: "var(--r-md)",
+        padding: "10px 12px",
+        cursor: tip ? "help" : undefined,
+      }}
+    >
+      <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: VAR.muted, marginBottom: 4 }}>
         {label}
       </div>
       <div style={{ fontFamily: VAR.mono, fontSize: 18, fontWeight: 700, color: toneColor(t), letterSpacing: "-0.02em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: VAR.mono, fontSize: 9, color: VAR.faint, marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontFamily: VAR.mono, fontSize: 10, color: VAR.faint, marginTop: 3 }}>{sub}</div>}
     </div>
   )
 }
@@ -109,10 +158,12 @@ function PlayerSearchSidebar({
   activePlayers,
   selectedKey,
   onSelect,
+  trajectoryBounds,
 }: {
   activePlayers: CompositePlayer[]
   selectedKey: string | null
   onSelect: (key: string, display: string) => void
+  trajectoryBounds: { min: number; max: number }
 }) {
   const [query, setQuery] = useState("")
   const [searchFocused, setSearchFocused] = useState(false)
@@ -126,27 +177,33 @@ function PlayerSearchSidebar({
 
   // Show active field players first, then DB search results
   const showSearch = query.length >= 2
-  const searchResults = searchQuery.data?.players ?? []
+  // Wrap in useMemo so referential identity is stable when data is unchanged —
+  // prevents the displayList useMemo below from re-running on every render.
+  const searchResults = useMemo(() => searchQuery.data?.players ?? [], [searchQuery.data])
 
   // Active field players filtered by query
   const filteredActive = useMemo(() => {
-    if (!query) return activePlayers.slice(0, 30)
+    if (!query) return activePlayers
     const q = query.toLowerCase()
-    return activePlayers.filter((p) =>
-      p.player_display.toLowerCase().includes(q) || p.player_key.includes(q)
-    ).slice(0, 20)
+    return activePlayers.filter(
+      (p) => p.player_display.toLowerCase().includes(q) || p.player_key.includes(q),
+    )
   }, [activePlayers, query])
 
   // Merge: active field + DB results (deduplicated)
+  const activeByKey = useMemo(
+    () => new Map(activePlayers.map((p) => [p.player_key, p])),
+    [activePlayers],
+  )
   const displayList = useMemo(() => {
-    if (!showSearch) return filteredActive.map((p) => ({ key: p.player_key, display: p.player_display, inField: true }))
+    if (!showSearch) return filteredActive.map((p) => ({ key: p.player_key, display: p.player_display, inField: true, model: p }))
     const activeKeys = new Set(filteredActive.map((p) => p.player_key))
     const dbOnly = searchResults.filter((r) => !activeKeys.has(r.player_key))
     return [
-      ...filteredActive.map((p) => ({ key: p.player_key, display: p.player_display, inField: true })),
-      ...dbOnly.map((r) => ({ key: r.player_key, display: r.player_display, inField: false })),
+      ...filteredActive.map((p) => ({ key: p.player_key, display: p.player_display, inField: true, model: p })),
+      ...dbOnly.map((r) => ({ key: r.player_key, display: r.player_display, inField: false, model: activeByKey.get(r.player_key) })),
     ]
-  }, [filteredActive, searchResults, showSearch])
+  }, [activeByKey, filteredActive, searchResults, showSearch])
 
   return (
     <div
@@ -273,6 +330,27 @@ function PlayerSearchSidebar({
               {!p.inField && (
                 <div style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, marginTop: 1 }}>DB record</div>
               )}
+              {p.inField && p.model && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint }} title={POWER_RANKINGS_HELP.rank}>
+                    #{p.model.rank}
+                  </span>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.cyan }} title={POWER_RANKINGS_HELP.composite}>
+                    C {formatCompactScore(p.model.composite)}
+                  </span>
+                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.green }} title={POWER_RANKINGS_HELP.form}>
+                    F {formatCompactScore(p.model.form)}
+                  </span>
+                  <span style={{ marginLeft: "auto" }}>
+                    <SgTrajectoryMeter
+                      momentumTrend={p.model.momentum_trend}
+                      momentumDirection={p.model.momentum_direction}
+                      normMin={trajectoryBounds.min}
+                      normMax={trajectoryBounds.max}
+                    />
+                  </span>
+                </div>
+              )}
             </div>
             {selectedKey === p.key && <ChevronRight size={10} style={{ color: "var(--green)", flexShrink: 0 }} />}
           </button>
@@ -283,9 +361,17 @@ function PlayerSearchSidebar({
 }
 
 /* ── Full Player Profile View ─────────────────────────────────────────── */
-function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; playerDisplay: string }) {
+function PlayerProfileView({
+  playerKey,
+  playerDisplay,
+  activePlayers,
+}: {
+  playerKey: string
+  playerDisplay: string
+  activePlayers: CompositePlayer[]
+}) {
 
-  const profileQuery = useQuery({
+  const profileQuery = useQuery<StandalonePlayerProfile, Error>({
     queryKey: ["standalone-profile", playerKey],
     queryFn: () => api.getPlayerStandaloneProfile(playerKey),
     staleTime: 5 * 60_000,
@@ -295,6 +381,11 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
   })
 
   const p = profileQuery.data
+  const modelPlayer = useMemo(
+    () => activePlayers.find((player) => player.player_key === playerKey),
+    [activePlayers, playerKey],
+  )
+  const trajectoryBounds = useMemo(() => computeSgTrajectoryBounds(activePlayers), [activePlayers])
 
   if (profileQuery.isLoading) {
     return (
@@ -317,6 +408,25 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
       </div>
     )
   }
+
+  const roundsOldestToNewest: StandaloneRecentRoundSample[] = [...(p.recent_rounds_sample ?? [])].reverse()
+  const roundSeriesByMetric = {
+    APP: roundsOldestToNewest
+      .map((round) => round.sg_app)
+      .filter((value): value is number => typeof value === "number"),
+    ARG: roundsOldestToNewest
+      .map((round) => round.sg_arg)
+      .filter((value): value is number => typeof value === "number"),
+    PUTT: roundsOldestToNewest
+      .map((round) => round.sg_putt)
+      .filter((value): value is number => typeof value === "number"),
+    OTT: roundsOldestToNewest
+      .map((round) => round.sg_ott)
+      .filter((value): value is number => typeof value === "number"),
+    T2G: roundsOldestToNewest
+      .map((round) => round.sg_t2g)
+      .filter((value): value is number => typeof value === "number"),
+  } as const
 
   return (
     <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
@@ -362,8 +472,18 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
           {[
             { label: "DG Rank",    value: p.header.dg_rank  ? `#${p.header.dg_rank}`  : "—" },
             { label: "OWGR",       value: p.header.owgr_rank ? `#${p.header.owgr_rank}` : "—" },
-            { label: "DG Skill",   value: p.header.dg_skill_estimate != null ? signed(p.header.dg_skill_estimate, 2) : "—", tone: tone(p.header.dg_skill_estimate) },
-            { label: "Total SG",   value: p.sg_skills.sg_total != null ? signed(p.sg_skills.sg_total) : "—", tone: tone(p.sg_skills.sg_total) },
+            {
+              label: "DG Skill",
+              value: p.header.dg_skill_estimate != null ? signed(p.header.dg_skill_estimate, 2) : "—",
+              tone: tone(p.header.dg_skill_estimate),
+              accentUnit: p.header.dg_skill_estimate != null ? heatUnitForSg(p.header.dg_skill_estimate) : undefined,
+            },
+            {
+              label: "Total SG",
+              value: p.sg_skills.sg_total != null ? signed(p.sg_skills.sg_total) : "—",
+              tone: tone(p.sg_skills.sg_total),
+              accentUnit: p.sg_skills.sg_total != null ? heatUnitForSg(p.sg_skills.sg_total) : undefined,
+            },
             { label: "Events (DB)",value: String(p.header.events_tracked ?? 0), sub: "tracked events" },
             { label: "Rounds (DB)",value: String(p.header.rounds_in_db ?? 0), sub: "stored rounds" },
           ].map((item, i, arr) => (
@@ -373,7 +493,7 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
                 borderRight: i < arr.length - 1 ? `1px solid ${VAR.border}` : "none",
               }}
             >
-              <KpiCell {...item} />
+              <KpiCell {...item} title={PLAYER_PAGE_KPI_TOOLTIPS[item.label]} />
             </div>
           ))}
         </div>
@@ -381,69 +501,199 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
 
       {/* ── Main content ─────────────────────────────────────────── */}
       <div style={{ flex: 1, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
-
-        {/* ── Row 1: Pentagon Radar + KPI sidebar ────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
-
-          {/* Pentagon Radar */}
+        {modelPlayer && (
           <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
             <div className="panel-header">
-              <span className="panel-label">Skill Profile</span>
-              <span className="panel-label-dim">Five-axis radar — shape reveals game identity vs tour average</span>
+              <span className="panel-label">Model Alignment</span>
+              <span className="panel-label-dim">Current field model context for this player</span>
             </div>
-            <div style={{ padding: 12 }}>
-              <PentagonRadar
-                skills={p.sg_skills}
-                playerName={p.player_display}
-                height={240}
+            <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
+              <MetricCard label="Model Rank" value={`#${modelPlayer.rank}`} title={PLAYER_PROFILE_STAT_TOOLTIPS["Model Rank"]} />
+              <MetricCard label="Composite" value={modelPlayer.composite.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS.Composite} />
+              <MetricCard label="Form" value={modelPlayer.form.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS.Form} />
+              <MetricCard label="Course Fit" value={modelPlayer.course_fit.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS["Course Fit"]} />
+              <div
+                title={SG_TRAJECTORY_HELP}
+                style={{
+                  cursor: "help",
+                  background: VAR.surface,
+                  border: `1px solid ${VAR.border}`,
+                  borderRadius: "var(--r-md)",
+                  padding: "8px 10px",
+                }}
+              >
+                <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 6 }}>
+                  SG Trajectory
+                </div>
+                <SgTrajectoryMeter
+                  momentumTrend={modelPlayer.momentum_trend}
+                  momentumDirection={modelPlayer.momentum_direction}
+                  normMin={trajectoryBounds.min}
+                  normMax={trajectoryBounds.max}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {p.ranking_card && (
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+            <div className="panel-header">
+              <span className="panel-label">DG Identity</span>
+              <span className="panel-label-dim">Structured DataGolf ranking context</span>
+            </div>
+            <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+              <MetricCard label="DG Rank" value={p.ranking_card.dg_rank ? `#${p.ranking_card.dg_rank}` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS["DG Rank"]} />
+              <MetricCard label="OWGR" value={p.ranking_card.owgr_rank ? `#${p.ranking_card.owgr_rank}` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.OWGR} />
+              <MetricCard label="DG Skill" value={signed(p.ranking_card.dg_skill_estimate, 2)} tone={tone(p.ranking_card.dg_skill_estimate)} title={PLAYER_PROFILE_STAT_TOOLTIPS["DG Skill"]} />
+              <MetricCard label="Primary Tour" value={p.ranking_card.primary_tour ?? "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS["Primary Tour"]} />
+            </div>
+          </div>
+        )}
+
+        {/* Skill profile row: radar + KPIs beside field distribution when width allows */}
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
+            alignItems: "stretch",
+          }}
+        >
+          <div className="players-skill-radar-row" style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr) minmax(200px, 240px)" }}>
+            <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden", minWidth: 0 }}>
+              <div className="panel-header">
+                <span className="panel-label">Skill Profile</span>
+                <span className="panel-label-dim">Five-axis radar vs tour average (dashed)</span>
+              </div>
+              <div style={{ padding: "12px 14px" }}>
+                <PentagonRadar skills={p.sg_skills} playerName={p.player_display} height={300} />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+              <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted }}>Driving</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Distance} />
+                <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Accuracy} />
+              </div>
+              <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted, marginTop: 4 }}>Rolling windows</div>
+              {(["10", "25", "50"] as const).map((w) => {
+                const val = p.rolling_windows?.[w]
+                const heatT = heatUnitForSg(val)
+                return (
+                  <div
+                    key={w}
+                    title={ROLLING_WINDOW_ROW_TOOLTIP}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "7px 10px",
+                      background: VAR.bg2,
+                      border: `1px solid ${VAR.border}`,
+                      borderRadius: "var(--r-sm)",
+                      cursor: "help",
+                    }}
+                  >
+                    <span style={{ fontFamily: VAR.mono, fontSize: 11, color: VAR.muted, letterSpacing: "0.06em", fontWeight: 600 }}>
+                      L{w}
+                    </span>
+                    <span style={{ fontFamily: VAR.mono, fontSize: 15, fontWeight: 700, color: val != null ? heatSpectrumFromUnit(heatT) : VAR.faint }}>
+                      {val != null ? signed(val) : "—"}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden", minWidth: 0 }}>
+            <div className="panel-header">
+              <span className="panel-label">Field distribution</span>
+              <span className="panel-label-dim">You (green ring) vs field (grey)</span>
+            </div>
+            <div style={{ padding: "12px 14px" }}>
+              <BeeswarmStrip
+                categories={[
+                  { label: "Total SG", shortLabel: "TOTAL", playerValue: p.sg_skills.sg_total },
+                  { label: "Approach", shortLabel: "APP", playerValue: p.sg_skills.sg_app },
+                  { label: "Around Green", shortLabel: "ARG", playerValue: p.sg_skills.sg_arg },
+                  { label: "Putting", shortLabel: "PUTT", playerValue: p.sg_skills.sg_putt },
+                  { label: "Off the Tee", shortLabel: "OTT", playerValue: p.sg_skills.sg_ott },
+                ] satisfies BeeswarmCategory[]}
+                height={300}
               />
             </div>
           </div>
+        </div>
 
-          {/* Driving + KPI sidebar */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint }}>DRIVING</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} />
-              <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} />
+        {p.rolling_windows_expanded && (
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+            <div className="panel-header">
+              <span className="panel-label">Rolling Windows Grid</span>
+              <span className="panel-label-dim">L10 / L25 / L50 by SG category</span>
             </div>
-            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginTop: 4 }}>ROLLING WINDOWS</div>
-            {(["10", "25", "50"] as const).map(w => {
-              const val = p.rolling_windows?.[w]
-              const t = tone(val)
-              return (
-                <div key={w} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: VAR.bg2, border: `1px solid ${VAR.border}`, borderRadius: 3 }}>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 8, color: VAR.faint, letterSpacing: "0.1em" }}>L{w}</span>
-                  <span style={{ fontFamily: VAR.mono, fontSize: 13, fontWeight: 700, color: val != null ? (t === "positive" ? "var(--green)" : t === "negative" ? "var(--red)" : VAR.muted) : VAR.faint }}>
-                    {val != null ? signed(val) : "—"}
-                  </span>
-                </div>
-              )
-            })}
+            <div style={{ padding: 12, overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
+                    {["Window", "TOTAL", "OTT", "APP", "ARG", "PUTT", "T2G"].map((head) => (
+                      <th
+                        key={head}
+                        title={ROLLING_SG_GRID_HEADER_TOOLTIPS[head]}
+                        style={{ textAlign: head === "Window" ? "left" : "center", color: VAR.muted, padding: "8px 10px", letterSpacing: "0.07em", fontWeight: 700 }}
+                      >
+                        {head}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["10", "25", "50"] as const).map((windowKey) => {
+                    const cells = [
+                      p.rolling_windows_expanded?.sg_total?.[windowKey],
+                      p.rolling_windows_expanded?.sg_ott?.[windowKey],
+                      p.rolling_windows_expanded?.sg_app?.[windowKey],
+                      p.rolling_windows_expanded?.sg_arg?.[windowKey],
+                      p.rolling_windows_expanded?.sg_putt?.[windowKey],
+                      p.rolling_windows_expanded?.sg_t2g?.[windowKey],
+                    ]
+                    return (
+                      <tr key={windowKey} style={{ borderBottom: `1px solid ${VAR.divider}` }}>
+                        <td title={ROLLING_WINDOW_ROW_TOOLTIP} style={{ padding: "8px", color: VAR.text, fontWeight: 700 }}>L{windowKey}</td>
+                        {cells.map((value, index) => {
+                          const heatT = heatUnitForSg(value)
+                          return (
+                            <td key={`${windowKey}-${index}`} style={{ padding: "10px 8px", textAlign: "center" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  minWidth: 58,
+                                  padding: "5px 8px",
+                                  borderRadius: 4,
+                                  border: `1px solid ${VAR.border}`,
+                                  background: heatSpectrumGradientAlongUnit(heatT, "ltr"),
+                                  color: "var(--bg)",
+                                  fontWeight: 700,
+                                  fontSize: 12,
+                                }}
+                              >
+                                {signed(value, 2)}
+                              </span>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* ── Row 2: Beeswarm field distribution ─────────────────── */}
-        <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-          <div className="panel-header">
-            <span className="panel-label">Field Distribution</span>
-            <span className="panel-label-dim">Player position (green) vs field (grey dots) — quartile ticks at 25/50/75th pct</span>
-          </div>
-          <div style={{ padding: "10px 12px" }}>
-            <BeeswarmStrip
-              categories={[
-                { label: "Total SG",      shortLabel: "TOTAL",   playerValue: p.sg_skills.sg_total },
-                { label: "Approach",       shortLabel: "APP",     playerValue: p.sg_skills.sg_app },
-                { label: "Around Green",   shortLabel: "ARG",     playerValue: p.sg_skills.sg_arg },
-                { label: "Putting",         shortLabel: "PUTT",    playerValue: p.sg_skills.sg_putt },
-                { label: "Off the Tee",    shortLabel: "OTT",     playerValue: p.sg_skills.sg_ott },
-              ] satisfies BeeswarmCategory[]}
-              height={260}
-            />
-          </div>
-        </div>
-
-        {/* ── Row 3: Rolling Bar + Line (event history) ──────────── */}
+        {/* ── Event form: bars + moving average ──────────── */}
         {p.recent_events.length > 0 && (
           <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
             <div className="panel-header">
@@ -455,7 +705,87 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
                 events={p.recent_events as RollingEvent[]}
                 height={180}
                 maWindow={5}
+                trendSeries={p.trend_series}
+                roundSeriesByMetric={roundSeriesByMetric}
               />
+            </div>
+          </div>
+        )}
+
+        {p.course_summaries && p.course_summaries.length > 0 && (
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+            <div className="panel-header">
+              <span className="panel-label">Course Rollups</span>
+              <span className="panel-label-dim">Most tracked courses by rounds played</span>
+            </div>
+            <div style={{ padding: 12 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 10 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
+                    <th style={{ textAlign: "left", color: VAR.faint, padding: "6px 8px", letterSpacing: "0.08em" }}>Course</th>
+                    <th style={{ textAlign: "center", color: VAR.faint, padding: "6px 8px", letterSpacing: "0.08em" }}>Rounds</th>
+                    <th style={{ textAlign: "center", color: VAR.faint, padding: "6px 8px", letterSpacing: "0.08em" }}>Avg SG Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.course_summaries.map((course) => (
+                    <tr key={course.course_name} style={{ borderBottom: `1px solid ${VAR.divider}` }}>
+                      <td style={{ padding: "8px", color: VAR.text }}>{course.course_name}</td>
+                      <td style={{ padding: "8px", color: VAR.muted, textAlign: "center" }}>{course.rounds_played}</td>
+                      <td style={{ padding: "8px", textAlign: "center", color: heatSpectrumFromUnit(heatUnitForSg(course.avg_sg_total)) }}>
+                        {signed(course.avg_sg_total, 2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {p.recent_rounds_sample && p.recent_rounds_sample.length > 0 && (
+          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
+            <div className="panel-header">
+              <span className="panel-label">Round Log</span>
+              <span className="panel-label-dim">Most recent rounds with SG splits and scoring context</span>
+            </div>
+            <div style={{ padding: 12, overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 10 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
+                    {["Date", "Event", "R", "Score", "TOT", "OTT", "APP", "ARG", "PUTT", "T2G"].map((head) => (
+                      <th key={head} style={{ textAlign: head === "Event" ? "left" : "center", color: VAR.faint, padding: "6px 8px", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>
+                        {head}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.recent_rounds_sample.slice(0, 24).map((round: StandaloneRecentRoundSample, idx: number) => {
+                    const values = [round.sg_total, round.sg_ott, round.sg_app, round.sg_arg, round.sg_putt, round.sg_t2g]
+                    return (
+                      <tr key={`${round.event_completed ?? "na"}-${round.round_num ?? idx}-${idx}`} style={{ borderBottom: `1px solid ${VAR.divider}` }}>
+                        <td style={{ padding: "6px 8px", color: VAR.faint, textAlign: "center", whiteSpace: "nowrap" }}>{round.event_completed ?? "—"}</td>
+                        <td style={{ padding: "6px 8px", color: VAR.text, whiteSpace: "nowrap" }}>{round.event_name ?? "—"}</td>
+                        <td style={{ padding: "6px 8px", color: VAR.muted, textAlign: "center" }}>{round.round_num ?? "—"}</td>
+                        <td style={{ padding: "6px 8px", color: VAR.text, textAlign: "center" }}>{round.score ?? "—"}</td>
+                        {values.map((value, valueIdx) => (
+                          <td
+                            key={`${idx}-${valueIdx}`}
+                            style={{
+                              padding: "6px 8px",
+                              textAlign: "center",
+                              color: value != null ? heatSpectrumFromUnit(heatUnitForSg(value)) : VAR.faint,
+                            }}
+                          >
+                            {signed(value, 2)}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -499,7 +829,7 @@ function PlayerProfileView({ playerKey, playerDisplay }: { playerKey: string; pl
             <div style={{ padding: 12 }}>
               <HistoryTable
                 events={p.recent_events as HistoryEvent[]}
-                maxRows={10}
+                maxRows={16}
               />
             </div>
           </div>
@@ -544,8 +874,13 @@ export function PlayersPage({
   onPlayerSelect?: (key: string) => void
   richProfilesEnabled?: boolean
 }) {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const initialFromUrl =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("player")
+      : null
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialFromUrl)
   const [selectedDisplay, setSelectedDisplay] = useState<string>("")
+  const trajectoryBounds = useMemo(() => computeSgTrajectoryBounds(players), [players])
 
   const handleSelect = useCallback((key: string, display: string) => {
     setSelectedKey(key)
@@ -556,7 +891,17 @@ export function PlayersPage({
   // Resolve during render to avoid a setState-in-effect cascade.
   const first = players[0]
   const effectiveKey = selectedKey ?? first?.player_key ?? null
-  const effectiveDisplay = selectedKey ? selectedDisplay : (first?.player_display ?? "")
+  const fallbackSelectedDisplay = selectedKey
+    ? players.find((player) => player.player_key === selectedKey)?.player_display ?? selectedKey.replaceAll("_", " ")
+    : ""
+  const effectiveDisplay = selectedKey ? (selectedDisplay || fallbackSelectedDisplay) : (first?.player_display ?? "")
+
+  useEffect(() => {
+    if (!effectiveKey || typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    url.searchParams.set("player", effectiveKey)
+    window.history.replaceState({}, "", url.toString())
+  }, [effectiveKey])
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -565,12 +910,18 @@ export function PlayersPage({
         activePlayers={players}
         selectedKey={effectiveKey}
         onSelect={handleSelect}
+        trajectoryBounds={trajectoryBounds}
       />
 
       {/* Main profile view */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, minHeight: 0 }}>
         {effectiveKey ? (
-          <PlayerProfileView key={effectiveKey} playerKey={effectiveKey} playerDisplay={effectiveDisplay} />
+          <PlayerProfileView
+            key={effectiveKey}
+            playerKey={effectiveKey}
+            playerDisplay={effectiveDisplay}
+            activePlayers={players}
+          />
         ) : (
           <EmptyState />
         )}

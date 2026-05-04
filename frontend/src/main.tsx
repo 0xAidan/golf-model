@@ -6,7 +6,15 @@ import { HashRouter } from "react-router-dom"
 import App from "@/App"
 import "@/index.css"
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 15_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 document.documentElement.classList.add("dark")
 

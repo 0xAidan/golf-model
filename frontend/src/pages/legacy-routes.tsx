@@ -1,27 +1,27 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronDown, CircleAlert, NotebookPen, Radar, ShieldAlert, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
-import { CourseGuide } from "@/components/course-guide"
+import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { api } from "@/lib/api"
-import { eventToCourseKey, COURSE_MAP, ALL_COURSES } from "@/lib/course-data"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
+import {
+  GRADING_KPI_STRIP_TOOLTIPS,
+  GRADING_TABLE_TOOLTIPS,
+  MATCHUP_TABLE_TOOLTIPS,
+  POWER_RANKINGS_HELP,
+  PLAYER_PROFILE_STAT_TOOLTIPS,
+  SG_TRAJECTORY_HELP,
+} from "@/lib/metric-tooltips"
 import type {
   CompositePlayer,
-  DashboardState,
   GradedTournamentSummary,
-  MatchupBet,
   PlayerProfile,
-  PredictionRunResponse,
 } from "@/lib/types"
-import {
-  buildMatchupKey,
-  TREND_ARROW,
-  TREND_COLOR,
-} from "@/pages/page-shared"
+import { computeSgTrajectoryBounds } from "@/lib/metric-heat"
 
 /* ── Shared mini-components ─────────────────── */
 function EmptyState({ message }: { message: string }) {
@@ -30,16 +30,6 @@ function EmptyState({ message }: { message: string }) {
       <div className="empty-state-title">{message}</div>
     </div>
   )
-}
-
-function EV({ ev, evPct }: { ev: number; evPct?: string }) {
-  const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
-  return <span className={`ev-badge ${cls}`}>{evPct ?? `${(ev * 100).toFixed(1)}%`}</span>
-}
-
-function TierBadge({ tier }: { tier?: string }) {
-  const t = tier ?? "LEAN"
-  return <span className={`tier-badge ${t}`}>{t}</span>
 }
 
 function PageHeader({ title, description }: { title: string; description?: string }) {
@@ -68,6 +58,7 @@ export function PlayersPage({
   richProfilesEnabled: boolean
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const trajectoryBounds = useMemo(() => computeSgTrajectoryBounds(players), [players])
 
   const handleToggle = (playerKey: string) => {
     if (expandedKey === playerKey) {
@@ -84,29 +75,39 @@ export function PlayersPage({
       <PageHeader title="Player Rankings" description="Full model board — click any row to expand the player's full projection profile." />
       <div className="card">
         {players.length > 0 ? (
-          <div style={{ overflow: "hidden" }}>
+          <div style={{ overflow: "auto" }}>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}>#</th>
-                  <th>Player</th>
-                  <th className="right">Composite</th>
-                  <th className="right">Course</th>
-                  <th className="right">Form</th>
-                  <th className="right">Momentum</th>
-                  <th className="center">Trend</th>
+                  <th style={{ width: 40 }} title={POWER_RANKINGS_HELP.rank}>
+                    #
+                  </th>
+                  <th title={POWER_RANKINGS_HELP.player}>Player</th>
+                  <th className="right" title={POWER_RANKINGS_HELP.composite}>
+                    Composite
+                  </th>
+                  <th className="right" title={POWER_RANKINGS_HELP.course}>
+                    Course
+                  </th>
+                  <th className="right" title={POWER_RANKINGS_HELP.form}>
+                    Form
+                  </th>
+                  <th className="right" title={POWER_RANKINGS_HELP.momentum}>
+                    Momentum
+                  </th>
+                  <th className="center" title={SG_TRAJECTORY_HELP}>
+                    SG trajectory
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {players.map((player) => {
                   const isExpanded = player.player_key === expandedKey
-                  const dir = player.momentum_direction ?? ""
-                  const arrow = TREND_ARROW[dir] ?? "—"
-                  const trendColor = TREND_COLOR[dir] ?? "var(--text-faint)"
                   const profileReady =
                     isExpanded &&
                     Boolean(selectedPlayerProfile) &&
                     selectedPlayerProfile?.player_key === player.player_key
+                  const profileState = profileReady ? "ready" : isExpanded ? "loading" : "unavailable"
 
                   return (
                     <>
@@ -144,7 +145,12 @@ export function PlayersPage({
                           {formatNumber(player.momentum, 1)}
                         </td>
                         <td className="center">
-                          <span style={{ color: trendColor, fontSize: 14, fontWeight: 700 }}>{arrow}</span>
+                          <SgTrajectoryMeter
+                            momentumTrend={player.momentum_trend}
+                            momentumDirection={player.momentum_direction}
+                            normMin={trajectoryBounds.min}
+                            normMax={trajectoryBounds.max}
+                          />
                         </td>
                       </tr>
                       {isExpanded && (
@@ -161,7 +167,7 @@ export function PlayersPage({
                                 <PlayerProfileSections
                                   player={player}
                                   profile={selectedPlayerProfile}
-                                  profileReady={profileReady}
+                                  profileState={profileState}
                                 />
                               ) : (
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
@@ -171,7 +177,7 @@ export function PlayersPage({
                                     { label: "Form", value: formatNumber(player.form, 1) },
                                     { label: "Momentum", value: formatNumber(player.momentum, 1) },
                                   ].map(({ label, value }) => (
-                                    <div key={label} className="kpi-tile neutral">
+                                    <div key={label} className="kpi-tile neutral" title={PLAYER_PROFILE_STAT_TOOLTIPS[label]}>
                                       <div className="kpi-label">{label}</div>
                                       <div className="kpi-value num" style={{ fontSize: 18 }}>{value}</div>
                                     </div>
@@ -193,301 +199,6 @@ export function PlayersPage({
             <EmptyState message="No players available yet for this event context." />
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-/* ── Matchups page ──────────────────────────── */
-export function MatchupsPage({
-  matchups,
-  emptyMessage,
-}: {
-  matchups: MatchupBet[]
-  emptyMessage: string
-}) {
-  const [expandedKey, setExpandedKey] = useState<string | null>(null)
-
-  return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <PageHeader
-        title="Matchups"
-        description={`${matchups.length} qualifying lines — click any row to expand`}
-      />
-      <div className="card">
-        {matchups.length > 0 ? (
-          <div style={{ overflow: "hidden" }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Pick vs Opponent</th>
-                  <th>Book</th>
-                  <th>Odds</th>
-                  <th className="center">Tier</th>
-                  <th className="right">EV</th>
-                  <th className="right">Win%</th>
-                  <th style={{ width: 32 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {matchups.map((matchup) => {
-                  const key = buildMatchupKey(matchup)
-                  const isExpanded = expandedKey === key
-                  return (
-                    <>
-                      <tr
-                        key={key}
-                        onClick={() => setExpandedKey(isExpanded ? null : key)}
-                        style={{ cursor: "pointer" }}
-                        data-testid={`matchup-row-${key}`}
-                      >
-                        <td>
-                          <div style={{ fontWeight: 600, color: "var(--text)" }}>{matchup.pick}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>vs {matchup.opponent}</div>
-                        </td>
-                        <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{matchup.book ?? "—"}</td>
-                        <td style={{ fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{matchup.odds}</td>
-                        <td className="center"><TierBadge tier={matchup.tier} /></td>
-                        <td className="right"><EV ev={matchup.ev} evPct={matchup.ev_pct} /></td>
-                        <td className="right num" style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {(matchup.model_win_prob * 100).toFixed(1)}%
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <ChevronDown
-                            size={14}
-                            style={{
-                              color: "var(--text-faint)",
-                              transform: isExpanded ? "rotate(180deg)" : "none",
-                              transition: "transform 180ms ease",
-                            }}
-                          />
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr key={`${key}-detail`}>
-                          <td colSpan={7} style={{ padding: 0 }}>
-                            <div className="matchup-detail">
-                              <div className="matchup-detail-grid">
-                                <div>
-                                  <div className="detail-item-label">Composite gap</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.composite_gap, 2)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Form gap</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.form_gap, 2)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Course gap</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.course_fit_gap, 2)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Implied prob</div>
-                                  <div className="detail-item-value num">{(matchup.implied_prob * 100).toFixed(1)}%</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Conviction</div>
-                                  <div className="detail-item-value num">{formatNumber(matchup.conviction, 0)}</div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label">Momentum</div>
-                                  <div
-                                    className="detail-item-value"
-                                    style={{ color: matchup.momentum_aligned ? "var(--positive)" : "var(--text-muted)" }}
-                                  >
-                                    {matchup.momentum_aligned ? "Aligned ↑" : "Mixed"}
-                                  </div>
-                                </div>
-                              </div>
-                              {matchup.reason && (
-                                <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
-                                  {matchup.reason}
-                                </div>
-                              )}
-                              <div style={{ marginTop: 12 }}>
-                                <BarTrendChart
-                                  labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
-                                  values={[
-                                    matchup.composite_gap,
-                                    matchup.form_gap,
-                                    matchup.course_fit_gap,
-                                    Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
-                                    Number(matchup.conviction ?? 0),
-                                  ]}
-                                  color="#22C55E"
-                                />
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="card-body">
-            <EmptyState message={emptyMessage} />
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ── Course page ────────────────────────────── */
-export function CoursePage({
-  dashboard,
-  players,
-  predictionRun,
-}: {
-  dashboard?: DashboardState
-  players: CompositePlayer[]
-  predictionRun: PredictionRunResponse | null
-}) {
-  const topPlayers = players.slice(0, 10)
-
-  // Resolve the active course from the event name, fall back to Augusta
-  const courseKey = eventToCourseKey(predictionRun?.event_name)
-  const activeCourse = (courseKey ? COURSE_MAP[courseKey] : null) ?? ALL_COURSES[0]
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <PageHeader title="Course Profile" description="Event and field quality diagnostics." />
-
-      {/* KPI strip */}
-      <div className="kpi-grid">
-        <div className="kpi-tile green">
-          <div className="kpi-label">Event</div>
-          <div className="kpi-value" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
-            {predictionRun?.event_name ?? "—"}
-          </div>
-        </div>
-        <div className="kpi-tile neutral">
-          <div className="kpi-label">Course</div>
-          <div className="kpi-value" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
-            {predictionRun?.course_name ?? "—"}
-          </div>
-        </div>
-        <div className="kpi-tile neutral">
-          <div className="kpi-label">Cross-tour backfill</div>
-          <div
-            className="kpi-value"
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: predictionRun?.field_validation?.cross_tour_backfill_used
-                ? "var(--warning)"
-                : "var(--text)",
-            }}
-          >
-            {predictionRun?.field_validation?.cross_tour_backfill_used ? "Active" : "Standard"}
-          </div>
-        </div>
-        <div className="kpi-tile neutral">
-          <div className="kpi-label">Last graded</div>
-          <div className="kpi-value" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-            {dashboard?.latest_graded_tournament?.name ?? "—"}
-          </div>
-        </div>
-      </div>
-
-      {/* Hole-by-hole course guide */}
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">Hole-by-Hole Guide</div>
-          <div className="card-desc">{activeCourse.name} · {activeCourse.location}</div>
-        </div>
-        <div className="card-body">
-          <CourseGuide course={activeCourse} />
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16 }}>
-        {/* Field-fit chart */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Field-fit distribution</div>
-            <div className="card-desc">Top players by composite score</div>
-          </div>
-          <div className="card-body">
-            {topPlayers.length > 0 ? (
-              <BarTrendChart
-                labels={topPlayers.map((p) => p.player_display.split(" ").pop() ?? p.player_display)}
-                values={topPlayers.map((p) => p.composite)}
-                color="#22c55e"
-              />
-            ) : (
-              <EmptyState message="Run a prediction to populate field-fit distributions." />
-            )}
-          </div>
-        </div>
-
-        {/* Course risk notes */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Risk notes</div>
-          </div>
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {[
-              {
-                label: "Major event",
-                value: predictionRun?.field_validation?.major_event ? "Yes — cross-tour coverage active" : "No",
-                icon: Radar,
-                warn: predictionRun?.field_validation?.major_event,
-              },
-              {
-                label: "Thin-round players",
-                value: String(predictionRun?.field_validation?.players_with_thin_rounds?.length ?? 0),
-                icon: ShieldAlert,
-                warn: (predictionRun?.field_validation?.players_with_thin_rounds?.length ?? 0) > 0,
-              },
-              {
-                label: "Missing DG skill",
-                value: String(predictionRun?.field_validation?.players_missing_dg_skill?.length ?? 0),
-                icon: CircleAlert,
-                warn: (predictionRun?.field_validation?.players_missing_dg_skill?.length ?? 0) > 0,
-              },
-              {
-                label: "Prediction artifact",
-                value: dashboard?.latest_prediction_artifact?.path ?? "—",
-                icon: NotebookPen,
-                warn: false,
-              },
-            ].map(({ label, value, icon: Icon, warn }) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  padding: "10px 12px",
-                  background: "var(--surface-2)",
-                  border: `1px solid ${warn ? "rgba(245,158,11,0.2)" : "var(--border)"}`,
-                  borderRadius: "var(--r-md)",
-                }}
-              >
-                <Icon
-                  size={14}
-                  style={{
-                    color: warn ? "var(--warning)" : "var(--text-faint)",
-                    marginTop: 1,
-                    flexShrink: 0,
-                  }}
-                />
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-faint)", marginBottom: 2 }}>
-                    {label}
-                  </div>
-                  <div style={{ fontSize: 12, color: warn ? "var(--warning)" : "var(--text)", fontWeight: 500 }}>
-                    {value}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -516,22 +227,22 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
 
       {/* KPI strip */}
       <div className="kpi-grid">
-        <div className="kpi-tile green">
+        <div className="kpi-tile green" title={GRADING_KPI_STRIP_TOOLTIPS["Total P&L"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Total P&L</div>
           <div className={`kpi-value num ${totalProfit >= 0 ? "green" : ""}`}>{formatUnits(totalProfit)}</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Tournaments} style={{ cursor: "help" }}>
           <div className="kpi-label">Tournaments</div>
           <div className="kpi-value num">{gradingHistory.length}</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS["Hit rate"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Hit rate</div>
           <div className="kpi-value num">
             {totalPicks > 0 ? `${((totalHits / totalPicks) * 100).toFixed(0)}%` : "—"}
           </div>
           <div className="kpi-detail">{totalHits}/{totalPicks} picks</div>
         </div>
-        <div className="kpi-tile gold">
+        <div className="kpi-tile gold" title={GRADING_KPI_STRIP_TOOLTIPS["Latest event"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Latest event</div>
           <div className="kpi-value" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
             {gradingHistory[0]?.name ?? "—"}
@@ -603,17 +314,78 @@ export function GradingPage({ gradingHistory }: { gradingHistory: GradedTourname
                 {isExpanded && (
                   <div className="tr-event-body">
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <div className="kpi-tile neutral">
+                      <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Course} style={{ cursor: "help" }}>
                         <div className="kpi-label">Course</div>
                         <div className="kpi-value" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
                           {item.course ?? "—"}
                         </div>
                       </div>
-                      <div className="kpi-tile neutral">
+                      <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Year} style={{ cursor: "help" }}>
                         <div className="kpi-label">Year</div>
                         <div className="kpi-value num" style={{ fontSize: 16 }}>{item.year ?? "—"}</div>
                       </div>
                     </div>
+                    {(item.picks?.length ?? 0) > 0 && (
+                      <div style={{ marginTop: 10 }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
+                              <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
+                              <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
+                                Model Win%
+                              </th>
+                              <th className="right" title={GRADING_TABLE_TOOLTIPS.edgePct}>
+                                Edge%
+                              </th>
+                              <th className="center" title={GRADING_TABLE_TOOLTIPS.result}>
+                                Result
+                              </th>
+                              <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
+                                P&L
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(item.picks ?? []).map((pick, pickIdx) => {
+                              const variant = pick.model_variant ?? "baseline"
+                              const modelWin = pick.model_prob != null ? `${(pick.model_prob * 100).toFixed(1)}%` : "—"
+                              const edge = pick.ev != null ? `${(pick.ev * 100).toFixed(1)}%` : "—"
+                              return (
+                                <tr key={`${pick.player_display}-${pickIdx}`}>
+                                  <td style={{ fontWeight: 600, color: "var(--text)" }}>
+                                    {pick.player_display}
+                                    {pick.opponent_display ? ` vs ${pick.opponent_display}` : ""}
+                                  </td>
+                                  <td style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                                    {variant}
+                                  </td>
+                                  <td className="right num">{modelWin}</td>
+                                  <td className="right num">{edge}</td>
+                                  <td className="center" style={{ textTransform: "uppercase", fontSize: 11 }}>
+                                    {pick.outcome ?? "—"}
+                                  </td>
+                                  <td
+                                    className="right num"
+                                    style={{
+                                      fontWeight: 700,
+                                      color:
+                                        Number(pick.profit) > 0
+                                          ? "var(--positive)"
+                                          : Number(pick.profit) < 0
+                                          ? "var(--danger)"
+                                          : "var(--text-muted)",
+                                    }}
+                                  >
+                                    {formatUnits(pick.profit)}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -665,23 +437,23 @@ export function TrackRecordPage() {
 
       {/* Summary strip */}
       <div className="kpi-grid">
-        <div className={`kpi-tile ${totalProfit >= 0 ? "green" : "neutral"}`}>
+        <div className={`kpi-tile ${totalProfit >= 0 ? "green" : "neutral"}`} title={GRADING_KPI_STRIP_TOOLTIPS["Total P&L"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Total P&L</div>
           <div className={`kpi-value num ${totalProfit >= 0 ? "green" : ""}`}>{formatUnits(totalProfit)}</div>
           <div className="kpi-detail">all tournaments</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS.Tournaments} style={{ cursor: "help" }}>
           <div className="kpi-label">Tournaments</div>
           <div className="kpi-value num">{events.length}</div>
         </div>
-        <div className="kpi-tile neutral">
+        <div className="kpi-tile neutral" title={GRADING_KPI_STRIP_TOOLTIPS["Win rate"]} style={{ cursor: "help" }}>
           <div className="kpi-label">Win rate</div>
           <div className="kpi-value num">
             {totalPicks > 0 ? `${((totalWins / totalPicks) * 100).toFixed(0)}%` : "—"}
           </div>
           <div className="kpi-detail">{totalWins}/{totalPicks} picks</div>
         </div>
-        <div className="kpi-tile gold">
+        <div className="kpi-tile gold" title={GRADING_KPI_STRIP_TOOLTIPS.Wins} style={{ cursor: "help" }}>
           <div className="kpi-label">Wins</div>
           <div className="kpi-value num gold">{totalWins}</div>
           <div className="kpi-detail">outright picks won</div>
@@ -742,11 +514,22 @@ export function TrackRecordPage() {
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>Pick</th>
-                          <th>Opponent</th>
-                          <th>Odds</th>
-                          <th className="center">Result</th>
-                          <th className="right">P&L</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.opponent}>Opponent</th>
+                          <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
+                          <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
+                            Model Win%
+                          </th>
+                          <th className="right" title={GRADING_TABLE_TOOLTIPS.edgePct}>
+                            Edge%
+                          </th>
+                          <th className="center" title={GRADING_TABLE_TOOLTIPS.result}>
+                            Result / Finish
+                          </th>
+                          <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
+                            P&L
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -757,16 +540,24 @@ export function TrackRecordPage() {
                           return (
                             <tr key={i} data-testid={`pick-row-${i}`}>
                               <td style={{ fontWeight: 600, color: "var(--text)" }}>{pick.pick}</td>
+                              <td style={{ color: "var(--text-muted)", fontSize: 11, textTransform: "uppercase" }}>
+                                {pick.modelVariant ?? "baseline"}
+                              </td>
                               <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{pick.opponent}</td>
                               <td style={{ fontVariantNumeric: "tabular-nums", fontSize: 12 }}>{pick.odds}</td>
+                              <td className="right num">{pick.winProbPct != null ? `${pick.winProbPct.toFixed(1)}%` : "—"}</td>
+                              <td className="right num">{pick.edgePct != null ? `${pick.edgePct.toFixed(1)}%` : "—"}</td>
                               <td className="center">
-                                {isWin ? (
-                                  <TrendingUp size={14} style={{ color: "var(--positive)", margin: "0 auto" }} />
-                                ) : isLoss ? (
-                                  <TrendingDown size={14} style={{ color: "var(--danger)", margin: "0 auto" }} />
-                                ) : (
-                                  <Minus size={14} style={{ color: "var(--text-faint)", margin: "0 auto" }} />
-                                )}
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                                  {isWin ? (
+                                    <TrendingUp size={14} style={{ color: "var(--positive)" }} />
+                                  ) : isLoss ? (
+                                    <TrendingDown size={14} style={{ color: "var(--danger)" }} />
+                                  ) : (
+                                    <Minus size={14} style={{ color: "var(--text-faint)" }} />
+                                  )}
+                                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{pick.finish ?? "—"}</span>
+                                </div>
                               </td>
                               <td
                                 className="right num"

@@ -4,31 +4,38 @@
  * All pure React + SVG — no new dependencies.
  *
  * Exports:
- *  - PentagonRadar        — 5-axis skill radar (like DataGolf)
+ *  - PentagonRadar        — 5-axis skill radar (SVG; per-axis heat spectrum)
  *  - BeeswarmStrip        — field distribution, player highlighted
  *  - RollingBarLine       — per-round bars + moving average line, stat tabs
  *  - ApproachArcGauges    — semicircle arc per yardage bucket
  *  - HistoryTable         — finish chips + inline SG bars
  */
 
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import ReactECharts from "echarts-for-react"
+import { heatSpectrumHexFromUnit } from "@/lib/metric-heat"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
 const T = {
-  bg:      "#080a0b",
-  bg1:     "#0d1012",
-  bg2:     "#111416",
-  surface: "#141719",
-  border:  "#1f2426",
-  divider: "#161a1c",
-  text:    "#e8ecef",
-  muted:   "#6b7a84",
-  faint:   "#374349",
-  green:   "#22c55e",
-  gold:    "#f5b418",
-  red:     "#ef4444",
-  mono:    "'JetBrains Mono', 'Fira Code', monospace",
+  bg: "var(--bg)",
+  bg1: "var(--bg-1)",
+  bg2: "var(--bg-2)",
+  surface: "var(--surface)",
+  border: "var(--border)",
+  divider: "var(--divider)",
+  text: "var(--text)",
+  muted: "var(--text-muted)",
+  faint: "var(--text-faint)",
+  green: "var(--green)",
+  greenBg: "var(--green-bg)",
+  greenDim: "var(--green-dim)",
+  gold: "var(--gold)",
+  goldBg: "rgba(245, 180, 24, 0.14)",
+  goldDim: "rgba(245, 180, 24, 0.33)",
+  red: "var(--red)",
+  redBg: "var(--red-bg)",
+  redDim: "rgba(239, 68, 68, 0.22)",
+  mono: "var(--font-mono)",
 }
 
 const TOOLTIP = {
@@ -54,7 +61,16 @@ function ChartEmpty({ height = 120, msg = "No data" }: { height?: number; msg?: 
 }
 
 function signed(v: number, d = 3) { return `${v > 0 ? "+" : ""}${v.toFixed(d)}` }
-function toneCol(v: number) { return v >= 0 ? T.green : T.red }
+
+function ordinalPct(n: number): string {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m100 >= 11 && m100 <= 13) return `${n}th`
+  if (m10 === 1) return `${n}st`
+  if (m10 === 2) return `${n}nd`
+  if (m10 === 3) return `${n}rd`
+  return `${n}th`
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    1. PENTAGON RADAR — 5-axis skill profile
@@ -65,6 +81,48 @@ export type RadarSkills = {
   sg_arg?:  number | null
   sg_putt?: number | null
   sg_total?: number | null
+}
+
+/** Radar chrome — concrete RGBA (readable on dark UI). */
+const RADAR_GRID_LINE = "rgba(139, 156, 169, 0.38)"
+const RADAR_GRID_AXIS = "rgba(139, 156, 169, 0.32)"
+const RADAR_TOUR_LINE = "rgba(155, 170, 180, 0.9)"
+
+const SKILL_PROFILE_HEAT_ABS = 2.5
+
+function axisHeatHexFromRaw(raw: number | null | undefined): string {
+  if (raw == null || !Number.isFinite(raw)) return heatSpectrumHexFromUnit(0.5)
+  const u = Math.min(1, Math.max(0, (raw + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
+  return heatSpectrumHexFromUnit(u)
+}
+
+function hexToRgbTuple(hex: string): [number, number, number] {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim())
+  if (!m) return [107, 122, 132]
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
+}
+
+function averageHexColors(hexes: string[]): string {
+  if (hexes.length === 0) return "#808080"
+  let r = 0, g = 0, b = 0
+  for (const h of hexes) {
+    const [rr, gg, bb] = hexToRgbTuple(h)
+    r += rr
+    g += gg
+    b += bb
+  }
+  const n = hexes.length
+  return `#${[r / n, g / n, b / n].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexToRgbTuple(a)
+  const [br, bg, bb] = hexToRgbTuple(b)
+  const u = Math.min(1, Math.max(0, t))
+  const r = ar + (br - ar) * u
+  const g = ag + (bg - ag) * u
+  const bl = ab + (bb - ab) * u
+  return `#${[r, g, bl].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`
 }
 
 /**
@@ -94,96 +152,198 @@ export function PentagonRadar({
     { key: "sg_total","label": "Total SG",     maxAbs: 2.8 },
   ] as const
 
-  const playerVals = axes.map(a => sgToPercentile((skills as Record<string, number | null | undefined>)[a.key], a.maxAbs))
-  const avgVals    = axes.map(() => 50) // tour average = 50th percentile on every axis
+  const legendBandH = 36
+  const svgPx = Math.max(160, height - legendBandH)
+
+  const n = axes.length
+  const VB_W = 460
+  const VB_H = 330
+  const cx = VB_W / 2
+  const cy = VB_H / 2 + 4
+  const R = 100
+  const ringFracs = [0.25, 0.5, 0.75, 1]
+  /** First axis at top, then clockwise (ECharts radar default). */
+  const angleAt = (i: number) => -Math.PI / 2 - (i * 2 * Math.PI) / n
+
+  const rawByAxis = axes.map(
+    (a) => (skills as Record<string, number | null | undefined>)[a.key] as number | null | undefined,
+  )
+  const playerVals = axes.map((a, i) => sgToPercentile(rawByAxis[i], a.maxAbs))
+  const axisHeatHex = rawByAxis.map((raw) => axisHeatHexFromRaw(raw))
+  const vertexColors = axisHeatHex
+
+  const pctToR = (pct: number) => (pct / 100) * R
+  const pt = (pct: number, i: number) => {
+    const a = angleAt(i)
+    const r = pctToR(pct)
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }
+  }
+
+  const tourPoints = axes.map((_, i) => pt(50, i))
+  const playerPoints = axes.map((_, i) => pt(playerVals[i] ?? 50, i))
+
+  const tourPoly = tourPoints.map((p) => `${p.x},${p.y}`).join(" ")
+  const playerPoly = playerPoints.map((p) => `${p.x},${p.y}`).join(" ")
+
+  const fillAverage = averageHexColors(vertexColors)
+
+  const edgeStroke = (i: number) => {
+    const a = vertexColors[i]!
+    const b = vertexColors[(i + 1) % n]!
+    return mixHex(a, b, 0.5)
+  }
 
   return (
-    <ReactECharts
-      style={{ height }}
-      option={{
-        animation: true,
-        animationDuration: 600,
-        radar: {
-          indicator: axes.map(a => ({ name: a.label, max: 100, min: 0 })),
-          center: ["50%", "52%"],
-          radius: "68%",
-          startAngle: 90,
-          splitNumber: 4,
-          axisName: {
-            color: T.muted,
-            fontSize: 10,
-            fontFamily: T.mono,
-            fontWeight: 600,
-            letterSpacing: 1,
-          },
-          splitLine: {
-            lineStyle: { color: T.border, width: 1 },
-          },
-          splitArea: {
-            areaStyle: {
-              color: [T.bg1, T.bg2, T.bg1, T.bg2],
-              opacity: 1,
-            },
-          },
-          axisLine: { lineStyle: { color: T.border } },
-        },
-        series: [
-          {
-            name: "Skill Profile",
-            type: "radar",
-            data: [
-              {
-                name: "Tour Average",
-                value: avgVals,
-                lineStyle: { color: T.muted, width: 1.5, type: "dashed" },
-                itemStyle: { color: T.muted },
-                areaStyle: { color: "transparent" },
-                symbol: "none",
-              },
-              {
-                name: playerName,
-                value: playerVals,
-                lineStyle: { color: T.green, width: 2 },
-                itemStyle: { color: T.green, borderWidth: 0 },
-                areaStyle: {
-                  color: {
-                    type: "radial", x: 0.5, y: 0.5, r: 0.5,
-                    colorStops: [
-                      { offset: 0, color: `${T.green}55` },
-                      { offset: 1, color: `${T.green}18` },
-                    ],
-                  },
-                },
-                symbol: "circle",
-                symbolSize: 5,
-              },
-            ],
-          },
-        ],
-        legend: {
-          data: ["Tour Average", playerName],
-          bottom: 4,
-          textStyle: { color: T.muted, fontSize: 9, fontFamily: T.mono },
-          itemHeight: 8,
-          itemWidth: 14,
-        },
-        tooltip: {
-          trigger: "item",
-          ...TOOLTIP,
-          formatter: (params: { seriesIndex?: number; [k: string]: unknown }) => {
-            if (params.seriesIndex === 0) return "Tour Average (50th pct)"
-            const lines = axes.map((a) => {
-              const raw = (skills as Record<string, number | null | undefined>)[a.key]
-              const v = raw != null ? raw : null
-              const col = v != null ? toneCol(v) : T.muted
-              const disp = v != null ? signed(v) : "—"
-              return `${a.label}: <b style="color:${col}">${disp}</b>`
-            })
-            return `<b style="color:${T.green}">${playerName}</b><br/>${lines.join("<br/>")}`
-          },
-        },
-      }}
-    />
+    <div style={{ minHeight: height, fontFamily: T.mono }}>
+      <svg
+        width="100%"
+        height={svgPx}
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={`${playerName} skill profile vs tour average`}
+      >
+
+        {ringFracs.map((fr) => {
+          const ring = axes.map((_, i) => {
+            const a = angleAt(i)
+            const r = R * fr
+            return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`
+          }).join(" ")
+          return (
+            <polygon
+              key={fr}
+              points={ring}
+              fill="none"
+              stroke={RADAR_GRID_LINE}
+              strokeWidth={fr === 1 ? 1.1 : 0.85}
+            />
+          )
+        })}
+
+        {axes.map((_, i) => {
+          const outer = pt(100, i)
+          return (
+            <line
+              key={i}
+              x1={cx}
+              y1={cy}
+              x2={outer.x}
+              y2={outer.y}
+              stroke={RADAR_GRID_AXIS}
+              strokeWidth={1}
+            />
+          )
+        })}
+
+        <polygon
+          points={tourPoly}
+          fill="none"
+          stroke={RADAR_TOUR_LINE}
+          strokeWidth={1.5}
+          strokeDasharray="5 4"
+          strokeLinejoin="round"
+        />
+
+        <polygon
+          points={playerPoly}
+          fill={fillAverage}
+          fillOpacity={0.22}
+          stroke="none"
+        />
+
+        {axes.map((_, i) => {
+          const a = playerPoints[i]!
+          const b = playerPoints[(i + 1) % n]!
+          return (
+            <line
+              key={`e-${i}`}
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              stroke={edgeStroke(i)}
+              strokeWidth={2.75}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )
+        })}
+
+        {axes.map((ax, i) => {
+          const p = playerPoints[i]!
+          const raw = rawByAxis[i]
+          const LABEL_R_MULT = 1.26
+          const labelPt = pt(100 * LABEL_R_MULT, i)
+          const disp = raw != null && Number.isFinite(raw) ? signed(raw) : "—"
+          return (
+            <g key={ax.key}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={6}
+                fill={vertexColors[i]}
+                stroke="rgba(8, 10, 11, 0.65)"
+                strokeWidth={1}
+              >
+                <title>{`${ax.label}: ${disp} SG (heat spectrum)`}</title>
+              </circle>
+              <text
+                x={labelPt.x}
+                y={labelPt.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={T.muted}
+                fontSize={12}
+                fontWeight={600}
+                fontFamily={T.mono}
+                style={{ letterSpacing: "0.04em" }}
+              >
+                {ax.label}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 20,
+          paddingTop: 4,
+          paddingBottom: 2,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 14,
+              height: 8,
+              background: RADAR_TOUR_LINE,
+              borderRadius: 2,
+              opacity: 0.95,
+            }}
+            aria-hidden
+          />
+          <span style={{ fontSize: 11, color: T.muted, letterSpacing: "0.04em" }}>Tour Average</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 28,
+              height: 8,
+              borderRadius: 2,
+              background: `linear-gradient(90deg, ${vertexColors.join(", ")})`,
+            }}
+            aria-hidden
+          />
+          <span style={{ fontSize: 11, color: fillAverage, fontWeight: 600, letterSpacing: "0.02em", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName}</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -221,19 +381,47 @@ export function BeeswarmStrip({
   categories: BeeswarmCategory[]
   height?: number
 }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [measureW, setMeasureW] = useState(720)
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const update = () => {
+      const w = el.getBoundingClientRect().width
+      setMeasureW(Math.max(460, Math.floor(w)))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   if (!categories.length) return <ChartEmpty height={height} msg="No field data" />
 
-  // Layout constants
-  const W = 680, ROW_H = 44, PADDING_L = 90, PADDING_R = 20, CHART_W = W - PADDING_L - PADDING_R
-  const totalH = categories.length * ROW_H + 32
-  const DOT_R = 4, PLAYER_R = 6
+  const LABEL_COL_W = 96
+  const STAT_COL_W = 78
+  const PAD_R_EDGE = 10
+  const W = Math.max(460, measureW)
+  const CHART_W = Math.max(200, W - LABEL_COL_W - STAT_COL_W - PAD_R_EDGE)
+  const ROW_H = 48
+  const TOP_PAD = 18
+  const AXIS_GAP = 14
+  const TICK_BAND = 18
+  const AXIS_TITLE_H = 16
+  const lastRowCenterY = TOP_PAD + (categories.length - 1) * ROW_H
+  const axisY = lastRowCenterY + ROW_H / 2 + AXIS_GAP
+  const tickLabelY = axisY + TICK_BAND
+  const totalH = tickLabelY + AXIS_TITLE_H + 12
+  const DOT_R = 4
+  const PLAYER_R = 6
 
-  // For each category render dots using simple force-y collision
-  function positionDots(vals: number[], range: [number, number]): { x: number; y: number; v: number }[] {
-    const [lo, hi] = range
-    const toX = (v: number) => PADDING_L + ((v - lo) / (hi - lo)) * CHART_W
+  function positionDots(
+    vals: number[],
+    toXCoord: (v: number) => number,
+  ): { x: number; y: number; v: number }[] {
+    const toX = (v: number) => toXCoord(v)
 
-    // Sort by value, stack via simple greedy bin
     const dots: { x: number; y: number; v: number }[] = []
     const sorted = [...vals].map(v => ({ v, x: toX(v) })).sort((a, b) => a.x - b.x)
 
@@ -243,8 +431,12 @@ export function BeeswarmStrip({
       for (let dy = 0; dy <= 16; dy += 2) {
         for (const sign of [1, -1]) {
           const tryY = sign * dy
-          const collide = dots.some(p => Math.abs(p.x - d.x) < DOT_R * 2.2 && Math.abs(p.y - tryY) < DOT_R * 2.2)
-          if (!collide) { y = tryY; placed = true; break }
+          const collide = dots.some((p) => Math.abs(p.x - d.x) < DOT_R * 2.2 && Math.abs(p.y - tryY) < DOT_R * 2.2)
+          if (!collide) {
+            y = tryY
+            placed = true
+            break
+          }
         }
         if (placed) break
       }
@@ -253,8 +445,11 @@ export function BeeswarmStrip({
     return dots
   }
 
-  // Global x range across all categories for consistent scale
-  const allVals = categories.flatMap(c => {
+  const chartLeft = LABEL_COL_W
+  const chartRight = chartLeft + CHART_W
+  const statsLeft = chartRight + 6
+
+  const allVals = categories.flatMap((c) => {
     const field = c.fieldValues ?? syntheticField(120, 0.7, categories.indexOf(c) * 137 + 42)
     return field
   })
@@ -262,110 +457,117 @@ export function BeeswarmStrip({
   const globalHi = Math.max(...allVals) + 0.3
   const range: [number, number] = [Math.min(globalLo, -2), Math.max(globalHi, 2)]
 
-  // Axis ticks
-  const ticks = [-2, -1, 0, 1, 2].filter(t => t >= range[0] && t <= range[1])
-  const toX = (v: number) => PADDING_L + ((v - range[0]) / (range[1] - range[0])) * CHART_W
+  const ticks = [-2, -1, 0, 1, 2].filter((t) => t >= range[0] && t <= range[1])
+  const toXAxis = (v: number) => chartLeft + ((v - range[0]) / (range[1] - range[0])) * CHART_W
 
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
+    <div ref={wrapRef} style={{ width: "100%", minHeight: Math.min(height, totalH), overflowX: "auto" }}>
       <svg
         viewBox={`0 0 ${W} ${totalH}`}
-        style={{ width: "100%", maxWidth: W, display: "block", fontFamily: T.mono }}
+        style={{ width: "100%", display: "block", fontFamily: T.mono }}
         aria-label="Beeswarm field distribution"
       >
-        {/* axis line */}
-        <line x1={PADDING_L} y1={totalH - 16} x2={W - PADDING_R} y2={totalH - 16} stroke={T.border} strokeWidth={1} />
+        <line x1={chartLeft} y1={axisY} x2={chartRight} y2={axisY} stroke={T.border} strokeWidth={1} />
 
-        {/* tick marks + labels */}
-        {ticks.map(t => (
+        {ticks.map((t) => (
           <g key={t}>
-            <line x1={toX(t)} y1={totalH - 19} x2={toX(t)} y2={totalH - 13} stroke={T.faint} strokeWidth={1} />
-            <text x={toX(t)} y={totalH - 4} textAnchor="middle" fill={T.faint} fontSize={8} letterSpacing={0.5}>
+            <line x1={toXAxis(t)} y1={axisY - 3} x2={toXAxis(t)} y2={axisY + 3} stroke={T.faint} strokeWidth={1} />
+            <text x={toXAxis(t)} y={tickLabelY} textAnchor="middle" fill={T.muted} fontSize={10} letterSpacing={0.4}>
               {t > 0 ? `+${t}` : t}
             </text>
           </g>
         ))}
 
-        {/* zero line */}
-        <line x1={toX(0)} y1={8} x2={toX(0)} y2={totalH - 16} stroke={T.border} strokeWidth={1} strokeDasharray="3 3" />
+        <line x1={toXAxis(0)} y1={12} x2={toXAxis(0)} y2={axisY} stroke={T.border} strokeWidth={1} strokeDasharray="3 3" />
 
-        {/* rows */}
         {categories.map((cat, ci) => {
-          const cy = 20 + ci * ROW_H
+          const cy = TOP_PAD + ci * ROW_H
           const fieldVals = cat.fieldValues ?? syntheticField(120, 0.7, ci * 137 + 42)
-          const dots = positionDots(fieldVals, range)
+          const toXPlot = (v: number) => chartLeft + ((v - range[0]) / (range[1] - range[0])) * CHART_W
+          const dots = positionDots(fieldVals, toXPlot)
 
           const pv = cat.playerValue
-          const px = pv != null ? toX(pv) : null
+          const px = pv != null ? toXPlot(pv) : null
           const pcol = pv != null ? (pv >= 0 ? T.green : T.red) : T.muted
 
-          // Percentile rank
-          const rank = pv != null
-            ? Math.round((fieldVals.filter(v => v <= pv).length / fieldVals.length) * 100)
-            : null
+          const rank =
+            pv != null
+              ? Math.round((fieldVals.filter((v) => v <= pv).length / fieldVals.length) * 100)
+              : null
 
           return (
             <g key={ci}>
-              {/* row label */}
-              <text x={PADDING_L - 8} y={cy + 2} textAnchor="end" fill={T.muted} fontSize={9} fontWeight={600} letterSpacing={1}>
+              <text
+                x={chartLeft - 10}
+                y={cy + 4}
+                textAnchor="end"
+                fill={T.text}
+                fontSize={11}
+                fontWeight={600}
+                letterSpacing={0.06}
+              >
                 {cat.shortLabel}
               </text>
 
-              {/* field dots */}
               {dots.map((d, di) => (
-                <circle
-                  key={di}
-                  cx={d.x}
-                  cy={cy + d.y}
-                  r={DOT_R - 1}
-                  fill={T.faint}
-                  opacity={0.55}
-                />
+                <circle key={di} cx={d.x} cy={cy + d.y} r={DOT_R - 1} fill={T.faint} opacity={0.55} />
               ))}
 
-              {/* quartile lines */}
-              {[25, 50, 75].map(pct => {
+              {[25, 50, 75].map((pct) => {
                 const sorted = [...fieldVals].sort((a, b) => a - b)
-                const qv = sorted[Math.floor(pct / 100 * sorted.length)]
+                const qv = sorted[Math.floor((pct / 100) * sorted.length)]
                 return (
                   <line
                     key={pct}
-                    x1={toX(qv)} y1={cy - 10} x2={toX(qv)} y2={cy + 10}
-                    stroke={T.border} strokeWidth={1} strokeDasharray={pct === 50 ? "none" : "2 2"}
+                    x1={toXPlot(qv)}
+                    y1={cy - 11}
+                    x2={toXPlot(qv)}
+                    y2={cy + 11}
+                    stroke={T.border}
+                    strokeWidth={1}
+                    strokeDasharray={pct === 50 ? "none" : "2 2"}
                   />
                 )
               })}
 
-              {/* player dot */}
-              {px != null && (
+              {px != null && pv != null && (
                 <>
-                  <circle cx={px} cy={cy} r={PLAYER_R} fill={pcol} opacity={0.9} />
-                  <circle cx={px} cy={cy} r={PLAYER_R + 3} fill="none" stroke={pcol} strokeWidth={1} opacity={0.4} />
-                  {/* value label */}
-                  <text x={px} y={cy - PLAYER_R - 5} textAnchor="middle" fill={pcol} fontSize={8} fontWeight={700}>
-                    {signed(pv!, 2)}
+                  <circle cx={px} cy={cy} r={PLAYER_R} fill={pcol} opacity={0.95} />
+                  <circle cx={px} cy={cy} r={PLAYER_R + 3} fill="none" stroke={pcol} strokeWidth={1} opacity={0.38} />
+                  <text x={statsLeft} y={cy - 5} textAnchor="start" fill={pcol} fontSize={11} fontWeight={700}>
+                    {signed(pv, 2)}
                   </text>
-                  {/* percentile badge */}
                   {rank != null && (
-                    <text x={W - PADDING_R} y={cy + 3} textAnchor="end" fill={rank >= 75 ? T.green : rank >= 50 ? T.muted : T.red} fontSize={8} fontWeight={600}>
-                      {rank}th
+                    <text
+                      x={statsLeft}
+                      y={cy + 9}
+                      textAnchor="start"
+                      fill={rank >= 75 ? T.green : rank >= 50 ? T.muted : T.red}
+                      fontSize={10}
+                      fontWeight={600}
+                    >
+                      {ordinalPct(rank)} pct
                     </text>
                   )}
                 </>
               )}
 
-              {/* row divider */}
               {ci < categories.length - 1 && (
-                <line x1={PADDING_L} y1={cy + ROW_H / 2 + 4} x2={W - PADDING_R} y2={cy + ROW_H / 2 + 4}
-                  stroke={T.divider} strokeWidth={1} />
+                <line
+                  x1={chartLeft}
+                  y1={cy + ROW_H / 2 + 6}
+                  x2={chartRight}
+                  y2={cy + ROW_H / 2 + 6}
+                  stroke={T.divider}
+                  strokeWidth={1}
+                />
               )}
             </g>
           )
         })}
 
-        {/* axis label */}
-        <text x={PADDING_L + CHART_W / 2} y={totalH} textAnchor="middle" fill={T.faint} fontSize={8} letterSpacing={1}>
-          STROKES GAINED / ROUND vs TOUR AVERAGE
+        <text x={chartLeft + CHART_W / 2} y={totalH - 2} textAnchor="middle" fill={T.muted} fontSize={10} letterSpacing={0.06}>
+          Strokes gained / round vs tour average (0)
         </text>
       </svg>
     </div>
@@ -382,14 +584,18 @@ export type RollingEvent = {
   avg_sg_app?:    number | null
   avg_sg_arg?:    number | null
   avg_sg_putt?:   number | null
+  avg_sg_t2g?:    number | null
+  avg_to_par?:    number | null
   rounds_played?: number
   fin_text?:      string | null
   event_completed?: string | null
+  course_name?: string | null
 }
 
-type RollingTab = "TOTAL" | "APP" | "ARG" | "PUTT" | "OTT"
+type RollingTab = "TOTAL" | "APP" | "ARG" | "PUTT" | "OTT" | "T2G"
+type RollingView = "events" | "rounds"
 
-const ROLLING_TABS: RollingTab[] = ["TOTAL", "APP", "ARG", "PUTT", "OTT"]
+const ROLLING_TABS: RollingTab[] = ["TOTAL", "APP", "ARG", "PUTT", "OTT", "T2G"]
 
 const ROLLING_KEY: Record<RollingTab, keyof RollingEvent> = {
   TOTAL: "avg_sg_total",
@@ -397,7 +603,20 @@ const ROLLING_KEY: Record<RollingTab, keyof RollingEvent> = {
   ARG:   "avg_sg_arg",
   PUTT:  "avg_sg_putt",
   OTT:   "avg_sg_ott",
+  T2G:   "avg_sg_t2g",
 }
+
+const ROLLING_SCALE_ABS = 2.5
+const heatUnitForRolling = (value: number) => Math.min(1, Math.max(0, (value + ROLLING_SCALE_ABS) / (ROLLING_SCALE_ABS * 2)))
+
+/** ECharts often ignores `linear-gradient(...)` and `var(--*)` in series styles — use hex / RGBA literals. */
+const ROLLING_EC = {
+  text: "#e8ecef",
+  muted: "#6b7a84",
+  faintAxis: "#8b9aa3",
+  grid: "rgba(139, 156, 169, 0.32)",
+  zeroLine: "rgba(139, 156, 169, 0.45)",
+} as const
 
 function movingAverage(vals: number[], window = 5): (number | null)[] {
   return vals.map((_, i) => {
@@ -412,68 +631,129 @@ export function RollingBarLine({
   events,
   height = 220,
   maWindow = 5,
+  trendSeries = [],
+  roundSeriesByMetric,
 }: {
   events: RollingEvent[]
   height?: number
   maWindow?: number
+  trendSeries?: number[]
+  roundSeriesByMetric?: Partial<Record<RollingTab, number[]>>
 }) {
   const [tab, setTab] = useState<RollingTab>("TOTAL")
+  const [view, setView] = useState<RollingView>("events")
   if (!events.length) return <ChartEmpty height={height + 32} msg="No event history" />
 
   const key = ROLLING_KEY[tab]
-  const ordered = [...events].reverse() // oldest → newest
+  const orderedEvents = [...events].reverse() // oldest → newest
+  const perRoundForTab = tab === "TOTAL" ? trendSeries : (roundSeriesByMetric?.[tab] ?? [])
 
-  const vals = ordered.map(e => {
+  const eventVals = orderedEvents.map((e) => {
     const v = (e as unknown as Record<string, unknown>)[key]
     return typeof v === "number" ? v : null
   })
+  const roundVals = perRoundForTab.map((v) => (typeof v === "number" ? v : null))
 
-  const ma = movingAverage(vals.filter(v => v != null) as number[], maWindow)
+  const coverageByTab = ROLLING_TABS.reduce(
+    (acc, rollingTab) => {
+      const eventKey = ROLLING_KEY[rollingTab]
+      const eventCoverage = orderedEvents.filter((e) => {
+        const v = (e as unknown as Record<string, unknown>)[eventKey]
+        return typeof v === "number"
+      }).length
+      const roundsCoverage = rollingTab === "TOTAL" ? trendSeries.length : (roundSeriesByMetric?.[rollingTab]?.length ?? 0)
+      acc[rollingTab] = {
+        eventsAvailable: eventCoverage > 0,
+        roundsAvailable: roundsCoverage > 0,
+      }
+      return acc
+    },
+    {} as Record<RollingTab, { eventsAvailable: boolean; roundsAvailable: boolean }>,
+  )
+
+  const vals = view === "events" ? eventVals : roundVals
+  const ma = movingAverage(vals.filter((v): v is number => typeof v === "number"), maWindow)
 
   // Rebuild ma aligned to full vals array (skip nulls)
   let maIdx = 0
-  const maAligned = vals.map(v => {
+  const maAligned = vals.map((v) => {
     if (v == null) return null
     return ma[maIdx++] ?? null
   })
 
-  const barColors = vals.map(v =>
-    v == null ? "transparent" :
-    v >= 1.5  ? T.green :
-    v >= 0    ? `${T.green}99` :
-    v >= -1   ? `${T.red}88` :
-                T.red
-  )
+  const barColors = vals.map((v) => {
+    if (v == null) return "transparent"
+    return heatSpectrumHexFromUnit(heatUnitForRolling(v))
+  })
+
+  const legendBarSwatch = barColors.find((c) => c !== "transparent") ?? heatSpectrumHexFromUnit(0.5)
 
   return (
     <div>
-      {/* Stat tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 8, paddingLeft: 2 }}>
-        {ROLLING_TABS.map(t => (
+      <div style={{ display: "flex", gap: 4, marginBottom: 8, paddingLeft: 2, alignItems: "center", flexWrap: "wrap" }}>
+        {(["events", "rounds"] as const).map((rollingView) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={rollingView}
+            onClick={() => setView(rollingView)}
             style={{
               fontFamily: T.mono,
               fontSize: 9,
               fontWeight: 700,
               letterSpacing: "0.1em",
               padding: "3px 8px",
-              border: `1px solid ${tab === t ? `${T.green}55` : T.border}`,
+              border: `1px solid ${view === rollingView ? "var(--green-dim)" : T.border}`,
               borderRadius: 3,
-              background: tab === t ? `${T.green}18` : "transparent",
-              color: tab === t ? T.green : T.faint,
+              background: view === rollingView ? "var(--green-bg)" : "transparent",
+              color: view === rollingView ? T.green : T.faint,
               cursor: "pointer",
               transition: "all 120ms",
             }}
           >
-            {t}
+            {rollingView === "events" ? "EVENTS" : "ROUNDS"}
           </button>
         ))}
+        {ROLLING_TABS.map((t) => {
+          const availability = coverageByTab[t]
+          const enabled = view === "events" ? availability.eventsAvailable : availability.roundsAvailable
+          const disabledMessage =
+            view === "events"
+              ? `No ${t} event aggregates in stored rounds`
+              : `No ${t} round series available`
+          return (
+            <button
+              key={t}
+              disabled={!enabled}
+              onClick={() => setTab(t)}
+              style={{
+                fontFamily: T.mono,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                padding: "3px 8px",
+                border: `1px solid ${tab === t ? "var(--green-dim)" : T.border}`,
+                borderRadius: 3,
+                background: tab === t ? "var(--green-bg)" : "transparent",
+                color: tab === t ? T.green : T.faint,
+                cursor: enabled ? "pointer" : "not-allowed",
+                opacity: enabled ? 1 : 0.45,
+                transition: "all 120ms",
+              }}
+              title={!enabled ? disabledMessage : undefined}
+            >
+              {t}
+            </button>
+          )
+        })}
         <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 8, color: T.faint, alignSelf: "center" }}>
-          {maWindow}-event moving avg
+          {maWindow}-{view === "events" ? "event" : "round"} moving avg
         </span>
       </div>
+      {vals.filter((v) => v != null).length === 0 ? (
+        <ChartEmpty
+          height={height}
+          msg={view === "events" ? "No event aggregates for selected tab" : "No round series for selected tab"}
+        />
+      ) : (
 
       <ReactECharts
         style={{ height }}
@@ -483,22 +763,22 @@ export function RollingBarLine({
           grid: { top: 12, right: 16, bottom: 36, left: 44 },
           xAxis: {
             type: "category",
-            data: ordered.map(e => {
+            data: (view === "events" ? orderedEvents : vals.map((_, idx) => ({ event_name: `R${idx + 1}` }))).map(e => {
               const n = e.event_name ?? ""
-              return n.split(" ").slice(0, 2).join(" ")
+              return view === "events" ? n.split(" ").slice(0, 2).join(" ") : n
             }),
-            axisLabel: { color: T.faint, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
-            axisLine: { lineStyle: { color: T.border } },
+            axisLabel: { color: ROLLING_EC.faintAxis, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
+            axisLine: { lineStyle: { color: ROLLING_EC.grid } },
             splitLine: { show: false },
           },
           yAxis: {
             type: "value",
             scale: true,
             axisLabel: {
-              color: T.muted, fontSize: 9, fontFamily: T.mono,
+              color: ROLLING_EC.muted, fontSize: 9, fontFamily: T.mono,
               formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
             },
-            splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+            splitLine: { lineStyle: { color: ROLLING_EC.grid, type: "dashed" } },
             axisLine: { show: false },
           },
           series: [
@@ -519,24 +799,27 @@ export function RollingBarLine({
               smooth: 0.4,
               showSymbol: false,
               connectNulls: true,
-              lineStyle: { color: T.text, width: 2 },
-              itemStyle: { color: T.text },
+              lineStyle: { color: ROLLING_EC.text, width: 2 },
+              itemStyle: { color: ROLLING_EC.text },
               z: 2,
             },
             // zero line
             {
               name: "_zero",
               type: "line",
-              data: ordered.map(() => 0),
+              data: vals.map(() => 0),
               showSymbol: false,
-              lineStyle: { color: T.faint, width: 1, type: "dashed" },
+              lineStyle: { color: ROLLING_EC.zeroLine, width: 1, type: "dashed" },
               z: 0,
               tooltip: { show: false },
             },
           ],
           legend: {
-            data: [tab, `${maWindow}-event avg`],
-            textStyle: { color: T.muted, fontSize: 9, fontFamily: T.mono },
+            data: [
+              { name: tab, itemStyle: { color: legendBarSwatch } },
+              { name: `${maWindow}-event avg`, itemStyle: { color: ROLLING_EC.text } },
+            ],
+            textStyle: { color: ROLLING_EC.muted, fontSize: 9, fontFamily: T.mono },
             top: 0, right: 0, itemHeight: 8, itemWidth: 14,
           },
           tooltip: {
@@ -546,17 +829,20 @@ export function RollingBarLine({
             formatter: (params: Array<{ seriesName?: string; value?: number; name?: string; dataIndex?: number; [k: string]: unknown }>) => {
               const bar = params.find((p) => p.seriesName === tab)
               const ma  = params.find((p) => p.seriesName !== tab && p.seriesName !== "_zero")
-              const ev  = ordered[bar?.dataIndex ?? 0]
+              const ev  = orderedEvents[bar?.dataIndex ?? 0]
               const v   = bar?.value
-              const col = v != null ? toneCol(v) : T.muted
-              const fin = ev?.fin_text ? ` <span style="color:${T.muted}">· ${ev.fin_text}</span>` : ""
+              const col = v != null ? heatSpectrumHexFromUnit(heatUnitForRolling(v)) : ROLLING_EC.muted
+              const fin = view === "events" && ev?.fin_text ? ` <span style="color:${ROLLING_EC.muted}">· ${ev.fin_text}</span>` : ""
+              const course = view === "events" && ev?.course_name ? `<br/><span style="color:${ROLLING_EC.faintAxis}">${ev.course_name}</span>` : ""
               const maLine = ma?.value != null
-                ? `<br/><span style="color:${T.muted}">MA: ${signed(ma.value)}</span>` : ""
-              return `<b>${ev?.event_name ?? bar?.name}</b>${fin}<br/>${tab}: <b style="color:${col}">${v != null ? signed(v) : "—"}</b>${maLine}`
+                ? `<br/><span style="color:${ROLLING_EC.muted}">MA: ${signed(ma.value)}</span>` : ""
+              const label = view === "events" ? (ev?.event_name ?? bar?.name) : `Round ${(bar?.dataIndex ?? 0) + 1}`
+              return `<b>${label}</b>${fin}${course}<br/>${tab}: <b style="color:${col}">${v != null ? signed(v) : "—"}</b>${maLine}`
             },
           },
         }}
       />
+      )}
     </div>
   )
 }
@@ -676,9 +962,9 @@ export function ApproachArcGauges({
             style={{
               fontFamily: T.mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em",
               padding: "3px 10px",
-              border: `1px solid ${lie === l ? `${T.green}55` : T.border}`,
+              border: `1px solid ${lie === l ? T.greenDim : T.border}`,
               borderRadius: 3,
-              background: lie === l ? `${T.green}18` : "transparent",
+              background: lie === l ? T.greenBg : "transparent",
               color: lie === l ? T.green : T.faint,
               cursor: "pointer", transition: "all 120ms",
             }}
@@ -718,12 +1004,16 @@ export function ApproachArcGauges({
 export type HistoryEvent = {
   event_name: string
   event_completed?: string | null
+  course_name?: string | null
   fin_text?: string | null
+  avg_score?: number | null
+  avg_to_par?: number | null
   avg_sg_total?: number | null
   avg_sg_ott?:   number | null
   avg_sg_app?:   number | null
   avg_sg_arg?:   number | null
   avg_sg_putt?:  number | null
+  avg_sg_t2g?:   number | null
   rounds_played?: number
 }
 
@@ -736,10 +1026,10 @@ function FinishChip({ fin }: { fin: string | null | undefined }) {
   const isTop25 = !isWin && !isCut && !isTop10 && (parseInt(f.replace("T", "")) <= 25)
 
   let bg = T.surface, color = T.muted, border = T.border
-  if (isWin)   { bg = `${T.gold}22`; color = T.gold;  border = `${T.gold}55` }
-  if (isTop10) { bg = `${T.green}18`; color = T.green; border = `${T.green}44` }
+  if (isWin)   { bg = T.goldBg; color = T.gold; border = T.goldDim }
+  if (isTop10) { bg = T.greenBg; color = T.green; border = T.greenDim }
   if (isTop25) { bg = "transparent"; color = T.muted; border = T.border }
-  if (isCut)   { bg = `${T.red}12`; color = T.red;    border = `${T.red}33` }
+  if (isCut)   { bg = T.redBg; color = T.red; border = T.redDim }
 
   return (
     <span style={{
@@ -802,16 +1092,16 @@ export function HistoryTable({
 
   return (
     <div>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflow: "auto" }}>
         <table style={{
           width: "100%", borderCollapse: "collapse",
           fontFamily: T.mono, fontSize: 10,
         }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-              {["EVENT", "DATE", "FIN", "TOTAL", "OTT", "APP", "ARG", "PUTT"].map(h => (
+              {["EVENT", "DATE", "COURSE", "RDS", "FIN", "TOTAL", "OTT", "APP", "ARG", "PUTT", "T2G"].map(h => (
                 <th key={h} style={{
-                  padding: "5px 8px", textAlign: h === "EVENT" ? "left" : "center",
+                  padding: "5px 8px", textAlign: h === "EVENT" || h === "COURSE" ? "left" : "center",
                   fontSize: 8, fontWeight: 700, letterSpacing: "0.1em",
                   color: T.faint, whiteSpace: "nowrap",
                 }}>
@@ -832,6 +1122,12 @@ export function HistoryTable({
                 <td style={{ padding: "6px 8px", color: T.faint, textAlign: "center", whiteSpace: "nowrap" }}>
                   {e.event_completed ?? "—"}
                 </td>
+                <td style={{ padding: "6px 8px", color: T.muted, whiteSpace: "nowrap", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {e.course_name ?? "—"}
+                </td>
+                <td style={{ padding: "6px 8px", color: T.muted, textAlign: "center", whiteSpace: "nowrap" }}>
+                  {e.rounds_played ?? "—"}
+                </td>
                 <td style={{ padding: "6px 8px", textAlign: "center" }}>
                   <FinishChip fin={e.fin_text} />
                 </td>
@@ -849,6 +1145,9 @@ export function HistoryTable({
                 </td>
                 <td style={{ padding: "6px 8px" }}>
                   <SgMiniBar value={e.avg_sg_putt} maxAbs={1.5} />
+                </td>
+                <td style={{ padding: "6px 8px" }}>
+                  <SgMiniBar value={e.avg_sg_t2g} maxAbs={2.5} />
                 </td>
               </tr>
             ))}

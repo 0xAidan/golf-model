@@ -239,8 +239,8 @@ export function buildHydratedPredictionRun(
 
   const source =
     tab === "live"
-      ? (snapshot.live_tournament ?? snapshot.upcoming_tournament)
-      : (snapshot.upcoming_tournament ?? snapshot.live_tournament)
+      ? (snapshot.live_tournament ?? snapshot.upcoming_tournament ?? snapshot.legacy_tournament)
+      : (snapshot.upcoming_tournament ?? snapshot.live_tournament ?? snapshot.legacy_tournament)
 
   return buildPredictionRunFromSection(source)
 }

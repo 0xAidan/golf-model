@@ -23,13 +23,29 @@ def run_snapshot_analysis(
     mode: str = "full",
     enable_ai: bool = False,
     enable_backfill: bool = False,
+    model_variant: str | None = None,
 ) -> dict[str, Any]:
     from src.services.golf_model_service import GolfModelService
     from src.strategy_resolution import build_pipeline_strategy_config, resolve_runtime_strategy
+    from src import config
+
+    resolved_variant = str(model_variant or config.DEFAULT_MODEL_VARIANT).strip().lower()
+    if resolved_variant not in config.ALLOWED_MODEL_VARIANTS:
+        resolved_variant = config.DEFAULT_MODEL_VARIANT
 
     strategy, strategy_meta = resolve_runtime_strategy("global")
     pipeline_cfg = build_pipeline_strategy_config(strategy)
-    service = GolfModelService(tour=_sanitize_tour(tour), strategy_config=pipeline_cfg)
+    try:
+        service = GolfModelService(
+            tour=_sanitize_tour(tour),
+            strategy_config=pipeline_cfg,
+            model_variant=resolved_variant,
+        )
+    except TypeError:
+        # Backward-compat for tests or lightweight fakes that don't accept model_variant yet.
+        service = GolfModelService(tour=_sanitize_tour(tour), strategy_config=pipeline_cfg)
+    strategy_meta = dict(strategy_meta or {})
+    strategy_meta["model_variant"] = resolved_variant
     result = service.run_analysis(
         event_id=event_id,
         tournament_name=tournament_name,
@@ -45,6 +61,7 @@ def run_snapshot_analysis(
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]
     result["model_lane"] = strategy_meta.get("strategy_source", "default")
+    result["model_variant"] = resolved_variant
     result["strategy_meta"] = strategy_meta
     result["live_model_name"] = strategy.name or pipeline_cfg.get("name", "strategy")
     return result

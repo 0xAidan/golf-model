@@ -23,6 +23,52 @@ MIN_TOURNAMENTS_FOR_EWA = 5
 DRIFT_WORSE_PCT = 0.15  # flag if blend Brier >15% worse than DG-only
 
 
+def _oos_promotion_allows_model_weight_increase(bet_type: str) -> bool:
+    """
+    When feature flag ``dynamic_blend_oos_promotion`` is on, require recent
+    tournaments where model Brier beats DG Brier (with margin) and enough samples.
+    """
+    if not is_enabled("dynamic_blend_oos_promotion"):
+        return True
+    window = int(getattr(config, "DYNAMIC_BLEND_PROMO_WINDOW", 5))
+    min_samples = int(getattr(config, "DYNAMIC_BLEND_PROMO_MIN_SAMPLES", 40))
+    min_tourn = int(getattr(config, "DYNAMIC_BLEND_PROMO_MIN_TOURNAMENTS", 8))
+    edge = float(getattr(config, "DYNAMIC_BLEND_PROMO_MODEL_EDGE", 0.02))
+
+    conn = db.get_conn()
+    try:
+        n_tourn = conn.execute(
+            "SELECT COUNT(DISTINCT tournament_id) AS c FROM blend_history WHERE bet_type = ?",
+            (bet_type,),
+        ).fetchone()["c"]
+        if n_tourn < min_tourn:
+            return False
+        rows = conn.execute(
+            """SELECT brier_dg, brier_model, n_predictions
+               FROM blend_history WHERE bet_type = ?
+               ORDER BY id DESC LIMIT ?""",
+            (bet_type, window),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if len(rows) < window:
+        return False
+    total_n = sum(int(r["n_predictions"] or 0) for r in rows)
+    if total_n < min_samples:
+        return False
+    for r in rows:
+        bd = r["brier_dg"]
+        bm = r["brier_model"]
+        if bd is None or bm is None:
+            return False
+        if float(bd) <= 0:
+            return False
+        if float(bm) >= float(bd) * (1.0 - edge):
+            return False
+    return True
+
+
 def get_blend_ratio(bet_type: str) -> tuple[float, float]:
     """
     Return (dg_weight, model_weight) for the given bet type.
@@ -51,6 +97,8 @@ def get_blend_ratio(bet_type: str) -> tuple[float, float]:
     if count >= MIN_TOURNAMENTS_FOR_EWA and brier_blended is not None:
         new_model = model_w * math.exp(-EWA_LR * brier_blended)
         new_model = max(MODEL_WEIGHT_FLOOR, min(MODEL_WEIGHT_CEILING, new_model))
+        if new_model > model_w and not _oos_promotion_allows_model_weight_increase(bet_type):
+            new_model = model_w
         return (1.0 - new_model, new_model)
     return (dg_w, model_w)
 

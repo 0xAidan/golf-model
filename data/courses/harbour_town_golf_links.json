@@ -1,0 +1,34 @@
+{
+  "course_facts": {
+    "tournament": "RBC Heritage",
+    "course_name": "Harbour Town Golf Links",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": [
+      "Pebble Beach Golf Links",
+      "Sea Island GC (Seaside)",
+      "Waialae CC",
+      "Colonial CC"
+    ]
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Average",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.9806,
+    "app_impact": 0.2145,
+    "arg_impact": 0.043,
+    "putt_impact": 0.1449,
+    "total_fit_spread": 0.9401,
+    "sg_category_spread": 0.4829
+  },
+  "characteristics": {
+    "grass": "bermuda",
+    "climate": "coastal",
+    "sg_ott_emphasis": "difficult",
+    "sg_app_emphasis": "average",
+    "scoring": "easy"
+  }
+}

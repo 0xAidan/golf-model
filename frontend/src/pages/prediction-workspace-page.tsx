@@ -1,28 +1,23 @@
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Download, ExternalLink, Radar } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import {
   CourseWeatherFeedPanel,
-  DiagnosticsGradingPanel,
   LeaderboardPanel,
-  MarketIntelPanel,
-  ReplayTimelinePanel,
 } from "@/components/cockpit/event-modules"
 import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
 import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
 import { isTeamEvent } from "@/lib/event-format"
+import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-stack"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
 import {
   buildCourseFeedModel,
-  buildDiagnosticsModel,
   buildLeaderboardModel,
-  buildMarketIntelModel,
-  buildReplayTimelineModel,
 } from "@/lib/cockpit-event-models"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import {
@@ -33,6 +28,15 @@ import {
 } from "@/lib/cockpit-picks"
 import { formatNumber, formatUnits } from "@/lib/format"
 import {
+  EV_BADGE_TOOLTIP,
+  GRADING_TABLE_TOOLTIPS,
+  MATCHUP_DETAIL_TOOLTIPS,
+  MATCHUP_TABLE_TOOLTIPS,
+  POWER_RANKINGS_HELP,
+  SG_TRAJECTORY_HELP,
+  TIER_BADGE_TOOLTIP,
+} from "@/lib/metric-tooltips"
+import {
   buildPredictionRunFromSection,
   collectAvailableBooks,
   flattenSecondaryBets,
@@ -41,7 +45,6 @@ import {
 } from "@/lib/prediction-board"
 import type {
   CompositePlayer,
-  DashboardState,
   FlattenedSecondaryBet,
   GradedTournamentSummary,
   LiveRefreshSnapshot,
@@ -50,22 +53,27 @@ import type {
   PlayerProfile,
   PredictionRunResponse,
 } from "@/lib/types"
-import {
-  buildMatchupKey,
-  secondaryBadgeLabel,
-  TREND_ARROW,
-  TREND_COLOR,
-} from "@/pages/page-shared"
+import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
+import { computeSgTrajectoryBounds, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
+import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 
 /* ── Small helpers ────────────────────────────── */
 function EV({ ev, evPct }: { ev: number; evPct?: string }) {
   const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
-  return <span className={`ev-badge ${cls}`}>{evPct ?? `${(ev * 100).toFixed(1)}%`}</span>
+  return (
+    <span className={`ev-badge ${cls}`} title={EV_BADGE_TOOLTIP} style={{ cursor: "help" }}>
+      {evPct ?? `${(ev * 100).toFixed(1)}%`}
+    </span>
+  )
 }
 
 function TierBadge({ tier }: { tier?: string }) {
   const t = tier ?? "LEAN"
-  return <span className={`tier-badge ${t}`}>{t}</span>
+  return (
+    <span className={`tier-badge ${t}`} title={TIER_BADGE_TOOLTIP} style={{ cursor: "help" }}>
+      {t}
+    </span>
+  )
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -86,10 +94,17 @@ function ScoreBar({
   color?: "green" | "gold" | "cyan"
 }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
+  const heatFill =
+    color === "green" && max > 0 && Number.isFinite(value)
+      ? heatSpectrumGradientAlongUnit(Math.min(1, Math.max(0, value / max)), "ltr")
+      : undefined
   return (
-    <div className="score-bar">
+    <div className="score-bar-wrap">
       <div className="score-bar-track">
-        <div className={`score-bar-fill ${color}`} style={{ width: `${pct}%` }} />
+        <div
+          className={heatFill ? "score-bar-fill" : `score-bar-fill ${color}`}
+          style={heatFill ? { width: `${pct}%`, background: heatFill } : { width: `${pct}%` }}
+        />
       </div>
       <span className="score-bar-val">{formatNumber(value, 1)}</span>
     </div>
@@ -98,7 +113,6 @@ function ScoreBar({
 
 /* ── Props ────────────────────────────────────── */
 export function PredictionWorkspacePage({
-  dashboard,
   liveSnapshot,
   snapshotNotice,
   snapshotAgeSeconds,
@@ -118,10 +132,12 @@ export function PredictionWorkspacePage({
   selectedPlayerKey,
   onPlayerSelect,
   selectedPlayerProfile,
+  playerProfileState,
+  playerProfileErrorMessage,
+  onPlayerProfileRetry,
   richProfilesEnabled,
   secondaryBets,
 }: {
-  dashboard?: DashboardState
   liveSnapshot: LiveRefreshSnapshot | null
   runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
   snapshotNotice: string | null
@@ -142,6 +158,9 @@ export function PredictionWorkspacePage({
   selectedPlayerKey: string
   onPlayerSelect: (playerKey: string) => void
   selectedPlayerProfile?: PlayerProfile
+  playerProfileState: "loading" | "ready" | "error" | "unavailable"
+  playerProfileErrorMessage?: string
+  onPlayerProfileRetry: () => void
   richProfilesEnabled: boolean
   secondaryBets: FlattenedSecondaryBet[]
 }) {
@@ -240,6 +259,24 @@ export function PredictionWorkspacePage({
       pastReplayHasHistoryLanes,
     staleTime: 30_000,
   })
+  const pastReplayHasError =
+    pastEventsQuery.isError ||
+    pastSnapshotQuery.isError ||
+    pastTimelineQuery.isError ||
+    pastMarketRowsQuery.isError
+  const pastReplayErrorMessage = (
+    pastEventsQuery.error ??
+    pastSnapshotQuery.error ??
+    pastTimelineQuery.error ??
+    pastMarketRowsQuery.error
+  ) instanceof Error
+    ? (
+        pastEventsQuery.error ??
+        pastSnapshotQuery.error ??
+        pastTimelineQuery.error ??
+        pastMarketRowsQuery.error
+      )?.message
+    : "Replay API request failed."
 
   const pastSnapshotSection = pastSnapshotQuery.data?.ok
     ? (pastSnapshotQuery.data.snapshot ?? null)
@@ -302,6 +339,10 @@ export function PredictionWorkspacePage({
     () => (predictionTab === "past" ? (pastPredictionRun?.composite_results ?? []) : players),
     [pastPredictionRun?.composite_results, players, predictionTab],
   )
+  const boardTrajectoryBounds = useMemo(
+    () => computeSgTrajectoryBounds(displayPlayers),
+    [displayPlayers],
+  )
   const displaySecondaryBets = predictionTab === "past" ? pastSecondaryBets : secondaryBets
   const displayAvailableBooks = useMemo(() => {
     if (predictionTab !== "past") return availableBooks
@@ -337,8 +378,8 @@ export function PredictionWorkspacePage({
     predictionTab === "upcoming"
       ? upcomingTournament
       : predictionTab === "live"
-      ? liveTournament
-      : null
+        ? liveTournament
+        : null
 
   const eventName =
     predictionTab === "past"
@@ -382,11 +423,6 @@ export function PredictionWorkspacePage({
     leaderboardRows: activeSection?.leaderboard ?? pastSnapshotSection?.leaderboard ?? [],
     players: displayPlayers,
   })
-  const marketIntelModel = buildMarketIntelModel({
-    mode,
-    currentSecondaryBets: displaySecondaryBets,
-    pastMarketRows: pastReplayRows,
-  })
   const courseFeedModel = buildCourseFeedModel({
     mode,
     snapshotAgeSeconds: snapshotAgeSeconds,
@@ -396,25 +432,6 @@ export function PredictionWorkspacePage({
     diagnosticsState: activeSection?.diagnostics?.state ?? pastSnapshotSection?.diagnostics?.state,
     fieldValidation: displayPredictionRun?.field_validation,
   })
-  const diagnosticsModel = buildDiagnosticsModel({
-    mode,
-    diagnostics: activeSection?.diagnostics as Parameters<typeof buildDiagnosticsModel>[0]["diagnostics"],
-    dashboardAiAvailable: dashboard?.ai_status?.available ?? false,
-    strategySource: dashboard?.baseline_provenance?.strategy_source,
-    strategyName: dashboard?.baseline_provenance?.live_strategy_name,
-    warnings: displayPredictionRun?.warnings,
-    gradingHistory,
-    selectedEventId: selectedPastEvent?.event_id,
-    timelinePoints: pastTimelinePoints,
-    currentSecondaryBets: displaySecondaryBets,
-  })
-  const replayTimelineModel = buildReplayTimelineModel({
-    mode,
-    timelinePoints: pastTimelinePoints,
-    currentGeneratedAt: activeSection?.generated_from ?? null,
-    snapshotAgeSeconds: snapshotAgeSeconds,
-  })
-
   // Player spotlight
   const { spotlight, selectedPlayer } = useCockpitSpotlight({
     predictionTab: mode,
@@ -429,9 +446,6 @@ export function PredictionWorkspacePage({
     rawGeneratedSecondaryBets,
   })
   const effectiveSpotlightProfile = selectedPlayerProfile
-  const effectiveProfileReady =
-    Boolean(selectedPlayerProfile) &&
-    selectedPlayerProfile?.player_key === selectedPlayerKey
 
   function handleExportMarkdown() {
     const content = displayPredictionRun?.card_content
@@ -454,7 +468,7 @@ export function PredictionWorkspacePage({
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* ── Notice bar ──────────────────────────── */}
       {snapshotNotice && (
-        <div className="alert-banner">
+        <div className="alert-banner" role="status" aria-live="polite">
           <Radar size={11} style={{ flexShrink: 0 }} />
           {snapshotNotice}
         </div>
@@ -510,6 +524,7 @@ export function PredictionWorkspacePage({
                     <select
                       value={selectedPastEventKey || selectedPastEvent?.event_id || ""}
                       onChange={(e) => setSelectedPastEventKey(e.target.value)}
+                      aria-label="Select past event for replay"
                       style={{
                         width: "100%",
                         background: "var(--surface-2)",
@@ -537,7 +552,9 @@ export function PredictionWorkspacePage({
                       {(["completed", "live", "upcoming"] as const).map((lane) => (
                         <button
                           key={lane}
+                          type="button"
                           onClick={() => setPastReplaySection(lane)}
+                          aria-pressed={pastReplaySection === lane}
                           style={{
                             flex: 1,
                             padding: "5px 0",
@@ -558,6 +575,41 @@ export function PredictionWorkspacePage({
                       ))}
                     </div>
                   </div>
+                  {pastReplayHasError && (
+                    <div
+                      role="alert"
+                      style={{
+                        border: "1px solid rgba(239,68,68,0.25)",
+                        background: "var(--red-bg)",
+                        color: "var(--red)",
+                        borderRadius: "var(--r-sm)",
+                        padding: "8px 10px",
+                        fontSize: 11,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                      }}
+                    >
+                      <div>Replay request failed: {pastReplayErrorMessage}</div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: "3px 8px", fontSize: 10 }}
+                          onClick={() => {
+                            void pastEventsQuery.refetch()
+                            void pastSnapshotQuery.refetch()
+                            if (pastReplayHasHistoryLanes) {
+                              void pastTimelineQuery.refetch()
+                              void pastMarketRowsQuery.refetch()
+                            }
+                          }}
+                        >
+                          Retry replay fetch
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -662,14 +714,18 @@ export function PredictionWorkspacePage({
                   All →
                 </Link>
               </div>
-              <div style={{ overflow: "hidden" }}>
+              <div className="table-scroll">
                 {gradingHistory.length > 0 ? (
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Event</th>
-                        <th className="right">P&L</th>
-                        <th className="right">Hit%</th>
+                        <th title={GRADING_TABLE_TOOLTIPS.event}>Event</th>
+                        <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
+                          P&L
+                        </th>
+                        <th className="right" title={GRADING_TABLE_TOOLTIPS.hitPct}>
+                          Hit%
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -711,16 +767,122 @@ export function PredictionWorkspacePage({
         center={
           <>
             {showTeamEventNotice && (
-              <TeamEventNotice
-                eventName={eventName}
-                courseName={courseName}
-                mode={predictionTab === "live" ? "live" : "upcoming"}
-              />
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                <TeamEventNotice
+                  eventName={eventName}
+                  courseName={courseName}
+                  mode={predictionTab === "live" ? "live" : "upcoming"}
+                />
+              </div>
             )}
             {!showTeamEventNotice && (
-              <>
-            {/* ── Top Plays (Matchups) ──────────────── */}
-            <div className="card">
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                <CockpitResizableStack
+                  showLeaderboard={predictionTab !== "upcoming"}
+                  rankings={
+            <div className="card cockpit-stack-card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">
+                    {predictionTab === "past" ? "Pre-tee-off rankings" : "Power rankings"}
+                  </div>
+                  <div className="card-desc">
+                    {predictionTab === "past"
+                      ? `${displayPlayers.length} players — last rankings before tee off`
+                      : `${displayPlayers.length} players ranked by model`}
+                  </div>
+                </div>
+                <Link
+                  to="/players"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    textDecoration: "none",
+                  }}
+                >
+                  All <ExternalLink size={11} />
+                </Link>
+              </div>
+              <div className="table-scroll">
+                {displayPlayers.length > 0 ? (
+                  <table className="data-table rankings-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 36 }} title={POWER_RANKINGS_HELP.rank}>
+                          #
+                        </th>
+                        <th title={POWER_RANKINGS_HELP.player}>Player</th>
+                        <th title={POWER_RANKINGS_HELP.composite}>Composite</th>
+                        <th title={POWER_RANKINGS_HELP.form}>Form</th>
+                        <th title={POWER_RANKINGS_HELP.course}>Course</th>
+                        <th className="center" title={SG_TRAJECTORY_HELP}>
+                          SG traj
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayPlayers.map((player) => {
+                        return (
+                          <tr
+                            key={player.player_key}
+                            onClick={() => onPlayerSelect(player.player_key)}
+                            data-testid={`player-row-${player.player_key}`}
+                          >
+                            <td className="rank-cell">{player.rank}</td>
+                            <td className="player-name rankings-player-name">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onPlayerSelect(player.player_key)
+                                }}
+                              >
+                                {player.player_display}
+                              </button>
+                            </td>
+                            <td title={POWER_RANKINGS_HELP.composite}>
+                              <ScoreBar value={player.composite} max={100} color="cyan" />
+                            </td>
+                            <td title={POWER_RANKINGS_HELP.form}>
+                              <ScoreBar value={player.form} max={100} color="green" />
+                            </td>
+                            <td title={POWER_RANKINGS_HELP.course}>
+                              <ScoreBar value={player.course_fit} max={100} color="gold" />
+                            </td>
+                            <td className="center">
+                              <SgTrajectoryMeter
+                                momentumTrend={player.momentum_trend}
+                                momentumDirection={player.momentum_direction}
+                                normMin={boardTrajectoryBounds.min}
+                                normMax={boardTrajectoryBounds.max}
+                              />
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="card-body">
+                    <EmptyState message="No rankings available for this event context." />
+                  </div>
+                )}
+              </div>
+            </div>
+                  }
+                  topPicks={
+            <div className="card cockpit-stack-card">
               <div className="card-header">
                 <div>
                   <div className="card-title">
@@ -744,7 +906,7 @@ export function PredictionWorkspacePage({
                 </button>
               </div>
 
-              <div style={{ overflow: "hidden" }}>
+              <div className="table-scroll">
                 {predictionTab === "live" && !isLiveActive ? (
                   <div className="card-body">
                     <div className="empty-state">
@@ -753,6 +915,7 @@ export function PredictionWorkspacePage({
                       <div className="empty-state-desc">
                         Switch to{" "}
                         <button
+                          type="button"
                           style={{ color: "var(--cyan)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: "inherit" }}
                           onClick={() => onPredictionTabChange("upcoming")}
                         >
@@ -766,11 +929,17 @@ export function PredictionWorkspacePage({
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Pick</th>
-                        <th>Book · Odds</th>
-                        <th className="center">Tier</th>
-                        <th className="right">EV</th>
-                        <th className="right">Win%</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
+                        <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
+                          Tier
+                        </th>
+                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                          EV
+                        </th>
+                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
+                          Win%
+                        </th>
                         <th style={{ width: 32 }} />
                       </tr>
                     </thead>
@@ -779,9 +948,8 @@ export function PredictionWorkspacePage({
                         const key = buildMatchupKey(matchup)
                         const isExpanded = expandedMatchupKey === key
                         return (
-                          <>
+                          <Fragment key={key}>
                             <tr
-                              key={key}
                               onClick={() => setExpandedMatchupKey(isExpanded ? null : key)}
                               style={{ cursor: "pointer" }}
                               data-testid={`matchup-row-${key}`}
@@ -808,7 +976,7 @@ export function PredictionWorkspacePage({
                               <td className="right">
                                 <EV ev={matchup.ev} evPct={matchup.ev_pct} />
                               </td>
-                              <td className="right num" style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                              <td className="right num" title={MATCHUP_TABLE_TOOLTIPS.winPct} style={{ color: "var(--text-muted)", fontSize: 12, cursor: "help" }}>
                                 {(matchup.model_win_prob * 100).toFixed(1)}%
                               </td>
                               <td style={{ textAlign: "center" }}>
@@ -823,32 +991,44 @@ export function PredictionWorkspacePage({
                               </td>
                             </tr>
                             {isExpanded && (
-                              <tr key={`${key}-detail`}>
+                              <tr>
                                 <td colSpan={6} style={{ padding: 0 }}>
                                   <div className="matchup-detail">
                                     <div className="matchup-detail-grid">
                                       <div>
-                                        <div className="detail-item-label">Composite gap</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.compositeGap}>
+                                          Composite gap
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.composite_gap, 2)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Form gap</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.formGap}>
+                                          Form gap
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.form_gap, 2)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Course gap</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.courseGap}>
+                                          Course gap
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.course_fit_gap, 2)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Implied prob</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.impliedProb}>
+                                          Implied prob
+                                        </div>
                                         <div className="detail-item-value num">{(matchup.implied_prob * 100).toFixed(1)}%</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Conviction</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.conviction}>
+                                          Conviction
+                                        </div>
                                         <div className="detail-item-value num">{formatNumber(matchup.conviction, 0)}</div>
                                       </div>
                                       <div>
-                                        <div className="detail-item-label">Momentum</div>
+                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.momentum}>
+                                          Momentum
+                                        </div>
                                         <div className="detail-item-value" style={{ color: matchup.momentum_aligned ? "var(--positive)" : "var(--text-muted)" }}>
                                           {matchup.momentum_aligned ? "Aligned ↑" : "Mixed"}
                                         </div>
@@ -863,7 +1043,7 @@ export function PredictionWorkspacePage({
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </Fragment>
                         )
                       })}
                     </tbody>
@@ -875,142 +1055,87 @@ export function PredictionWorkspacePage({
                 )}
               </div>
             </div>
-
-            {/* ── Power Rankings table ──────────────── */}
-            <div className="card">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">
-                    {predictionTab === "past" ? "Pre-tee-off rankings" : "Power rankings"}
-                  </div>
+                  }
+                  secondary={
+              <div className="card cockpit-stack-card">
+                <div className="card-header">
+                  <div className="card-title">Secondary markets</div>
                   <div className="card-desc">
-                    {predictionTab === "past"
-                      ? `${displayPlayers.length} players — last rankings before tee off`
-                      : `${displayPlayers.length} players ranked by model`}
+                    {displaySecondaryBets.length} picks
+                    <Link
+                      to="/matchups?tab=secondary"
+                      style={{ marginLeft: 8, color: "var(--cyan)", fontSize: 10, textDecoration: "none" }}
+                    >
+                      All →
+                    </Link>
                   </div>
                 </div>
-                <Link
-                  to="/players"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                    textDecoration: "none",
-                  }}
-                >
-                  All <ExternalLink size={11} />
-                </Link>
-              </div>
-              <div style={{ overflow: "hidden" }}>
-                {displayPlayers.length > 0 ? (
+                <div className="table-scroll">
+                  {displaySecondaryBets.length > 0 ? (
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 36 }}>#</th>
-                        <th>Player</th>
-                        <th>Composite</th>
-                        <th>Form</th>
-                        <th>Course</th>
-                        <th className="center">Trend</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.market}>Market</th>
+                        <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
+                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
+                          EV
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {displayPlayers.slice(0, 15).map((player) => {
-                        const dir = player.momentum_direction ?? ""
-                        const arrow = TREND_ARROW[dir] ?? "—"
-                        const trendColor = TREND_COLOR[dir] ?? "var(--text-faint)"
+                      {displaySecondaryBets.map((bet) => {
+                        const tier = (bet.confidence ?? "LEAN").toUpperCase()
                         return (
                           <tr
-                            key={player.player_key}
-                            onClick={() => onPlayerSelect(player.player_key)}
-                            data-testid={`player-row-${player.player_key}`}
+                            key={`${bet.market}-${bet.player}-${bet.odds}`}
+                            onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}
+                            data-testid={`secondary-row-${bet.player}`}
                           >
-                            <td className="rank-cell">{player.rank}</td>
                             <td className="player-name">
-                              <button onClick={() => onPlayerSelect(player.player_key)}>
-                                {player.player_display}
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  if (bet.player_key) onPlayerSelect(bet.player_key)
+                                }}
+                              >
+                                {bet.player}
                               </button>
                             </td>
                             <td>
-                              <ScoreBar value={player.composite} max={100} color="cyan" />
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span className={`tier-badge ${tier}`} style={{ fontSize: 9 }}>
+                                  {tier}
+                                </span>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                  {secondaryBadgeLabel(bet.market)}
+                                </span>
+                              </div>
                             </td>
-                            <td>
-                              <ScoreBar value={player.form} max={100} color="green" />
+                            <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                              {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
                             </td>
-                            <td>
-                              <ScoreBar value={player.course_fit} max={100} color="gold" />
-                            </td>
-                            <td className="center">
-                              <span style={{ color: trendColor, fontSize: 14, fontWeight: 700 }}>
-                                {arrow}
-                              </span>
+                            <td className="right">
+                              <EV ev={bet.ev} />
                             </td>
                           </tr>
                         )
                       })}
                     </tbody>
                   </table>
-                ) : (
-                  <div className="card-body">
-                    <EmptyState message="No rankings available for this event context." />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Secondary bets ───────────────────── */}
-            {displaySecondaryBets.length > 0 && (
-              <div className="card">
-                <div className="card-header">
-                  <div className="card-title">Secondary markets</div>
-                  <div className="card-desc">{displaySecondaryBets.length} picks</div>
-                </div>
-                <div style={{ overflow: "hidden" }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Player</th>
-                        <th>Market</th>
-                        <th>Book · Odds</th>
-                        <th className="right">EV</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displaySecondaryBets.map((bet) => (
-                        <tr
-                          key={`${bet.market}-${bet.player}-${bet.odds}`}
-                          onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}
-                          data-testid={`secondary-row-${bet.player}`}
-                        >
-                          <td className="player-name">
-                            <button onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}>
-                              {bet.player}
-                            </button>
-                          </td>
-                          <td>
-                            <span className="tier-badge LEAN" style={{ fontSize: 9 }}>
-                              {secondaryBadgeLabel(bet.market)}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
-                          </td>
-                          <td className="right">
-                            <EV ev={bet.ev} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  ) : (
+                    <div className="card-body">
+                      <EmptyState message="No secondary market edges in this context." />
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-
-            {/* ── Leaderboard — live & past only, not upcoming ─── */}
-            {predictionTab !== "upcoming" && (
+                  }
+                  leaderboard={
+              predictionTab !== "upcoming" ? (
               <CockpitModule
+                className="cockpit-stack-card"
                 title={predictionTab === "past" ? "Final leaderboard" : "Live leaderboard"}
                 description={
                   predictionTab === "past"
@@ -1026,8 +1151,10 @@ export function PredictionWorkspacePage({
                   onPlayerSelect={onPlayerSelect}
                 />
               </CockpitModule>
-            )}
-              </>
+              ) : undefined
+                  }
+                />
+              </div>
             )}
           </>
         }
@@ -1035,6 +1162,7 @@ export function PredictionWorkspacePage({
           <>
             {/* ── Player spotlight ─────────────────── */}
             <CockpitModule
+              flex={3}
               title="Player spotlight"
               tone="accent"
               emptyState={
@@ -1045,51 +1173,10 @@ export function PredictionWorkspacePage({
                 spotlight={spotlight}
                 player={selectedPlayer}
                 profile={effectiveSpotlightProfile}
-                profileReady={effectiveProfileReady}
+                profileState={playerProfileState}
+                profileErrorMessage={playerProfileErrorMessage}
+                onRetryProfile={onPlayerProfileRetry}
                 richProfilesEnabled={richProfilesEnabled}
-              />
-            </CockpitModule>
-
-            {/* ── Market intel ─────────────────────── */}
-            <CockpitModule
-              title="Market intel"
-              description="Secondary edges for this event context."
-            >
-              <MarketIntelPanel
-                metrics={marketIntelModel.metrics}
-                rows={marketIntelModel.rows}
-                emptyMessage={marketIntelModel.emptyMessage}
-                onPlayerSelect={onPlayerSelect}
-              />
-            </CockpitModule>
-
-            {/* ── Diagnostics ──────────────────────── */}
-            <CockpitModule
-              title="Diagnostics"
-              description="Runtime health and pipeline state."
-            >
-              <DiagnosticsGradingPanel
-                metrics={diagnosticsModel.metrics}
-                counters={diagnosticsModel.counters}
-                reasonCodes={diagnosticsModel.reasonCodes}
-                warnings={diagnosticsModel.warnings}
-                selectedEventSummary={diagnosticsModel.selectedEventSummary}
-              />
-            </CockpitModule>
-
-            {/* ── Replay timeline ──────────────────── */}
-            <CockpitModule
-              title="Replay timeline"
-              description={
-                predictionTab === "past"
-                  ? "Immutable replay history."
-                  : "Timeline captured once event has history."
-              }
-            >
-              <ReplayTimelinePanel
-                metrics={replayTimelineModel.metrics}
-                items={replayTimelineModel.items}
-                emptyMessage={replayTimelineModel.emptyMessage}
               />
             </CockpitModule>
           </>

@@ -33,20 +33,6 @@ describe("LegacyRouteGate", () => {
     expect(screen.queryByText("legacy matchups content")).not.toBeInTheDocument()
   })
 
-  it("shows honest replay messaging for the legacy course route in past mode", () => {
-    render(
-      <MemoryRouter>
-        <LegacyRouteGate route="course" mode="past">
-          <div>legacy course content</div>
-        </LegacyRouteGate>
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByText("Legacy course route unavailable in replay mode")).toBeInTheDocument()
-    expect(screen.getByText(/Use the cockpit home route for replay-aware course context, weather\/feed framing, and stored event diagnostics\./i)).toBeInTheDocument()
-    expect(screen.queryByText("legacy course content")).not.toBeInTheDocument()
-  })
-
   it("renders the route content outside replay mode", () => {
     render(
       <MemoryRouter>

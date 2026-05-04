@@ -11,15 +11,18 @@ Output: ranked player list with composite score and all sub-scores.
 import logging
 
 from src import db
+from src import config
 from src.models.course_fit import compute_course_fit
 from src.models.form import compute_form
 from src.models.momentum import compute_momentum
+from src.models.v5_probabilities import estimate_player_uncertainty
 
 
 def compute_composite(tournament_id: int, weights: dict = None,
                       course_name: str = None,
                       strategy_config: dict = None,
-                      weather_adjustments: dict = None) -> list[dict]:
+                      weather_adjustments: dict = None,
+                      model_variant: str | None = None) -> list[dict]:
     """
     Compute composite edge score for all players in the tournament.
 
@@ -43,6 +46,10 @@ def compute_composite(tournament_id: int, weights: dict = None,
         ...
     ]
     """
+    variant = str(model_variant or config.DEFAULT_MODEL_VARIANT).strip().lower()
+    if variant not in config.ALLOWED_MODEL_VARIANTS:
+        variant = config.DEFAULT_MODEL_VARIANT
+
     if weights is None:
         weights = db.get_active_weights()
 
@@ -137,6 +144,21 @@ def compute_composite(tournament_id: int, weights: dict = None,
         form_score = fs.get("score", 50.0)
         momentum_score = ms.get("score", 50.0)
 
+        uncertainty = None
+        if variant == "v5":
+            uncertainty = estimate_player_uncertainty(
+                {
+                    "course_confidence": cs.get("confidence"),
+                    "momentum": momentum_score,
+                    "form_flags": fs.get("flags") or [],
+                }
+            )
+            # v5 ranking path: preserve signal while shrinking noisier players
+            # toward neutral and de-emphasizing volatile momentum swings.
+            course_score = 50.0 + (course_score - 50.0) * (1.0 - uncertainty * 0.45)
+            form_score = 50.0 + (form_score - 50.0) * (1.0 - uncertainty * 0.25)
+            momentum_score = 50.0 + (momentum_score - 50.0) * (1.0 - uncertainty * 0.60)
+
         composite = (
             w_course_adj * course_score
             + w_form_adj * form_score
@@ -163,6 +185,8 @@ def compute_composite(tournament_id: int, weights: dict = None,
             "momentum_trend": ms.get("trend", 0),
             "course_confidence": cs.get("confidence", 0),
             "course_rounds": cs.get("rounds", 0),
+            "model_variant": variant,
+            "v5_uncertainty": round(uncertainty, 4) if uncertainty is not None else None,
             "weather_adjustment": round(weather_adj, 2),
             "weather_info": weather_info,
             "form_flags": fs.get("flags", []),

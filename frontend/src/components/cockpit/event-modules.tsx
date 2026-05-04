@@ -1,6 +1,7 @@
 import { CircleAlert, History, Radar, ShieldAlert } from "lucide-react"
 
 import { MetricTile } from "@/components/shell"
+import { COCKPIT_METRIC_TOOLTIPS, LEADERBOARD_COLUMN_TOOLTIPS } from "@/lib/metric-tooltips"
 import type {
   CockpitFeedItemModel,
   CockpitLeaderboardRowModel,
@@ -20,7 +21,7 @@ export function CourseWeatherFeedPanel({
 }) {
   return (
     <div>
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={1} /> : null}
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       <div>
         {feedItems.map((item) => (
           <div key={`${item.label}-${item.detail}`} className="term-row">
@@ -62,11 +63,17 @@ export function LeaderboardPanel({
         <table className="data-table" role="grid">
           <thead>
             <tr>
-              <th>Pos</th>
-              <th>Player</th>
-              <th style={{ textAlign: "right" }}>Score</th>
-              <th style={{ textAlign: "right" }}>Rd</th>
-              <th style={{ textAlign: "right" }}>Tot</th>
+              <th title={LEADERBOARD_COLUMN_TOOLTIPS.Pos}>Pos</th>
+              <th title={LEADERBOARD_COLUMN_TOOLTIPS.Player}>Player</th>
+              <th style={{ textAlign: "right" }} title={LEADERBOARD_COLUMN_TOOLTIPS.Score}>
+                Score
+              </th>
+              <th style={{ textAlign: "right" }} title={LEADERBOARD_COLUMN_TOOLTIPS.Rd}>
+                Rd
+              </th>
+              <th style={{ textAlign: "right" }} title={LEADERBOARD_COLUMN_TOOLTIPS.Tot}>
+                Tot
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -239,8 +246,15 @@ function MetricGrid({
   metrics: CockpitMetricModel[]
   columns: number
 }) {
+  const gridTemplateColumns =
+    columns === 1
+      ? "1fr"
+      : columns === 2
+        ? "repeat(auto-fit, minmax(110px, 1fr))"
+        : "repeat(auto-fit, minmax(84px, 1fr))"
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: "4px", padding: "8px" }}>
+    <div style={{ display: "grid", gridTemplateColumns, gap: "4px", padding: "8px" }}>
       {metrics.map((metric) => (
         <MetricTile
           key={`${metric.label}-${metric.value}`}
@@ -248,6 +262,7 @@ function MetricGrid({
           value={metric.value}
           detail={metric.detail}
           tone={metric.tone}
+          title={COCKPIT_METRIC_TOOLTIPS[metric.label]}
         />
       ))}
     </div>

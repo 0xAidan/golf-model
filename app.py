@@ -120,6 +120,36 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
 
+
+def _expected_dashboard_api_key() -> str:
+    """Optional shared secret for mutating API endpoints."""
+    return os.environ.get("DASHBOARD_API_KEY", "").strip()
+
+
+@app.middleware("http")
+async def _mutating_api_auth(request: Request, call_next):
+    if request.method not in {"POST", "PATCH", "DELETE"}:
+        return await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+
+    expected = _expected_dashboard_api_key()
+    if not expected:
+        return await call_next(request)
+
+    provided = request.headers.get("x-api-key", "").strip()
+    if not provided:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            provided = auth_header[7:].strip()
+
+    if provided != expected:
+        return JSONResponse(
+            {"error": "Unauthorized mutating API request. Provide x-api-key."},
+            status_code=401,
+        )
+    return await call_next(request)
+
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
 FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR / "index.html"
@@ -183,7 +213,7 @@ def _read_dossier_content(artifact_markdown_path: str | None) -> str | None:
         if not path.exists():
             return None
         return path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeError):
         return None
 
 
@@ -198,7 +228,7 @@ def _extract_roi_metrics_from_dossier_file(artifact_markdown_path: str | None) -
         candidate_roi = float(candidate_match.group(1)) if candidate_match else None
         baseline_roi = float(baseline_match.group(1)) if baseline_match else None
         return (candidate_roi, baseline_roi)
-    except Exception:
+    except (TypeError, ValueError):
         return (None, None)
 
 
@@ -387,7 +417,7 @@ def _latest_graded_tournament_summary() -> dict | None:
             COUNT(DISTINCT r.id) AS results_count,
             COUNT(DISTINCT p.id) AS picks_count,
             COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(po.hit), 0) AS hits,
+            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
             ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
@@ -495,7 +525,7 @@ async def get_grading_history(limit: int = 20):
             COUNT(DISTINCT r.id) AS results_count,
             COUNT(DISTINCT p.id) AS picks_count,
             COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(po.hit), 0) AS hits,
+            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
             ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
@@ -508,8 +538,53 @@ async def get_grading_history(limit: int = 20):
         """,
         (limit,),
     ).fetchall()
+    tournaments = []
+    for row in rows:
+        picks = conn.execute(
+            """
+            SELECT
+                p.id,
+                p.model_variant,
+                p.bet_type,
+                p.player_display,
+                p.opponent_display,
+                p.market_odds,
+                p.model_prob,
+                p.ev,
+                p.reasoning,
+                COALESCE(po.model_hit, po.hit) AS hit,
+                po.model_hit,
+                po.actual_finish,
+                ROUND(COALESCE(po.profit, 0), 2) AS profit,
+                po.entered_at AS graded_at
+            FROM picks p
+            JOIN pick_outcomes po ON po.pick_id = p.id
+            WHERE p.tournament_id = ?
+            ORDER BY po.entered_at, p.id
+            """,
+            (row["id"],),
+        ).fetchall()
+        variant_stats: dict[str, dict[str, float | int]] = {}
+        pick_payloads = []
+        for pick in picks:
+            variant = str(pick["model_variant"] or "baseline")
+            stat = variant_stats.setdefault(variant, {"picks": 0, "hits": 0, "profit": 0.0})
+            stat["picks"] += 1
+            stat["hits"] += int(pick["hit"] or 0)
+            stat["profit"] = round(float(stat["profit"]) + float(pick["profit"] or 0), 2)
+            profit = float(pick["profit"] or 0)
+            outcome = "win" if int(pick["hit"] or 0) == 1 else ("push" if profit == 0 else "loss")
+            pick_payloads.append({
+                **dict(pick),
+                "outcome": outcome,
+            })
+        tournaments.append({
+            **dict(row),
+            "variant_stats": variant_stats,
+            "picks": pick_payloads,
+        })
     conn.close()
-    return {"tournaments": [dict(row) for row in rows]}
+    return {"tournaments": tournaments}
 
 
 @app.get("/api/track-record")
@@ -521,10 +596,10 @@ async def get_track_record(limit: int = 20):
         SELECT
             t.id, t.name, t.course, t.year, t.event_id,
             COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(po.hit), 0) AS hits,
-            COALESCE(SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END), 0) AS wins,
-            COALESCE(SUM(CASE WHEN po.hit = 0 AND po.profit = 0 THEN 1 ELSE 0 END), 0) AS pushes,
-            COALESCE(SUM(CASE WHEN po.hit = 0 AND po.profit < 0 THEN 1 ELSE 0 END), 0) AS losses,
+            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
+            COALESCE(SUM(CASE WHEN COALESCE(po.model_hit, po.hit) = 1 THEN 1 ELSE 0 END), 0) AS wins,
+            COALESCE(SUM(CASE WHEN COALESCE(po.model_hit, po.hit) = 0 AND po.profit = 0 THEN 1 ELSE 0 END), 0) AS pushes,
+            COALESCE(SUM(CASE WHEN COALESCE(po.model_hit, po.hit) = 0 AND po.profit != 0 THEN 1 ELSE 0 END), 0) AS losses,
             ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
@@ -541,8 +616,19 @@ async def get_track_record(limit: int = 20):
         picks = conn.execute(
             """
             SELECT
-                p.player_display, p.opponent_display, p.market_odds,
-                p.bet_type, po.hit, ROUND(po.profit, 2) AS profit
+                p.model_variant,
+                p.player_display,
+                p.opponent_display,
+                p.market_odds,
+                p.bet_type,
+                p.model_prob,
+                p.ev,
+                p.reasoning,
+                COALESCE(po.model_hit, po.hit) AS hit,
+                po.model_hit,
+                po.actual_finish,
+                ROUND(po.profit, 2) AS profit,
+                po.entered_at AS graded_at
             FROM picks p
             JOIN pick_outcomes po ON po.pick_id = p.id
             WHERE p.tournament_id = ?
@@ -550,9 +636,16 @@ async def get_track_record(limit: int = 20):
             """,
             (event["id"],),
         ).fetchall()
+        pick_payloads = []
+        for pick in picks:
+            payload = dict(pick)
+            profit = float(payload.get("profit") or 0)
+            hit = int(payload.get("hit") or 0)
+            payload["outcome"] = "win" if hit == 1 else ("push" if profit == 0 else "loss")
+            pick_payloads.append(payload)
         result.append({
             **dict(event),
-            "picks": [dict(p) for p in picks],
+            "picks": pick_payloads,
         })
     conn.close()
     return {"events": result}
@@ -1415,6 +1508,12 @@ async def run_upcoming_prediction(request: Request):
     mode = payload.get("mode", "full")
     if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
         mode = "full"
+    from src import config as runtime_config
+    model_variant = str(
+        payload.get("model_variant", runtime_config.DEFAULT_MODEL_VARIANT)
+    ).strip().lower() or runtime_config.DEFAULT_MODEL_VARIANT
+    if model_variant not in runtime_config.ALLOWED_MODEL_VARIANTS:
+        model_variant = runtime_config.DEFAULT_MODEL_VARIANT
     result = run_snapshot_analysis(
         tour=payload.get("tour", "pga"),
         tournament_name=payload.get("tournament"),
@@ -1422,20 +1521,19 @@ async def run_upcoming_prediction(request: Request):
         enable_ai=payload.get("enable_ai", False),
         enable_backfill=payload.get("enable_backfill", False),
         mode=mode,
+        model_variant=model_variant,
     )
     if not result.get("output_file") and result.get("card_filepath"):
         result["output_file"] = result["card_filepath"]
     if result.get("card_filepath"):
         result["card_content_path"] = _relative_output_path(result["card_filepath"])
-        # Include card markdown in response so frontend can show it without a second request
         card_path_abs = _safe_output_path(result["card_content_path"])
         if not card_path_abs and result["card_filepath"] and os.path.isabs(result["card_filepath"]):
             card_path_abs = result["card_filepath"]
         if card_path_abs and os.path.isfile(card_path_abs):
             try:
-                with open(card_path_abs, "r", encoding="utf-8") as f:
-                    result["card_content"] = f.read()
-            except Exception:
+                result["card_content"] = Path(card_path_abs).read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
                 result["card_content"] = None
         else:
             result["card_content"] = None
@@ -1595,8 +1693,13 @@ async def run_analysis(
                     for market, market_odds in odds_by_market.items():
                         best = get_best_odds(market_odds)
                         bt = "outright" if market == "outrights" else market.replace("top_", "top")
-                        vb = find_value_bets(composite, best, bet_type=bt,
-                                            tournament_id=tournament_id)
+                        vb = find_value_bets(
+                            composite,
+                            best,
+                            bet_type=bt,
+                            tournament_id=tournament_id,
+                            model_variant=config.DEFAULT_MODEL_VARIANT,
+                        )
                         value_bets[bt] = vb
                     odds_status = f"Fetched {len(all_odds)} odds"
                 else:
@@ -1621,6 +1724,8 @@ async def run_analysis(
             for bt in ["outright", "top5", "top10", "top20"]:
                 pick_rows.append({
                     "tournament_id": tournament_id,
+                    "model_variant": config.DEFAULT_MODEL_VARIANT,
+                    "source": "legacy_upload",
                     "bet_type": bt,
                     "player_key": r["player_key"],
                     "player_display": r["player_display"],
@@ -1771,11 +1876,40 @@ async def get_live_refresh_runtime_status():
 
 @app.get("/api/live-refresh/past-events")
 async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=200)):
-    """List events available for Completed replay (frozen pre-teeoff + live history)."""
+    """List events available for Completed replay (frozen pre-teeoff + live history).
+
+    The currently active live and upcoming event_ids are excluded so the past
+    selector never lists events that have not actually completed. Without this
+    guard the selector mis-labels the upcoming event as a past event because
+    its pre-teeoff snapshots accumulate in `live_snapshot_history`.
+    """
     from src.db import ensure_initialized
 
     ensure_initialized()
-    events = list_completed_snapshot_events(limit=limit)
+
+    exclude_ids: set[str] = set()
+    try:
+        from backtester.dashboard_runtime import get_live_refresh_status
+
+        status = get_live_refresh_status() or {}
+        last_summary = status.get("last_ingest_summary") or {}
+        for key in ("current_event_row", "upcoming_event_row"):
+            row = last_summary.get(key) or {}
+            eid = str(row.get("event_id") or "").strip()
+            if eid:
+                exclude_ids.add(eid)
+        # Also exclude the bare event_id reported in the summary header.
+        bare = str(last_summary.get("event_id") or "").strip()
+        if bare:
+            exclude_ids.add(bare)
+    except Exception:
+        # Status probe is best-effort; fall back to no exclusions.
+        _logger.warning("past-events exclusion probe failed", exc_info=True)
+
+    events = list_completed_snapshot_events(
+        limit=limit,
+        exclude_event_ids=exclude_ids or None,
+    )
     return {"events": events}
 
 
@@ -1927,25 +2061,42 @@ async def get_live_refresh_snapshot():
     cadence = resolve_cadence(settings)
     stale_after_seconds = max(900, int(cadence.recompute_seconds) + 120)
 
-    def _attempt_fresh_snapshot() -> dict:
-        tour = str(settings.get("tour", "pga"))
-        status = get_live_refresh_status()
-        if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+    tour = str(settings.get("tour", "pga"))
+    status = get_live_refresh_status()
+    runtime_autostarted = False
+    if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+        try:
             start_live_refresh(tour=tour)
-        return generate_snapshot_once(tour=tour)
+            runtime_autostarted = True
+            status = get_live_refresh_status()
+        except Exception as exc:
+            _logger.warning("Live refresh runtime autostart failed: %s", exc)
+
+    async def _attempt_fresh_snapshot(timeout_seconds: float = 8.0) -> dict:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(generate_snapshot_once, tour=tour),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            _logger.warning("On-demand live snapshot generation timed out after %.1fs", timeout_seconds)
+            return {}
+        except Exception as exc:
+            _logger.warning("On-demand live snapshot generation failed: %s", exc)
+            return {}
 
     snapshot = read_snapshot()
     if not snapshot:
-        try:
-            snapshot = _attempt_fresh_snapshot()
-        except Exception as exc:
-            _logger.warning("On-demand live snapshot generation failed: %s", exc)
-            snapshot = {}
+        snapshot = await _attempt_fresh_snapshot()
     if not snapshot:
         return {
             "ok": False,
             "snapshot": None,
-            "stale_reason": "No snapshot generated yet. Start live refresh runtime.",
+            "stale_reason": (
+                "No snapshot generated yet. Live refresh runtime is starting."
+                if runtime_autostarted
+                else "No snapshot generated yet. Start live refresh runtime."
+            ),
         }
     generated_at = snapshot.get("generated_at")
     age_seconds = None
@@ -1954,14 +2105,25 @@ async def get_live_refresh_snapshot():
             age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
         except ValueError:
             age_seconds = None
+    live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
+    upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
+    live_state = (live_section.get("diagnostics") or {}).get("state")
+    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
+    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
+    fallback_sources = {
+        "live_fallback",
+        "verified_snapshot_fallback",
+    }
+    active_section = live_section if live_section.get("active") else upcoming_section
+    fallback_active = active_section.get("ranking_source") in fallback_sources
     # Trust guard: never serve stale snapshot payloads as current rankings.
     # Returning stale rows can leak invalid players from prior events.
     if age_seconds is not None and age_seconds > stale_after_seconds:
-        try:
-            refreshed = _attempt_fresh_snapshot()
-        except Exception as exc:
-            _logger.warning("Stale snapshot refresh failed: %s", exc)
-            refreshed = {}
+        refreshed = {}
+        # Avoid request-path stalls when the live refresh runtime is already running.
+        # In that case, background recompute remains the source of truth.
+        if not status.get("running"):
+            refreshed = await _attempt_fresh_snapshot()
         if refreshed:
             snapshot = refreshed
             generated_at = snapshot.get("generated_at")
@@ -1971,7 +2133,14 @@ async def get_live_refresh_snapshot():
                     age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
                 except ValueError:
                     age_seconds = None
-        if age_seconds is not None and age_seconds > stale_after_seconds:
+            live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
+            upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
+            live_state = (live_section.get("diagnostics") or {}).get("state")
+            upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
+            has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
+            active_section = live_section if live_section.get("active") else upcoming_section
+            fallback_active = active_section.get("ranking_source") in fallback_sources
+        elif (fallback_active or has_pipeline_degradation) and not status.get("running"):
             return {
                 "ok": False,
                 "snapshot": None,
@@ -1984,8 +2153,6 @@ async def get_live_refresh_snapshot():
                 ),
                 "fallback_reason": None,
             }
-    live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
-    upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
     verification_messages: list[str] = []
     for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
         eligibility = (section or {}).get("eligibility") or {}
@@ -1993,16 +2160,6 @@ async def get_live_refresh_snapshot():
             summary = str(eligibility.get("summary") or "Field verification failed").strip()
             action = str(eligibility.get("action") or "").strip()
             verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
-
-    live_state = (live_section.get("diagnostics") or {}).get("state")
-    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
-    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
-    fallback_sources = {
-        "live_fallback",
-        "verified_snapshot_fallback",
-    }
-    active_section = live_section if live_section.get("active") else upcoming_section
-    fallback_active = active_section.get("ranking_source") in fallback_sources
     return {
         "ok": True,
         "snapshot": snapshot,
@@ -2013,9 +2170,16 @@ async def get_live_refresh_snapshot():
             " | ".join(verification_messages)
             if verification_messages
             else (
-                "Live snapshot indicates a degraded pipeline state."
-                if has_pipeline_degradation
-                else None
+                (
+                    f"Snapshot is stale (>{stale_after_seconds // 60} minutes); "
+                    "runtime is recomputing in the background."
+                )
+                if (age_seconds is not None and age_seconds > stale_after_seconds)
+                else (
+                    "Live snapshot indicates a degraded pipeline state."
+                    if has_pipeline_degradation
+                    else None
+                )
             )
         ),
         "fallback_reason": (
@@ -2040,7 +2204,18 @@ async def refresh_live_refresh_snapshot():
     if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
         start_live_refresh(tour=tour)
     try:
-        snapshot = generate_snapshot_once(tour=tour)
+        snapshot = await asyncio.wait_for(
+            asyncio.to_thread(generate_snapshot_once, tour=tour),
+            timeout=20.0,
+        )
+    except asyncio.TimeoutError:
+        _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
+        return {
+            "ok": False,
+            "snapshot": None,
+            "stale_reason": "Manual refresh is still running in the background. Snapshot will update shortly.",
+            "fallback_reason": None,
+        }
     except Exception as exc:
         _logger.warning("Manual live snapshot refresh failed: %s", exc)
         return {
@@ -2723,48 +2898,11 @@ async def enter_results(request: Request):
 
     store_results(tid, parsed)
 
-    # Score picks
-    conn = get_conn()
-    picks = conn.execute("SELECT * FROM picks WHERE tournament_id = ?", (tid,)).fetchall()
-    results_rows = conn.execute("SELECT * FROM results WHERE tournament_id = ?", (tid,)).fetchall()
+    from src.learning import score_picks_for_tournament
 
-    result_map = {r["player_key"]: dict(r) for r in results_rows}
-    all_results_list = [dict(r) for r in results_rows]
-    scored = 0
-    hits = 0
-    for pick in picks:
-        pk = pick["player_key"]
-        bt = pick["bet_type"]
-        r = result_map.get(pk)
-        if not r:
-            continue
-
-        # Determine opponent finish for matchups
-        opp_finish = None
-        if bt == "matchup":
-            opp_key = pick.get("opponent_key")
-            opp_result = result_map.get(opp_key) if opp_key else None
-            opp_finish = opp_result.get("finish_position") if opp_result else None
-
-        outcome = determine_outcome(
-            bt,
-            r.get("finish_position"),
-            r.get("finish_text"),
-            r.get("made_cut", 0),
-            all_results_list,
-            opponent_finish=opp_finish,
-        )
-        hit = outcome["hit"]
-
-        conn.execute(
-            "INSERT INTO pick_outcomes (pick_id, hit, actual_finish) VALUES (?, ?, ?)",
-            (pick["id"], hit, r.get("finish_text")),
-        )
-        scored += 1
-        hits += hit
-
-    conn.commit()
-    conn.close()
+    score_result = score_picks_for_tournament(tid)
+    scored = int(score_result.get("scored", 0) or 0)
+    hits = int(score_result.get("hits", 0) or 0)
 
     return {
         "success": True,
@@ -2786,7 +2924,7 @@ async def get_dashboard():
         picks = conn.execute("SELECT COUNT(*) as c FROM picks WHERE tournament_id = ?", (t["id"],)).fetchone()["c"]
         results = conn.execute("SELECT COUNT(*) as c FROM results WHERE tournament_id = ?", (t["id"],)).fetchone()["c"]
         outcomes = conn.execute(
-            "SELECT COUNT(*) as total, SUM(hit) as hits FROM pick_outcomes po JOIN picks p ON po.pick_id = p.id WHERE p.tournament_id = ?",
+            "SELECT COUNT(*) as total, SUM(COALESCE(po.model_hit, po.hit)) as hits FROM pick_outcomes po JOIN picks p ON po.pick_id = p.id WHERE p.tournament_id = ?",
             (t["id"],)
         ).fetchone()
         tournament_data.append({
@@ -3126,6 +3264,26 @@ async def get_calibration():
     return compute_calibration()
 
 
+@app.get("/api/calibration/by-market")
+async def get_calibration_by_market():
+    """Empirical calibration buckets per ``bet_type`` (plus global aggregate)."""
+    from src.db import ensure_initialized
+    from src.calibration import fetch_calibration_curves_grouped
+
+    ensure_initialized()
+    return fetch_calibration_curves_grouped()
+
+
+@app.get("/api/clv/summary")
+async def get_clv_summary_api():
+    """Closing line value: overall and per sportsbook."""
+    from src.db import ensure_initialized
+    from src.clv import compute_clv_summary_by_book
+
+    ensure_initialized()
+    return compute_clv_summary_by_book()
+
+
 @app.post("/api/run-service")
 async def run_service_analysis(request: Request):
     """Run the full unified pipeline via GolfModelService."""
@@ -3308,7 +3466,7 @@ async def get_player_standalone_profile(player_key: str):
     from src.player_normalizer import display_name
 
     # ── 1. Recent rounds from DB ────────────────────────────────────────
-    recent_rounds = src_db.get_player_recent_rounds_by_key(player_key, limit=50)
+    recent_rounds = src_db.get_player_recent_rounds_by_key(player_key, limit=120)
 
     # Resolve dg_id from rounds if available
     dg_id = None
@@ -3362,49 +3520,151 @@ async def get_player_standalone_profile(player_key: str):
     except Exception:
         approach_data = None
 
-    # ── 5. Build SG rolling windows from stored rounds ──────────────────
-    sg_totals = [r["sg_total"] for r in recent_rounds if r.get("sg_total") is not None]
-    sg_rounds_with_meta = []
-    event_seen = {}
-    for r in recent_rounds:
-        if r.get("sg_total") is None:
-            continue
-        evt = r.get("event_name") or r.get("event_id") or "unknown"
-        ev_key = f"{evt}-{r.get('event_completed', '')}"
-        if ev_key not in event_seen:
-            event_seen[ev_key] = {
-                "event_name": r.get("event_name") or evt,
-                "event_completed": r.get("event_completed"),
-                "fin_text": r.get("fin_text"),
-                "sg_values": [],
-                "score_values": [],
-            }
-        event_seen[ev_key]["sg_values"].append(float(r["sg_total"]))
-        if r.get("score") is not None:
-            event_seen[ev_key]["score_values"].append(int(r["score"]))
-
-    recent_events = []
-    for ev_key, ev in list(event_seen.items())[:20]:
-        avg_sg = sum(ev["sg_values"]) / len(ev["sg_values"]) if ev["sg_values"] else None
-        recent_events.append({
-            "event_name": ev["event_name"],
-            "event_completed": ev["event_completed"],
-            "fin_text": ev["fin_text"],
-            "avg_sg_total": round(avg_sg, 3) if avg_sg is not None else None,
-            "rounds_played": len(ev["sg_values"]),
-        })
-
+    # ── 5. Build event summaries + rolling windows from stored rounds ───
     def _avg(vals):
         return round(sum(vals) / len(vals), 3) if vals else None
 
-    windows = {
-        "10": _avg(sg_totals[:10]),
-        "25": _avg(sg_totals[:25]),
-        "50": _avg(sg_totals[:50]),
+    rolling_metric_names = ("sg_total", "sg_ott", "sg_app", "sg_arg", "sg_putt", "sg_t2g")
+    metric_values_by_name = {
+        metric_name: [
+            float(r[metric_name])
+            for r in recent_rounds
+            if r.get(metric_name) is not None
+        ]
+        for metric_name in rolling_metric_names
     }
 
-    # Rolling trend: per-round SG for sparkline (most recent last for L→R chart)
-    trend_series = list(reversed(sg_totals[:50]))
+    event_seen = {}
+    for r in recent_rounds:
+        event_name = r.get("event_name") or r.get("event_id") or "unknown"
+        event_completed = r.get("event_completed")
+        event_id = r.get("event_id")
+        ev_key = f"{event_id or event_name}-{event_completed or ''}"
+        if ev_key not in event_seen:
+            event_seen[ev_key] = {
+                "event_name": event_name,
+                "event_completed": event_completed,
+                "event_id": event_id,
+                "course_name": r.get("course_name"),
+                "tour": r.get("tour"),
+                "fin_text": r.get("fin_text"),
+                "score_values": [],
+                "course_par_values": [],
+                "sg_values": {metric_name: [] for metric_name in rolling_metric_names},
+                "rounds_played": 0,
+            }
+        ev = event_seen[ev_key]
+        ev["rounds_played"] += 1
+        if not ev.get("course_name") and r.get("course_name"):
+            ev["course_name"] = r.get("course_name")
+        if not ev.get("tour") and r.get("tour"):
+            ev["tour"] = r.get("tour")
+        if not ev.get("fin_text") and r.get("fin_text"):
+            ev["fin_text"] = r.get("fin_text")
+        if r.get("score") is not None:
+            ev["score_values"].append(float(r["score"]))
+        if r.get("course_par") is not None:
+            f_course_par = _safe_float(r.get("course_par"))
+            if f_course_par is not None:
+                ev["course_par_values"].append(f_course_par)
+        for metric_name in rolling_metric_names:
+            metric_val = _safe_float(r.get(metric_name))
+            if metric_val is not None:
+                ev["sg_values"][metric_name].append(metric_val)
+
+    recent_events = []
+    sorted_events = sorted(
+        event_seen.values(),
+        key=lambda ev: (ev.get("event_completed") or "", ev.get("event_name") or ""),
+        reverse=True,
+    )
+    for ev in sorted_events[:30]:
+        avg_sg_total = _avg(ev["sg_values"]["sg_total"])
+        avg_score = _avg(ev["score_values"])
+        avg_course_par = _avg(ev["course_par_values"])
+        avg_to_par = round(avg_score - avg_course_par, 3) if avg_score is not None and avg_course_par is not None else None
+        recent_events.append({
+            "event_name": ev["event_name"],
+            "event_completed": ev["event_completed"],
+            "event_id": ev["event_id"],
+            "course_name": ev["course_name"],
+            "tour": ev["tour"],
+            "fin_text": ev["fin_text"],
+            "avg_score": avg_score,
+            "avg_to_par": avg_to_par,
+            "avg_sg_total": avg_sg_total,
+            "avg_sg_ott": _avg(ev["sg_values"]["sg_ott"]),
+            "avg_sg_app": _avg(ev["sg_values"]["sg_app"]),
+            "avg_sg_arg": _avg(ev["sg_values"]["sg_arg"]),
+            "avg_sg_putt": _avg(ev["sg_values"]["sg_putt"]),
+            "avg_sg_t2g": _avg(ev["sg_values"]["sg_t2g"]),
+            "rounds_played": ev["rounds_played"],
+        })
+
+    windows = {
+        "10": _avg(metric_values_by_name["sg_total"][:10]),
+        "25": _avg(metric_values_by_name["sg_total"][:25]),
+        "50": _avg(metric_values_by_name["sg_total"][:50]),
+    }
+    rolling_windows_expanded = {}
+    for metric_name in rolling_metric_names:
+        vals = metric_values_by_name[metric_name]
+        rolling_windows_expanded[metric_name] = {
+            "10": _avg(vals[:10]),
+            "25": _avg(vals[:25]),
+            "50": _avg(vals[:50]),
+        }
+
+    # Rolling trend: per-round SG (most recent last for L→R chart)
+    trend_series = list(reversed(metric_values_by_name["sg_total"][:50]))
+
+    recent_rounds_sample = []
+    for r in recent_rounds[:48]:
+        recent_rounds_sample.append({
+            "round_num": r.get("round_num"),
+            "event_name": r.get("event_name"),
+            "event_completed": r.get("event_completed"),
+            "event_id": r.get("event_id"),
+            "course_name": r.get("course_name"),
+            "tour": r.get("tour"),
+            "score": r.get("score"),
+            "sg_total": _safe_float(r.get("sg_total")),
+            "sg_ott": _safe_float(r.get("sg_ott")),
+            "sg_app": _safe_float(r.get("sg_app")),
+            "sg_arg": _safe_float(r.get("sg_arg")),
+            "sg_putt": _safe_float(r.get("sg_putt")),
+            "sg_t2g": _safe_float(r.get("sg_t2g")),
+            "driving_dist": _safe_float(r.get("driving_dist")),
+            "driving_acc": _safe_float(r.get("driving_acc")),
+            "gir": _safe_float(r.get("gir")),
+            "scrambling": _safe_float(r.get("scrambling")),
+            "fin_text": r.get("fin_text"),
+        })
+
+    course_rollups = {}
+    for r in recent_rounds:
+        course_name = r.get("course_name")
+        if not course_name:
+            continue
+        if course_name not in course_rollups:
+            course_rollups[course_name] = {"course_name": course_name, "rounds_played": 0, "sg_total_values": []}
+        roll = course_rollups[course_name]
+        roll["rounds_played"] += 1
+        sg_total = _safe_float(r.get("sg_total"))
+        if sg_total is not None:
+            roll["sg_total_values"].append(sg_total)
+    course_summaries = sorted(
+        (
+            {
+                "course_name": roll["course_name"],
+                "rounds_played": roll["rounds_played"],
+                "avg_sg_total": _avg(roll["sg_total_values"]),
+            }
+            for roll in course_rollups.values()
+        ),
+        key=lambda row: (row["rounds_played"], row["avg_sg_total"] or -999),
+        reverse=True,
+    )[:8]
 
     # ── 6. Build approach buckets ───────────────────────────────────────
     approach_buckets = []
@@ -3449,14 +3709,30 @@ async def get_player_standalone_profile(player_key: str):
             "driving_acc":   _safe_float(skill_data.get("driving_acc")),
         }
 
+    ranking_card = {
+        "dg_rank": int(ranking_data["datagolf_rank"]) if ranking_data and ranking_data.get("datagolf_rank") else None,
+        "owgr_rank": int(ranking_data["owgr_rank"]) if ranking_data and ranking_data.get("owgr_rank") else None,
+        "dg_skill_estimate": _safe_float(ranking_data.get("dg_skill_estimate")) if ranking_data else None,
+        "primary_tour": ranking_data.get("primary_tour") if ranking_data else None,
+        "player_name": ranking_data.get("player_name") if ranking_data else None,
+        "extra_scalars": {},
+    }
+    if ranking_data:
+        for key, value in ranking_data.items():
+            if key in {"datagolf_rank", "owgr_rank", "dg_skill_estimate", "primary_tour", "player_name"}:
+                continue
+            fval = _safe_float(value)
+            if fval is not None:
+                ranking_card["extra_scalars"][key] = round(fval, 4)
+
     header = {
         "player_display": player_display_name,
-        "dg_rank":         int(ranking_data["datagolf_rank"]) if ranking_data and ranking_data.get("datagolf_rank") else None,
-        "owgr_rank":       int(ranking_data["owgr_rank"]) if ranking_data and ranking_data.get("owgr_rank") else None,
-        "dg_skill_estimate": _safe_float(ranking_data.get("dg_skill_estimate")) if ranking_data else None,
-        "primary_tour":    ranking_data.get("primary_tour") if ranking_data else None,
+        "dg_rank": ranking_card["dg_rank"],
+        "owgr_rank": ranking_card["owgr_rank"],
+        "dg_skill_estimate": ranking_card["dg_skill_estimate"],
+        "primary_tour": ranking_card["primary_tour"],
         "rounds_in_db":    len(recent_rounds),
-        "events_tracked":  len(recent_events),
+        "events_tracked":  len(event_seen),
     }
 
     return {
@@ -3466,8 +3742,12 @@ async def get_player_standalone_profile(player_key: str):
         "sg_skills": sg_skills,
         "approach_buckets": approach_buckets,
         "rolling_windows": windows,
+        "rolling_windows_expanded": rolling_windows_expanded,
         "trend_series": trend_series,
         "recent_events": recent_events,
+        "recent_rounds_sample": recent_rounds_sample,
+        "course_summaries": course_summaries,
+        "ranking_card": ranking_card,
         "ranking_data": ranking_data,
         "has_skill_data": skill_data is not None,
         "has_ranking_data": ranking_data is not None,

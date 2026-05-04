@@ -1,5 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -11,14 +10,6 @@ const TIER_STYLE: Record<string, string> = {
   STRONG: "bg-emerald-400/12 text-emerald-300",
   GOOD: "bg-green-500/12 text-green-400",
   LEAN: "bg-slate-400/10 text-slate-400",
-}
-
-export const TREND_ARROW: Record<string, string> = { hot: "↑↑", warming: "↑", cooling: "↓", cold: "↓↓" }
-export const TREND_COLOR: Record<string, string> = {
-  hot: "text-emerald-400",
-  warming: "text-emerald-300",
-  cooling: "text-amber-300",
-  cold: "text-red-400",
 }
 
 export const getTierStyle = (tier?: string) => TIER_STYLE[tier ?? ""] ?? TIER_STYLE.LEAN
@@ -89,21 +80,36 @@ export function buildMatchupKey(matchup: MatchupBet) {
 }
 
 export function secondaryBadgeLabel(market: string) {
-  const normalized = market.toLowerCase()
-  if (normalized.includes("miss")) {
-    return "miss-cut"
+  const normalized = market.toLowerCase().trim()
+  const exact: Record<string, string> = {
+    outright: "Outright",
+    win: "Outright",
+    winner: "Outright",
+    frl: "First-round leader",
+    top5: "Top 5",
+    top_5: "Top 5",
+    top10: "Top 10",
+    top_10: "Top 10",
+    top20: "Top 20",
+    top_20: "Top 20",
+    top30: "Top 30",
+    top_30: "Top 30",
+    top40: "Top 40",
+    top_40: "Top 40",
+    make_cut: "Make cut",
+    makecut: "Make cut",
+    miss_cut: "Miss cut",
+    misscut: "Miss cut",
   }
-  if (normalized.includes("top") || normalized.includes("placement")) {
-    return "placement"
-  }
-  return "mispriced"
-}
-
-export function renderTrendValue(direction?: string): ReactNode {
-  const arrow = TREND_ARROW[direction ?? ""] ?? "—"
-  const trendColor = TREND_COLOR[direction ?? ""] ?? "text-slate-500"
-
-  return <span className={trendColor}>{arrow}</span>
+  const exactMatch = exact[normalized]
+  if (exactMatch) return exactMatch
+  const topMatch = normalized.match(/top[_\s-]?(\d+)/)
+  if (topMatch) return `Top ${topMatch[1]}`
+  if (normalized.includes("miss") && normalized.includes("cut")) return "Miss cut"
+  if (normalized.includes("make") && normalized.includes("cut")) return "Make cut"
+  if (normalized.includes("first") && normalized.includes("round")) return "First-round leader"
+  if (normalized.includes("outright") || normalized === "win" || normalized === "winner") return "Outright"
+  return market.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export function formatCompositeMetric(value: number | null | undefined) {

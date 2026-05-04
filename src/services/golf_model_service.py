@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from src import config
 from src import db
 from src.event_format import classify_event_format, EVENT_FORMAT_TEAM
 from src.field_selection import filter_rows_to_field
@@ -68,9 +69,13 @@ def _maybe_log_pair_matchup_shadow(
 class GolfModelService:
     """Orchestrates the full prediction pipeline."""
 
-    def __init__(self, tour: str = "pga", strategy_config: dict = None):
+    def __init__(self, tour: str = "pga", strategy_config: dict = None, model_variant: str | None = None):
         self.tour = tour
         self.strategy_config = strategy_config or {}
+        variant = str(model_variant or config.DEFAULT_MODEL_VARIANT).strip().lower()
+        if variant not in config.ALLOWED_MODEL_VARIANTS:
+            variant = config.DEFAULT_MODEL_VARIANT
+        self.model_variant = variant
         db.ensure_initialized()
 
     def run_analysis(
@@ -106,12 +111,13 @@ class GolfModelService:
             "status": "running",
             "errors": [],
             "warnings": [],
+            "model_variant": self.model_variant,
         }
 
         # Resolve output_dir to project output so app can read card regardless of cwd
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         if not os.path.isabs(output_dir):
-            _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            output_dir = os.path.join(_project_root, output_dir)
+            output_dir = os.path.join(project_root, output_dir)
 
         # Step 1: Detect current event if not specified
         event_info = None
@@ -261,6 +267,8 @@ class GolfModelService:
                 result["strategy_meta"] = merged_meta
             else:
                 result["strategy_meta"] = pipeline_meta
+        if isinstance(result.get("strategy_meta"), dict):
+            result["strategy_meta"].setdefault("model_variant", self.model_variant)
 
         # Step 8: Run composite model
         print("  Running composite model...")
@@ -414,6 +422,13 @@ class GolfModelService:
         result["ai_decisions"] = ai_decisions
 
         # Step 12: Log predictions for calibration (skipped if quality check fails)
+        self._store_displayed_picks(
+            tid=tid,
+            value_bets=value_bets,
+            matchup_bets=matchup_bets_all_books,
+            matchup_failed_candidates=(matchup_diagnostics or {}).get("failed_candidates") or [],
+            composite=composite,
+        )
         if value_bets and placement_logging_allowed:
             self._log_predictions(tid, value_bets)
         elif value_bets and not placement_logging_allowed:
@@ -747,6 +762,7 @@ class GolfModelService:
             weights,
             course_name=course_name,
             strategy_config=None,
+            model_variant=self.model_variant,
         )
 
     def _is_ai_available(self) -> bool:
@@ -817,6 +833,7 @@ class GolfModelService:
                 tournament_id=tid,
                 field_strength=_fstr,
                 ev_threshold=ev_threshold,
+                model_variant=self.model_variant,
             )
             value_bets[bt] = vb
         return value_bets
@@ -847,7 +864,9 @@ class GolfModelService:
                 "adaptation_state": "normal",
                 "state": "market_available_no_edges",
                 "errors": [],
+                "failed_candidates": [],
             }
+            FAILED_CANDIDATE_LIMIT = 200
             ev_threshold = self.strategy_config.get("matchup_ev_threshold") if self.strategy_config else None
             if ev_threshold is None:
                 ev_threshold = self.strategy_config.get("ev_threshold") if self.strategy_config else None
@@ -875,6 +894,7 @@ class GolfModelService:
                     card_bets, all_book_bets, selection_diag = find_matchup_value_bets_with_all_books(
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
                         market_type=market_key,
+                        model_variant=self.model_variant,
                         return_diagnostics=True,
                     )
                     diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))
@@ -902,6 +922,13 @@ class GolfModelService:
                         )
                         for stat_key in ("lines_seen", "qualifying_edges", "card_rows"):
                             merged[stat_key] = int(merged.get(stat_key, 0)) + int(stats.get(stat_key, 0))
+                    # Aggregate failed candidates across markets, capped to keep payload bounded.
+                    for cand in (selection_diag.get("failed_candidates") or []):
+                        if len(diagnostics["failed_candidates"]) >= FAILED_CANDIDATE_LIMIT:
+                            break
+                        cand_with_market = dict(cand)
+                        cand_with_market["market_type"] = market_key
+                        diagnostics["failed_candidates"].append(cand_with_market)
                     for b in card_bets:
                         b["market_type"] = market_key
                     for b in all_book_bets:
@@ -946,6 +973,11 @@ class GolfModelService:
             diagnostics["books_seen"] = sorted(book for book in books_seen if book)
             diagnostics["books_with_qualifying_edges"] = sorted(book for book in books_with_qualifying_edges if book)
             diagnostics["books_after_card_caps"] = sorted(book for book in books_after_card_caps if book)
+            # Sort the merged failed candidates by best-EV first.
+            diagnostics["failed_candidates"].sort(
+                key=lambda b: (b.get("ev") if b.get("ev") is not None else -999),
+                reverse=True,
+            )
             total_raw_rows = sum(int((entry or {}).get("raw_rows", 0)) for entry in diagnostics["market_counts"].values())
             if diagnostics["errors"]:
                 diagnostics["state"] = "pipeline_error"
@@ -969,6 +1001,7 @@ class GolfModelService:
                 "adaptation_state": "unknown",
                 "state": "pipeline_error",
                 "errors": [str(e)],
+                "failed_candidates": [],
             }
 
     def _fetch_3ball_value_bets(self, composite, tid) -> list:
@@ -981,7 +1014,7 @@ class GolfModelService:
             if not odds:
                 return []
             return find_3ball_value_bets(
-                composite, odds, tournament_id=tid, enable_for_live=True,
+                composite, odds, tournament_id=tid, enable_for_live=True, model_variant=self.model_variant,
             )
         except Exception as e:
             logger.warning("3-ball value bets failed: %s", e)
@@ -1046,6 +1079,8 @@ class GolfModelService:
 
             pick_rows.append({
                 "tournament_id": tid,
+                "model_variant": self.model_variant,
+                "source": "ai_decision",
                 "bet_type": bet_type,
                 "player_key": pk,
                 "player_display": d.get("player", ""),
@@ -1076,6 +1111,137 @@ class GolfModelService:
             log_predictions_for_tournament(tid, value_bets)
         except Exception as e:
             logger.warning(f"Prediction logging error: {e}")
+
+    def _store_displayed_picks(
+        self,
+        *,
+        tid: int,
+        value_bets: dict,
+        matchup_bets: list[dict],
+        matchup_failed_candidates: list[dict] | None,
+        composite: list[dict],
+    ):
+        """Persist every UI-displayed pick so grading has complete coverage."""
+        comp_lookup = {row.get("player_key"): row for row in (composite or [])}
+        pick_rows: list[dict] = []
+
+        for bet_type, bets in (value_bets or {}).items():
+            for bet in bets or []:
+                player_key = (bet.get("player_key") or "").strip()
+                if not player_key:
+                    continue
+                comp = comp_lookup.get(player_key, {})
+                best_odds = bet.get("best_odds")
+                odds_text = None
+                if isinstance(best_odds, (int, float)):
+                    odds_int = int(best_odds)
+                    odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+                elif best_odds is not None:
+                    odds_text = str(best_odds)
+                reasoning_parts = []
+                if bet.get("best_book"):
+                    reasoning_parts.append(f"book={bet.get('best_book')}")
+                if bet.get("ev_pct"):
+                    reasoning_parts.append(f"edge={bet.get('ev_pct')}")
+
+                pick_rows.append({
+                    "tournament_id": tid,
+                    "model_variant": self.model_variant,
+                    "source": "ui_display",
+                    "bet_type": str(bet_type),
+                    "player_key": player_key,
+                    "player_display": bet.get("player_display") or display_name(player_key),
+                    "opponent_key": "",
+                    "opponent_display": "",
+                    "composite_score": comp.get("composite"),
+                    "course_fit_score": comp.get("course_fit"),
+                    "form_score": comp.get("form"),
+                    "momentum_score": comp.get("momentum"),
+                    "model_prob": bet.get("model_prob"),
+                    "market_odds": odds_text,
+                    "market_book": bet.get("book") or bet.get("best_book") or "",
+                    "market_implied_prob": bet.get("market_prob"),
+                    "ev": bet.get("ev"),
+                    "confidence": bet.get("confidence") or bet.get("tier"),
+                    "reasoning": "; ".join(reasoning_parts) or None,
+                })
+
+        for bet in matchup_bets or []:
+            pick_key = (bet.get("pick_key") or "").strip() or normalize_name(str(bet.get("pick", "")))
+            if not pick_key:
+                continue
+            opponent_key = (bet.get("opponent_key") or "").strip() or normalize_name(str(bet.get("opponent", "")))
+            comp = comp_lookup.get(pick_key, {})
+            odds_val = bet.get("odds")
+            odds_text = None
+            if isinstance(odds_val, (int, float)):
+                odds_int = int(odds_val)
+                odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+            elif odds_val is not None:
+                odds_text = str(odds_val)
+            pick_rows.append({
+                "tournament_id": tid,
+                "model_variant": self.model_variant,
+                "source": "ui_display",
+                "bet_type": "matchup",
+                "player_key": pick_key,
+                "player_display": bet.get("pick") or display_name(pick_key),
+                "opponent_key": opponent_key,
+                "opponent_display": bet.get("opponent") or display_name(opponent_key),
+                "composite_score": comp.get("composite"),
+                "course_fit_score": comp.get("course_fit"),
+                "form_score": comp.get("form"),
+                "momentum_score": comp.get("momentum"),
+                "model_prob": bet.get("model_win_prob", bet.get("model_prob")),
+                "market_odds": odds_text,
+                "market_book": bet.get("book") or "",
+                "market_implied_prob": bet.get("implied_prob", bet.get("market_prob")),
+                "ev": bet.get("ev"),
+                "confidence": bet.get("tier"),
+                "reasoning": bet.get("why"),
+            })
+
+        for cand in matchup_failed_candidates or []:
+            pick_key = (cand.get("pick_key") or "").strip() or normalize_name(str(cand.get("pick", "")))
+            if not pick_key:
+                continue
+            opponent_key = (cand.get("opponent_key") or "").strip() or normalize_name(str(cand.get("opponent", "")))
+            comp = comp_lookup.get(pick_key, {})
+            odds_val = cand.get("odds")
+            odds_text = None
+            if isinstance(odds_val, (int, float)):
+                odds_int = int(odds_val)
+                odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+            elif odds_val is not None:
+                odds_text = str(odds_val)
+            pick_rows.append({
+                "tournament_id": tid,
+                "model_variant": self.model_variant,
+                "source": "ui_candidate",
+                "bet_type": "matchup",
+                "player_key": pick_key,
+                "player_display": cand.get("pick") or display_name(pick_key),
+                "opponent_key": opponent_key,
+                "opponent_display": cand.get("opponent") or display_name(opponent_key),
+                "composite_score": comp.get("composite"),
+                "course_fit_score": comp.get("course_fit"),
+                "form_score": comp.get("form"),
+                "momentum_score": comp.get("momentum"),
+                "model_prob": cand.get("model_win_prob"),
+                "market_odds": odds_text,
+                "market_book": cand.get("book") or "",
+                "market_implied_prob": cand.get("implied_prob"),
+                "ev": cand.get("ev"),
+                "confidence": cand.get("tier"),
+                "reasoning": cand.get("reason_code"),
+            })
+
+        if not pick_rows:
+            return
+        try:
+            db.store_picks(pick_rows)
+        except Exception as exc:
+            logger.warning("Displayed pick persistence failed: %s", exc)
 
     def _log_matchup_predictions(self, tid, matchup_bets):
         """Log matchup predictions for calibration tracking."""

@@ -15,7 +15,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src import db
+from src import config, db
 from src.atomic_io import atomic_write_json
 from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.live_refresh_policy import resolve_cadence
@@ -46,6 +46,8 @@ def _default_state() -> dict[str, Any]:
         "next_recompute_at": None,
         "last_ingest_summary": None,
         "last_snapshot_generated_at": None,
+        "last_auto_grade_at": None,
+        "last_auto_grade_status": None,
     }
 
 
@@ -275,7 +277,7 @@ def _extract_rankings(
     *,
     finish_states: dict[str, str] | None = None,
     exclude_cut_players: bool = False,
-    limit: int = 30,
+    limit: int | None = None,
 ) -> list[dict]:
     rows = sorted(composite or [], key=lambda item: item.get("composite", 0), reverse=True)
     rankings: list[dict] = []
@@ -311,7 +313,7 @@ def _extract_rankings(
             if not entry.get("availability") and details.get("availability"):
                 entry["availability"] = details.get("availability")
         rankings.append(entry)
-        if rank >= limit:
+        if limit is not None and rank >= limit:
             break
     return rankings
 
@@ -389,7 +391,7 @@ def _build_live_point_in_time_rankings(
     scored.sort(key=lambda item: item[0], reverse=True)
     rankings: list[dict] = []
     rank = 0
-    for adjusted, base, row in scored[:30]:
+    for adjusted, base, row in scored:
         rank += 1
         pk = str(row.get("player_key") or "").strip().lower()
         finish_state = finish_state_map.get(pk)
@@ -582,13 +584,33 @@ def _build_market_prediction_rows(
         return []
 
     rows: list[dict] = []
+    seen_row_keys: set[str] = set()
+
+    def _safe_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _append_row(row: dict[str, Any], *, row_key: str) -> None:
+        if row_key in seen_row_keys:
+            return
+        seen_row_keys.add(row_key)
+        rows.append(row)
+
     matchup_rows = section.get("matchup_bets_all_books") or section.get("matchup_bets") or []
     for bet in matchup_rows:
-        ev = float(bet.get("ev") or 0.0)
+        ev = _safe_float(bet.get("ev")) or 0.0
         model_prob = bet.get("model_win_prob")
         implied_prob = bet.get("implied_prob")
         odds = _normalize_market_odds(bet.get("odds"), bet.get("market_odds"))
-        rows.append(
+        player_key = str(bet.get("pick_key") or bet.get("player_key") or "").strip() or None
+        opponent_key = str(bet.get("opponent_key") or "").strip() or None
+        book = str(bet.get("book") or bet.get("bookmaker") or "").strip() or None
+        market_type = str(bet.get("market_type") or "tournament_matchups")
+        _append_row(
             {
                 "snapshot_id": snapshot_id,
                 "generated_at": generated_at,
@@ -597,28 +619,88 @@ def _build_market_prediction_rows(
                 "event_id": event_id,
                 "event_name": event_name,
                 "market_family": "matchup",
-                "market_type": str(bet.get("market_type") or "tournament_matchups"),
-                "player_key": str(bet.get("pick_key") or bet.get("player_key") or "").strip() or None,
+                "market_type": market_type,
+                "player_key": player_key,
                 "player_display": str(bet.get("pick") or bet.get("player") or "").strip() or None,
-                "opponent_key": str(bet.get("opponent_key") or "").strip() or None,
+                "opponent_key": opponent_key,
                 "opponent_display": str(bet.get("opponent") or "").strip() or None,
-                "book": str(bet.get("book") or bet.get("bookmaker") or "").strip() or None,
+                "book": book,
                 "odds": odds,
-                "model_prob": float(model_prob) if model_prob is not None else None,
-                "implied_prob": float(implied_prob) if implied_prob is not None else None,
+                "model_prob": _safe_float(model_prob),
+                "implied_prob": _safe_float(implied_prob),
                 "ev": ev,
                 "is_value": 1 if ev > 0 else 0,
                 "payload_json": json.dumps(bet),
-            }
+            },
+            row_key="|".join(
+                [
+                    "matchup",
+                    market_type,
+                    player_key or "",
+                    opponent_key or "",
+                    book or "",
+                    odds or "",
+                ]
+            ),
         )
 
-    for market_type, bets in (section.get("value_bets") or {}).items():
+    failed_candidates = (
+        section.get("all_failed_candidates")
+        or (section.get("diagnostics") or {}).get("failed_candidates")
+        or []
+    )
+    for cand in failed_candidates:
+        ev = _safe_float(cand.get("ev")) or 0.0
+        odds = _normalize_market_odds(cand.get("odds"))
+        player_key = str(cand.get("pick_key") or cand.get("player_key") or "").strip() or None
+        opponent_key = str(cand.get("opponent_key") or "").strip() or None
+        book = str(cand.get("book") or cand.get("bookmaker") or "").strip() or None
+        market_type = str(cand.get("market_type") or "tournament_matchups")
+        _append_row(
+            {
+                "snapshot_id": snapshot_id,
+                "generated_at": generated_at,
+                "tour": str(tour or "").strip().lower() or None,
+                "section": section_name,
+                "event_id": event_id,
+                "event_name": event_name,
+                "market_family": "matchup",
+                "market_type": market_type,
+                "player_key": player_key,
+                "player_display": str(cand.get("pick") or cand.get("player") or "").strip() or None,
+                "opponent_key": opponent_key,
+                "opponent_display": str(cand.get("opponent") or "").strip() or None,
+                "book": book,
+                "odds": odds,
+                "model_prob": _safe_float(cand.get("model_win_prob")),
+                "implied_prob": _safe_float(cand.get("implied_prob")),
+                "ev": ev,
+                "is_value": 1 if ev > 0 else 0,
+                "payload_json": json.dumps(cand),
+            },
+            row_key="|".join(
+                [
+                    "matchup",
+                    market_type,
+                    player_key or "",
+                    opponent_key or "",
+                    book or "",
+                    odds or "",
+                ]
+            ),
+        )
+
+    value_bets_source = section.get("all_value_bets") or section.get("value_bets") or {}
+    for market_type, bets in value_bets_source.items():
         for bet in bets or []:
             model_prob = bet.get("model_prob")
             implied_prob = bet.get("market_prob")
-            ev = float(bet.get("ev") or 0.0)
+            ev = _safe_float(bet.get("ev")) or 0.0
             odds = _normalize_market_odds(bet.get("odds"), bet.get("best_odds"))
-            rows.append(
+            player_key = str(bet.get("player_key") or "").strip() or None
+            book = str(bet.get("book") or bet.get("best_book") or "").strip() or None
+            market_type_str = str(market_type)
+            _append_row(
                 {
                     "snapshot_id": snapshot_id,
                     "generated_at": generated_at,
@@ -627,22 +709,106 @@ def _build_market_prediction_rows(
                     "event_id": event_id,
                     "event_name": event_name,
                     "market_family": "placement",
-                    "market_type": str(market_type),
-                    "player_key": str(bet.get("player_key") or "").strip() or None,
+                    "market_type": market_type_str,
+                    "player_key": player_key,
                     "player_display": str(bet.get("player_display") or bet.get("player") or "").strip() or None,
                     "opponent_key": None,
                     "opponent_display": None,
-                    "book": str(bet.get("book") or bet.get("best_book") or "").strip() or None,
+                    "book": book,
                     "odds": odds,
-                    "model_prob": float(model_prob) if model_prob is not None else None,
-                    "implied_prob": float(implied_prob) if implied_prob is not None else None,
+                    "model_prob": _safe_float(model_prob),
+                    "implied_prob": _safe_float(implied_prob),
                     "ev": ev,
                     "is_value": 1 if bool(bet.get("is_value")) else 0,
                     "payload_json": json.dumps(bet),
-                }
+                },
+                row_key="|".join(
+                    [
+                        "placement",
+                        market_type_str,
+                        player_key or "",
+                        book or "",
+                        odds or "",
+                    ]
+                ),
             )
 
     return rows
+
+
+def _rankings_to_shadow_field(rankings: list[dict]) -> list[tuple[str, float]]:
+    """Build (player_key, composite) tuples from snapshot rankings for shadow MC."""
+    out: list[tuple[str, float]] = []
+    for row in rankings or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        if not pk:
+            continue
+        comp = row.get("composite")
+        if comp is None:
+            continue
+        try:
+            c = float(comp)
+        except (TypeError, ValueError):
+            continue
+        out.append((pk, c))
+    return out
+
+
+def _run_shadow_monte_carlo_v1(
+    *,
+    snapshot_id: str,
+    generated_at: str,
+    tour: str,
+    snapshot: dict[str, Any],
+) -> int:
+    """
+    Append-only shadow simulation rows when enabled; never affects EV or card output.
+    """
+    from src.models.prob_engine_v1.shadow_dispatch import run_shadow_field_simulation
+    from src.models.prob_engine_v1.shadow_mc import is_any_shadow_monte_carlo_enabled
+
+    if not is_any_shadow_monte_carlo_enabled():
+        return 0
+    rows_written = 0
+    for section_name, section_key in (
+        ("upcoming", "upcoming_tournament"),
+        ("live", "live_tournament"),
+    ):
+        sec = snapshot.get(section_key) or {}
+        if not (sec.get("eligibility") or {}).get("verified"):
+            continue
+        event_id = str(sec.get("source_event_id") or "").strip()
+        if not event_id:
+            continue
+        rankings = sec.get("rankings") or []
+        field = _rankings_to_shadow_field(rankings)
+        if len(field) < int(getattr(config, "SHADOW_MC_MIN_FIELD", 30)):
+            continue
+        seed = hash(snapshot_id + section_name + event_id) % (2**32)
+        try:
+            payload = run_shadow_field_simulation(
+                field,
+                rankings,
+                seed=seed,
+            )
+            payload["snapshot_generated_at"] = generated_at
+            payload["section"] = section_name
+            payload["event_id"] = event_id
+            db.append_shadow_event_simulation(
+                snapshot_id=snapshot_id,
+                event_id=event_id,
+                section=section_name,
+                tour=str(tour or "").strip().lower() or None,
+                n_sims=int(payload.get("n_sims") or 0),
+                engine_version=str(payload.get("engine_version") or ""),
+                payload_json=payload,
+            )
+            rows_written += 1
+        except Exception as exc:
+            _logger.warning(
+                "shadow Monte Carlo v1 failed (%s/%s): %s", section_name, event_id, exc
+            )
+    return rows_written
 
 
 def _event_slug(value: str | None) -> str:
@@ -965,6 +1131,106 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     }
 
 
+def _ingest_has_event_context(ingest_summary: dict[str, Any]) -> bool:
+    """True when schedule ingest resolved enough context to run the model."""
+    return bool(
+        str(ingest_summary.get("event_id") or "").strip()
+        or str(ingest_summary.get("event_name") or "").strip()
+    )
+
+
+def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[str, Any] | None:
+    """Auto-grade ungraded UI picks for the latest completed event."""
+    event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
+    raw_year = ingest_summary.get("latest_completed_event_year")
+    if not event_id:
+        return None
+    try:
+        year = int(raw_year)
+    except (TypeError, ValueError):
+        year = datetime.now(timezone.utc).year
+
+    conn = db.get_conn()
+    try:
+        tournament = conn.execute(
+            "SELECT id, name FROM tournaments WHERE event_id = ? AND year = ? ORDER BY id DESC LIMIT 1",
+            (event_id, year),
+        ).fetchone()
+        if not tournament:
+            return {
+                "status": "skipped",
+                "reason": "tournament_not_found",
+                "event_id": event_id,
+                "year": year,
+            }
+        tournament_id = int(tournament["id"])
+        picks_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM picks WHERE tournament_id = ?",
+                (tournament_id,),
+            ).fetchone()["count"]
+            or 0
+        )
+        graded_count = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM pick_outcomes po
+                JOIN picks p ON p.id = po.pick_id
+                WHERE p.tournament_id = ?
+                """,
+                (tournament_id,),
+            ).fetchone()["count"]
+            or 0
+        )
+    finally:
+        conn.close()
+
+    if picks_count == 0:
+        return {
+            "status": "skipped",
+            "reason": "no_tracked_picks",
+            "event_id": event_id,
+            "year": year,
+            "tournament_id": tournament_id,
+        }
+    if graded_count >= picks_count:
+        return {
+            "status": "skipped",
+            "reason": "already_graded",
+            "event_id": event_id,
+            "year": year,
+            "tournament_id": tournament_id,
+            "picks_count": picks_count,
+            "graded_count": graded_count,
+        }
+
+    from scripts.grade_tournament import grade_tournament
+
+    _logger.info(
+        "Auto-grading latest completed event %s/%s (tournament_id=%s, picks=%s, graded=%s)",
+        event_id,
+        year,
+        tournament_id,
+        picks_count,
+        graded_count,
+    )
+    report = grade_tournament(
+        event_id=event_id,
+        year=year,
+        tournament_id=tournament_id,
+        event_name=ingest_summary.get("latest_completed_event_name"),
+    )
+    return {
+        "status": report.get("status", "unknown"),
+        "event_id": event_id,
+        "year": year,
+        "tournament_id": tournament_id,
+        "picks_count": picks_count,
+        "graded_count_before": graded_count,
+    }
+
+
 def _build_section_eligibility(
     analysis_result: dict[str, Any],
     *,
@@ -1059,6 +1325,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         mode=mode,
         enable_ai=False,
         enable_backfill=False,
+        model_variant=config.DEFAULT_MODEL_VARIANT,
     )
     generated_at = _iso_now()
     snapshot_id = uuid.uuid4().hex
@@ -1079,6 +1346,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         "field_size": live_result.get("field_size"),
         "tournament_id": live_result.get("tournament_id"),
         "course_num": live_result.get("course_num"),
+        "model_variant": live_result.get("model_variant", config.DEFAULT_MODEL_VARIANT),
         "event_format": live_result.get("event_format"),
         "skipped_reason": live_result.get("skipped_reason"),
         "rankings": _extract_rankings(
@@ -1117,15 +1385,12 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or event_name or "").strip()
     resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or live_event_id or "").strip()
     resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip()
-    live_event_name = event_name if live_is_active else (resolved_completed_event_name or event_name)
-    live_source_event_id = str(
-        ingest_summary.get("event_id") if live_is_active else resolved_completed_event_id
-    ).strip()
-    live_source_event_year_raw = (
-        ingest_summary.get("event_year")
-        if live_is_active
-        else (ingest_summary.get("latest_completed_event_year") or ingest_summary.get("event_year"))
-    )
+    # Live section is always built from `live_result`, which targets ingest `event_id` / `event_name`.
+    # During off-air weeks we used to substitute latest_completed_* for labels while still serving
+    # the next-event model rows — that produced mismatched titles vs course/rankings/tournament_id.
+    live_event_name = str(event_name or ingest_summary.get("event_name") or "").strip()
+    live_source_event_id = str(ingest_summary.get("event_id") or "").strip()
+    live_source_event_year_raw = ingest_summary.get("event_year")
     try:
         live_source_event_year = int(live_source_event_year_raw) if live_source_event_year_raw is not None else None
     except (TypeError, ValueError):
@@ -1142,6 +1407,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 mode="full",
                 enable_ai=False,
                 enable_backfill=False,
+                model_variant=config.DEFAULT_MODEL_VARIANT,
             )
         except Exception as exc:
             _logger.warning("Upcoming snapshot recompute failed; attempting verified snapshot fallback: %s", exc)
@@ -1176,6 +1442,9 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             )
             if not upcoming_eligibility.get("verified"):
                 upcoming_state = "eligibility_failed"
+        upcoming_variant = str(
+            upcoming_result.get("model_variant", config.DEFAULT_MODEL_VARIANT)
+        ).strip().lower() or config.DEFAULT_MODEL_VARIANT
         upcoming_section = {
             "event_name": upcoming_result.get("event_name") or upcoming_event_name,
             "course_name": upcoming_result.get("course_name"),
@@ -1216,9 +1485,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
             "source_event_id": str(upcoming_row.get("event_id") or ""),
             "source_event_name": upcoming_event_name,
-            "generated_from": "upcoming_event_model",
+            "generated_from": f"upcoming_event_model_{upcoming_variant}",
             "source_card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
-            "ranking_source": "upcoming_event_model",
+            "ranking_source": f"upcoming_event_model_{upcoming_variant}",
+            "model_variant": upcoming_variant,
             "eligibility": upcoming_eligibility,
             "verification_error": upcoming_result.get("verification_error"),
             "diagnostics": {
@@ -1227,6 +1497,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "adaptation_state": upcoming_diag.get("adaptation_state", "normal"),
                 "reason_codes": upcoming_diag.get("reason_codes") or {},
                 "value_filters": upcoming_value_filters,
+                "books_seen": upcoming_diag.get("books_seen") or [],
+                "books_with_qualifying_edges": upcoming_diag.get("books_with_qualifying_edges") or [],
+                "books_after_card_caps": upcoming_diag.get("books_after_card_caps") or [],
+                "book_stats": upcoming_diag.get("book_stats") or {},
+                "failed_candidates": upcoming_diag.get("failed_candidates") or [],
                 "state": upcoming_state,
                 "errors": (
                     (upcoming_diag.get("errors") or [])
@@ -1336,6 +1611,179 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 or upcoming_section.get("matchup_bets")
                 or []
             )
+
+    # Legacy baseline lane for fallback inspection in Research.
+    legacy_target_name = (
+        upcoming_section.get("event_name")
+        or upcoming_event_name
+        or live_event_name
+        or event_name
+    )
+    legacy_target_event_id = (
+        str(upcoming_section.get("source_event_id") or "").strip()
+        or upcoming_event_id
+        or live_source_event_id
+    )
+    legacy_target_course = (
+        upcoming_section.get("course_name")
+        or upcoming_course
+        or live_course
+    )
+    legacy_result: dict[str, Any] = {}
+    if legacy_target_name:
+        try:
+            legacy_result = run_snapshot_analysis(
+                tour=tour,
+                event_id=legacy_target_event_id or None,
+                tournament_name=str(legacy_target_name).strip() or None,
+                course_name=str(legacy_target_course).strip() or None,
+                mode=mode if live_is_active else "full",
+                enable_ai=False,
+                enable_backfill=False,
+                model_variant=config.LEGACY_MODEL_VARIANT,
+            )
+        except Exception as exc:
+            _logger.warning("Legacy baseline snapshot recompute failed: %s", exc)
+            legacy_result = {}
+
+    if legacy_result:
+        legacy_value_bets, legacy_value_filters = _extract_board_value_bets(
+            legacy_result.get("value_bets") or {},
+            return_diagnostics=True,
+        )
+        legacy_diag = legacy_result.get("matchup_diagnostics") or {}
+        legacy_selection_counts = legacy_diag.get("selection_counts") or {}
+        legacy_selected_rows = int(
+            legacy_selection_counts.get("all_qualifying_rows", legacy_selection_counts.get("selected_rows", 0))
+        )
+        legacy_eligibility = _build_section_eligibility(
+            legacy_result,
+            source_event_id=legacy_target_event_id,
+            tour=tour,
+        )
+        legacy_state = _classify_matchup_state(
+            market_counts=ingest_summary.get("market_counts"),
+            diagnostics_state=legacy_diag.get("state"),
+            selected_rows=legacy_selected_rows,
+            errors=legacy_diag.get("errors"),
+        )
+        if not legacy_eligibility.get("verified"):
+            legacy_state = "eligibility_failed"
+        legacy_section = {
+            "event_name": legacy_result.get("event_name") or legacy_target_name,
+            "course_name": legacy_result.get("course_name") or legacy_target_course,
+            "field_size": legacy_result.get("field_size"),
+            "leaderboard": _load_event_leaderboard_rows(
+                legacy_target_event_id,
+                year=upcoming_row.get("year") or ingest_summary.get("event_year"),
+            ),
+            "rankings": (
+                _extract_rankings(legacy_result.get("composite_results") or [], exclude_cut_players=False)
+                if legacy_eligibility.get("verified")
+                else []
+            ),
+            "matchups": (
+                _extract_matchups(legacy_result.get("matchup_bets") or [])
+                if legacy_eligibility.get("verified")
+                else []
+            ),
+            "matchup_bets": (
+                _extract_board_matchup_bets(legacy_result.get("matchup_bets") or [])
+                if legacy_eligibility.get("verified")
+                else []
+            ),
+            "matchup_bets_all_books": (
+                _extract_board_matchup_bets(
+                    legacy_result.get("matchup_bets_all_books") or legacy_result.get("matchup_bets") or []
+                )
+                if legacy_eligibility.get("verified")
+                else []
+            ),
+            "value_bets": (legacy_value_bets if legacy_eligibility.get("verified") else {}),
+            "card_path": legacy_result.get("output_file") or legacy_result.get("card_filepath"),
+            "source_event_id": str(legacy_target_event_id or ""),
+            "source_event_name": str(legacy_target_name or ""),
+            "generated_from": "legacy_baseline_model",
+            "source_card_path": legacy_result.get("output_file") or legacy_result.get("card_filepath"),
+            "ranking_source": "legacy_baseline_model",
+            "model_variant": config.LEGACY_MODEL_VARIANT,
+            "eligibility": legacy_eligibility,
+            "verification_error": legacy_result.get("verification_error"),
+            "diagnostics": {
+                "market_counts": ingest_summary.get("market_counts") or {},
+                "selection_counts": legacy_diag.get("selection_counts") or {},
+                "adaptation_state": legacy_diag.get("adaptation_state", "normal"),
+                "reason_codes": legacy_diag.get("reason_codes") or {},
+                "value_filters": legacy_value_filters,
+                "state": legacy_state,
+                "errors": (
+                    (legacy_diag.get("errors") or [])
+                    + (
+                        []
+                        if legacy_eligibility.get("verified")
+                        else [
+                            legacy_eligibility.get("summary"),
+                            legacy_eligibility.get("action"),
+                        ]
+                    )
+                ),
+            },
+            "strategy_meta": legacy_result.get("strategy_meta"),
+        }
+    else:
+        legacy_section = {
+            "event_name": str(legacy_target_name or ""),
+            "course_name": str(legacy_target_course or ""),
+            "field_size": 0,
+            "leaderboard": [],
+            "rankings": [],
+            "matchups": [],
+            "matchup_bets": [],
+            "matchup_bets_all_books": [],
+            "value_bets": {},
+            "source_event_id": str(legacy_target_event_id or ""),
+            "source_event_name": str(legacy_target_name or ""),
+            "generated_from": "legacy_baseline_unavailable",
+            "ranking_source": "legacy_baseline_unavailable",
+            "model_variant": config.LEGACY_MODEL_VARIANT,
+            "eligibility": {
+                "verified": False,
+                "field_event_id": str(legacy_target_event_id or ""),
+                "field_player_count": 0,
+                "field_source": "unavailable",
+                "failed_invariants": ["analysis_unavailable"],
+                "summary": "Legacy baseline analysis unavailable.",
+                "details": "Could not produce a legacy baseline snapshot in this cycle.",
+                "action": "Retry refresh after data sync completes.",
+                "code": "legacy_analysis_unavailable",
+                "retryable": True,
+                "major_event": False,
+                "cross_tour_backfill_used": False,
+                "observed_tour": tour,
+            },
+            "verification_error": {
+                "code": "legacy_analysis_unavailable",
+                "summary": "Legacy baseline analysis unavailable.",
+                "details": "Could not produce a legacy baseline snapshot in this cycle.",
+                "action": "Retry refresh after data sync completes.",
+                "retryable": True,
+                "observed_event_id": str(legacy_target_event_id or ""),
+                "observed_tour": tour,
+            },
+            "diagnostics": {
+                "market_counts": ingest_summary.get("market_counts") or {},
+                "selection_counts": {"selected_rows": 0, "all_qualifying_rows": 0},
+                "adaptation_state": "unknown",
+                "reason_codes": {},
+                "value_filters": {
+                    "missing_display_odds": 0,
+                    "ev_cap_filtered": 0,
+                    "probability_inconsistency_filtered": 0,
+                },
+                "state": "pipeline_error",
+                "errors": ["Legacy baseline recompute failed."],
+            },
+        }
 
     live_diag = live_result.get("matchup_diagnostics") or {}
     live_selection_counts = live_diag.get("selection_counts") or {}
@@ -1487,7 +1935,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "matchup_bets_all_books": live_board_matchup_bets_all_books,
             "value_bets": live_value_bets,
             "source_event_id": live_source_event_id,
-            "source_event_name": event_name if live_is_active else (resolved_completed_event_name or event_name),
+            "source_event_name": live_event_name or str(ingest_summary.get("event_name") or ""),
             "data_mode": mode,
             "source": "current_event_model",
             "source_card_path": live_source_card_path,
@@ -1501,6 +1949,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "adaptation_state": live_diag.get("adaptation_state", "normal"),
                 "reason_codes": live_diag.get("reason_codes") or {},
                 "value_filters": base_value_filters,
+                "books_seen": live_diag.get("books_seen") or [],
+                "books_with_qualifying_edges": live_diag.get("books_with_qualifying_edges") or [],
+                "books_after_card_caps": live_diag.get("books_after_card_caps") or [],
+                "book_stats": live_diag.get("book_stats") or {},
+                "failed_candidates": live_diag.get("failed_candidates") or [],
                 "state": live_state,
                 "errors": [err for err in live_diag_errors if err],
             },
@@ -1512,10 +1965,18 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "data_mode": "full",
             "source": "upcoming_event_model",
         },
+        "legacy_tournament": {
+            **legacy_section,
+            "active": True,
+            "event_name": legacy_section.get("event_name") or upcoming_section.get("event_name") or upcoming_event_name,
+            "data_mode": "full",
+            "source": "legacy_baseline_model",
+        },
         "diagnostics": {
             "market_counts": ingest_summary.get("market_counts") or {},
             "live_state": live_state,
             "upcoming_state": (upcoming_section.get("diagnostics") or {}).get("state"),
+            "legacy_state": (legacy_section.get("diagnostics") or {}).get("state"),
         },
     }
     try:
@@ -1557,13 +2018,26 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         snapshot.setdefault("diagnostics", {})["history_write_error"] = str(exc)
     try:
         market_rows = []
+        live_market_section = dict(snapshot.get("live_tournament") or {})
+        live_market_section["all_value_bets"] = live_result.get("value_bets") or {}
+        live_market_section["all_failed_candidates"] = (live_diag or {}).get("failed_candidates") or []
+        upcoming_market_section = dict(snapshot.get("upcoming_tournament") or {})
+        upcoming_market_section["all_value_bets"] = (upcoming_result or {}).get("value_bets") or {}
+        upcoming_market_section["all_failed_candidates"] = (
+            ((upcoming_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
+        )
+        legacy_market_section = dict(snapshot.get("legacy_tournament") or {})
+        legacy_market_section["all_value_bets"] = (legacy_result or {}).get("value_bets") or {}
+        legacy_market_section["all_failed_candidates"] = (
+            ((legacy_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
+        )
         market_rows.extend(
             _build_market_prediction_rows(
                 snapshot_id=snapshot_id,
                 generated_at=generated_at,
                 tour=tour,
                 section_name="live",
-                section_payload=snapshot.get("live_tournament"),
+                section_payload=live_market_section,
             )
         )
         market_rows.extend(
@@ -1572,7 +2046,16 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 generated_at=generated_at,
                 tour=tour,
                 section_name="upcoming",
-                section_payload=snapshot.get("upcoming_tournament"),
+                section_payload=upcoming_market_section,
+            )
+        )
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="legacy",
+                section_payload=legacy_market_section,
             )
         )
         market_rows_written = db.store_market_prediction_rows(market_rows)
@@ -1581,6 +2064,17 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         _logger.warning("Failed to persist market prediction rows: %s", exc)
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0
         snapshot.setdefault("diagnostics", {})["market_rows_write_error"] = str(exc)
+    try:
+        shadow_n = _run_shadow_monte_carlo_v1(
+            snapshot_id=snapshot_id,
+            generated_at=generated_at,
+            tour=tour,
+            snapshot=snapshot,
+        )
+        snapshot.setdefault("diagnostics", {})["shadow_mc_rows_written"] = shadow_n
+    except Exception as exc:
+        _logger.warning("shadow Monte Carlo v1 batch failed: %s", exc)
+        snapshot.setdefault("diagnostics", {})["shadow_mc_rows_written"] = 0
     _write_snapshot(snapshot)
     return snapshot
 
@@ -1642,6 +2136,10 @@ def _run_loop(tour: str) -> None:
                 with _state_lock:
                     _state["last_started_at"] = started_at
                     _state["last_error"] = None
+                if not _ingest_has_event_context(ingest_summary):
+                    ingest_summary = _run_ingest(tour)
+                    with _state_lock:
+                        _state["last_ingest_summary"] = ingest_summary
                 snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
                 finished_at = _iso_now()
                 with _state_lock:
@@ -1650,6 +2148,16 @@ def _run_loop(tour: str) -> None:
                     _state["last_snapshot_generated_at"] = snapshot.get("generated_at")
                     _state["next_recompute_at"] = datetime.fromtimestamp(now_epoch + cadence.recompute_seconds, timezone.utc).isoformat()
                 next_recompute = now_epoch + cadence.recompute_seconds
+                try:
+                    auto_grade_result = _maybe_auto_grade_completed_event(ingest_summary)
+                    with _state_lock:
+                        _state["last_auto_grade_at"] = _iso_now()
+                        _state["last_auto_grade_status"] = auto_grade_result
+                except Exception as exc:  # pragma: no cover - defensive
+                    _logger.warning("Auto-grading check failed: %s", exc)
+                    with _state_lock:
+                        _state["last_auto_grade_at"] = _iso_now()
+                        _state["last_auto_grade_status"] = {"status": "error", "message": str(exc)}
         except Exception as exc:
             _logger.exception("Live refresh cycle failed")
             with _state_lock:

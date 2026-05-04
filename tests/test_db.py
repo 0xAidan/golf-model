@@ -129,3 +129,38 @@ def test_get_player_display_names_prefers_human_readable_name():
     display_names = db.get_player_display_names(tid)
 
     assert display_names["fifa_laopakdee"] == "Fifa Laopakdee"
+
+
+def test_store_picks_dedupes_within_lane_but_allows_cross_lane():
+    tid = db.get_or_create_tournament("Lane Dedup Test", year=2026)
+    base_pick = {
+        "tournament_id": tid,
+        "bet_type": "matchup",
+        "player_key": "xander_schauffele",
+        "player_display": "Xander Schauffele",
+        "opponent_key": "collin_morikawa",
+        "opponent_display": "Collin Morikawa",
+        "model_prob": 0.52,
+        "market_odds": "-110",
+        "market_implied_prob": 0.5238,
+        "ev": 0.08,
+        "confidence": "good",
+        "reasoning": "book=bet365",
+        "model_variant": "baseline",
+        "source": "ui_display",
+    }
+    db.store_picks([base_pick, dict(base_pick)])
+    v5_pick = dict(base_pick)
+    v5_pick["model_variant"] = "v5"
+    v5_pick["model_prob"] = 0.55
+    db.store_picks([v5_pick])
+
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT model_variant, COUNT(*) AS c FROM picks WHERE tournament_id = ? GROUP BY model_variant",
+        (tid,),
+    ).fetchall()
+    conn.close()
+    counts = {row["model_variant"]: row["c"] for row in rows}
+    assert counts.get("baseline") == 1
+    assert counts.get("v5") == 1

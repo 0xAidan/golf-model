@@ -3,19 +3,24 @@ import { ActivitySquare, Layers3, Radar, ScanSearch, Trophy } from "lucide-react
 import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { MetricTile } from "@/components/shell"
 import type { CockpitSpotlightModel } from "@/lib/cockpit-spotlight"
+import { SPOTLIGHT_NOTE_TOOLTIPS } from "@/lib/metric-tooltips"
 import type { CompositePlayer, PlayerProfile } from "@/lib/types"
 
 export function PlayerSpotlightPanel({
   spotlight,
   player,
   profile,
-  profileReady,
+  profileState,
+  profileErrorMessage,
+  onRetryProfile,
   richProfilesEnabled,
 }: {
   spotlight: CockpitSpotlightModel | null
   player: CompositePlayer | null
   profile?: PlayerProfile
-  profileReady: boolean
+  profileState: "loading" | "ready" | "error" | "unavailable"
+  profileErrorMessage?: string
+  onRetryProfile?: () => void
   richProfilesEnabled: boolean
 }) {
   if (!spotlight) {
@@ -63,6 +68,7 @@ export function PlayerSpotlightPanel({
               value={item.value}
               detail={item.detail}
               tone={item.tone}
+              title={item.title}
             />
           ))}
         </div>
@@ -80,6 +86,7 @@ export function PlayerSpotlightPanel({
                 value={item.value}
                 detail={item.detail}
                 tone={item.tone}
+                title={item.title}
               />
             ))}
           </div>
@@ -96,7 +103,9 @@ export function PlayerSpotlightPanel({
           <div>
             {spotlight.inventoryNotes.map((note) => (
               <div key={note.label} className="term-row">
-                <span className="term-row-eye">{note.label}</span>
+                <span className="term-row-eye" title={SPOTLIGHT_NOTE_TOOLTIPS[note.label]}>
+                  {note.label}
+                </span>
                 <span className="term-row-det" style={{ WebkitLineClamp: 3 }}>{note.detail}</span>
               </div>
             ))}
@@ -118,7 +127,13 @@ export function PlayerSpotlightPanel({
               </span>
             </div>
             <div style={{ padding: "8px" }}>
-              <PlayerProfileSections player={player} profile={profile} profileReady={profileReady} />
+              <PlayerProfileSections
+                player={player}
+                profile={profile}
+                profileState={profileState}
+                errorMessage={profileErrorMessage}
+                onRetry={onRetryProfile}
+              />
             </div>
           </div>
         ) : (

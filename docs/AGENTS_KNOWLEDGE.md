@@ -4,7 +4,9 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-04-06. Model version: 4.2. Test count: 138 (across 35 test files). app.py: 2916 lines. Frontend: React + Vite + TypeScript.
+**Last verified:** 2026-05-04. Run `pytest` for current test count. app.py: ~2940 lines. Frontend: React + Vite + TypeScript.
+
+**Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
 ---
 
@@ -41,7 +43,8 @@ golf-model/
 ├── pyproject.toml           # Project metadata
 ├── requirements.txt         # Python dependencies (pinned)
 ├── setup.py                 # Legacy setup script
-├── deploy.sh                # One-command VPS deployment (--setup, --update, --status)
+├── deploy.sh                # VPS deploy: --setup, --update (SSH), --update-local (on-server)
+├── scripts/deploy-update-steps.sh  # Shared pull/build/restart steps (used by deploy.sh)
 ├── .pre-commit-config.yaml  # Pre-commit hooks
 ├── .github/workflows/ci.yml # GitHub Actions CI
 ├── README.md                # Human-readable project overview
@@ -59,8 +62,9 @@ golf-model/
 │   ├── csv_parser.py        # Legacy Betsperts CSV parser (still functional)
 │   ├── logging_config.py    # Structured logging setup
 │   │
-│   ├── models/              # SUB-MODELS (6 files)
+│   ├── models/              # SUB-MODELS
 │   │   ├── composite.py     # Blends course_fit + form + momentum into single score
+│   │   ├── prob_engine_v1/  # Shadow/offline MC v1+v2 (append-only; never live EV)
 │   │   ├── course_fit.py    # Course-specific SG scoring + confidence scaling
 │   │   ├── form.py          # Recent performance (rolling windows, DG skill, rankings)
 │   │   ├── momentum.py      # Trend detection (window comparisons, elite stability)
@@ -149,7 +153,7 @@ golf-model/
 │   └── run_autoresearch_holdout.py
 │
 │ ── tests/ (PYTEST SUITE) ─────────────────────────────────────
-├── tests/                   # 138 tests across 35 test files
+├── tests/                   # Pytest suite (~370 tests across 63 modules)
 │   ├── conftest.py          # Fixtures: tmp_db, sample_tournament, sample_metrics
 │   ├── test_value.py
 │   ├── test_form.py
@@ -249,7 +253,7 @@ golf-model/
 | Layer | File(s) | What it controls |
 |-------|---------|------------------|
 | Secrets/API | `.env` | API keys, `AI_BRAIN_PROVIDER`, `EV_THRESHOLD`, `MATCHUP_EV_THRESHOLD`, optional `PREFERRED_BOOK` metadata |
-| Feature toggles | `feature_flags.yaml` | `kelly_sizing`, `clv_tracking`, `exposure_caps`, `dynamic_blend`, `dead_heat_adjustment`, `3ball`, `use_confirmed_field_only` |
+| Feature toggles | `feature_flags.yaml` | `kelly_sizing`, `clv_tracking`, `exposure_caps`, `dynamic_blend`, `dynamic_blend_oos_promotion`, `dead_heat_adjustment`, `3ball`, `use_confirmed_field_only`, `shadow_monte_carlo_v1`, `shadow_monte_carlo_v2` |
 | Run profiles | `profiles.yaml` | `tour`, `enable_ai`, `enable_backfill`, `backfill_years`, `output_dir` (profiles: default, quick, full) |
 | Model tuning | `src/config.py` | EV thresholds, blend weights, adaptation states, matchup params, default weights, weather/confidence/integrity constants |
 
@@ -263,7 +267,7 @@ golf-model/
 | Intent | Command | Notes |
 |--------|---------|-------|
 | Full prediction pipeline | `python run_predictions.py` | Primary entry. Auto-detects current DG event, runs full pipeline. Uses GolfModelService. |
-| Web UI + API | `python app.py` | http://localhost:8000; API docs at /docs. Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups are the default card mode; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
+| Web UI + API | `python app.py` | Local: http://localhost:8000; API docs at /docs. **Production:** https://golf.ancc.blog/ (HTTPS at the domain; app binds :8000 on the server behind the proxy). Main tabs: predictions, autoresearch, grading. **Autoresearch UI:** `Simple Mode` is now the default operator path (one-button scalar edge tuner, report-only); `Lab Mode` contains the old advanced research controls. **Prediction default / full card:** 72-hole (tournament) matchups are the default card mode; **round** H2H is a separate mode (`round-matchups`) because books often do not list every DG pair. |
 | First-time setup | `python setup_wizard.py` | Backfills data, initializes DB. Run once. |
 | Unified launcher | `python start.py` | Interactive menu routing to pipeline, backtester, etc. |
 | CLI analysis | `python analyze.py --tournament "Name" --course "Name" --sync` | Own pipeline by default. Add `--service` to use GolfModelService. `--ai` for AI. `--calibration` for dashboard. |
@@ -303,11 +307,19 @@ Use these fields to separate causes:
 - `diagnostics.selection_counts.selected_rows` (card-curated rows after exposure/pair caps)
 - `diagnostics.reason_codes` (where rows were excluded)
 
+### Measurement APIs (v5 Milestone A)
+
+- `GET /api/calibration` — calibration summary from `prediction_log` (existing).
+- `GET /api/calibration/by-market` — empirical buckets from `calibration_curve` grouped by `bet_type` (plus global aggregate).
+- `GET /api/clv/summary` — CLV overall and segmented by `market_book`.
+- `GET /api/research/ab-report?event_id=...` — compares v5 vs legacy lanes using `market_prediction_rows` (optional `persist=false` to skip writing files under `output/research/ab_reports/`).
+
 ### Cockpit dashboard tabs (React SPA)
 
 - **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`).
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
+- **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses `grid-template-rows: minmax(0, 1fr)` so columns stay within the viewport. Center column: **vertical split panes** (`react-resizable-panels`, `CockpitResizableStack`) between power rankings, top picks, secondary markets, and (live/past only) leaderboard — drag horizontal gutters to resize; each pane scrolls internally. Sizes persist in `localStorage` (`autoSaveId` per layout). Without the `fr` grid row, implicit `auto` rows grow with content and clip the center column.
 
 ---
 
@@ -372,7 +384,7 @@ Major sections and key values:
 5. **Course profile:** `course_profile.load_course_profile()` from `data/courses/*.json` or AI vision extraction.
 6. **Composite:** `models.composite.compute_composite()` calls `course_fit`, `form`, `momentum`; blends with weights from config or DB `weight_sets`; optional weather adjustments.
 7. **AI pre-tournament:** `ai_brain.pre_tournament_analysis()` → narrative, key factors, player adjustments → `ai_decisions` table. Adjustments applied to composite scores (capped at `config.AI_ADJUSTMENT_CAP` = ±3).
-8. **Value:** `value.find_value_bets()` converts composite → probabilities (softmax), blends with DG calibrated probs (95/5), applies empirical calibration correction when bucket has ≥50 samples (`calibration.get_calibration_correction`), computes EV vs market odds, filters by threshold. Value bet dicts include `calibration_applied`. `matchup_value.find_matchup_value_bets()` uses Platt-sigmoid + DG matchup blend (80/20), conviction scoring, and per-market exposure (tournament 2, round 3). Matchup predictions are logged to `prediction_log` for post-tournament scoring and Platt recalibration.
+8. **Value:** `value.find_value_bets()` converts composite → probabilities (softmax), blends with DG calibrated probs (95/5). When both course-history and baseline sim metrics exist, `value.select_dg_primary_probability` applies a **shrinkage gate** (config `COURSE_HISTORY_*`; set `COURSE_HISTORY_POLICY=legacy` for strict CH-first). Then empirical calibration when bucket has ≥50 samples (`calibration.get_calibration_correction(..., bet_type=...)`), EV vs market odds, threshold filters. Value rows may include `dg_ch_shrinkage_gated`, `calibration_applied`, `uncertainty`, and `v5_uncertainty` (same value when present). `matchup_value.find_matchup_value_bets()` uses Platt-sigmoid + DG matchup blend (80/20), conviction scoring, and per-market exposure (tournament 2, round 3). Matchup predictions are logged to `prediction_log` for post-tournament scoring and Platt recalibration.
 9. **Portfolio:** `portfolio.enforce_diversification()` + `exposure` caps.
 10. **Output:** `card.generate_card()` → `output/{safe_name}_{YYYYMMDD}.md`. `methodology.generate_methodology()` → `output/{safe_name}_methodology_{YYYYMMDD}.md`. `output_manager.archive_previous()` moves older versions to `output/archive/`.
 
@@ -388,7 +400,7 @@ Major sections and key values:
 
 **AI:** `ai_memory`, `ai_decisions`, `ai_adjustments`, `ai_adjustment_log`.
 
-**Learning / calibration:** `prediction_log`, `calibration_curve`, `weight_sets`, `market_performance`, `blend_history`, `matchup_calibration`, `bankroll`, `clv_log`.
+**Learning / calibration:** `prediction_log`, `calibration_curve` (per-`bet_type` buckets + global `bet_type=''`), `weight_sets`, `market_performance`, `blend_history`, `matchup_calibration`, `bankroll`, `clv_log` (optional `market_book`).
 
 **Course:** `course_weight_profiles`, `course_encyclopedia`, `course_strategies`.
 
@@ -397,6 +409,10 @@ Major sections and key values:
 **Backtester / PIT:** `pit_rolling_stats`, `pit_course_stats`, `historical_predictions`, `historical_odds`, `historical_matchup_odds`, `historical_event_info`, `tournament_weather`, `tournament_weather_summary`, `backfill_progress`.
 
 **Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`, `challenger_predictions` (champion-challenger shadow rows).
+
+**Shadow Monte Carlo (offline):** `shadow_event_simulations` — optional append-only rows from `src/models/prob_engine_v1` when **v1** (`SHADOW_MC_V1=1` or `shadow_monte_carlo_v1`) **or v2** (`SHADOW_MC_ENGINE=v2` or `shadow_monte_carlo_v2`) is enabled; `dashboard_runtime` uses `is_any_shadow_monte_carlo_enabled()` then dispatches **v2** (rounds-based per-player SD, field correlation, proportional cut + `p_make_cut`, contextual summary JSON) or **v1** (composite noise only). Tuning: `SHADOW_MC_*`, `SHADOW_MC_FIELD_CORR`, `SHADOW_MC_CUT_KEEP_FRAC`. Does **not** affect EV, picks, or snapshot payloads except `diagnostics.shadow_mc_rows_written` when a row is written.
+
+**Dynamic blend OOS promotion:** when `dynamic_blend` and `dynamic_blend_oos_promotion` are true, `src/dynamic_blend.get_blend_ratio` will not **increase** model weight via EWA unless recent `blend_history` rows show the model Brier beating DG Brier (with margin) with enough tournaments and sample counts (`DYNAMIC_BLEND_PROMO_*` in `src/config.py`). Default flag is **false** so behavior matches pre-gate unless you opt in.
 
 **External data:** `equipment_changes`, `intel_events`.
 
@@ -408,6 +424,21 @@ Notes:
 - `PRAGMA foreign_keys = ON` is set, but no FOREIGN KEY constraints are defined in CREATE TABLE statements. The pragma has no practical effect currently.
 - Schema and migrations are inline in `db.py` (no Alembic or separate migration tool).
 - Minor naming inconsistencies exist (e.g., `dg_id` vs `player_dg_id` in different tables).
+
+### Grading, calibration logging, and dense market rows (v5 contract)
+
+These four stores work together; they are **not** interchangeable:
+
+| Store | Role |
+|-------|------|
+| **`picks`** | Canonical displayed/staked picks (`store_picks` / `_store_displayed_picks`). UNIQUE `(tournament_id, model_variant, source, player_key, bet_type, opponent_key, market_book, market_odds)` via `_add_unique_constraints` in `src/db.py`. |
+| **`pick_outcomes`** | Grading joins to `picks`: hit/miss, profit, etc. (`score_picks_for_tournament` in `src/learning.py`). |
+| **`prediction_log`** | Calibration spine: model vs market vs eventual outcomes. **`INSERT OR IGNORE`** in `log_predictions()` keeps the **first** logged row per `(tournament_id, player_key, bet_type)` (same UNIQUE index as above). Used by `update_calibration_curve()` (now **per `bet_type`** plus a global aggregate under empty `bet_type`). |
+| **`market_prediction_rows`** | Dense per-tick lines from live refresh (`backtester/dashboard_runtime.py` → `store_market_prediction_rows`). Full bet dict in `payload_json`; safe place for “every book line” analytics and AB (v5 vs `section='legacy'`). |
+
+**`GolfModelService.run_analysis` gates** (`src/services/golf_model_service.py`): placement rows are logged to `prediction_log` only if `compute_run_quality(value_bets)` passes. Matchup logging is skipped when matchup diagnostics indicate `pipeline_error` / errors. Low-quality runs may omit `prediction_log` rows even when `market_prediction_rows` captured the lines—reports should prefer **`market_prediction_rows`** for dense coverage and **`prediction_log`** for calibration time series.
+
+**Uncertainty fields:** Surfaced bet dicts should carry **`uncertainty`** as the canonical score; **`v5_uncertainty`** is set to the same value when present for backward compatibility with older payloads and snapshots.
 
 ---
 
@@ -551,12 +582,16 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 ### Production Server
 
+- **Public URL (HTTPS):** https://golf.ancc.blog/ — DNS/TLS only; deployment still uses SSH to the VPS below (not the public hostname).
 - **Host:** `root@204.168.147.6` (VPS)
 - **Remote path:** `/opt/golf-model`
 - **Branch:** `main`
-- **Deploy command:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --update`
-- **First-time setup:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --setup`
-- **Status check:** `DEPLOY_HOST=root@204.168.147.6 ./deploy.sh --status`
+- **Update from laptop (SSH):** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --update`
+- **Update while already SSH’d on the VPS (no SSH round-trip):** `cd /opt/golf-model && ./deploy.sh --update-local` — same steps as `--update` but runs in place; **do not** use `--update` from the server with `DEPLOY_HOST` set to the same machine’s IP (that runs `ssh` to yourself and prompts for host keys).
+- **First-time setup:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --setup`
+- **Status check:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --status`
+
+Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
 
 ### What `--update` does
 

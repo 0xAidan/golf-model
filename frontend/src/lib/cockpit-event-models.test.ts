@@ -135,7 +135,8 @@ describe("buildReplayTimelineModel", () => {
     const model = buildReplayTimelineModel({
       mode: "past",
       timelinePoints: replayPoints,
-      currentGeneratedAt: null,
+      snapshotGeneratedAt: null,
+      modelSourceLabel: null,
       snapshotAgeSeconds: null,
     })
 
@@ -143,6 +144,23 @@ describe("buildReplayTimelineModel", () => {
     expect(model.metrics[1]).toMatchObject({ label: "Best captured edge", value: "9.4%" })
     expect(model.items[0]?.detail).toContain("22 matchup rows")
     expect(model.emptyMessage).toBeNull()
+  })
+
+  it("keeps model lane labels small and separate from snapshot timestamps", () => {
+    const model = buildReplayTimelineModel({
+      mode: "live",
+      timelinePoints: [],
+      snapshotGeneratedAt: "2026-04-10T10:00:00Z",
+      modelSourceLabel: "upcoming_event_model",
+      snapshotAgeSeconds: 38,
+    })
+
+    expect(model.metrics[0]).toMatchObject({ label: "Last snapshot" })
+    expect(model.metrics[0]?.value).not.toBe("upcoming_event_model")
+    expect(model.metrics[1]).toMatchObject({
+      label: "Model lane",
+      value: "upcoming_event_model",
+    })
   })
 })
 

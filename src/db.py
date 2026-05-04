@@ -15,8 +15,11 @@ Tables:
   ai_memory               – persistent AI brain memory
   ai_decisions            – logged AI analysis/decisions
   market_performance      – rolling ROI tracking by market type
-  calibration_curve       – probability calibration buckets
+  calibration_curve       – probability calibration buckets (keyed by bet_type + bucket)
   ai_adjustments          – tracked AI-driven player adjustments
+  live_snapshot_history   – persisted live/upcoming snapshot sections
+  market_prediction_rows  – dense per-tick betting lines from live refresh
+  shadow_event_simulations – append-only shadow Monte Carlo (prob_engine_v1; offline analytics)
 """
 
 import logging
@@ -150,6 +153,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS picks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tournament_id INTEGER REFERENCES tournaments(id),
+            model_variant TEXT DEFAULT 'baseline',
+            source TEXT DEFAULT 'ui_display',
             bet_type TEXT,           -- 'outright', 'top5', 'top10', 'top20', 'matchup', 'group'
             player_key TEXT,
             player_display TEXT,
@@ -161,6 +166,7 @@ def init_db():
             momentum_score REAL,
             model_prob REAL,
             market_odds TEXT,
+            market_book TEXT,
             market_implied_prob REAL,
             ev REAL,
             confidence TEXT,         -- 'high', 'medium', 'low'
@@ -183,6 +189,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pick_id INTEGER REFERENCES picks(id),
             hit INTEGER,            -- 1 if bet won, 0 if lost
+            model_hit INTEGER,      -- 1 if model directional call was correct, 0 otherwise
             actual_finish TEXT,
             odds_decimal REAL,      -- odds at time of pick
             stake REAL,             -- units wagered
@@ -335,6 +342,20 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_snapshot
             ON market_prediction_rows(snapshot_id, section, market_family);
 
+        CREATE TABLE IF NOT EXISTS shadow_event_simulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT,
+            event_id TEXT NOT NULL,
+            section TEXT,
+            tour TEXT,
+            n_sims INTEGER,
+            engine_version TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_shadow_event_sims_event
+            ON shadow_event_simulations(event_id, created_at DESC);
+
         -- ═══ AI brain persistent memory ═══
         CREATE TABLE IF NOT EXISTS ai_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -400,6 +421,7 @@ def init_db():
             tournament_id INTEGER,
             player_key TEXT,
             bet_type TEXT,
+            market_book TEXT,
             odds_taken_decimal REAL,
             closing_odds_decimal REAL,
             implied_taken REAL,
@@ -766,6 +788,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS calibration_curve (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bet_type TEXT NOT NULL DEFAULT '',
             probability_bucket TEXT NOT NULL,
             predicted_avg REAL NOT NULL,
             actual_hit_rate REAL NOT NULL,
@@ -898,6 +921,7 @@ def _run_migrations(conn: sqlite3.Connection):
         ("odds_decimal", "REAL", None),
         ("stake", "REAL", None),
         ("profit", "REAL", None),
+        ("model_hit", "INTEGER", None),
     ]:
         try:
             conn.execute(f"SELECT {col} FROM pick_outcomes LIMIT 1")
@@ -905,6 +929,24 @@ def _run_migrations(conn: sqlite3.Connection):
             default_clause = f" DEFAULT {default}" if default is not None else ""
             conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
             conn.commit()
+    try:
+        conn.execute(
+            """
+            UPDATE pick_outcomes
+            SET model_hit = CASE
+                WHEN model_hit IS NOT NULL THEN model_hit
+                WHEN COALESCE((SELECT ev FROM picks WHERE picks.id = pick_outcomes.pick_id), 0) < 0
+                    THEN CASE WHEN hit = 1 THEN 0 ELSE hit END
+                ELSE hit
+            END
+            WHERE model_hit IS NULL
+            """
+        )
+        conn.commit()
+    except (sqlite3.OperationalError, sqlite3.IntegrityError):
+        # Keep startup resilient if this backfill cannot run on a given DB state.
+        # Runtime reads use COALESCE(model_hit, hit), so null model_hit is safe.
+        pass
 
     # Add year column to tournaments if missing
     try:
@@ -912,6 +954,36 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE tournaments ADD COLUMN year INTEGER")
         conn.commit()
+
+    # Add model lane/source fields to picks if missing
+    try:
+        conn.execute("SELECT model_variant FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN model_variant TEXT DEFAULT 'baseline'")
+        conn.commit()
+    try:
+        conn.execute("SELECT source FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN source TEXT DEFAULT 'ui_display'")
+        conn.commit()
+    try:
+        conn.execute("SELECT market_book FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN market_book TEXT")
+        conn.commit()
+    conn.execute("UPDATE picks SET model_variant = 'baseline' WHERE model_variant IS NULL OR TRIM(model_variant) = ''")
+    conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
+    try:
+        conn.execute("UPDATE picks SET market_book = '' WHERE market_book IS NULL")
+    except (sqlite3.OperationalError, sqlite3.IntegrityError):
+        # Older/partial schemas can miss this column before migration settles.
+        # Also tolerate uniqueness collisions on legacy duplicate rows.
+        pass
+    conn.execute("UPDATE picks SET opponent_key = '' WHERE opponent_key IS NULL")
+    conn.execute("UPDATE picks SET opponent_display = '' WHERE opponent_display IS NULL")
+    # Rebuild legacy unique index to include model lane + opponent key.
+    conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
+    conn.commit()
 
     # Add event_id column to tournaments if missing
     try:
@@ -939,6 +1011,41 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.execute("SELECT theory_metadata_json FROM research_proposals LIMIT 1")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE research_proposals ADD COLUMN theory_metadata_json TEXT")
+        conn.commit()
+
+    # v5 Milestone A: calibration_curve keyed by (bet_type, probability_bucket)
+    try:
+        conn.execute("SELECT bet_type FROM calibration_curve LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute(
+            "ALTER TABLE calibration_curve ADD COLUMN bet_type TEXT NOT NULL DEFAULT ''"
+        )
+        conn.commit()
+    try:
+        conn.execute(
+            """
+            DELETE FROM calibration_curve
+            WHERE id NOT IN (
+                SELECT MAX(id) FROM calibration_curve
+                GROUP BY bet_type, probability_bucket
+            )
+            """
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_curve_type_bucket "
+            "ON calibration_curve(bet_type, probability_bucket)"
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        logging.getLogger(__name__).debug(
+            "calibration_curve unique index migration skipped", exc_info=True
+        )
+
+    # v5 Milestone A: CLV rows optionally tagged with sportsbook
+    try:
+        conn.execute("SELECT market_book FROM clv_log LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE clv_log ADD COLUMN market_book TEXT")
         conn.commit()
 
     conn.execute("""
@@ -1010,6 +1117,25 @@ def _run_migrations(conn: sqlite3.Connection):
     conn.commit()
 
     _ensure_pre_teeoff_tables(conn)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS shadow_event_simulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT,
+            event_id TEXT NOT NULL,
+            section TEXT,
+            tour TEXT,
+            n_sims INTEGER,
+            engine_version TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_shadow_event_sims_event
+        ON shadow_event_simulations(event_id, created_at DESC)
+    """)
+    conn.commit()
 
     # Create pit_course_stats table if missing
     conn.execute("""
@@ -1102,7 +1228,7 @@ def _add_unique_constraints(conn: sqlite3.Connection):
         (
             "idx_picks_unique",
             "picks",
-            "(tournament_id, player_key, bet_type)",
+            "(tournament_id, model_variant, source, player_key, bet_type, opponent_key, market_book, market_odds)",
         ),
         (
             "idx_prediction_log_unique",
@@ -1416,20 +1542,43 @@ def get_player_display_names(tournament_id: int) -> dict:
 def store_picks(picks: list[dict]):
     if not picks:
         return
+    normalized_rows = []
+    for pick in picks:
+        normalized_rows.append({
+            "tournament_id": pick["tournament_id"],
+            "model_variant": (pick.get("model_variant") or "baseline").strip().lower(),
+            "source": pick.get("source") or "ui_display",
+            "bet_type": pick.get("bet_type"),
+            "player_key": pick.get("player_key"),
+            "player_display": pick.get("player_display"),
+            "opponent_key": pick.get("opponent_key") or "",
+            "opponent_display": pick.get("opponent_display") or "",
+            "composite_score": pick.get("composite_score"),
+            "course_fit_score": pick.get("course_fit_score"),
+            "form_score": pick.get("form_score"),
+            "momentum_score": pick.get("momentum_score"),
+            "model_prob": pick.get("model_prob"),
+            "market_odds": pick.get("market_odds"),
+            "market_book": pick.get("market_book") or "",
+            "market_implied_prob": pick.get("market_implied_prob"),
+            "ev": pick.get("ev"),
+            "confidence": pick.get("confidence"),
+            "reasoning": pick.get("reasoning"),
+        })
     conn = get_conn()
     conn.executemany(
-        """INSERT INTO picks
-           (tournament_id, bet_type, player_key, player_display,
+        """INSERT OR IGNORE INTO picks
+           (tournament_id, model_variant, source, bet_type, player_key, player_display,
             opponent_key, opponent_display,
             composite_score, course_fit_score, form_score, momentum_score,
-            model_prob, market_odds, market_implied_prob, ev,
+            model_prob, market_odds, market_book, market_implied_prob, ev,
             confidence, reasoning)
-           VALUES (:tournament_id, :bet_type, :player_key, :player_display,
+           VALUES (:tournament_id, :model_variant, :source, :bet_type, :player_key, :player_display,
                     :opponent_key, :opponent_display,
                     :composite_score, :course_fit_score, :form_score, :momentum_score,
-                    :model_prob, :market_odds, :market_implied_prob, :ev,
+                    :model_prob, :market_odds, :market_book, :market_implied_prob, :ev,
                     :confidence, :reasoning)""",
-        picks,
+        normalized_rows,
     )
     conn.commit()
     conn.close()
@@ -1750,28 +1899,63 @@ def store_live_snapshot_sections(
     return len(section_rows)
 
 
-def list_past_snapshot_events(limit: int = 40) -> list[dict]:
-    """List events that have immutable snapshot history for past-event replay."""
+def list_past_snapshot_events(
+    limit: int = 40,
+    *,
+    exclude_event_ids: set[str] | None = None,
+) -> list[dict]:
+    """List events that have immutable snapshot history for past-event replay.
+
+    `event_name` is resolved to the most recently observed name for that
+    event_id (not alphabetical MAX) — events are renamed mid-season (e.g. the
+    Cadillac Championship was historically the WGC Cadillac/Miami Championship)
+    and replay UIs need the current authoritative name.
+
+    `exclude_event_ids`, if provided, drops any matching event_ids from the
+    output. Callers (e.g. the past-events API) use this to keep the currently
+    upcoming or live event from leaking into the past-events selector.
+    """
     conn = get_conn()
+    # Pull a wider candidate window than `limit` so we can post-filter without
+    # losing real past events. The correlated subquery for `event_name` picks
+    # the name from the row with the most recent generated_at per event_id.
     rows = conn.execute(
         """
         SELECT
-            source_event_id AS event_id,
-            COALESCE(MAX(source_event_name), MAX(event_name)) AS event_name,
-            MAX(generated_at) AS latest_generated_at,
+            h.source_event_id AS event_id,
+            (
+                SELECT COALESCE(h2.source_event_name, h2.event_name)
+                FROM live_snapshot_history h2
+                WHERE h2.source_event_id = h.source_event_id
+                  AND h2.section IN ('live', 'upcoming')
+                ORDER BY h2.generated_at DESC, h2.id DESC
+                LIMIT 1
+            ) AS event_name,
+            MAX(h.generated_at) AS latest_generated_at,
             COUNT(*) AS snapshot_count
-        FROM live_snapshot_history
-        WHERE section IN ('live', 'upcoming')
-          AND source_event_id IS NOT NULL
-          AND TRIM(source_event_id) != ''
-        GROUP BY source_event_id
-        ORDER BY latest_generated_at DESC, source_event_id DESC
+        FROM live_snapshot_history h
+        WHERE h.section IN ('live', 'upcoming')
+          AND h.source_event_id IS NOT NULL
+          AND TRIM(h.source_event_id) != ''
+        GROUP BY h.source_event_id
+        ORDER BY latest_generated_at DESC, h.source_event_id DESC
         LIMIT ?
         """,
-        (int(limit),),
+        (max(int(limit) * 3, int(limit) + 5),),
     ).fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+
+    excluded = {str(eid).strip() for eid in (exclude_event_ids or set()) if eid}
+    out: list[dict] = []
+    for row in rows:
+        record = dict(row)
+        eid = str(record.get("event_id") or "").strip()
+        if eid and eid in excluded:
+            continue
+        out.append(record)
+        if len(out) >= int(limit):
+            break
+    return out
 
 
 def get_latest_snapshot_section(event_id: str, *, section: str = "live") -> dict | None:
@@ -2042,11 +2226,24 @@ def insert_pre_teeoff_frozen(
     return inserted
 
 
-def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
-    """Events available for Completed replay (live history + frozen pre-teeoff)."""
+def list_completed_snapshot_events(
+    limit: int = 40,
+    *,
+    exclude_event_ids: set[str] | None = None,
+) -> list[dict]:
+    """Events available for Completed replay (live history + frozen pre-teeoff).
+
+    `exclude_event_ids` are dropped from both the live-snapshot history source
+    and the frozen pre-teeoff source, ensuring the currently active live or
+    upcoming event never leaks into the past-event selector.
+    """
+    excluded = {str(eid).strip() for eid in (exclude_event_ids or set()) if eid}
     conn = get_conn()
     _ensure_pre_teeoff_tables(conn)
-    live_rows = list_past_snapshot_events(limit=max(int(limit) * 3, 120))
+    live_rows = list_past_snapshot_events(
+        limit=max(int(limit) * 3, 120),
+        exclude_event_ids=excluded or None,
+    )
     frozen_rows = conn.execute(
         """
         SELECT event_id, event_name, frozen_at
@@ -2060,7 +2257,7 @@ def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
     merged: dict[str, dict[str, Any]] = {}
     for row in live_rows:
         eid = str(row.get("event_id") or "").strip()
-        if not eid:
+        if not eid or eid in excluded:
             continue
         merged[eid] = {
             "event_id": eid,
@@ -2070,7 +2267,7 @@ def list_completed_snapshot_events(limit: int = 40) -> list[dict]:
         }
     for fr in frozen_rows:
         eid = str(fr["event_id"] or "").strip()
-        if not eid:
+        if not eid or eid in excluded:
             continue
         ts = fr["frozen_at"]
         prev = merged.get(eid)
@@ -2113,6 +2310,39 @@ def store_market_prediction_rows(rows: list[dict]) -> int:
     conn.commit()
     conn.close()
     return len(rows)
+
+
+def append_shadow_event_simulation(
+    *,
+    snapshot_id: str,
+    event_id: str,
+    section: str,
+    tour: str | None,
+    n_sims: int,
+    engine_version: str,
+    payload_json: dict[str, Any],
+) -> int:
+    """Append one shadow MC result row (append-only; no updates)."""
+    conn = get_conn()
+    conn.execute(
+        """
+        INSERT INTO shadow_event_simulations
+            (snapshot_id, event_id, section, tour, n_sims, engine_version, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            snapshot_id,
+            event_id,
+            section,
+            tour,
+            n_sims,
+            engine_version,
+            json.dumps(payload_json),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return 1
 
 
 def get_market_prediction_rows_for_event(

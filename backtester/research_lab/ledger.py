@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+import fcntl
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,13 +44,19 @@ def append_ledger_row(row: dict[str, Any]) -> None:
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(out, sort_keys=True, default=str) + "\n"
     with LEDGER_PATH.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         handle.write(line)
+        handle.flush()
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     # Dual-write CLI loop rows to legacy filename for older tooling (same content).
     if src == "cli_loop":
         LEGACY_LOOP_LEDGER.parent.mkdir(parents=True, exist_ok=True)
         with LEGACY_LOOP_LEDGER.open("a", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             handle.write(line)
+            handle.flush()
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def ledger_row_from_optuna_trial(

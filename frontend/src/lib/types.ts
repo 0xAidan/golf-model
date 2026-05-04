@@ -2,10 +2,11 @@ export type WorkspaceId =
   | "prediction"
   | "players"
   | "matchups"
-  | "course"
   | "grading"
   | "track-record"
+  | "legacy-model"
   | "champion-challenger"
+  | "diagnostics"
 
 export type ChampionChallengerBrier = {
   model_name: string
@@ -176,6 +177,7 @@ export type LiveTournamentSnapshot = {
   source_event_name?: string
   generated_from?: string
   ranking_source?: string
+  model_variant?: string
   data_mode?: string
   course_name?: string
   field_size?: number
@@ -230,9 +232,26 @@ export type LiveTournamentSnapshot = {
     books_with_qualifying_edges?: string[]
     books_after_card_caps?: string[]
     book_stats?: Record<string, { lines_seen?: number; qualifying_edges?: number; card_rows?: number }>
+    failed_candidates?: FailedMatchupCandidate[]
     state?: "no_market_posted_yet" | "market_available_no_edges" | "pipeline_error" | "edges_available" | "team_event" | "eligibility_failed" | string
     errors?: string[]
   }
+}
+
+export type FailedMatchupCandidate = {
+  pick: string
+  opponent: string
+  composite_gap?: number
+  model_win_prob?: number
+  platt_win_prob?: number
+  dg_win_prob?: number | null
+  implied_prob?: number
+  book?: string | null
+  odds?: number | null
+  ev?: number | null
+  ev_pct?: string | null
+  reason_code: "below_ev_threshold" | "dg_model_disagreement" | string
+  market_type?: string
 }
 
 export type DataSource = "live" | "replay" | "fixture"
@@ -243,10 +262,12 @@ export type LiveRefreshSnapshot = {
   cadence_mode?: string
   live_tournament?: LiveTournamentSnapshot
   upcoming_tournament?: LiveTournamentSnapshot
+  legacy_tournament?: LiveTournamentSnapshot
   diagnostics?: {
     market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
     live_state?: string
     upcoming_state?: string
+    legacy_state?: string
   }
 }
 
@@ -391,6 +412,8 @@ export type GradedTournamentSummary = {
   hits?: number
   total_profit?: number
   last_graded_at?: string | null
+  variant_stats?: Record<string, { picks: number; hits: number; profit: number }>
+  picks?: TrackRecordPick[]
 }
 
 export type GradingHistoryResponse = {
@@ -398,12 +421,19 @@ export type GradingHistoryResponse = {
 }
 
 export type TrackRecordPick = {
+  model_variant?: string
   player_display: string
-  opponent_display: string
-  market_odds: string
+  opponent_display?: string
+  market_odds?: string
   bet_type?: string
+  model_prob?: number | null
+  ev?: number | null
+  reasoning?: string | null
   hit: number
   profit: number
+  actual_finish?: string | null
+  graded_at?: string | null
+  outcome?: "win" | "loss" | "push"
 }
 
 export type TrackRecordEvent = {
@@ -660,6 +690,28 @@ export type ResearchProposal = {
   expected_edge?: number
 }
 
+/** One row in ``recent_rounds_sample`` on standalone player profiles (API + round log UI). */
+export type StandaloneRecentRoundSample = {
+  round_num?: number | null
+  event_name?: string | null
+  event_completed?: string | null
+  event_id?: string | null
+  course_name?: string | null
+  tour?: string | null
+  score?: number | null
+  sg_total?: number | null
+  sg_ott?: number | null
+  sg_app?: number | null
+  sg_arg?: number | null
+  sg_putt?: number | null
+  sg_t2g?: number | null
+  driving_dist?: number | null
+  driving_acc?: number | null
+  gir?: number | null
+  scrambling?: number | null
+  fin_text?: string | null
+}
+
 export type StandalonePlayerProfile = {
   player_key: string
   player_display: string
@@ -683,14 +735,42 @@ export type StandalonePlayerProfile = {
   }
   approach_buckets: Array<{ key: string; label: string; value: number }>
   rolling_windows: { "10"?: number | null; "25"?: number | null; "50"?: number | null }
+  rolling_windows_expanded?: Record<
+    "sg_total" | "sg_ott" | "sg_app" | "sg_arg" | "sg_putt" | "sg_t2g",
+    { "10"?: number | null; "25"?: number | null; "50"?: number | null }
+  >
   trend_series: number[]
   recent_events: Array<{
     event_name: string
     event_completed?: string | null
+    event_id?: string | null
+    course_name?: string | null
+    tour?: string | null
     fin_text?: string | null
+    avg_score?: number | null
+    avg_to_par?: number | null
     avg_sg_total?: number | null
+    avg_sg_ott?: number | null
+    avg_sg_app?: number | null
+    avg_sg_arg?: number | null
+    avg_sg_putt?: number | null
+    avg_sg_t2g?: number | null
     rounds_played?: number
   }>
+  recent_rounds_sample?: StandaloneRecentRoundSample[]
+  course_summaries?: Array<{
+    course_name: string
+    rounds_played: number
+    avg_sg_total?: number | null
+  }>
+  ranking_card?: {
+    dg_rank?: number | null
+    owgr_rank?: number | null
+    dg_skill_estimate?: number | null
+    primary_tour?: string | null
+    player_name?: string | null
+    extra_scalars?: Record<string, number>
+  }
   ranking_data?: Record<string, unknown> | null
   has_skill_data: boolean
   has_ranking_data: boolean

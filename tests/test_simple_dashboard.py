@@ -258,8 +258,8 @@ def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
     response = client.get("/api/live-refresh/snapshot")
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is False
-    assert body["snapshot"] is None
+    assert body["ok"] is True
+    assert body["snapshot"] is not None
     assert body["stale_reason"] is not None
     assert body["fallback_reason"] is None
 
@@ -444,9 +444,9 @@ def test_grading_history_endpoint_returns_scored_tournament_summaries(monkeypatc
     )
     conn.execute(
         """INSERT INTO picks
-           (id, tournament_id, bet_type, player_key, player_display, market_odds, ev)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (1, 1, "matchup", "ludvig_aberg", "Ludvig Aberg", "-110", 0.12),
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display, market_odds, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "v5", "ui_display", "matchup", "ludvig_aberg", "Ludvig Aberg", "-110", 0.52, 0.12),
     )
     conn.execute(
         "INSERT INTO results (tournament_id, player_key, player_display, finish_text, made_cut) VALUES (?, ?, ?, ?, ?)",
@@ -471,6 +471,55 @@ def test_grading_history_endpoint_returns_scored_tournament_summaries(monkeypatc
     assert body["tournaments"][0]["graded_pick_count"] == 1
     assert body["tournaments"][0]["hits"] == 1
     assert body["tournaments"][0]["total_profit"] == 0.91
+    assert body["tournaments"][0]["variant_stats"]["v5"]["picks"] == 1
+    assert body["tournaments"][0]["variant_stats"]["v5"]["hits"] == 1
+    assert body["tournaments"][0]["picks"][0]["model_variant"] == "v5"
+    assert body["tournaments"][0]["picks"][0]["outcome"] == "win"
+    assert body["tournaments"][0]["picks"][0]["model_prob"] == 0.52
+    assert body["tournaments"][0]["picks"][0]["ev"] == 0.12
+
+
+def test_track_record_endpoint_returns_pick_details_with_edge_and_lane(monkeypatch, tmp_path):
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "track_record.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (2, "RBC Heritage", "Harbour Town", 2026, "512"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+            opponent_key, opponent_display, market_odds, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (2, 2, "baseline", "ui_display", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-105", 0.51, 0.117),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes
+           (pick_id, hit, actual_finish, odds_decimal, stake, profit, entered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (2, 0, "T36 vs T18", 1.95, 1.0, -1.0, "2026-04-20 18:45:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/track-record")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["events"]) == 1
+    pick = body["events"][0]["picks"][0]
+    assert pick["model_variant"] == "baseline"
+    assert pick["model_prob"] == 0.51
+    assert pick["ev"] == 0.117
+    assert pick["outcome"] == "loss"
+    assert pick["actual_finish"] == "T36 vs T18"
 
 
 def test_player_profile_endpoint_returns_recent_rounds_course_history_and_linked_bets(monkeypatch, tmp_path):
@@ -536,6 +585,76 @@ def test_player_profile_endpoint_returns_recent_rounds_course_history_and_linked
     assert body["rolling_form"]["window_source_map"]["25"] == "24"
     assert body["course_event_context"]["course_summary"]["rounds_tracked"] == 1
     assert body["betting_context"]["summary"]["linked_bet_count"] == 1
+
+
+def test_standalone_player_profile_exposes_rich_event_round_payload(monkeypatch, tmp_path):
+    """Standalone player profile should return event-level SG splits and round samples."""
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "standalone_profile.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """INSERT INTO rounds
+           (dg_id, player_name, player_key, tour, season, year, event_id, event_name, event_completed,
+            course_name, course_num, course_par, round_num, score, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, fin_text)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (456, "Collin Morikawa", "collin_morikawa", "pga", 2026, 2026, "501", "Masters Tournament", "2026-04-12",
+         "Augusta National", 10, 72, 4, 69, 1.7, 0.3, 0.8, 0.2, 0.4, 1.3, "T3"),
+    )
+    conn.execute(
+        """INSERT INTO rounds
+           (dg_id, player_name, player_key, tour, season, year, event_id, event_name, event_completed,
+            course_name, course_num, course_par, round_num, score, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, fin_text)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (456, "Collin Morikawa", "collin_morikawa", "pga", 2026, 2026, "501", "Masters Tournament", "2026-04-12",
+         "Augusta National", 10, 72, 3, 70, 1.1, 0.1, 0.6, 0.1, 0.3, 0.8, "T3"),
+    )
+    conn.execute(
+        """INSERT INTO rounds
+           (dg_id, player_name, player_key, tour, season, year, event_id, event_name, event_completed,
+            course_name, course_num, course_par, round_num, score, sg_total, sg_ott, sg_app, sg_arg, sg_putt, sg_t2g, fin_text)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (456, "Collin Morikawa", "collin_morikawa", "pga", 2026, 2026, "500", "Valero Texas Open", "2026-04-05",
+         "TPC San Antonio", 20, 72, 4, 72, 0.2, -0.1, 0.2, 0.0, 0.1, 0.1, "T18"),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        "src.datagolf.fetch_skill_ratings",
+        lambda: [{"player_name": "Collin Morikawa", "sg_total": 1.2, "sg_ott": 0.2, "sg_app": 0.7, "sg_arg": 0.1, "sg_putt": 0.2}],
+    )
+    monkeypatch.setattr(
+        "src.datagolf.fetch_dg_rankings",
+        lambda: [{"player_name": "Collin Morikawa", "datagolf_rank": 4, "owgr_rank": 6, "dg_skill_estimate": 1.25, "primary_tour": "PGA Tour"}],
+    )
+    monkeypatch.setattr("src.datagolf.fetch_approach_skill", lambda period="l24": [])
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/players/collin_morikawa/standalone-profile")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["player_key"] == "collin_morikawa"
+    assert len(body["recent_events"]) == 2
+    masters = body["recent_events"][0]
+    assert masters["event_name"] == "Masters Tournament"
+    assert masters["avg_sg_total"] == 1.4
+    assert masters["avg_sg_app"] == 0.7
+    assert masters["avg_sg_t2g"] == 1.05
+    assert masters["avg_to_par"] == -2.5
+    assert masters["rounds_played"] == 2
+    assert body["rolling_windows_expanded"]["sg_app"]["10"] == 0.533
+    assert len(body["recent_rounds_sample"]) == 3
+    assert body["recent_rounds_sample"][0]["event_name"] == "Masters Tournament"
+    assert body["course_summaries"][0]["course_name"] == "Augusta National"
+    assert body["ranking_card"]["dg_rank"] == 4
+    assert body["header"]["events_tracked"] == 2
 
 
 def test_output_list_and_content_endpoints_are_safe(tmp_path, monkeypatch):

@@ -12,7 +12,10 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # Model version (single source of truth; was v3.0 in card.py, v4.0 in methodology)
 # ---------------------------------------------------------------------------
-MODEL_VERSION = "4.2"
+MODEL_VERSION = "5.0"
+DEFAULT_MODEL_VARIANT = os.environ.get("DEFAULT_MODEL_VARIANT", "v5").strip().lower() or "v5"
+LEGACY_MODEL_VARIANT = os.environ.get("LEGACY_MODEL_VARIANT", "baseline").strip().lower() or "baseline"
+ALLOWED_MODEL_VARIANTS = {"baseline", "v5"}
 
 # ---------------------------------------------------------------------------
 # T3 — Pair / team matchup model (Zurich Classic). See issue #47.
@@ -97,6 +100,50 @@ BLEND_WEIGHTS: dict[str, dict[str, float]] = {
     "make_cut": {"dg": 0.95, "model": 0.05},
     "3ball": {"dg": 0.95, "model": 0.05},
 }
+
+# ---------------------------------------------------------------------------
+# Data Golf course-history vs baseline (value.py)
+# Default "shrinkage_gate": prefer raw course-history when it is not wildly
+# inconsistent with baseline vs the same player/market; otherwise blend toward baseline.
+# Set COURSE_HISTORY_POLICY=legacy to restore strict CH > baseline priority.
+# ---------------------------------------------------------------------------
+COURSE_HISTORY_POLICY: str = (
+    os.environ.get("COURSE_HISTORY_POLICY", "shrinkage_gate").strip().lower()
+    or "shrinkage_gate"
+)
+COURSE_HISTORY_SHRINK_GATE_REL: float = float(
+    os.environ.get("COURSE_HISTORY_SHRINK_GATE_REL", "0.35")
+)
+COURSE_HISTORY_SHRINK_GATE_ABS: float = float(
+    os.environ.get("COURSE_HISTORY_SHRINK_GATE_ABS", "0.02")
+)
+# Weight on course-history prob when the shrinkage gate fires (rest is baseline).
+COURSE_HISTORY_GATED_BLEND_WEIGHT: float = float(
+    os.environ.get("COURSE_HISTORY_GATED_BLEND_WEIGHT", "0.5")
+)
+
+# ---------------------------------------------------------------------------
+# Shadow Monte Carlo v1 (src.models.prob_engine_v1) — append-only logging only.
+# Enable with feature flag shadow_monte_carlo_v1 or env SHADOW_MC_V1=1.
+# Does not affect EV, picks, or snapshot API payloads unless explicitly wired later.
+# ---------------------------------------------------------------------------
+SHADOW_MC_N_SIMS: int = int(os.environ.get("SHADOW_MC_N_SIMS", "2000"))
+SHADOW_MC_SCORE_NOISE: float = float(os.environ.get("SHADOW_MC_SCORE_NOISE", "2.5"))
+SHADOW_MC_MIN_FIELD: int = int(os.environ.get("SHADOW_MC_MIN_FIELD", "30"))
+# Shadow Monte Carlo v2 (rounds-based SD, field correlation, cut) — same safety as v1.
+SHADOW_MC_FIELD_CORR: float = float(os.environ.get("SHADOW_MC_FIELD_CORR", "0.12"))
+SHADOW_MC_CUT_KEEP_FRAC: float = float(os.environ.get("SHADOW_MC_CUT_KEEP_FRAC", "0.58"))
+
+# Dynamic blend OOS promotion gate (when dynamic_blend + this flag on, model weight
+# cannot increase unless recent Brier history favors the model with enough samples).
+DYNAMIC_BLEND_PROMO_WINDOW: int = int(os.environ.get("DYNAMIC_BLEND_PROMO_WINDOW", "5"))
+DYNAMIC_BLEND_PROMO_MIN_SAMPLES: int = int(os.environ.get("DYNAMIC_BLEND_PROMO_MIN_SAMPLES", "40"))
+DYNAMIC_BLEND_PROMO_MIN_TOURNAMENTS: int = int(
+    os.environ.get("DYNAMIC_BLEND_PROMO_MIN_TOURNAMENTS", "8")
+)
+DYNAMIC_BLEND_PROMO_MODEL_EDGE: float = float(
+    os.environ.get("DYNAMIC_BLEND_PROMO_MODEL_EDGE", "0.02")
+)
 
 # Softmax temperature by bet type (value.py model_score_to_prob)
 SOFTMAX_TEMP_BY_TYPE: dict[str, float] = {

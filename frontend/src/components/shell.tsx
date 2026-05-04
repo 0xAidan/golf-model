@@ -3,8 +3,8 @@ import {
   Activity,
   FlaskConical,
   GraduationCap,
+  History,
   LayoutDashboard,
-  Route,
   Swords,
   Trophy,
   Users,
@@ -22,11 +22,12 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { id: "prediction",   label: "Cockpit",      href: "/",            icon: LayoutDashboard },
   { id: "players",      label: "Players",      href: "/players",     icon: Users },
-  { id: "matchups",     label: "Matchups",     href: "/matchups",    icon: Swords },
-  { id: "course",       label: "Course",       href: "/course",      icon: Route },
+  { id: "matchups",     label: "Picks",        href: "/matchups",    icon: Swords },
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
   { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
+  { id: "legacy-model", label: "Legacy Model", href: "/research/legacy-model", icon: History },
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
+  { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]
 
 /* ── Logo SVG mark ────────────────────────────── */
@@ -46,8 +47,8 @@ function LogoMark({ size = 32 }: { size?: number }) {
       <path d="M11 6 L24 11 L11 16 Z" fill="#22C55E" opacity="0.9" />
       {/* Ground arc */}
       <path d="M5 26 Q16 22 27 26" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
-      {/* Ball */}
-      <circle cx="20" cy="25" r="2.5" fill="#F59E0B" />
+      {/* Ball — reads as a white golf ball on dark chrome (not “warning” orange). */}
+      <circle cx="20" cy="25" r="2.5" fill="#E8ECEF" stroke="#4A5660" strokeWidth="0.4" />
     </svg>
   )
 }
@@ -83,7 +84,7 @@ export function SuiteShell({
         {/* Navigation */}
         <nav className="sidebar-nav" aria-label="Main navigation">
           <div className="sidebar-section-label">Workspace</div>
-          {NAV_ITEMS.slice(0, 4).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(0, 3).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}
@@ -99,7 +100,7 @@ export function SuiteShell({
           ))}
 
           <div className="sidebar-section-label" style={{ marginTop: 8 }}>Records</div>
-          {NAV_ITEMS.slice(4, 6).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(3, 5).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}
@@ -115,7 +116,7 @@ export function SuiteShell({
           ))}
 
           <div className="sidebar-section-label" style={{ marginTop: 8 }}>Research</div>
-          {NAV_ITEMS.slice(6).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(5).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}
@@ -204,17 +205,25 @@ export function MetricTile({
   value,
   detail,
   tone = "default",
+  title,
 }: {
   label: string
   value: string
   detail?: string
   tone?: "default" | "positive" | "warning"
+  /** Hover explanation (native tooltip). */
+  title?: string
 }) {
   const colorClass =
     tone === "positive" ? "green" : tone === "warning" ? "gold" : "neutral"
 
   return (
-    <div className={cn("kpi-tile", colorClass)} data-testid="metric-tile">
+    <div
+      className={cn("kpi-tile", colorClass)}
+      data-testid="metric-tile"
+      title={title}
+      style={title ? { cursor: "help" } : undefined}
+    >
       <div className="kpi-label">{label}</div>
       <div className={cn("kpi-value", colorClass)}>{value}</div>
       {detail && <div className="kpi-detail">{detail}</div>}
