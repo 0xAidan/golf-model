@@ -74,8 +74,12 @@ export function useLiveRefreshRuntime({
       } catch (error) {
         if (!isCancelled) {
           const detail = error instanceof Error ? error.message : "unknown error"
+          const normalized = detail.toLowerCase()
+          if (normalized.includes("timed out") || normalized.includes("failed to fetch")) {
+            return
+          }
           onError(
-            `Could not verify live runtime automatically (${detail}). Use 'Check runtime' and inspect status.`,
+            `Could not verify live runtime automatically (${detail}). Retry in a few seconds.`,
           )
         }
       }

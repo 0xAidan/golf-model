@@ -85,6 +85,24 @@ def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
     return True
 
 
+def _with_live_refresh_worker_status(raw_status: dict) -> dict:
+    """Merge in external worker health so API status reflects single-owner runtime."""
+    status = dict(raw_status or {})
+    pidfile_path = _live_refresh_pidfile_path()
+    worker_running = _live_refresh_worker_is_running(pidfile_path)
+    local_running = bool(status.get("running"))
+    status["worker_pidfile"] = pidfile_path
+    status["worker_running"] = worker_running
+    if worker_running and not local_running:
+        status["running"] = True
+        status["runtime_owner"] = "worker"
+    elif local_running:
+        status["runtime_owner"] = "embedded"
+    else:
+        status["runtime_owner"] = "stopped"
+    return status
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     from src.autoresearch_settings import get_settings
@@ -1825,7 +1843,7 @@ async def start_live_refresh_runtime(request: Request):
     """Start always-on live refresh runtime."""
     from src.db import ensure_initialized
     ensure_initialized()
-    from backtester.dashboard_runtime import start_live_refresh
+    from backtester.dashboard_runtime import get_live_refresh_status, start_live_refresh
     from src.autoresearch_settings import get_settings, set_settings
 
     if os.environ.get("LIVE_REFRESH_ENABLED", "1").strip().lower() in {"0", "false", "off", "no"}:
@@ -1841,8 +1859,16 @@ async def start_live_refresh_runtime(request: Request):
         live_cfg["tour"] = requested_tour if requested_tour in {"pga", "euro", "kft", "alt"} else "pga"
     live_cfg["enabled"] = True
     set_settings({"live_refresh": live_cfg})
+    current_status = _with_live_refresh_worker_status(get_live_refresh_status())
+    if current_status.get("runtime_owner") == "worker":
+        return {
+            "ok": True,
+            "started": False,
+            "message": "Detected external live-refresh worker; skipped in-process start.",
+            "status": current_status,
+        }
     status = start_live_refresh(tour=live_cfg.get("tour", "pga"))
-    return {"ok": True, "status": status}
+    return {"ok": True, "started": True, "status": _with_live_refresh_worker_status(status)}
 
 
 @app.post("/api/live-refresh/stop")
@@ -1869,7 +1895,7 @@ async def get_live_refresh_runtime_status():
     from src.autoresearch_settings import get_settings
 
     return {
-        "status": get_live_refresh_status(),
+        "status": _with_live_refresh_worker_status(get_live_refresh_status()),
         "settings": (get_settings().get("live_refresh") or {}),
     }
 
@@ -2062,13 +2088,13 @@ async def get_live_refresh_snapshot():
     stale_after_seconds = max(900, int(cadence.recompute_seconds) + 120)
 
     tour = str(settings.get("tour", "pga"))
-    status = get_live_refresh_status()
+    status = _with_live_refresh_worker_status(get_live_refresh_status())
     runtime_autostarted = False
     if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
         try:
             start_live_refresh(tour=tour)
             runtime_autostarted = True
-            status = get_live_refresh_status()
+            status = _with_live_refresh_worker_status(get_live_refresh_status())
         except Exception as exc:
             _logger.warning("Live refresh runtime autostart failed: %s", exc)
 
@@ -2200,7 +2226,7 @@ async def refresh_live_refresh_snapshot():
 
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
-    status = get_live_refresh_status()
+    status = _with_live_refresh_worker_status(get_live_refresh_status())
     if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
         start_live_refresh(tour=tour)
     try:

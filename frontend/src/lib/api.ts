@@ -24,10 +24,10 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
 }
 
-const LIVE_REFRESH_STATUS_TIMEOUT_MS = 15_000
-const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 25_000
+const LIVE_REFRESH_STATUS_TIMEOUT_MS = 30_000
+const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 35_000
 const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 30_000
-const LIVE_REFRESH_START_TIMEOUT_MS = 20_000
+const LIVE_REFRESH_START_TIMEOUT_MS = 30_000
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): Promise<T> {
   const controller = new AbortController()
