@@ -736,6 +736,80 @@ def _build_market_prediction_rows(
     return rows
 
 
+def _rankings_to_shadow_field(rankings: list[dict]) -> list[tuple[str, float]]:
+    """Build (player_key, composite) tuples from snapshot rankings for shadow MC."""
+    out: list[tuple[str, float]] = []
+    for row in rankings or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        if not pk:
+            continue
+        comp = row.get("composite")
+        if comp is None:
+            continue
+        try:
+            c = float(comp)
+        except (TypeError, ValueError):
+            continue
+        out.append((pk, c))
+    return out
+
+
+def _run_shadow_monte_carlo_v1(
+    *,
+    snapshot_id: str,
+    generated_at: str,
+    tour: str,
+    snapshot: dict[str, Any],
+) -> int:
+    """
+    Append-only shadow simulation rows when enabled; never affects EV or card output.
+    """
+    from src.models.prob_engine_v1 import is_shadow_monte_carlo_enabled, run_field_simulation_v1
+
+    if not is_shadow_monte_carlo_enabled():
+        return 0
+    rows_written = 0
+    for section_name, section_key in (
+        ("upcoming", "upcoming_tournament"),
+        ("live", "live_tournament"),
+    ):
+        sec = snapshot.get(section_key) or {}
+        if not (sec.get("eligibility") or {}).get("verified"):
+            continue
+        event_id = str(sec.get("source_event_id") or "").strip()
+        if not event_id:
+            continue
+        field = _rankings_to_shadow_field(sec.get("rankings") or [])
+        if len(field) < int(getattr(config, "SHADOW_MC_MIN_FIELD", 30)):
+            continue
+        seed = hash(snapshot_id + section_name + event_id) % (2**32)
+        try:
+            payload = run_field_simulation_v1(
+                field,
+                n_sims=int(getattr(config, "SHADOW_MC_N_SIMS", 2000)),
+                score_noise=float(getattr(config, "SHADOW_MC_SCORE_NOISE", 2.5)),
+                seed=seed,
+            )
+            payload["snapshot_generated_at"] = generated_at
+            payload["section"] = section_name
+            payload["event_id"] = event_id
+            db.append_shadow_event_simulation(
+                snapshot_id=snapshot_id,
+                event_id=event_id,
+                section=section_name,
+                tour=str(tour or "").strip().lower() or None,
+                n_sims=int(payload.get("n_sims") or 0),
+                engine_version=str(payload.get("engine_version") or ""),
+                payload_json=payload,
+            )
+            rows_written += 1
+        except Exception as exc:
+            _logger.warning(
+                "shadow Monte Carlo v1 failed (%s/%s): %s", section_name, event_id, exc
+            )
+    return rows_written
+
+
 def _event_slug(value: str | None) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower())
     return slug.strip("_")
@@ -1972,6 +2046,17 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         _logger.warning("Failed to persist market prediction rows: %s", exc)
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0
         snapshot.setdefault("diagnostics", {})["market_rows_write_error"] = str(exc)
+    try:
+        shadow_n = _run_shadow_monte_carlo_v1(
+            snapshot_id=snapshot_id,
+            generated_at=generated_at,
+            tour=tour,
+            snapshot=snapshot,
+        )
+        snapshot.setdefault("diagnostics", {})["shadow_mc_rows_written"] = shadow_n
+    except Exception as exc:
+        _logger.warning("shadow Monte Carlo v1 batch failed: %s", exc)
+        snapshot.setdefault("diagnostics", {})["shadow_mc_rows_written"] = 0
     _write_snapshot(snapshot)
     return snapshot
 

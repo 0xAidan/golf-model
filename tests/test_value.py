@@ -206,3 +206,39 @@ def test_find_value_bets_returns_all_qualifying_books_for_same_player(monkeypatc
     assert {row["best_odds"] for row in player_rows} == {120, 140}
     assert player_rows[0]["ev"] == pytest.approx(0.3248, abs=0.01)
     assert player_rows[0]["ev"] > player_rows[1]["ev"]
+
+
+def test_select_dg_primary_shrinkage_uses_ch_when_close(monkeypatch):
+    from src.value import select_dg_primary_probability
+
+    monkeypatch.setattr("src.config.COURSE_HISTORY_POLICY", "shrinkage_gate", raising=False)
+    monkeypatch.setattr("src.config.COURSE_HISTORY_SHRINK_GATE_REL", 0.35, raising=False)
+    monkeypatch.setattr("src.config.COURSE_HISTORY_SHRINK_GATE_ABS", 0.02, raising=False)
+
+    p, meta = select_dg_primary_probability({"top20_ch": 0.12, "top20": 0.11}, "top20")
+    assert meta["shrinkage_gated"] is False
+    assert p == pytest.approx(0.12)
+    assert meta["source"] == "datagolf_ch"
+
+
+def test_select_dg_primary_shrinkage_blends_when_far(monkeypatch):
+    from src.value import select_dg_primary_probability
+
+    monkeypatch.setattr("src.config.COURSE_HISTORY_POLICY", "shrinkage_gate", raising=False)
+    monkeypatch.setattr("src.config.COURSE_HISTORY_SHRINK_GATE_REL", 0.35, raising=False)
+    monkeypatch.setattr("src.config.COURSE_HISTORY_SHRINK_GATE_ABS", 0.02, raising=False)
+    monkeypatch.setattr("src.config.COURSE_HISTORY_GATED_BLEND_WEIGHT", 0.5, raising=False)
+
+    p, meta = select_dg_primary_probability({"top20_ch": 0.20, "top20": 0.10}, "top20")
+    assert meta["shrinkage_gated"] is True
+    assert p == pytest.approx(0.15)
+    assert meta["source"] == "datagolf_ch_shrinkage_blend"
+
+
+def test_select_dg_primary_legacy_prefers_ch(monkeypatch):
+    from src.value import select_dg_primary_probability
+
+    monkeypatch.setattr("src.config.COURSE_HISTORY_POLICY", "legacy", raising=False)
+    p, meta = select_dg_primary_probability({"top20_ch": 0.20, "top20": 0.10}, "top20")
+    assert p == pytest.approx(0.20)
+    assert meta["source"] == "datagolf_ch"
