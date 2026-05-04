@@ -15,7 +15,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src import db
+from src import config, db
 from src.atomic_io import atomic_write_json
 from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.live_refresh_policy import resolve_cadence
@@ -584,13 +584,33 @@ def _build_market_prediction_rows(
         return []
 
     rows: list[dict] = []
+    seen_row_keys: set[str] = set()
+
+    def _safe_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _append_row(row: dict[str, Any], *, row_key: str) -> None:
+        if row_key in seen_row_keys:
+            return
+        seen_row_keys.add(row_key)
+        rows.append(row)
+
     matchup_rows = section.get("matchup_bets_all_books") or section.get("matchup_bets") or []
     for bet in matchup_rows:
-        ev = float(bet.get("ev") or 0.0)
+        ev = _safe_float(bet.get("ev")) or 0.0
         model_prob = bet.get("model_win_prob")
         implied_prob = bet.get("implied_prob")
         odds = _normalize_market_odds(bet.get("odds"), bet.get("market_odds"))
-        rows.append(
+        player_key = str(bet.get("pick_key") or bet.get("player_key") or "").strip() or None
+        opponent_key = str(bet.get("opponent_key") or "").strip() or None
+        book = str(bet.get("book") or bet.get("bookmaker") or "").strip() or None
+        market_type = str(bet.get("market_type") or "tournament_matchups")
+        _append_row(
             {
                 "snapshot_id": snapshot_id,
                 "generated_at": generated_at,
@@ -599,28 +619,88 @@ def _build_market_prediction_rows(
                 "event_id": event_id,
                 "event_name": event_name,
                 "market_family": "matchup",
-                "market_type": str(bet.get("market_type") or "tournament_matchups"),
-                "player_key": str(bet.get("pick_key") or bet.get("player_key") or "").strip() or None,
+                "market_type": market_type,
+                "player_key": player_key,
                 "player_display": str(bet.get("pick") or bet.get("player") or "").strip() or None,
-                "opponent_key": str(bet.get("opponent_key") or "").strip() or None,
+                "opponent_key": opponent_key,
                 "opponent_display": str(bet.get("opponent") or "").strip() or None,
-                "book": str(bet.get("book") or bet.get("bookmaker") or "").strip() or None,
+                "book": book,
                 "odds": odds,
-                "model_prob": float(model_prob) if model_prob is not None else None,
-                "implied_prob": float(implied_prob) if implied_prob is not None else None,
+                "model_prob": _safe_float(model_prob),
+                "implied_prob": _safe_float(implied_prob),
                 "ev": ev,
                 "is_value": 1 if ev > 0 else 0,
                 "payload_json": json.dumps(bet),
-            }
+            },
+            row_key="|".join(
+                [
+                    "matchup",
+                    market_type,
+                    player_key or "",
+                    opponent_key or "",
+                    book or "",
+                    odds or "",
+                ]
+            ),
         )
 
-    for market_type, bets in (section.get("value_bets") or {}).items():
+    failed_candidates = (
+        section.get("all_failed_candidates")
+        or (section.get("diagnostics") or {}).get("failed_candidates")
+        or []
+    )
+    for cand in failed_candidates:
+        ev = _safe_float(cand.get("ev")) or 0.0
+        odds = _normalize_market_odds(cand.get("odds"))
+        player_key = str(cand.get("pick_key") or cand.get("player_key") or "").strip() or None
+        opponent_key = str(cand.get("opponent_key") or "").strip() or None
+        book = str(cand.get("book") or cand.get("bookmaker") or "").strip() or None
+        market_type = str(cand.get("market_type") or "tournament_matchups")
+        _append_row(
+            {
+                "snapshot_id": snapshot_id,
+                "generated_at": generated_at,
+                "tour": str(tour or "").strip().lower() or None,
+                "section": section_name,
+                "event_id": event_id,
+                "event_name": event_name,
+                "market_family": "matchup",
+                "market_type": market_type,
+                "player_key": player_key,
+                "player_display": str(cand.get("pick") or cand.get("player") or "").strip() or None,
+                "opponent_key": opponent_key,
+                "opponent_display": str(cand.get("opponent") or "").strip() or None,
+                "book": book,
+                "odds": odds,
+                "model_prob": _safe_float(cand.get("model_win_prob")),
+                "implied_prob": _safe_float(cand.get("implied_prob")),
+                "ev": ev,
+                "is_value": 1 if ev > 0 else 0,
+                "payload_json": json.dumps(cand),
+            },
+            row_key="|".join(
+                [
+                    "matchup",
+                    market_type,
+                    player_key or "",
+                    opponent_key or "",
+                    book or "",
+                    odds or "",
+                ]
+            ),
+        )
+
+    value_bets_source = section.get("all_value_bets") or section.get("value_bets") or {}
+    for market_type, bets in value_bets_source.items():
         for bet in bets or []:
             model_prob = bet.get("model_prob")
             implied_prob = bet.get("market_prob")
-            ev = float(bet.get("ev") or 0.0)
+            ev = _safe_float(bet.get("ev")) or 0.0
             odds = _normalize_market_odds(bet.get("odds"), bet.get("best_odds"))
-            rows.append(
+            player_key = str(bet.get("player_key") or "").strip() or None
+            book = str(bet.get("book") or bet.get("best_book") or "").strip() or None
+            market_type_str = str(market_type)
+            _append_row(
                 {
                     "snapshot_id": snapshot_id,
                     "generated_at": generated_at,
@@ -629,19 +709,28 @@ def _build_market_prediction_rows(
                     "event_id": event_id,
                     "event_name": event_name,
                     "market_family": "placement",
-                    "market_type": str(market_type),
-                    "player_key": str(bet.get("player_key") or "").strip() or None,
+                    "market_type": market_type_str,
+                    "player_key": player_key,
                     "player_display": str(bet.get("player_display") or bet.get("player") or "").strip() or None,
                     "opponent_key": None,
                     "opponent_display": None,
-                    "book": str(bet.get("book") or bet.get("best_book") or "").strip() or None,
+                    "book": book,
                     "odds": odds,
-                    "model_prob": float(model_prob) if model_prob is not None else None,
-                    "implied_prob": float(implied_prob) if implied_prob is not None else None,
+                    "model_prob": _safe_float(model_prob),
+                    "implied_prob": _safe_float(implied_prob),
                     "ev": ev,
                     "is_value": 1 if bool(bet.get("is_value")) else 0,
                     "payload_json": json.dumps(bet),
-                }
+                },
+                row_key="|".join(
+                    [
+                        "placement",
+                        market_type_str,
+                        player_key or "",
+                        book or "",
+                        odds or "",
+                    ]
+                ),
             )
 
     return rows
@@ -1153,6 +1242,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         mode=mode,
         enable_ai=False,
         enable_backfill=False,
+        model_variant=config.DEFAULT_MODEL_VARIANT,
     )
     generated_at = _iso_now()
     snapshot_id = uuid.uuid4().hex
@@ -1173,6 +1263,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         "field_size": live_result.get("field_size"),
         "tournament_id": live_result.get("tournament_id"),
         "course_num": live_result.get("course_num"),
+        "model_variant": live_result.get("model_variant", config.DEFAULT_MODEL_VARIANT),
         "event_format": live_result.get("event_format"),
         "skipped_reason": live_result.get("skipped_reason"),
         "rankings": _extract_rankings(
@@ -1236,6 +1327,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 mode="full",
                 enable_ai=False,
                 enable_backfill=False,
+                model_variant=config.DEFAULT_MODEL_VARIANT,
             )
         except Exception as exc:
             _logger.warning("Upcoming snapshot recompute failed; attempting verified snapshot fallback: %s", exc)
@@ -1264,6 +1356,9 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         )
         if not upcoming_eligibility.get("verified"):
             upcoming_state = "eligibility_failed"
+        upcoming_variant = str(
+            upcoming_result.get("model_variant", config.DEFAULT_MODEL_VARIANT)
+        ).strip().lower() or config.DEFAULT_MODEL_VARIANT
         upcoming_section = {
             "event_name": upcoming_result.get("event_name") or upcoming_event_name,
             "course_name": upcoming_result.get("course_name"),
@@ -1304,9 +1399,10 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
             "source_event_id": str(upcoming_row.get("event_id") or ""),
             "source_event_name": upcoming_event_name,
-            "generated_from": "upcoming_event_model",
+            "generated_from": f"upcoming_event_model_{upcoming_variant}",
             "source_card_path": upcoming_result.get("output_file") or upcoming_result.get("card_filepath"),
-            "ranking_source": "upcoming_event_model",
+            "ranking_source": f"upcoming_event_model_{upcoming_variant}",
+            "model_variant": upcoming_variant,
             "eligibility": upcoming_eligibility,
             "verification_error": upcoming_result.get("verification_error"),
             "diagnostics": {
@@ -1430,128 +1526,128 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 or []
             )
 
-    # Experimental v5 lane for A/B testing, isolated from baseline sections.
-    test_target_name = (
+    # Legacy baseline lane for fallback inspection in Research.
+    legacy_target_name = (
         upcoming_section.get("event_name")
         or upcoming_event_name
         or live_event_name
         or event_name
     )
-    test_target_event_id = (
+    legacy_target_event_id = (
         str(upcoming_section.get("source_event_id") or "").strip()
         or upcoming_event_id
         or live_source_event_id
     )
-    test_target_course = (
+    legacy_target_course = (
         upcoming_section.get("course_name")
         or upcoming_course
         or live_course
     )
-    test_result: dict[str, Any] = {}
-    if test_target_name:
+    legacy_result: dict[str, Any] = {}
+    if legacy_target_name:
         try:
-            test_result = run_snapshot_analysis(
+            legacy_result = run_snapshot_analysis(
                 tour=tour,
-                event_id=test_target_event_id or None,
-                tournament_name=str(test_target_name).strip() or None,
-                course_name=str(test_target_course).strip() or None,
+                event_id=legacy_target_event_id or None,
+                tournament_name=str(legacy_target_name).strip() or None,
+                course_name=str(legacy_target_course).strip() or None,
                 mode=mode if live_is_active else "full",
                 enable_ai=False,
                 enable_backfill=False,
-                model_variant="v5",
+                model_variant=config.LEGACY_MODEL_VARIANT,
             )
         except Exception as exc:
-            _logger.warning("Experimental v5 snapshot recompute failed: %s", exc)
-            test_result = {}
+            _logger.warning("Legacy baseline snapshot recompute failed: %s", exc)
+            legacy_result = {}
 
-    if test_result:
-        test_value_bets, test_value_filters = _extract_board_value_bets(
-            test_result.get("value_bets") or {},
+    if legacy_result:
+        legacy_value_bets, legacy_value_filters = _extract_board_value_bets(
+            legacy_result.get("value_bets") or {},
             return_diagnostics=True,
         )
-        test_diag = test_result.get("matchup_diagnostics") or {}
-        test_selection_counts = test_diag.get("selection_counts") or {}
-        test_selected_rows = int(
-            test_selection_counts.get("all_qualifying_rows", test_selection_counts.get("selected_rows", 0))
+        legacy_diag = legacy_result.get("matchup_diagnostics") or {}
+        legacy_selection_counts = legacy_diag.get("selection_counts") or {}
+        legacy_selected_rows = int(
+            legacy_selection_counts.get("all_qualifying_rows", legacy_selection_counts.get("selected_rows", 0))
         )
-        test_eligibility = _build_section_eligibility(
-            test_result,
-            source_event_id=test_target_event_id,
+        legacy_eligibility = _build_section_eligibility(
+            legacy_result,
+            source_event_id=legacy_target_event_id,
             tour=tour,
         )
-        test_state = _classify_matchup_state(
+        legacy_state = _classify_matchup_state(
             market_counts=ingest_summary.get("market_counts"),
-            diagnostics_state=test_diag.get("state"),
-            selected_rows=test_selected_rows,
-            errors=test_diag.get("errors"),
+            diagnostics_state=legacy_diag.get("state"),
+            selected_rows=legacy_selected_rows,
+            errors=legacy_diag.get("errors"),
         )
-        if not test_eligibility.get("verified"):
-            test_state = "eligibility_failed"
-        test_section = {
-            "event_name": test_result.get("event_name") or test_target_name,
-            "course_name": test_result.get("course_name") or test_target_course,
-            "field_size": test_result.get("field_size"),
+        if not legacy_eligibility.get("verified"):
+            legacy_state = "eligibility_failed"
+        legacy_section = {
+            "event_name": legacy_result.get("event_name") or legacy_target_name,
+            "course_name": legacy_result.get("course_name") or legacy_target_course,
+            "field_size": legacy_result.get("field_size"),
             "leaderboard": _load_event_leaderboard_rows(
-                test_target_event_id,
+                legacy_target_event_id,
                 year=upcoming_row.get("year") or ingest_summary.get("event_year"),
             ),
             "rankings": (
-                _extract_rankings(test_result.get("composite_results") or [], exclude_cut_players=False)
-                if test_eligibility.get("verified")
+                _extract_rankings(legacy_result.get("composite_results") or [], exclude_cut_players=False)
+                if legacy_eligibility.get("verified")
                 else []
             ),
             "matchups": (
-                _extract_matchups(test_result.get("matchup_bets") or [])
-                if test_eligibility.get("verified")
+                _extract_matchups(legacy_result.get("matchup_bets") or [])
+                if legacy_eligibility.get("verified")
                 else []
             ),
             "matchup_bets": (
-                _extract_board_matchup_bets(test_result.get("matchup_bets") or [])
-                if test_eligibility.get("verified")
+                _extract_board_matchup_bets(legacy_result.get("matchup_bets") or [])
+                if legacy_eligibility.get("verified")
                 else []
             ),
             "matchup_bets_all_books": (
                 _extract_board_matchup_bets(
-                    test_result.get("matchup_bets_all_books") or test_result.get("matchup_bets") or []
+                    legacy_result.get("matchup_bets_all_books") or legacy_result.get("matchup_bets") or []
                 )
-                if test_eligibility.get("verified")
+                if legacy_eligibility.get("verified")
                 else []
             ),
-            "value_bets": (test_value_bets if test_eligibility.get("verified") else {}),
-            "card_path": test_result.get("output_file") or test_result.get("card_filepath"),
-            "source_event_id": str(test_target_event_id or ""),
-            "source_event_name": str(test_target_name or ""),
-            "generated_from": "experimental_v5_model",
-            "source_card_path": test_result.get("output_file") or test_result.get("card_filepath"),
-            "ranking_source": "experimental_v5_model",
-            "model_variant": "v5",
-            "eligibility": test_eligibility,
-            "verification_error": test_result.get("verification_error"),
+            "value_bets": (legacy_value_bets if legacy_eligibility.get("verified") else {}),
+            "card_path": legacy_result.get("output_file") or legacy_result.get("card_filepath"),
+            "source_event_id": str(legacy_target_event_id or ""),
+            "source_event_name": str(legacy_target_name or ""),
+            "generated_from": "legacy_baseline_model",
+            "source_card_path": legacy_result.get("output_file") or legacy_result.get("card_filepath"),
+            "ranking_source": "legacy_baseline_model",
+            "model_variant": config.LEGACY_MODEL_VARIANT,
+            "eligibility": legacy_eligibility,
+            "verification_error": legacy_result.get("verification_error"),
             "diagnostics": {
                 "market_counts": ingest_summary.get("market_counts") or {},
-                "selection_counts": test_diag.get("selection_counts") or {},
-                "adaptation_state": test_diag.get("adaptation_state", "normal"),
-                "reason_codes": test_diag.get("reason_codes") or {},
-                "value_filters": test_value_filters,
-                "state": test_state,
+                "selection_counts": legacy_diag.get("selection_counts") or {},
+                "adaptation_state": legacy_diag.get("adaptation_state", "normal"),
+                "reason_codes": legacy_diag.get("reason_codes") or {},
+                "value_filters": legacy_value_filters,
+                "state": legacy_state,
                 "errors": (
-                    (test_diag.get("errors") or [])
+                    (legacy_diag.get("errors") or [])
                     + (
                         []
-                        if test_eligibility.get("verified")
+                        if legacy_eligibility.get("verified")
                         else [
-                            test_eligibility.get("summary"),
-                            test_eligibility.get("action"),
+                            legacy_eligibility.get("summary"),
+                            legacy_eligibility.get("action"),
                         ]
                     )
                 ),
             },
-            "strategy_meta": test_result.get("strategy_meta"),
+            "strategy_meta": legacy_result.get("strategy_meta"),
         }
     else:
-        test_section = {
-            "event_name": str(test_target_name or ""),
-            "course_name": str(test_target_course or ""),
+        legacy_section = {
+            "event_name": str(legacy_target_name or ""),
+            "course_name": str(legacy_target_course or ""),
             "field_size": 0,
             "leaderboard": [],
             "rankings": [],
@@ -1559,33 +1655,33 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "matchup_bets": [],
             "matchup_bets_all_books": [],
             "value_bets": {},
-            "source_event_id": str(test_target_event_id or ""),
-            "source_event_name": str(test_target_name or ""),
-            "generated_from": "experimental_v5_unavailable",
-            "ranking_source": "experimental_v5_unavailable",
-            "model_variant": "v5",
+            "source_event_id": str(legacy_target_event_id or ""),
+            "source_event_name": str(legacy_target_name or ""),
+            "generated_from": "legacy_baseline_unavailable",
+            "ranking_source": "legacy_baseline_unavailable",
+            "model_variant": config.LEGACY_MODEL_VARIANT,
             "eligibility": {
                 "verified": False,
-                "field_event_id": str(test_target_event_id or ""),
+                "field_event_id": str(legacy_target_event_id or ""),
                 "field_player_count": 0,
                 "field_source": "unavailable",
                 "failed_invariants": ["analysis_unavailable"],
-                "summary": "Experimental v5 analysis unavailable.",
-                "details": "Could not produce a v5 snapshot in this cycle.",
+                "summary": "Legacy baseline analysis unavailable.",
+                "details": "Could not produce a legacy baseline snapshot in this cycle.",
                 "action": "Retry refresh after data sync completes.",
-                "code": "v5_analysis_unavailable",
+                "code": "legacy_analysis_unavailable",
                 "retryable": True,
                 "major_event": False,
                 "cross_tour_backfill_used": False,
                 "observed_tour": tour,
             },
             "verification_error": {
-                "code": "v5_analysis_unavailable",
-                "summary": "Experimental v5 analysis unavailable.",
-                "details": "Could not produce a v5 snapshot in this cycle.",
+                "code": "legacy_analysis_unavailable",
+                "summary": "Legacy baseline analysis unavailable.",
+                "details": "Could not produce a legacy baseline snapshot in this cycle.",
                 "action": "Retry refresh after data sync completes.",
                 "retryable": True,
-                "observed_event_id": str(test_target_event_id or ""),
+                "observed_event_id": str(legacy_target_event_id or ""),
                 "observed_tour": tour,
             },
             "diagnostics": {
@@ -1599,7 +1695,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                     "probability_inconsistency_filtered": 0,
                 },
                 "state": "pipeline_error",
-                "errors": ["Experimental v5 recompute failed."],
+                "errors": ["Legacy baseline recompute failed."],
             },
         }
 
@@ -1772,18 +1868,18 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "data_mode": "full",
             "source": "upcoming_event_model",
         },
-        "test_tournament": {
-            **test_section,
+        "legacy_tournament": {
+            **legacy_section,
             "active": True,
-            "event_name": test_section.get("event_name") or upcoming_section.get("event_name") or upcoming_event_name,
+            "event_name": legacy_section.get("event_name") or upcoming_section.get("event_name") or upcoming_event_name,
             "data_mode": "full",
-            "source": "experimental_v5_model",
+            "source": "legacy_baseline_model",
         },
         "diagnostics": {
             "market_counts": ingest_summary.get("market_counts") or {},
             "live_state": live_state,
             "upcoming_state": (upcoming_section.get("diagnostics") or {}).get("state"),
-            "test_state": (test_section.get("diagnostics") or {}).get("state"),
+            "legacy_state": (legacy_section.get("diagnostics") or {}).get("state"),
         },
     }
     try:
@@ -1825,13 +1921,26 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         snapshot.setdefault("diagnostics", {})["history_write_error"] = str(exc)
     try:
         market_rows = []
+        live_market_section = dict(snapshot.get("live_tournament") or {})
+        live_market_section["all_value_bets"] = live_result.get("value_bets") or {}
+        live_market_section["all_failed_candidates"] = (live_diag or {}).get("failed_candidates") or []
+        upcoming_market_section = dict(snapshot.get("upcoming_tournament") or {})
+        upcoming_market_section["all_value_bets"] = (upcoming_result or {}).get("value_bets") or {}
+        upcoming_market_section["all_failed_candidates"] = (
+            ((upcoming_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
+        )
+        legacy_market_section = dict(snapshot.get("legacy_tournament") or {})
+        legacy_market_section["all_value_bets"] = (legacy_result or {}).get("value_bets") or {}
+        legacy_market_section["all_failed_candidates"] = (
+            ((legacy_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
+        )
         market_rows.extend(
             _build_market_prediction_rows(
                 snapshot_id=snapshot_id,
                 generated_at=generated_at,
                 tour=tour,
                 section_name="live",
-                section_payload=snapshot.get("live_tournament"),
+                section_payload=live_market_section,
             )
         )
         market_rows.extend(
@@ -1840,7 +1949,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 generated_at=generated_at,
                 tour=tour,
                 section_name="upcoming",
-                section_payload=snapshot.get("upcoming_tournament"),
+                section_payload=upcoming_market_section,
             )
         )
         market_rows.extend(
@@ -1848,8 +1957,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 snapshot_id=snapshot_id,
                 generated_at=generated_at,
                 tour=tour,
-                section_name="test",
-                section_payload=snapshot.get("test_tournament"),
+                section_name="legacy",
+                section_payload=legacy_market_section,
             )
         )
         market_rows_written = db.store_market_prediction_rows(market_rows)

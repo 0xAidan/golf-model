@@ -142,6 +142,8 @@ def _store_displayed_picks_for_grading(
     composite: list[dict],
     value_bets: dict[str, list[dict]],
     matchup_bets: list[dict],
+    matchup_failed_candidates: list[dict],
+    model_variant: str,
 ) -> int:
     """Persist baseline picks shown in card/UI so they can be graded later."""
     comp_lookup = {row.get("player_key"): row for row in (composite or [])}
@@ -167,7 +169,7 @@ def _store_displayed_picks_for_grading(
                 reasoning_parts.append(f"edge={bet.get('ev_pct')}")
             pick_rows.append({
                 "tournament_id": tournament_id,
-                "model_variant": "baseline",
+                "model_variant": model_variant,
                 "source": "ui_display",
                 "bet_type": str(bet_type),
                 "player_key": player_key,
@@ -180,6 +182,7 @@ def _store_displayed_picks_for_grading(
                 "momentum_score": comp.get("momentum"),
                 "model_prob": bet.get("model_prob"),
                 "market_odds": odds_text,
+                "market_book": bet.get("book") or bet.get("best_book") or "",
                 "market_implied_prob": bet.get("market_prob"),
                 "ev": bet.get("ev"),
                 "confidence": bet.get("confidence") or bet.get("tier"),
@@ -201,7 +204,7 @@ def _store_displayed_picks_for_grading(
             odds_text = str(odds_val)
         pick_rows.append({
             "tournament_id": tournament_id,
-            "model_variant": "baseline",
+            "model_variant": model_variant,
             "source": "ui_display",
             "bet_type": "matchup",
             "player_key": pick_key,
@@ -212,12 +215,48 @@ def _store_displayed_picks_for_grading(
             "course_fit_score": comp.get("course_fit"),
             "form_score": comp.get("form"),
             "momentum_score": comp.get("momentum"),
-            "model_prob": bet.get("model_prob"),
+            "model_prob": bet.get("model_win_prob", bet.get("model_prob")),
             "market_odds": odds_text,
-            "market_implied_prob": bet.get("market_prob"),
+            "market_book": bet.get("book") or "",
+            "market_implied_prob": bet.get("implied_prob", bet.get("market_prob")),
             "ev": bet.get("ev"),
             "confidence": bet.get("tier"),
             "reasoning": bet.get("why"),
+        })
+
+    for cand in matchup_failed_candidates or []:
+        pick_key = (cand.get("pick_key") or "").strip() or normalize_name(str(cand.get("pick", "")))
+        if not pick_key:
+            continue
+        opponent_key = (cand.get("opponent_key") or "").strip() or normalize_name(str(cand.get("opponent", "")))
+        comp = comp_lookup.get(pick_key, {})
+        odds_val = cand.get("odds")
+        odds_text = None
+        if isinstance(odds_val, (int, float)):
+            odds_int = int(odds_val)
+            odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+        elif odds_val is not None:
+            odds_text = str(odds_val)
+        pick_rows.append({
+            "tournament_id": tournament_id,
+            "model_variant": model_variant,
+            "source": "ui_candidate",
+            "bet_type": "matchup",
+            "player_key": pick_key,
+            "player_display": cand.get("pick") or display_name(pick_key),
+            "opponent_key": opponent_key,
+            "opponent_display": cand.get("opponent") or display_name(opponent_key),
+            "composite_score": comp.get("composite"),
+            "course_fit_score": comp.get("course_fit"),
+            "form_score": comp.get("form"),
+            "momentum_score": comp.get("momentum"),
+            "model_prob": cand.get("model_win_prob"),
+            "market_odds": odds_text,
+            "market_book": cand.get("book") or "",
+            "market_implied_prob": cand.get("implied_prob"),
+            "ev": cand.get("ev"),
+            "confidence": cand.get("tier"),
+            "reasoning": cand.get("reason_code"),
         })
 
     if not pick_rows:
@@ -572,6 +611,9 @@ def main():
     pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
     strategy_cfg, strategy_meta = resolve_runtime_strategy("global")
     runtime_settings = map_strategy_to_runtime_settings(strategy_cfg)
+    model_variant = str(config.DEFAULT_MODEL_VARIANT).strip().lower() or "v5"
+    if model_variant not in config.ALLOWED_MODEL_VARIANTS:
+        model_variant = "v5"
 
     # ── Check API keys ────────────────────────────────────────
     dg_key = os.environ.get("DATAGOLF_API_KEY")
@@ -1010,6 +1052,7 @@ def main():
     composite = compute_composite(
         tid, weights, course_name=primary_course,
         weather_adjustments=weather_adjustments,
+        model_variant=model_variant,
     )
     composite, composite_field_audit = filter_rows_to_field(composite, field_players)
     if composite_field_audit.get("extra_player_keys"):
@@ -1143,6 +1186,7 @@ def main():
                 tournament_id=tid,
                 field_strength=_fstr,
                 ev_threshold=runtime_settings["ev_threshold"],
+                model_variant=model_variant,
             )
             value_bets[bt] = vb
             value_count = sum(1 for v in vb if v.get("is_value"))
@@ -1157,36 +1201,55 @@ def main():
 
     # ── Matchup Value Bets (real sportsbook odds) ─────────────
     matchup_bets = []
+    matchup_bets_all_books: list[dict] = []
+    matchup_failed_candidates: list[dict] = []
     if pipeline_mode in ("full", "matchups-only", "round-matchups"):
         try:
-            from src.matchup_value import find_matchup_value_bets
+            from src.matchup_value import find_matchup_value_bets_with_all_books
             # Default + full + matchups-only: tournament (72-hole) only — books reliably post these.
             # Round H2H is opt-in (round-matchups) — DG often lists lines that disappear on-app.
             matchup_markets = [("tournament_matchups", "72-hole / tournament matchups")]
             if pipeline_mode == "round-matchups":
                 matchup_markets = [("round_matchups", "round matchups")]
             aggregated = []
+            aggregated_all_books = []
+            aggregated_failed = []
             for market_key, label in matchup_markets:
                 matchup_odds = safe_api_call(f"{label} odds", fetch_matchup_odds, market=market_key)
                 if not matchup_odds:
                     print(f"    {label}: no odds available")
                     continue
-                market_bets = find_matchup_value_bets(
+                market_bets, market_all_books, market_diag = find_matchup_value_bets_with_all_books(
                     composite,
                     matchup_odds,
                     tournament_id=tid,
                     ev_threshold=runtime_settings["matchup_ev_threshold"],
                     market_type=market_key,
+                    model_variant=model_variant,
+                    return_diagnostics=True,
                 )
                 for bet in market_bets:
                     bet["market_type"] = market_key
+                for bet in market_all_books:
+                    bet["market_type"] = market_key
+                for failed in market_diag.get("failed_candidates") or []:
+                    failed["market_type"] = market_key
                 aggregated.extend(market_bets)
-                print(f"    {label}: {len(matchup_odds)} pairs, {len(market_bets)} value plays")
+                aggregated_all_books.extend(market_all_books)
+                aggregated_failed.extend(market_diag.get("failed_candidates") or [])
+                print(
+                    f"    {label}: {len(matchup_odds)} pairs, "
+                    f"{len(market_all_books)} qualifying lines ({len(market_bets)} card plays)"
+                )
             matchup_bets = sorted(aggregated, key=lambda x: x.get("ev", 0), reverse=True)
+            matchup_bets_all_books = sorted(aggregated_all_books, key=lambda x: x.get("ev", 0), reverse=True)
+            matchup_failed_candidates = aggregated_failed
         except Exception as e:
             logger_msg = f"Matchup value bets failed: {e}"
             print(f"    ⚠ {logger_msg}")
             matchup_bets = []
+            matchup_bets_all_books = []
+            matchup_failed_candidates = []
     else:
         print("    Matchups skipped (mode: " + pipeline_mode + ")")
 
@@ -1200,6 +1263,7 @@ def main():
             if threeball_odds:
                 threeball_bets = find_3ball_value_bets(
                     composite, threeball_odds, tournament_id=tid,
+                    model_variant=model_variant,
                 )
                 for bet in threeball_bets:
                     bet["market_type"] = "3_balls"
@@ -1342,13 +1406,16 @@ def main():
     )
     print(f"  Portfolio filter applied (field: {field_str}, {total_value} value bets kept)")
 
-    displayed_matchups = matchup_bets if not SHADOW_MODE else []
+    displayed_matchups = matchup_bets_all_books if not SHADOW_MODE else []
+    displayed_failed_candidates = matchup_failed_candidates if not SHADOW_MODE else []
     try:
         tracked_count = _store_displayed_picks_for_grading(
             tournament_id=tid,
             composite=composite,
             value_bets=value_bets,
             matchup_bets=displayed_matchups,
+            matchup_failed_candidates=displayed_failed_candidates,
+            model_variant=model_variant,
         )
         if tracked_count:
             print(f"  Tracked {tracked_count} displayed picks for grading")

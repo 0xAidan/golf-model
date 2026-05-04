@@ -56,8 +56,17 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
     result_map = {r["player_key"]: dict(r) for r in results}
     all_results_list = [dict(r) for r in results]
 
+    def _grade_model_hit(*, ev: float | None, bet_hit: int, is_push: bool) -> int:
+        if is_push:
+            return 0
+        if ev is not None and ev < 0:
+            return 0 if bet_hit else 1
+        return 1 if bet_hit else 0
+
     scored = 0
-    hits = 0
+    model_hits = 0
+    bet_hits = 0
+    resolved = 0
     total_profit = 0.0
 
     for pick in picks:
@@ -67,6 +76,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         if not r:
             logger.warning("Scoring skip: no results for player_key=%s bet_type=%s", pk, bt)
             continue
+        resolved += 1
 
         finish = r.get("finish_position")
         finish_text = r.get("finish_text")
@@ -88,6 +98,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         hit = outcome["hit"]
         fraction = outcome["fraction"]
         is_push = outcome["is_push"]
+        model_hit = _grade_model_hit(ev=pick.get("ev"), bet_hit=hit, is_push=is_push)
 
         # Calculate profit
         odds_decimal = parse_odds_to_decimal(pick["market_odds"])
@@ -98,7 +109,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
 
         # Check if already scored
         existing = conn.execute(
-            "SELECT id FROM pick_outcomes WHERE pick_id = ?", (pick["id"],)
+            "SELECT id, model_hit FROM pick_outcomes WHERE pick_id = ?", (pick["id"],)
         ).fetchone()
 
         actual_finish = r.get("finish_text")
@@ -110,14 +121,26 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         if not existing:
             conn.execute(
                 """INSERT INTO pick_outcomes
-                   (pick_id, hit, actual_finish, odds_decimal, stake, profit, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (pick["id"], hit, actual_finish,
+                   (pick_id, hit, model_hit, actual_finish, odds_decimal, stake, profit, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (pick["id"], hit, model_hit, actual_finish,
                  odds_decimal, stake, profit, notes),
             )
             scored += 1
+            if model_hit:
+                model_hits += 1
             if hit:
-                hits += 1
+                bet_hits += 1
+        else:
+            if existing["model_hit"] is None:
+                conn.execute(
+                    "UPDATE pick_outcomes SET model_hit = ? WHERE id = ?",
+                    (model_hit, existing["id"]),
+                )
+            if model_hit:
+                model_hits += 1
+            if hit:
+                bet_hits += 1
 
     conn.commit()
     conn.close()
@@ -125,9 +148,11 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
     return {
         "status": "ok",
         "scored": scored,
-        "hits": hits,
-        "misses": scored - hits,
-        "hit_rate": round(hits / scored, 3) if scored else 0,
+        "hits": model_hits,
+        "misses": resolved - model_hits,
+        "hit_rate": round(model_hits / resolved, 3) if resolved else 0,
+        "bet_hits": bet_hits,
+        "model_hits": model_hits,
         "total_profit": round(total_profit, 2),
     }
 

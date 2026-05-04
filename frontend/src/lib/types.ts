@@ -4,6 +4,7 @@ export type WorkspaceId =
   | "matchups"
   | "grading"
   | "track-record"
+  | "legacy-model"
   | "champion-challenger"
   | "diagnostics"
 
@@ -176,6 +177,7 @@ export type LiveTournamentSnapshot = {
   source_event_name?: string
   generated_from?: string
   ranking_source?: string
+  model_variant?: string
   data_mode?: string
   course_name?: string
   field_size?: number
@@ -260,12 +262,12 @@ export type LiveRefreshSnapshot = {
   cadence_mode?: string
   live_tournament?: LiveTournamentSnapshot
   upcoming_tournament?: LiveTournamentSnapshot
-  test_tournament?: LiveTournamentSnapshot
+  legacy_tournament?: LiveTournamentSnapshot
   diagnostics?: {
     market_counts?: Record<string, { raw_rows?: number; reason_code?: string }>
     live_state?: string
     upcoming_state?: string
-    test_state?: string
+    legacy_state?: string
   }
 }
 

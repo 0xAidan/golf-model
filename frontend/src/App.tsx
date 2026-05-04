@@ -44,6 +44,9 @@ const ChampionChallengerPage = lazy(() =>
     default: mod.ChampionChallengerPage,
   })),
 )
+const LegacyModelPage = lazy(() =>
+  import("@/pages/legacy-model-page").then((mod) => ({ default: mod.LegacyModelPage })),
+)
 const DiagnosticsPage = lazy(() =>
   import("@/pages/diagnostics-page").then((mod) => ({ default: mod.DiagnosticsPage })),
 )
@@ -176,9 +179,7 @@ function App() {
   const profileSection =
     predictionTab === "upcoming"
       ? liveSnapshot?.upcoming_tournament
-      : predictionTab === "test"
-        ? liveSnapshot?.test_tournament
-        : predictionTab === "live"
+      : predictionTab === "live"
           ? liveSnapshot?.live_tournament
           : null
   const profileTournamentId = profileSection?.tournament_id ?? visiblePredictionRun?.tournament_id
@@ -303,8 +304,6 @@ function App() {
     const diagnostics =
       predictionTab === "upcoming"
         ? liveSnapshot?.upcoming_tournament?.diagnostics
-        : predictionTab === "test"
-          ? liveSnapshot?.test_tournament?.diagnostics
         : liveSnapshot?.live_tournament?.diagnostics
     return getMatchupStateMessage({
       state: diagnostics?.state,
@@ -322,6 +321,32 @@ function App() {
       return betBook ? selectedBookSet.has(betBook) : false
     })
   }, [predictionTab, selectedBookSet, visiblePredictionRun])
+
+  const picksSection: "live" | "upcoming" | null =
+    predictionTab === "upcoming" ? "upcoming" : predictionTab === "live" ? "live" : null
+  const picksEventId =
+    picksSection === "upcoming"
+      ? String(liveSnapshot?.upcoming_tournament?.source_event_id ?? "").trim()
+      : picksSection === "live"
+        ? String(liveSnapshot?.live_tournament?.source_event_id ?? "").trim()
+        : ""
+  const picksMarketRowsQuery = useQuery({
+    queryKey: ["live-refresh-past-market-rows", picksEventId, picksSection],
+    queryFn: () =>
+      api.getLiveRefreshPastMarketRows(picksEventId, {
+        section: picksSection ?? "live",
+        limit: 5000,
+      }),
+    enabled: Boolean(picksSection && picksEventId),
+    staleTime: 30_000,
+  })
+  const picksMarketRows = picksMarketRowsQuery.data?.ok
+    ? (picksMarketRowsQuery.data.rows ?? [])
+    : []
+  const picksMarketRowsError =
+    picksMarketRowsQuery.error instanceof Error
+      ? picksMarketRowsQuery.error.message
+      : undefined
 
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
   const dashboard = dashboardQuery.data
@@ -440,13 +465,14 @@ function App() {
                 matchupDiagnostics={
                   predictionTab === "upcoming"
                     ? liveSnapshot?.upcoming_tournament?.diagnostics
-                    : predictionTab === "test"
-                      ? liveSnapshot?.test_tournament?.diagnostics
                     : liveSnapshot?.live_tournament?.diagnostics
                 }
                 minEdgePct={Math.round(minEdge * 100)}
                 secondaryBets={secondaryBets}
                 onPlayerSelect={setSelectedPlayerKey}
+                marketRows={picksMarketRows}
+                marketRowsLoading={picksMarketRowsQuery.isLoading || picksMarketRowsQuery.isFetching}
+                marketRowsError={picksMarketRowsError}
               />
             </LegacyRouteGate>
           }
@@ -469,6 +495,14 @@ function App() {
                 <TrackRecordPage />
               </Suspense>
             </div>
+          }
+        />
+        <Route
+          path="/research/legacy-model"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <LegacyModelPage liveSnapshot={liveSnapshot} />
+            </Suspense>
           }
         />
         <Route

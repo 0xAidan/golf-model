@@ -13,6 +13,10 @@ import { useSearchParams } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
+import {
+  buildReplayGeneratedMatchups,
+  buildReplayGeneratedSecondaryBets,
+} from "@/lib/cockpit-picks"
 import { formatNumber } from "@/lib/format"
 import {
   EV_BADGE_TOOLTIP,
@@ -26,6 +30,7 @@ import type {
   FlattenedSecondaryBet,
   LiveTournamentSnapshot,
   MatchupBet,
+  PastMarketPredictionRow,
 } from "@/lib/types"
 import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 
@@ -43,6 +48,95 @@ type PicksPageProps = {
   secondaryBets: FlattenedSecondaryBet[]
   // Player drilldown (kept for parity with cockpit; clicking a row could trigger this later)
   onPlayerSelect?: (playerKey: string) => void
+  marketRows?: PastMarketPredictionRow[]
+  marketRowsLoading?: boolean
+  marketRowsError?: string
+}
+
+type AvailabilityFilter = "all" | "available" | "unavailable"
+
+type InventoryRow = {
+  row: PastMarketPredictionRow
+  availableNow: boolean
+  firstSeenAt?: string | null
+  lastSeenAt?: string | null
+}
+
+function marketRowKey(row: PastMarketPredictionRow): string {
+  return [
+    row.market_family ?? "",
+    row.market_type ?? "",
+    row.player_key ?? "",
+    row.opponent_key ?? "",
+    row.book ?? "",
+    row.odds ?? "",
+  ].join("|")
+}
+
+function tsToEpoch(value?: string | null): number {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function buildMarketInventory(rows: PastMarketPredictionRow[]): InventoryRow[] {
+  if (!rows.length) return []
+
+  const latestGeneratedAt = rows.reduce<string | null>((latest, row) => {
+    const ts = row.generated_at ?? null
+    if (!latest) return ts
+    if (!ts) return latest
+    return ts > latest ? ts : latest
+  }, null)
+
+  const availableKeys = new Set(
+    rows
+      .filter((row) => (row.generated_at ?? null) === latestGeneratedAt)
+      .map((row) => marketRowKey(row)),
+  )
+
+  const grouped = new Map<string, InventoryRow>()
+  for (const row of rows) {
+    const key = marketRowKey(row)
+    const existing = grouped.get(key)
+    if (!existing) {
+      grouped.set(key, {
+        row,
+        availableNow: availableKeys.has(key),
+        firstSeenAt: row.generated_at ?? null,
+        lastSeenAt: row.generated_at ?? null,
+      })
+      continue
+    }
+    const firstSeenAt =
+      tsToEpoch(row.generated_at) < tsToEpoch(existing.firstSeenAt)
+        ? row.generated_at ?? existing.firstSeenAt
+        : existing.firstSeenAt
+    const lastSeenAt =
+      tsToEpoch(row.generated_at) > tsToEpoch(existing.lastSeenAt)
+        ? row.generated_at ?? existing.lastSeenAt
+        : existing.lastSeenAt
+    const latestRow =
+      tsToEpoch(row.generated_at) > tsToEpoch(existing.row.generated_at)
+        ? row
+        : existing.row
+    grouped.set(key, {
+      row: latestRow,
+      availableNow: existing.availableNow || availableKeys.has(key),
+      firstSeenAt,
+      lastSeenAt,
+    })
+  }
+
+  return Array.from(grouped.values()).sort((left, right) => {
+    if (left.availableNow !== right.availableNow) {
+      return left.availableNow ? -1 : 1
+    }
+    const edgeDelta =
+      Number(right.row.ev ?? 0) - Number(left.row.ev ?? 0)
+    if (edgeDelta !== 0) return edgeDelta
+    return tsToEpoch(right.lastSeenAt) - tsToEpoch(left.lastSeenAt)
+  })
 }
 
 /* ── Mini components ─────────────────────────────────────────────────── */
@@ -143,6 +237,62 @@ function PicksTabSwitcher({
               }}
             >
               {tab.count}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function AvailabilityFilterBar({
+  value,
+  onChange,
+  counts,
+}: {
+  value: AvailabilityFilter
+  onChange: (next: AvailabilityFilter) => void
+  counts: { all: number; available: number; unavailable: number }
+}) {
+  const options: Array<{ value: AvailabilityFilter; label: string; count: number }> = [
+    { value: "all", label: "All tracked", count: counts.all },
+    { value: "available", label: "Available", count: counts.available },
+    { value: "unavailable", label: "No longer available", count: counts.unavailable },
+  ]
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        marginBottom: 10,
+      }}
+      aria-label="Availability filter"
+    >
+      {options.map((option) => {
+        const active = value === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn("mode-tab", active && "active")}
+            style={{ minHeight: 30 }}
+          >
+            {option.label}
+            <span
+              style={{
+                marginLeft: 6,
+                padding: "1px 6px",
+                borderRadius: 8,
+                fontSize: 9,
+                fontWeight: 700,
+                background: active ? "rgba(34,197,94,0.15)" : "var(--surface-2)",
+                color: active ? "var(--green)" : "var(--text-muted)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {option.count}
             </span>
           </button>
         )
@@ -763,10 +913,57 @@ export function PicksPage({
   minEdgePct,
   secondaryBets,
   onPlayerSelect,
+  marketRows = [],
+  marketRowsLoading = false,
+  marketRowsError,
 }: PicksPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab: PicksTab = searchParams.get("tab") === "secondary" ? "secondary" : "matchups"
   const [tab, setTab] = useState<PicksTab>(initialTab)
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all")
+
+  const marketInventory = useMemo(
+    () => buildMarketInventory(marketRows),
+    [marketRows],
+  )
+  const hasTrackedInventory = marketInventory.length > 0
+  const filteredInventoryRows = useMemo(() => {
+    if (!hasTrackedInventory) return []
+    if (availabilityFilter === "all") return marketInventory
+    const wantAvailable = availabilityFilter === "available"
+    return marketInventory.filter((entry) => entry.availableNow === wantAvailable)
+  }, [availabilityFilter, hasTrackedInventory, marketInventory])
+  const replayRowsForFilter = useMemo(
+    () => filteredInventoryRows.map((entry) => entry.row),
+    [filteredInventoryRows],
+  )
+
+  const matchupSource = hasTrackedInventory
+    ? buildReplayGeneratedMatchups(
+        replayRowsForFilter.filter((row) => row.market_family === "matchup"),
+      )
+    : matchups
+  const secondarySource = hasTrackedInventory
+    ? buildReplayGeneratedSecondaryBets(
+        replayRowsForFilter.filter((row) => row.market_family !== "matchup"),
+      )
+    : secondaryBets
+  const availabilityCounts = useMemo(() => {
+    if (!hasTrackedInventory) {
+      return {
+        all: matchups.length + secondaryBets.length,
+        available: matchups.length + secondaryBets.length,
+        unavailable: 0,
+      }
+    }
+    const available = marketInventory.filter((entry) => entry.availableNow).length
+    const unavailable = marketInventory.length - available
+    return {
+      all: marketInventory.length,
+      available,
+      unavailable,
+    }
+  }, [hasTrackedInventory, marketInventory, matchups.length, secondaryBets.length])
 
   // Keep ?tab= param in sync so refresh / deep-links work
   useEffect(() => {
@@ -784,8 +981,8 @@ export function PicksPage({
 
   const description =
     tab === "matchups"
-      ? `${matchups.length} qualifying lines · click any row to expand`
-      : `${secondaryBets.length} edges across top-finish, make-cut & outright markets`
+      ? `${matchupSource.length} tracked matchup lines · click any row to expand`
+      : `${secondarySource.length} tracked secondary lines across top-finish, make-cut & outright markets`
 
   return (
     <div
@@ -803,19 +1000,34 @@ export function PicksPage({
       <PicksTabSwitcher
         value={tab}
         onChange={setTab}
-        matchupCount={matchups.length}
-        secondaryCount={secondaryBets.length}
+        matchupCount={matchupSource.length}
+        secondaryCount={secondarySource.length}
       />
+      <AvailabilityFilterBar
+        value={availabilityFilter}
+        onChange={setAvailabilityFilter}
+        counts={availabilityCounts}
+      />
+      {marketRowsLoading && (
+        <div style={{ marginBottom: 8, fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
+          Syncing tracked pick inventory…
+        </div>
+      )}
+      {marketRowsError && (
+        <div style={{ marginBottom: 8, fontSize: 11, color: "var(--gold)", fontFamily: "var(--font-mono)" }}>
+          Inventory history unavailable: {marketRowsError}
+        </div>
+      )}
 
       {tab === "matchups" ? (
         <MatchupsBoard
-          matchups={matchups}
+          matchups={matchupSource}
           emptyMessage={matchupsEmptyMessage}
           diagnostics={matchupDiagnostics}
           minEdgePct={minEdgePct}
         />
       ) : (
-        <SecondaryBoard bets={secondaryBets} onPlayerSelect={onPlayerSelect} />
+        <SecondaryBoard bets={secondarySource} onPlayerSelect={onPlayerSelect} />
       )}
     </div>
   )

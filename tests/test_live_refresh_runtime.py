@@ -506,20 +506,22 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
 
     assert len(calls) == 3
     assert calls[0]["mode"] == "round-matchups"
+    assert calls[0]["model_variant"] == "v5"
     assert calls[1]["mode"] == "full"
     assert calls[1]["tournament_name"] == "Next Event"
+    assert calls[1]["model_variant"] == "v5"
     assert calls[2]["mode"] == "round-matchups"
     assert calls[2]["tournament_name"] == "Next Event"
-    assert calls[2]["model_variant"] == "v5"
+    assert calls[2]["model_variant"] == "baseline"
     assert snapshot["upcoming_tournament"]["event_name"] == "Next Event"
-    assert snapshot["upcoming_tournament"]["generated_from"] == "upcoming_event_model"
-    assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model"
+    assert snapshot["upcoming_tournament"]["generated_from"] == "upcoming_event_model_v5"
+    assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model_v5"
     assert snapshot["upcoming_tournament"]["diagnostics"]["state"] == "edges_available"
     assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets"]] == ["betonline", "draftkings"]
     assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets_all_books"]] == ["betonline", "draftkings", "fanduel"]
     assert snapshot["upcoming_tournament"]["value_bets"]["top10"][0]["book"] == "bovada"
-    assert snapshot["test_tournament"]["event_name"] == "Next Event"
-    assert snapshot["test_tournament"]["model_variant"] == "v5"
+    assert snapshot["legacy_tournament"]["event_name"] == "Next Event"
+    assert snapshot["legacy_tournament"]["model_variant"] == "baseline"
 
 
 def test_run_recompute_withholds_unverified_rankings_when_not_live(monkeypatch, tmp_path):

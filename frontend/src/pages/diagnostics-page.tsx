@@ -31,9 +31,7 @@ export function DiagnosticsPage({
   const activeSection =
     predictionTab === "upcoming"
       ? liveSnapshot?.upcoming_tournament
-      : predictionTab === "test"
-        ? liveSnapshot?.test_tournament
-        : liveSnapshot?.live_tournament
+      : liveSnapshot?.live_tournament
 
   const diagnosticsModel = buildDiagnosticsModel({
     mode: predictionTab,
@@ -71,7 +69,7 @@ export function DiagnosticsPage({
           ) : null}
           {predictionTab === "live" && !isLiveActive ? (
             <div className="term-notice">
-              No live event is active right now. Switch the mode to Upcoming or Test for active diagnostics.
+              No live event is active right now. Switch the mode to Upcoming for active diagnostics.
             </div>
           ) : null}
           <DiagnosticsGradingPanel

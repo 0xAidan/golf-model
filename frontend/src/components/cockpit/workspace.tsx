@@ -118,14 +118,13 @@ export function CockpitModeSwitch({
   onChange,
   liveActive,
 }: {
-  value: "live" | "upcoming" | "test" | "past"
-  onChange: (value: "live" | "upcoming" | "test" | "past") => void
+  value: "live" | "upcoming" | "past"
+  onChange: (value: "live" | "upcoming" | "past") => void
   liveActive?: boolean
 }) {
-  const options: Array<{ value: "live" | "upcoming" | "test" | "past"; label: string }> = [
+  const options: Array<{ value: "live" | "upcoming" | "past"; label: string }> = [
     { value: "live", label: "Live" },
     { value: "upcoming", label: "Upcoming" },
-    { value: "test", label: "Test" },
     { value: "past", label: "Past" },
   ]
 

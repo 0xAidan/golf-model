@@ -12,7 +12,10 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # Model version (single source of truth; was v3.0 in card.py, v4.0 in methodology)
 # ---------------------------------------------------------------------------
-MODEL_VERSION = "4.2"
+MODEL_VERSION = "5.0"
+DEFAULT_MODEL_VARIANT = os.environ.get("DEFAULT_MODEL_VARIANT", "v5").strip().lower() or "v5"
+LEGACY_MODEL_VARIANT = os.environ.get("LEGACY_MODEL_VARIANT", "baseline").strip().lower() or "baseline"
+ALLOWED_MODEL_VARIANTS = {"baseline", "v5"}
 
 # ---------------------------------------------------------------------------
 # T3 — Pair / team matchup model (Zurich Classic). See issue #47.

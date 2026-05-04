@@ -3,6 +3,7 @@ import {
   Activity,
   FlaskConical,
   GraduationCap,
+  History,
   LayoutDashboard,
   Swords,
   Trophy,
@@ -24,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "matchups",     label: "Picks",        href: "/matchups",    icon: Swords },
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
   { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
+  { id: "legacy-model", label: "Legacy Model", href: "/research/legacy-model", icon: History },
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
   { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]

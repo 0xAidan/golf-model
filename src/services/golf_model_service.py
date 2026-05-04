@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from src import config
 from src import db
 from src.event_format import classify_event_format, EVENT_FORMAT_TEAM
 from src.field_selection import filter_rows_to_field
@@ -68,10 +69,13 @@ def _maybe_log_pair_matchup_shadow(
 class GolfModelService:
     """Orchestrates the full prediction pipeline."""
 
-    def __init__(self, tour: str = "pga", strategy_config: dict = None, model_variant: str = "baseline"):
+    def __init__(self, tour: str = "pga", strategy_config: dict = None, model_variant: str | None = None):
         self.tour = tour
         self.strategy_config = strategy_config or {}
-        self.model_variant = model_variant
+        variant = str(model_variant or config.DEFAULT_MODEL_VARIANT).strip().lower()
+        if variant not in config.ALLOWED_MODEL_VARIANTS:
+            variant = config.DEFAULT_MODEL_VARIANT
+        self.model_variant = variant
         db.ensure_initialized()
 
     def run_analysis(
@@ -253,9 +257,6 @@ class GolfModelService:
                 self.strategy_config = build_pipeline_strategy_config(strategy)
                 meta = dict(meta or {})
                 meta.setdefault("runtime_settings", self.strategy_config)
-                if self.model_variant != "baseline":
-                    meta["strategy_source"] = f"experimental_{self.model_variant}"
-                    meta["strategy_name"] = f"{self.model_variant}_test_lane"
                 result["strategy_meta"] = meta
                 logger.info("Strategy resolved: %s (source: %s)", meta.get("strategy_name"), meta.get("strategy_source"))
         elif strategy_source == "config" and self.strategy_config:
@@ -266,6 +267,8 @@ class GolfModelService:
                 result["strategy_meta"] = merged_meta
             else:
                 result["strategy_meta"] = pipeline_meta
+        if isinstance(result.get("strategy_meta"), dict):
+            result["strategy_meta"].setdefault("model_variant", self.model_variant)
 
         # Step 8: Run composite model
         print("  Running composite model...")
@@ -422,7 +425,8 @@ class GolfModelService:
         self._store_displayed_picks(
             tid=tid,
             value_bets=value_bets,
-            matchup_bets=matchup_bets,
+            matchup_bets=matchup_bets_all_books,
+            matchup_failed_candidates=(matchup_diagnostics or {}).get("failed_candidates") or [],
             composite=composite,
         )
         if value_bets and placement_logging_allowed:
@@ -758,6 +762,7 @@ class GolfModelService:
             weights,
             course_name=course_name,
             strategy_config=None,
+            model_variant=self.model_variant,
         )
 
     def _is_ai_available(self) -> bool:
@@ -1107,7 +1112,15 @@ class GolfModelService:
         except Exception as e:
             logger.warning(f"Prediction logging error: {e}")
 
-    def _store_displayed_picks(self, *, tid: int, value_bets: dict, matchup_bets: list[dict], composite: list[dict]):
+    def _store_displayed_picks(
+        self,
+        *,
+        tid: int,
+        value_bets: dict,
+        matchup_bets: list[dict],
+        matchup_failed_candidates: list[dict] | None,
+        composite: list[dict],
+    ):
         """Persist every UI-displayed pick so grading has complete coverage."""
         comp_lookup = {row.get("player_key"): row for row in (composite or [])}
         pick_rows: list[dict] = []
@@ -1146,6 +1159,7 @@ class GolfModelService:
                     "momentum_score": comp.get("momentum"),
                     "model_prob": bet.get("model_prob"),
                     "market_odds": odds_text,
+                    "market_book": bet.get("book") or bet.get("best_book") or "",
                     "market_implied_prob": bet.get("market_prob"),
                     "ev": bet.get("ev"),
                     "confidence": bet.get("confidence") or bet.get("tier"),
@@ -1178,12 +1192,48 @@ class GolfModelService:
                 "course_fit_score": comp.get("course_fit"),
                 "form_score": comp.get("form"),
                 "momentum_score": comp.get("momentum"),
-                "model_prob": bet.get("model_prob"),
+                "model_prob": bet.get("model_win_prob", bet.get("model_prob")),
                 "market_odds": odds_text,
-                "market_implied_prob": bet.get("market_prob"),
+                "market_book": bet.get("book") or "",
+                "market_implied_prob": bet.get("implied_prob", bet.get("market_prob")),
                 "ev": bet.get("ev"),
                 "confidence": bet.get("tier"),
                 "reasoning": bet.get("why"),
+            })
+
+        for cand in matchup_failed_candidates or []:
+            pick_key = (cand.get("pick_key") or "").strip() or normalize_name(str(cand.get("pick", "")))
+            if not pick_key:
+                continue
+            opponent_key = (cand.get("opponent_key") or "").strip() or normalize_name(str(cand.get("opponent", "")))
+            comp = comp_lookup.get(pick_key, {})
+            odds_val = cand.get("odds")
+            odds_text = None
+            if isinstance(odds_val, (int, float)):
+                odds_int = int(odds_val)
+                odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+            elif odds_val is not None:
+                odds_text = str(odds_val)
+            pick_rows.append({
+                "tournament_id": tid,
+                "model_variant": self.model_variant,
+                "source": "ui_candidate",
+                "bet_type": "matchup",
+                "player_key": pick_key,
+                "player_display": cand.get("pick") or display_name(pick_key),
+                "opponent_key": opponent_key,
+                "opponent_display": cand.get("opponent") or display_name(opponent_key),
+                "composite_score": comp.get("composite"),
+                "course_fit_score": comp.get("course_fit"),
+                "form_score": comp.get("form"),
+                "momentum_score": comp.get("momentum"),
+                "model_prob": cand.get("model_win_prob"),
+                "market_odds": odds_text,
+                "market_book": cand.get("book") or "",
+                "market_implied_prob": cand.get("implied_prob"),
+                "ev": cand.get("ev"),
+                "confidence": cand.get("tier"),
+                "reasoning": cand.get("reason_code"),
             })
 
         if not pick_rows:

@@ -417,7 +417,7 @@ def _latest_graded_tournament_summary() -> dict | None:
             COUNT(DISTINCT r.id) AS results_count,
             COUNT(DISTINCT p.id) AS picks_count,
             COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(po.hit), 0) AS hits,
+            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
             ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
@@ -525,7 +525,7 @@ async def get_grading_history(limit: int = 20):
             COUNT(DISTINCT r.id) AS results_count,
             COUNT(DISTINCT p.id) AS picks_count,
             COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(po.hit), 0) AS hits,
+            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
             ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
@@ -552,7 +552,8 @@ async def get_grading_history(limit: int = 20):
                 p.model_prob,
                 p.ev,
                 p.reasoning,
-                po.hit,
+                COALESCE(po.model_hit, po.hit) AS hit,
+                po.model_hit,
                 po.actual_finish,
                 ROUND(COALESCE(po.profit, 0), 2) AS profit,
                 po.entered_at AS graded_at
@@ -595,10 +596,10 @@ async def get_track_record(limit: int = 20):
         SELECT
             t.id, t.name, t.course, t.year, t.event_id,
             COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(po.hit), 0) AS hits,
-            COALESCE(SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END), 0) AS wins,
-            COALESCE(SUM(CASE WHEN po.hit = 0 AND po.profit = 0 THEN 1 ELSE 0 END), 0) AS pushes,
-            COALESCE(SUM(CASE WHEN po.hit = 0 AND po.profit < 0 THEN 1 ELSE 0 END), 0) AS losses,
+            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
+            COALESCE(SUM(CASE WHEN COALESCE(po.model_hit, po.hit) = 1 THEN 1 ELSE 0 END), 0) AS wins,
+            COALESCE(SUM(CASE WHEN COALESCE(po.model_hit, po.hit) = 0 AND po.profit = 0 THEN 1 ELSE 0 END), 0) AS pushes,
+            COALESCE(SUM(CASE WHEN COALESCE(po.model_hit, po.hit) = 0 AND po.profit != 0 THEN 1 ELSE 0 END), 0) AS losses,
             ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
             MAX(po.entered_at) AS last_graded_at
         FROM tournaments t
@@ -623,7 +624,8 @@ async def get_track_record(limit: int = 20):
                 p.model_prob,
                 p.ev,
                 p.reasoning,
-                po.hit,
+                COALESCE(po.model_hit, po.hit) AS hit,
+                po.model_hit,
                 po.actual_finish,
                 ROUND(po.profit, 2) AS profit,
                 po.entered_at AS graded_at
@@ -1506,9 +1508,12 @@ async def run_upcoming_prediction(request: Request):
     mode = payload.get("mode", "full")
     if mode not in ("full", "matchups-only", "placements-only", "round-matchups"):
         mode = "full"
-    model_variant = str(payload.get("model_variant", "baseline")).strip().lower() or "baseline"
-    if model_variant not in {"baseline", "v5"}:
-        model_variant = "baseline"
+    from src import config as runtime_config
+    model_variant = str(
+        payload.get("model_variant", runtime_config.DEFAULT_MODEL_VARIANT)
+    ).strip().lower() or runtime_config.DEFAULT_MODEL_VARIANT
+    if model_variant not in runtime_config.ALLOWED_MODEL_VARIANTS:
+        model_variant = runtime_config.DEFAULT_MODEL_VARIANT
     result = run_snapshot_analysis(
         tour=payload.get("tour", "pga"),
         tournament_name=payload.get("tournament"),
@@ -1690,8 +1695,13 @@ async def run_analysis(
                     for market, market_odds in odds_by_market.items():
                         best = get_best_odds(market_odds)
                         bt = "outright" if market == "outrights" else market.replace("top_", "top")
-                        vb = find_value_bets(composite, best, bet_type=bt,
-                                            tournament_id=tournament_id)
+                        vb = find_value_bets(
+                            composite,
+                            best,
+                            bet_type=bt,
+                            tournament_id=tournament_id,
+                            model_variant=config.DEFAULT_MODEL_VARIANT,
+                        )
                         value_bets[bt] = vb
                     odds_status = f"Fetched {len(all_odds)} odds"
                 else:
@@ -1716,7 +1726,7 @@ async def run_analysis(
             for bt in ["outright", "top5", "top10", "top20"]:
                 pick_rows.append({
                     "tournament_id": tournament_id,
-                    "model_variant": "baseline",
+                    "model_variant": config.DEFAULT_MODEL_VARIANT,
                     "source": "legacy_upload",
                     "bet_type": bt,
                     "player_key": r["player_key"],
@@ -2875,7 +2885,7 @@ async def get_dashboard():
         picks = conn.execute("SELECT COUNT(*) as c FROM picks WHERE tournament_id = ?", (t["id"],)).fetchone()["c"]
         results = conn.execute("SELECT COUNT(*) as c FROM results WHERE tournament_id = ?", (t["id"],)).fetchone()["c"]
         outcomes = conn.execute(
-            "SELECT COUNT(*) as total, SUM(hit) as hits FROM pick_outcomes po JOIN picks p ON po.pick_id = p.id WHERE p.tournament_id = ?",
+            "SELECT COUNT(*) as total, SUM(COALESCE(po.model_hit, po.hit)) as hits FROM pick_outcomes po JOIN picks p ON po.pick_id = p.id WHERE p.tournament_id = ?",
             (t["id"],)
         ).fetchone()
         tournament_data.append({

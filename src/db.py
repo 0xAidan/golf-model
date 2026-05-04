@@ -163,6 +163,7 @@ def init_db():
             momentum_score REAL,
             model_prob REAL,
             market_odds TEXT,
+            market_book TEXT,
             market_implied_prob REAL,
             ev REAL,
             confidence TEXT,         -- 'high', 'medium', 'low'
@@ -185,6 +186,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pick_id INTEGER REFERENCES picks(id),
             hit INTEGER,            -- 1 if bet won, 0 if lost
+            model_hit INTEGER,      -- 1 if model directional call was correct, 0 otherwise
             actual_finish TEXT,
             odds_decimal REAL,      -- odds at time of pick
             stake REAL,             -- units wagered
@@ -900,6 +902,7 @@ def _run_migrations(conn: sqlite3.Connection):
         ("odds_decimal", "REAL", None),
         ("stake", "REAL", None),
         ("profit", "REAL", None),
+        ("model_hit", "INTEGER", None),
     ]:
         try:
             conn.execute(f"SELECT {col} FROM pick_outcomes LIMIT 1")
@@ -907,6 +910,19 @@ def _run_migrations(conn: sqlite3.Connection):
             default_clause = f" DEFAULT {default}" if default is not None else ""
             conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
             conn.commit()
+    conn.execute(
+        """
+        UPDATE pick_outcomes
+        SET model_hit = CASE
+            WHEN model_hit IS NOT NULL THEN model_hit
+            WHEN COALESCE((SELECT ev FROM picks WHERE picks.id = pick_outcomes.pick_id), 0) < 0
+                THEN CASE WHEN hit = 1 THEN 0 ELSE hit END
+            ELSE hit
+        END
+        WHERE model_hit IS NULL
+        """
+    )
+    conn.commit()
 
     # Add year column to tournaments if missing
     try:
@@ -926,8 +942,14 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE picks ADD COLUMN source TEXT DEFAULT 'ui_display'")
         conn.commit()
+    try:
+        conn.execute("SELECT market_book FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN market_book TEXT")
+        conn.commit()
     conn.execute("UPDATE picks SET model_variant = 'baseline' WHERE model_variant IS NULL OR TRIM(model_variant) = ''")
     conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
+    conn.execute("UPDATE picks SET market_book = '' WHERE market_book IS NULL")
     conn.execute("UPDATE picks SET opponent_key = '' WHERE opponent_key IS NULL")
     conn.execute("UPDATE picks SET opponent_display = '' WHERE opponent_display IS NULL")
     # Rebuild legacy unique index to include model lane + opponent key.
@@ -1123,7 +1145,7 @@ def _add_unique_constraints(conn: sqlite3.Connection):
         (
             "idx_picks_unique",
             "picks",
-            "(tournament_id, model_variant, player_key, bet_type, opponent_key)",
+            "(tournament_id, model_variant, source, player_key, bet_type, opponent_key, market_book, market_odds)",
         ),
         (
             "idx_prediction_log_unique",
@@ -1454,6 +1476,7 @@ def store_picks(picks: list[dict]):
             "momentum_score": pick.get("momentum_score"),
             "model_prob": pick.get("model_prob"),
             "market_odds": pick.get("market_odds"),
+            "market_book": pick.get("market_book") or "",
             "market_implied_prob": pick.get("market_implied_prob"),
             "ev": pick.get("ev"),
             "confidence": pick.get("confidence"),
@@ -1465,12 +1488,12 @@ def store_picks(picks: list[dict]):
            (tournament_id, model_variant, source, bet_type, player_key, player_display,
             opponent_key, opponent_display,
             composite_score, course_fit_score, form_score, momentum_score,
-            model_prob, market_odds, market_implied_prob, ev,
+            model_prob, market_odds, market_book, market_implied_prob, ev,
             confidence, reasoning)
            VALUES (:tournament_id, :model_variant, :source, :bet_type, :player_key, :player_display,
                     :opponent_key, :opponent_display,
                     :composite_score, :course_fit_score, :form_score, :momentum_score,
-                    :model_prob, :market_odds, :market_implied_prob, :ev,
+                    :model_prob, :market_odds, :market_book, :market_implied_prob, :ev,
                     :confidence, :reasoning)""",
         normalized_rows,
     )
