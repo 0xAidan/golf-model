@@ -44,6 +44,9 @@ const ChampionChallengerPage = lazy(() =>
     default: mod.ChampionChallengerPage,
   })),
 )
+const DiagnosticsPage = lazy(() =>
+  import("@/pages/diagnostics-page").then((mod) => ({ default: mod.DiagnosticsPage })),
+)
 
 function RouteFallback() {
   return (
@@ -170,6 +173,8 @@ function App() {
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
   const availableBooks = useMemo(() => collectAvailableBooks(visiblePredictionRun), [visiblePredictionRun])
+  const profileTournamentId = visiblePredictionRun?.tournament_id
+  const hasProfileTournamentContext = profileTournamentId !== null && profileTournamentId !== undefined
 
   const playerProfileQuery = useQuery({
     queryKey: [
@@ -181,15 +186,47 @@ function App() {
     queryFn: () =>
       api.getPlayerProfile(
         selectedPlayerKey,
-        visiblePredictionRun?.tournament_id ?? 0,
+        profileTournamentId as number,
         visiblePredictionRun?.course_num,
       ),
     enabled:
       RICH_PLAYER_PROFILES_ENABLED &&
-      Boolean(selectedPlayerKey && visiblePredictionRun?.tournament_id),
+      Boolean(selectedPlayerKey && hasProfileTournamentContext),
     staleTime: 60_000,
     gcTime: 10 * 60_000,
   })
+
+  const playerProfileState: "loading" | "ready" | "error" | "unavailable" = useMemo(() => {
+    if (!RICH_PLAYER_PROFILES_ENABLED) {
+      return "unavailable"
+    }
+    if (!selectedPlayerKey || !hasProfileTournamentContext) {
+      return "unavailable"
+    }
+    if (playerProfileQuery.isPending || playerProfileQuery.isFetching) {
+      return "loading"
+    }
+    if (playerProfileQuery.isError) {
+      return "error"
+    }
+    if (
+      playerProfileQuery.data &&
+      playerProfileQuery.data.player_key === selectedPlayerKey
+    ) {
+      return "ready"
+    }
+    return "unavailable"
+  }, [
+    RICH_PLAYER_PROFILES_ENABLED,
+    hasProfileTournamentContext,
+    playerProfileQuery.data,
+    playerProfileQuery.isError,
+    playerProfileQuery.isFetching,
+    playerProfileQuery.isPending,
+    selectedPlayerKey,
+  ])
+  const playerProfileErrorMessage =
+    playerProfileQuery.error instanceof Error ? playerProfileQuery.error.message : undefined
 
   const gradeMutation = useMutation({
     mutationFn: () =>
@@ -341,7 +378,6 @@ function App() {
           path="/"
           element={
             <PredictionWorkspacePage
-              dashboard={dashboard}
               liveSnapshot={liveSnapshot}
               runtimeStatus={runtimeStatus}
               snapshotNotice={snapshotNotice}
@@ -362,6 +398,11 @@ function App() {
               selectedPlayerKey={selectedPlayerKey}
               onPlayerSelect={setSelectedPlayerKey}
               selectedPlayerProfile={playerProfileQuery.data}
+              playerProfileState={playerProfileState}
+              playerProfileErrorMessage={playerProfileErrorMessage}
+              onPlayerProfileRetry={() => {
+                void playerProfileQuery.refetch()
+              }}
               richProfilesEnabled={RICH_PLAYER_PROFILES_ENABLED}
               secondaryBets={secondaryBets}
             />
@@ -423,6 +464,22 @@ function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <ChampionChallengerPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/research/diagnostics"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <DiagnosticsPage
+                dashboard={dashboard}
+                liveSnapshot={liveSnapshot}
+                predictionTab={predictionTab}
+                isLiveActive={isLiveActive}
+                gradingHistory={gradingHistory}
+                predictionRun={effectivePredictionRun}
+                secondaryBets={secondaryBets}
+              />
             </Suspense>
           }
         />

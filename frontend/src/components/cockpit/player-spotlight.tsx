@@ -9,13 +9,17 @@ export function PlayerSpotlightPanel({
   spotlight,
   player,
   profile,
-  profileReady,
+  profileState,
+  profileErrorMessage,
+  onRetryProfile,
   richProfilesEnabled,
 }: {
   spotlight: CockpitSpotlightModel | null
   player: CompositePlayer | null
   profile?: PlayerProfile
-  profileReady: boolean
+  profileState: "loading" | "ready" | "error" | "unavailable"
+  profileErrorMessage?: string
+  onRetryProfile?: () => void
   richProfilesEnabled: boolean
 }) {
   if (!spotlight) {
@@ -118,7 +122,13 @@ export function PlayerSpotlightPanel({
               </span>
             </div>
             <div style={{ padding: "8px" }}>
-              <PlayerProfileSections player={player} profile={profile} profileReady={profileReady} />
+              <PlayerProfileSections
+                player={player}
+                profile={profile}
+                profileState={profileState}
+                errorMessage={profileErrorMessage}
+                onRetry={onRetryProfile}
+              />
             </div>
           </div>
         ) : (

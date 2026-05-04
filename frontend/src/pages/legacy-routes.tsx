@@ -89,6 +89,7 @@ export function PlayersPage({
                     isExpanded &&
                     Boolean(selectedPlayerProfile) &&
                     selectedPlayerProfile?.player_key === player.player_key
+                  const profileState = profileReady ? "ready" : isExpanded ? "loading" : "unavailable"
 
                   return (
                     <>
@@ -148,7 +149,7 @@ export function PlayersPage({
                                 <PlayerProfileSections
                                   player={player}
                                   profile={selectedPlayerProfile}
-                                  profileReady={profileReady}
+                                  profileState={profileState}
                                 />
                               ) : (
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>

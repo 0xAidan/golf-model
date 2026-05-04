@@ -20,7 +20,7 @@ export function CourseWeatherFeedPanel({
 }) {
   return (
     <div>
-      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={1} /> : null}
+      {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       <div>
         {feedItems.map((item) => (
           <div key={`${item.label}-${item.detail}`} className="term-row">

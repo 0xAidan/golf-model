@@ -5,6 +5,7 @@ export type WorkspaceId =
   | "grading"
   | "track-record"
   | "champion-challenger"
+  | "diagnostics"
 
 export type ChampionChallengerBrier = {
   model_name: string

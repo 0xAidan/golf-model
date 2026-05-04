@@ -644,6 +644,22 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Denser table rhythm in cockpit center panes only */
+.cockpit-stack-card .data-table th {
+  padding: 4px 8px;
+  font-size: 8px;
+}
+
+.cockpit-stack-card .data-table td {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.cockpit-stack-card .card-desc {
+  font-size: 9px;
+  line-height: 1.2;
+}
+
 .rank-cell {
   font-family: var(--font-mono);
   font-size: 11px;

@@ -5,10 +5,7 @@ import { Link } from "react-router-dom"
 
 import {
   CourseWeatherFeedPanel,
-  DiagnosticsGradingPanel,
   LeaderboardPanel,
-  MarketIntelPanel,
-  ReplayTimelinePanel,
 } from "@/components/cockpit/event-modules"
 import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
 import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
@@ -20,10 +17,7 @@ import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
 import {
   buildCourseFeedModel,
-  buildDiagnosticsModel,
   buildLeaderboardModel,
-  buildMarketIntelModel,
-  buildReplayTimelineModel,
 } from "@/lib/cockpit-event-models"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import {
@@ -42,7 +36,6 @@ import {
 } from "@/lib/prediction-board"
 import type {
   CompositePlayer,
-  DashboardState,
   FlattenedSecondaryBet,
   GradedTournamentSummary,
   LiveRefreshSnapshot,
@@ -103,7 +96,6 @@ function ScoreBar({
 
 /* ── Props ────────────────────────────────────── */
 export function PredictionWorkspacePage({
-  dashboard,
   liveSnapshot,
   snapshotNotice,
   snapshotAgeSeconds,
@@ -123,10 +115,12 @@ export function PredictionWorkspacePage({
   selectedPlayerKey,
   onPlayerSelect,
   selectedPlayerProfile,
+  playerProfileState,
+  playerProfileErrorMessage,
+  onPlayerProfileRetry,
   richProfilesEnabled,
   secondaryBets,
 }: {
-  dashboard?: DashboardState
   liveSnapshot: LiveRefreshSnapshot | null
   runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
   snapshotNotice: string | null
@@ -147,6 +141,9 @@ export function PredictionWorkspacePage({
   selectedPlayerKey: string
   onPlayerSelect: (playerKey: string) => void
   selectedPlayerProfile?: PlayerProfile
+  playerProfileState: "loading" | "ready" | "error" | "unavailable"
+  playerProfileErrorMessage?: string
+  onPlayerProfileRetry: () => void
   richProfilesEnabled: boolean
   secondaryBets: FlattenedSecondaryBet[]
 }) {
@@ -412,11 +409,6 @@ export function PredictionWorkspacePage({
     leaderboardRows: activeSection?.leaderboard ?? pastSnapshotSection?.leaderboard ?? [],
     players: displayPlayers,
   })
-  const marketIntelModel = buildMarketIntelModel({
-    mode,
-    currentSecondaryBets: displaySecondaryBets,
-    pastMarketRows: pastReplayRows,
-  })
   const courseFeedModel = buildCourseFeedModel({
     mode,
     snapshotAgeSeconds: snapshotAgeSeconds,
@@ -426,25 +418,6 @@ export function PredictionWorkspacePage({
     diagnosticsState: activeSection?.diagnostics?.state ?? pastSnapshotSection?.diagnostics?.state,
     fieldValidation: displayPredictionRun?.field_validation,
   })
-  const diagnosticsModel = buildDiagnosticsModel({
-    mode,
-    diagnostics: activeSection?.diagnostics as Parameters<typeof buildDiagnosticsModel>[0]["diagnostics"],
-    dashboardAiAvailable: dashboard?.ai_status?.available ?? false,
-    strategySource: dashboard?.baseline_provenance?.strategy_source,
-    strategyName: dashboard?.baseline_provenance?.live_strategy_name,
-    warnings: displayPredictionRun?.warnings,
-    gradingHistory,
-    selectedEventId: selectedPastEvent?.event_id,
-    timelinePoints: pastTimelinePoints,
-    currentSecondaryBets: displaySecondaryBets,
-  })
-  const replayTimelineModel = buildReplayTimelineModel({
-    mode,
-    timelinePoints: pastTimelinePoints,
-    currentGeneratedAt: activeSection?.generated_from ?? null,
-    snapshotAgeSeconds: snapshotAgeSeconds,
-  })
-
   // Player spotlight
   const { spotlight, selectedPlayer } = useCockpitSpotlight({
     predictionTab: mode,
@@ -459,9 +432,6 @@ export function PredictionWorkspacePage({
     rawGeneratedSecondaryBets,
   })
   const effectiveSpotlightProfile = selectedPlayerProfile
-  const effectiveProfileReady =
-    Boolean(selectedPlayerProfile) &&
-    selectedPlayerProfile?.player_key === selectedPlayerKey
 
   function handleExportMarkdown() {
     const content = displayPredictionRun?.card_content
@@ -1152,6 +1122,7 @@ export function PredictionWorkspacePage({
           <>
             {/* ── Player spotlight ─────────────────── */}
             <CockpitModule
+              flex={3}
               title="Player spotlight"
               tone="accent"
               emptyState={
@@ -1162,51 +1133,10 @@ export function PredictionWorkspacePage({
                 spotlight={spotlight}
                 player={selectedPlayer}
                 profile={effectiveSpotlightProfile}
-                profileReady={effectiveProfileReady}
+                profileState={playerProfileState}
+                profileErrorMessage={playerProfileErrorMessage}
+                onRetryProfile={onPlayerProfileRetry}
                 richProfilesEnabled={richProfilesEnabled}
-              />
-            </CockpitModule>
-
-            {/* ── Market intel ─────────────────────── */}
-            <CockpitModule
-              title="Market intel"
-              description="Secondary edges for this event context."
-            >
-              <MarketIntelPanel
-                metrics={marketIntelModel.metrics}
-                rows={marketIntelModel.rows}
-                emptyMessage={marketIntelModel.emptyMessage}
-                onPlayerSelect={onPlayerSelect}
-              />
-            </CockpitModule>
-
-            {/* ── Diagnostics ──────────────────────── */}
-            <CockpitModule
-              title="Diagnostics"
-              description="Runtime health and pipeline state."
-            >
-              <DiagnosticsGradingPanel
-                metrics={diagnosticsModel.metrics}
-                counters={diagnosticsModel.counters}
-                reasonCodes={diagnosticsModel.reasonCodes}
-                warnings={diagnosticsModel.warnings}
-                selectedEventSummary={diagnosticsModel.selectedEventSummary}
-              />
-            </CockpitModule>
-
-            {/* ── Replay timeline ──────────────────── */}
-            <CockpitModule
-              title="Replay timeline"
-              description={
-                predictionTab === "past"
-                  ? "Immutable replay history."
-                  : "Timeline captured once event has history."
-              }
-            >
-              <ReplayTimelinePanel
-                metrics={replayTimelineModel.metrics}
-                items={replayTimelineModel.items}
-                emptyMessage={replayTimelineModel.emptyMessage}
               />
             </CockpitModule>
           </>

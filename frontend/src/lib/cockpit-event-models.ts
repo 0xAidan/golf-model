@@ -135,16 +135,16 @@ export function buildCourseFeedModel({
             value: snapshotAgeSeconds === null ? "Waiting" : `${snapshotAgeSeconds}s`,
             detail:
               snapshotAgeSeconds === null
-                ? "No current snapshot has landed yet"
-                : "Time since the cockpit last refreshed this event surface",
+                ? "No snapshot yet"
+                : "Seconds since this surface refreshed",
           },
           {
             label: "Weather lean",
             value: formatSignedNumber(strongestWeatherAdjustment),
             detail:
               adjustedPlayers > 0
-                ? `${adjustedPlayers} ranked players carry weather adjustments`
-                : "No material weather adjustment in the visible board",
+                ? `${adjustedPlayers} ranked players adjusted`
+                : "No material weather adjustment",
           },
           {
             label: "Field risk",
@@ -175,20 +175,20 @@ export function buildCourseFeedModel({
       detail:
         mode === "live"
           ? "This rail tracks the current event state, field warnings, and surface freshness."
-          : "This rail stays focused on pre-tournament context until live scoring begins.",
+          : "Pre-tournament context until live scoring begins.",
     })
   }
 
   if (snapshotNotice) {
     feedItems.push({
-      label: "Snapshot note",
+      label: "Snapshot status",
       detail: snapshotNotice,
     })
   }
 
   if (diagnosticsState) {
     feedItems.push({
-      label: mode === "past" ? "Replay state" : "Market state",
+      label: mode === "past" ? "Replay state" : "Pipeline state",
       detail: diagnosticsState.replaceAll("_", " "),
     })
   }
@@ -411,12 +411,14 @@ export function buildMarketIntelModel({
 export function buildReplayTimelineModel({
   mode,
   timelinePoints,
-  currentGeneratedAt,
+  snapshotGeneratedAt,
+  modelSourceLabel,
   snapshotAgeSeconds,
 }: {
   mode: CockpitMode
   timelinePoints: PastTimelinePoint[]
-  currentGeneratedAt: string | null
+  snapshotGeneratedAt: string | null
+  modelSourceLabel: string | null
   snapshotAgeSeconds: number | null
 }) {
   if (mode === "past" && timelinePoints.length > 0) {
@@ -474,12 +476,17 @@ export function buildReplayTimelineModel({
   return {
     metrics: [
       {
-        label: "Current capture",
-        value: currentGeneratedAt ? formatDateTime(currentGeneratedAt) : "Waiting",
+        label: "Last snapshot",
+        value: snapshotGeneratedAt ? formatDateTime(snapshotGeneratedAt) : "Waiting",
         detail:
           snapshotAgeSeconds === null
             ? "Replay history starts once snapshots are captured"
             : `Current snapshot is ${snapshotAgeSeconds}s old`,
+      },
+      {
+        label: "Model lane",
+        value: modelSourceLabel ?? "--",
+        detail: "Active strategy source for this event surface",
       },
     ],
     items: [] as CockpitReplayItemModel[],
@@ -572,12 +579,12 @@ export function buildDiagnosticsModel({
 
 function buildFieldRiskDetail(fieldValidation?: FieldValidation) {
   if (!fieldValidation) {
-    return "Field validation not available yet"
+    return "Field validation pending"
   }
   if (fieldValidation.has_cross_tour_field_risk) {
-    return "Cross-tour or thin-round validation flags need operator review"
+    return "Cross-tour or thin-round flags need review"
   }
-  return "No major field-validation issues are visible in this context"
+  return "No major field-validation issues"
 }
 
 function buildPastMarketLabel(row: PastMarketPredictionRow) {

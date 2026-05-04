@@ -645,13 +645,17 @@ function BettingSection({ profile }: { profile?: PlayerProfile }) {
 export function PlayerProfileSections({
   player,
   profile,
-  profileReady,
+  profileState,
+  errorMessage,
+  onRetry,
 }: {
   player: CompositePlayer
   profile?: PlayerProfile
-  profileReady: boolean
+  profileState: "loading" | "ready" | "error" | "unavailable"
+  errorMessage?: string
+  onRetry?: () => void
 }) {
-  if (!profileReady) {
+  if (profileState === "loading") {
     return (
       <div
         style={{
@@ -671,6 +675,57 @@ export function PlayerProfileSections({
       >
         <span style={{ animation: "pulse-glow 1.8s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
         Loading profile…
+      </div>
+    )
+  }
+
+  if (profileState === "error") {
+    return (
+      <div
+        style={{
+          background: VAR.bg1,
+          border: `1px solid ${VAR.border}`,
+          borderRadius: "var(--r-md)",
+          padding: "12px",
+          fontFamily: VAR.mono,
+          fontSize: 10,
+          color: VAR.faint,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <span>Profile failed to load. {errorMessage ?? "Please retry."}</span>
+        {onRetry ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onRetry}
+            style={{ width: "fit-content", padding: "4px 10px", fontSize: 10 }}
+          >
+            Retry profile
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (profileState !== "ready" || !profile) {
+    return (
+      <div
+        style={{
+          background: VAR.bg1,
+          border: `1px solid ${VAR.border}`,
+          borderRadius: "var(--r-md)",
+          padding: "12px",
+          fontFamily: VAR.mono,
+          fontSize: 10,
+          color: VAR.faint,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+        }}
+      >
+        Profile unavailable for this event context.
       </div>
     )
   }

@@ -36,7 +36,7 @@ describe("PlayerSpotlightPanel", () => {
         spotlight={null}
         player={null}
         profile={undefined}
-        profileReady={false}
+        profileState="unavailable"
         richProfilesEnabled={false}
       />,
     )
@@ -54,7 +54,7 @@ describe("PlayerSpotlightPanel", () => {
         spotlight={spotlight}
         player={null}
         profile={undefined}
-        profileReady={false}
+        profileState="unavailable"
         richProfilesEnabled={false}
       />,
     )

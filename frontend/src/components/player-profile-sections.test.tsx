@@ -101,7 +101,7 @@ const richProfile: PlayerProfile = {
 describe("PlayerProfileSections", () => {
   it("renders rich profile sections with dynamic controls", async () => {
     const user = userEvent.setup()
-    render(<PlayerProfileSections player={basePlayer} profile={richProfile} profileReady />)
+    render(<PlayerProfileSections player={basePlayer} profile={richProfile} profileState="ready" />)
 
     // Section labels were tightened during the player-profile redesign:
     // "Profile Header" → "Player Overview", "Skill Breakdown" →
@@ -124,10 +124,26 @@ describe("PlayerProfileSections", () => {
   })
 
   it("shows loading state when profile is not ready", () => {
-    render(<PlayerProfileSections player={basePlayer} profile={undefined} profileReady={false} />)
+    render(<PlayerProfileSections player={basePlayer} profile={undefined} profileState="loading" />)
     // Loading copy was shortened to "Loading profile…" during the player
     // profile redesign; the test still guards that a loading affordance
     // appears when the profile data hasn't arrived yet.
     expect(screen.getByText(/loading profile/i)).toBeInTheDocument()
+  })
+
+  it("shows an error state and retry action", () => {
+    const handleRetry = vi.fn()
+    render(
+      <PlayerProfileSections
+        player={basePlayer}
+        profile={undefined}
+        profileState="error"
+        errorMessage="boom"
+        onRetry={handleRetry}
+      />,
+    )
+
+    expect(screen.getByText(/failed to load/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /retry profile/i })).toBeInTheDocument()
   })
 })

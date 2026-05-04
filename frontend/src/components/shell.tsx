@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
   { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
+  { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]
 
 /* ── Logo SVG mark ────────────────────────────── */
