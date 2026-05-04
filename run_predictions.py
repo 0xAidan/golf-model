@@ -136,6 +136,96 @@ def safe_api_call(description, func, *args, **kwargs):
         return None
 
 
+def _store_displayed_picks_for_grading(
+    *,
+    tournament_id: int,
+    composite: list[dict],
+    value_bets: dict[str, list[dict]],
+    matchup_bets: list[dict],
+) -> int:
+    """Persist baseline picks shown in card/UI so they can be graded later."""
+    comp_lookup = {row.get("player_key"): row for row in (composite or [])}
+    pick_rows: list[dict] = []
+
+    for bet_type, bets in (value_bets or {}).items():
+        for bet in bets or []:
+            player_key = (bet.get("player_key") or "").strip()
+            if not player_key:
+                continue
+            comp = comp_lookup.get(player_key, {})
+            best_odds = bet.get("best_odds")
+            odds_text = None
+            if isinstance(best_odds, (int, float)):
+                odds_int = int(best_odds)
+                odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+            elif best_odds is not None:
+                odds_text = str(best_odds)
+            reasoning_parts = []
+            if bet.get("best_book"):
+                reasoning_parts.append(f"book={bet.get('best_book')}")
+            if bet.get("ev_pct"):
+                reasoning_parts.append(f"edge={bet.get('ev_pct')}")
+            pick_rows.append({
+                "tournament_id": tournament_id,
+                "model_variant": "baseline",
+                "source": "ui_display",
+                "bet_type": str(bet_type),
+                "player_key": player_key,
+                "player_display": bet.get("player_display") or display_name(player_key),
+                "opponent_key": "",
+                "opponent_display": "",
+                "composite_score": comp.get("composite"),
+                "course_fit_score": comp.get("course_fit"),
+                "form_score": comp.get("form"),
+                "momentum_score": comp.get("momentum"),
+                "model_prob": bet.get("model_prob"),
+                "market_odds": odds_text,
+                "market_implied_prob": bet.get("market_prob"),
+                "ev": bet.get("ev"),
+                "confidence": bet.get("confidence") or bet.get("tier"),
+                "reasoning": "; ".join(reasoning_parts) or None,
+            })
+
+    for bet in matchup_bets or []:
+        pick_key = (bet.get("pick_key") or "").strip() or normalize_name(str(bet.get("pick", "")))
+        if not pick_key:
+            continue
+        opponent_key = (bet.get("opponent_key") or "").strip() or normalize_name(str(bet.get("opponent", "")))
+        comp = comp_lookup.get(pick_key, {})
+        odds_val = bet.get("odds")
+        odds_text = None
+        if isinstance(odds_val, (int, float)):
+            odds_int = int(odds_val)
+            odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
+        elif odds_val is not None:
+            odds_text = str(odds_val)
+        pick_rows.append({
+            "tournament_id": tournament_id,
+            "model_variant": "baseline",
+            "source": "ui_display",
+            "bet_type": "matchup",
+            "player_key": pick_key,
+            "player_display": bet.get("pick") or display_name(pick_key),
+            "opponent_key": opponent_key,
+            "opponent_display": bet.get("opponent") or display_name(opponent_key),
+            "composite_score": comp.get("composite"),
+            "course_fit_score": comp.get("course_fit"),
+            "form_score": comp.get("form"),
+            "momentum_score": comp.get("momentum"),
+            "model_prob": bet.get("model_prob"),
+            "market_odds": odds_text,
+            "market_implied_prob": bet.get("market_prob"),
+            "ev": bet.get("ev"),
+            "confidence": bet.get("tier"),
+            "reasoning": bet.get("why"),
+        })
+
+    if not pick_rows:
+        return 0
+    db.store_picks(pick_rows)
+    return len(pick_rows)
+
+
 def _check_and_run_post_review(skip_tournament_id: int = None):
     """
     Check if any past completed tournament needs a post-review.
@@ -402,34 +492,54 @@ _PIPELINE_LOCK_FILE = os.path.join(os.path.dirname(db.DB_PATH), ".pipeline_lock"
 _PIPELINE_LOCK_STALE_SECONDS = 7200  # 2 hours
 
 
+def _read_lock_pid() -> int | None:
+    try:
+        with open(_PIPELINE_LOCK_FILE, encoding="utf-8") as lock_file:
+            raw = lock_file.read().strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw.splitlines()[0].strip())
+    except (ValueError, IndexError):
+        return None
+
+
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+
+
 def _acquire_deploy_lock() -> bool:
     """Acquire deploy lock so only one pipeline run at a time. Returns True if acquired."""
-    import time
     if os.path.exists(_PIPELINE_LOCK_FILE):
-        try:
-            with open(_PIPELINE_LOCK_FILE) as f:
-                pid = int(f.read().strip())
-        except (ValueError, OSError):
-            pid = None
-        if pid is not None:
-            try:
-                os.kill(pid, 0)
-            except (ProcessLookupError, PermissionError):
-                pass
-            else:
-                age = time.time() - os.path.getmtime(_PIPELINE_LOCK_FILE)
-                if age < _PIPELINE_LOCK_STALE_SECONDS:
-                    return False
+        pid = _read_lock_pid()
+        if pid is not None and _pid_is_running(pid):
+            age = time.time() - os.path.getmtime(_PIPELINE_LOCK_FILE)
+            if age < _PIPELINE_LOCK_STALE_SECONDS:
+                return False
         try:
             os.remove(_PIPELINE_LOCK_FILE)
         except OSError:
             pass
+
     try:
-        with open(_PIPELINE_LOCK_FILE, "w") as f:
-            f.write(str(os.getpid()))
+        lock_fd = os.open(_PIPELINE_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(lock_fd, "w", encoding="utf-8") as lock_file:
+            lock_file.write(str(os.getpid()))
+            lock_file.write("\n")
+            lock_file.write(datetime.now(timezone.utc).isoformat())
         return True
+    except FileExistsError:
+        return False
     except OSError:
-        return True
+        return False
 
 
 def _release_deploy_lock():
@@ -1231,6 +1341,19 @@ def main():
         for b in bets if b.get("is_value")
     )
     print(f"  Portfolio filter applied (field: {field_str}, {total_value} value bets kept)")
+
+    displayed_matchups = matchup_bets if not SHADOW_MODE else []
+    try:
+        tracked_count = _store_displayed_picks_for_grading(
+            tournament_id=tid,
+            composite=composite,
+            value_bets=value_bets,
+            matchup_bets=displayed_matchups,
+        )
+        if tracked_count:
+            print(f"  Tracked {tracked_count} displayed picks for grading")
+    except Exception as exc:
+        print(f"  ⚠ Could not persist displayed picks for grading: {exc}")
 
     from src.value import compute_run_quality
     run_quality = compute_run_quality(value_bets)
