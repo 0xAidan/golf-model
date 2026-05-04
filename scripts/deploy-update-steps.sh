@@ -38,9 +38,6 @@ pip install -q -r requirements.txt
 if [ -f "frontend/package.json" ]; then
     cd frontend
     export NODE_OPTIONS=--max-old-space-size=2048
-    # Cockpit Lab UI: Vite bakes this at build time. Default on for operator VPS deploys;
-    # set VITE_COCKPIT_LAB=0 before deploy to omit the lab nav and /cockpit-lab route.
-    export VITE_COCKPIT_LAB="${VITE_COCKPIT_LAB:-1}"
     npm ci
     npm run build
     cd "$DEPLOY_PATH"

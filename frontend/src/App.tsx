@@ -80,7 +80,8 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
 }
 
 const RICH_PLAYER_PROFILES_ENABLED = import.meta.env.VITE_RICH_PLAYER_PROFILES !== "0"
-const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB === "1"
+/** Lab route/nav on unless production build explicitly sets `VITE_COCKPIT_LAB=0`. */
+const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
 function App() {
   const queryClient = useQueryClient()

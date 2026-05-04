@@ -31,7 +31,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]
 
-const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB === "1"
+/** Sidebar lab link on unless build sets `VITE_COCKPIT_LAB=0`. */
+const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
 /* ── Logo SVG mark ────────────────────────────── */
 function LogoMark({ size = 32 }: { size?: number }) {
