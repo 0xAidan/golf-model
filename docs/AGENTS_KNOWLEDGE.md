@@ -320,7 +320,7 @@ Use these fields to separate causes:
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
 - **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses `grid-template-rows: minmax(0, 1fr)` so columns stay within the viewport. Center column: **vertical split panes** (`react-resizable-panels`, `CockpitResizableStack`) between power rankings, top picks, secondary markets, and (live/past only) leaderboard — drag horizontal gutters to resize; each pane scrolls internally. Sizes persist in `localStorage` (`autoSaveId` per layout). Without the `fr` grid row, implicit `auto` rows grow with content and clip the center column.
-- **Cockpit (Lab) — `/cockpit-lab`:** Hydrates boards from **`lab_live_tournament` / `lab_upcoming_tournament`** on the snapshot (same JSON shape as production) when the worker has computed them. Enable with **`live_refresh.lab_profile_enabled`** and **`live_refresh.lab_profile_name`** (maps to `profiles.yaml`, e.g. `lab_sandbox`). **CPU:** each enabled tick runs extra `run_snapshot_analysis` passes for the lab model variant — expect higher load; keep off on small VPS until needed. Parallel rows in **`market_prediction_rows`** use **`section` `lab_live` / `lab_upcoming`** so AB / v5 pairing ignores them.
+- **Cockpit (Lab) — `/cockpit-lab`:** Hydrates boards from **`lab_live_tournament` / `lab_upcoming_tournament`** on the snapshot (same JSON shape as production) when the worker has computed them. **Default is on:** `live_refresh.lab_profile_enabled` defaults **true** in `src/live_refresh_policy.py`; **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** in `.env` overrides persisted JSON when set (`1`/`true` on, `0`/`false` off). **`live_refresh.lab_profile_name`** maps to `profiles.yaml` (e.g. `lab_sandbox`). **`scripts/deploy-update-steps.sh`** appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` on deploy if the key is absent so existing hosts pick up the lab lane without manual toggles. **CPU:** each enabled tick runs extra `run_snapshot_analysis` passes for the lab model variant — set env to `0` on very small VPS if needed. Parallel rows in **`market_prediction_rows`** use **`section` `lab_live` / `lab_upcoming`** so AB / v5 pairing ignores them.
 - **Lab picks — `/lab/picks`:** Same pick tables as `/matchups` but sourced from lab snapshot sections; **POST `/api/lab/log-displayed-picks`** writes `picks` with **`source=lab_sandbox`** (and `lab_sandbox_candidate` for failed-line candidates). Production cockpit logging uses **`source=cockpit`** (legacy `ui_display` rows are still read by grading filters as cockpit). **`GET /api/grading/history?pick_source=cockpit|lab|all`** filters the pick list.
 
 ---
@@ -347,6 +347,7 @@ Use these fields to separate causes:
 | `AUTORESEARCH_GUARDRAIL_MAX_DRAWDOWN_REGRESSION` | No | `10.0` | Max allowed drawdown increase vs baseline (ignored when mode=loose) |
 | `PREFERRED_BOOK` | No | `bet365` | Optional preferred-book metadata shown alongside best-line pricing (no filtering) |
 | `PREFERRED_BOOK_ONLY` | No | `false` | Deprecated legacy toggle (not used by current pipelines) |
+| `LIVE_REFRESH_LAB_PROFILE_ENABLED` | No | *(unset)* | When set, forces parallel lab snapshot lane on/off for `get_settings()` / worker (overrides `data/autoresearch_settings.json`). Deploy appends `=1` if missing. Use `0`/`false` on tiny VPS to save CPU. |
 
 ### `feature_flags.yaml` (booleans, read by `src/feature_flags.py`)
 
@@ -593,7 +594,7 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 - **First-time setup:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --setup`
 - **Status check:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --status`
 
-Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
+Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, **appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` when that key is absent** (parallel lab lane for Cockpit Lab), and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
 
 ### What `--update` does
 
@@ -602,7 +603,8 @@ Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac
 3. `pip install -r requirements.txt`
 4. `cd frontend && npm ci && npm run build`
 5. Runs DB migrations (`init_db()`)
-6. `systemctl restart golf-dashboard golf-agent golf-live-refresh`
+6. Ensures `.env` contains `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` when not already set (lab snapshot lane)
+7. `systemctl restart golf-dashboard golf-agent golf-live-refresh`
 
 ### Systemd Services
 
