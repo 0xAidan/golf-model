@@ -44,8 +44,8 @@ function LogoMark({ size = 32 }: { size?: number }) {
       <path d="M11 6 L24 11 L11 16 Z" fill="#22C55E" opacity="0.9" />
       {/* Ground arc */}
       <path d="M5 26 Q16 22 27 26" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
-      {/* Ball */}
-      <circle cx="20" cy="25" r="2.5" fill="#F59E0B" />
+      {/* Ball — reads as a white golf ball on dark chrome (not “warning” orange). */}
+      <circle cx="20" cy="25" r="2.5" fill="#E8ECEF" stroke="#4A5660" strokeWidth="0.4" />
     </svg>
   )
 }

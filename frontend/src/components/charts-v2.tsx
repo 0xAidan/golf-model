@@ -4,7 +4,7 @@
  * All pure React + SVG — no new dependencies.
  *
  * Exports:
- *  - PentagonRadar        — 5-axis skill radar (like DataGolf)
+ *  - PentagonRadar        — 5-axis skill radar (SVG; per-axis heat spectrum)
  *  - BeeswarmStrip        — field distribution, player highlighted
  *  - RollingBarLine       — per-round bars + moving average line, stat tabs
  *  - ApproachArcGauges    — semicircle arc per yardage bucket
@@ -73,37 +73,46 @@ export type RadarSkills = {
   sg_total?: number | null
 }
 
-/** ECharts SVG/canvas often ignores `var(--token)` — use concrete RGBA for radar chrome. */
+/** Radar chrome — concrete RGBA (readable on dark UI). */
 const RADAR_GRID_LINE = "rgba(139, 156, 169, 0.38)"
 const RADAR_GRID_AXIS = "rgba(139, 156, 169, 0.32)"
-const RADAR_SPLIT_BAND_A = "rgba(107, 122, 132, 0.07)"
-const RADAR_SPLIT_BAND_B = "rgba(107, 122, 132, 0.04)"
 const RADAR_TOUR_LINE = "rgba(155, 170, 180, 0.9)"
 
 const SKILL_PROFILE_HEAT_ABS = 2.5
 
-/** Blend component SG into one heat unit (same ±scale as rolling bars). */
-function skillProfileHeatUnit(skills: RadarSkills): number {
-  const components = [skills.sg_ott, skills.sg_app, skills.sg_arg, skills.sg_putt].filter(
-    (v): v is number => typeof v === "number" && Number.isFinite(v),
-  )
-  if (components.length > 0) {
-    const avg = components.reduce((s, v) => s + v, 0) / components.length
-    return Math.min(1, Math.max(0, (avg + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
-  }
-  if (typeof skills.sg_total === "number" && Number.isFinite(skills.sg_total)) {
-    return Math.min(
-      1,
-      Math.max(0, (skills.sg_total + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)),
-    )
-  }
-  return 0.5
+function axisHeatHexFromRaw(raw: number | null | undefined): string {
+  if (raw == null || !Number.isFinite(raw)) return heatSpectrumHexFromUnit(0.5)
+  const u = Math.min(1, Math.max(0, (raw + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
+  return heatSpectrumHexFromUnit(u)
 }
 
-function sgHeatColor(v: number | null): string {
-  if (v == null || !Number.isFinite(v)) return RADAR_TOUR_LINE
-  const u = Math.min(1, Math.max(0, (v + SKILL_PROFILE_HEAT_ABS) / (SKILL_PROFILE_HEAT_ABS * 2)))
-  return heatSpectrumHexFromUnit(u)
+function hexToRgbTuple(hex: string): [number, number, number] {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim())
+  if (!m) return [107, 122, 132]
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
+}
+
+function averageHexColors(hexes: string[]): string {
+  if (hexes.length === 0) return "#808080"
+  let r = 0, g = 0, b = 0
+  for (const h of hexes) {
+    const [rr, gg, bb] = hexToRgbTuple(h)
+    r += rr
+    g += gg
+    b += bb
+  }
+  const n = hexes.length
+  return `#${[r / n, g / n, b / n].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexToRgbTuple(a)
+  const [br, bg, bb] = hexToRgbTuple(b)
+  const u = Math.min(1, Math.max(0, t))
+  const r = ar + (br - ar) * u
+  const g = ag + (bg - ag) * u
+  const bl = ab + (bb - ab) * u
+  return `#${[r, g, bl].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`
 }
 
 /**
@@ -133,94 +142,197 @@ export function PentagonRadar({
     { key: "sg_total","label": "Total SG",     maxAbs: 2.8 },
   ] as const
 
-  const playerVals = axes.map(a => sgToPercentile((skills as Record<string, number | null | undefined>)[a.key], a.maxAbs))
-  const avgVals    = axes.map(() => 50) // tour average = 50th percentile on every axis
+  const legendBandH = 30
+  const svgPx = Math.max(140, height - legendBandH)
 
-  const profileHeat = skillProfileHeatUnit(skills)
-  const profileColor = heatSpectrumHexFromUnit(profileHeat)
+  const n = axes.length
+  const VB_W = 420
+  const VB_H = 300
+  const cx = VB_W / 2
+  const cy = VB_H / 2 + 6
+  const R = 100
+  const ringFracs = [0.25, 0.5, 0.75, 1]
+  /** First axis at top, then clockwise (ECharts radar default). */
+  const angleAt = (i: number) => -Math.PI / 2 - (i * 2 * Math.PI) / n
+
+  const rawByAxis = axes.map(
+    (a) => (skills as Record<string, number | null | undefined>)[a.key] as number | null | undefined,
+  )
+  const playerVals = axes.map((a, i) => sgToPercentile(rawByAxis[i], a.maxAbs))
+  const axisHeatHex = rawByAxis.map((raw) => axisHeatHexFromRaw(raw))
+  const vertexColors = axisHeatHex
+
+  const pctToR = (pct: number) => (pct / 100) * R
+  const pt = (pct: number, i: number) => {
+    const a = angleAt(i)
+    const r = pctToR(pct)
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }
+  }
+
+  const tourPoints = axes.map((_, i) => pt(50, i))
+  const playerPoints = axes.map((_, i) => pt(playerVals[i] ?? 50, i))
+
+  const tourPoly = tourPoints.map((p) => `${p.x},${p.y}`).join(" ")
+  const playerPoly = playerPoints.map((p) => `${p.x},${p.y}`).join(" ")
+
+  const fillAverage = averageHexColors(vertexColors)
+
+  const edgeStroke = (i: number) => {
+    const a = vertexColors[i]!
+    const b = vertexColors[(i + 1) % n]!
+    return mixHex(a, b, 0.5)
+  }
 
   return (
-    <ReactECharts
-      style={{ height }}
-      option={{
-        animation: true,
-        animationDuration: 600,
-        radar: {
-          indicator: axes.map(a => ({ name: a.label, max: 100, min: 0 })),
-          center: ["50%", "52%"],
-          radius: "68%",
-          startAngle: 90,
-          splitNumber: 4,
-          axisName: {
-            color: RADAR_GRID_LINE,
-            fontSize: 10,
-            fontFamily: T.mono,
-            fontWeight: 600,
-            letterSpacing: 1,
-          },
-          splitLine: {
-            lineStyle: { color: RADAR_GRID_LINE, width: 1 },
-          },
-          splitArea: {
-            areaStyle: {
-              color: [RADAR_SPLIT_BAND_A, RADAR_SPLIT_BAND_B, RADAR_SPLIT_BAND_A, RADAR_SPLIT_BAND_B],
-              opacity: 1,
-            },
-          },
-          axisLine: { lineStyle: { color: RADAR_GRID_AXIS } },
-        },
-        series: [
-          {
-            name: "Skill Profile",
-            type: "radar",
-            data: [
-              {
-                name: "Tour Average",
-                value: avgVals,
-                lineStyle: { color: RADAR_TOUR_LINE, width: 1.5, type: "dashed" },
-                itemStyle: { color: RADAR_TOUR_LINE },
-                areaStyle: { color: "transparent" },
-                symbol: "none",
-              },
-              {
-                name: playerName,
-                value: playerVals,
-                lineStyle: { color: profileColor, width: 2.5 },
-                itemStyle: { color: profileColor, borderWidth: 1, borderColor: "rgba(8, 10, 11, 0.55)" },
-                areaStyle: {
-                  color: profileColor,
-                  opacity: 0.28,
-                },
-                symbol: "circle",
-                symbolSize: 6,
-              },
-            ],
-          },
-        ],
-        legend: {
-          data: ["Tour Average", playerName],
-          bottom: 4,
-          textStyle: { color: T.muted, fontSize: 9, fontFamily: T.mono },
-          itemHeight: 8,
-          itemWidth: 14,
-        },
-        tooltip: {
-          trigger: "item",
-          ...TOOLTIP,
-          formatter: (params: { seriesIndex?: number; [k: string]: unknown }) => {
-            if (params.seriesIndex === 0) return "Tour Average (50th pct)"
-            const lines = axes.map((a) => {
-              const raw = (skills as Record<string, number | null | undefined>)[a.key]
-              const v = raw != null ? raw : null
-              const col = sgHeatColor(v)
-              const disp = v != null ? signed(v) : "—"
-              return `${a.label}: <b style="color:${col}">${disp}</b>`
-            })
-            return `<b style="color:${profileColor}">${playerName}</b><br/>${lines.join("<br/>")}`
-          },
-        },
-      }}
-    />
+    <div style={{ minHeight: height, fontFamily: T.mono }}>
+      <svg
+        width="100%"
+        height={svgPx}
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={`${playerName} skill profile vs tour average`}
+      >
+
+        {ringFracs.map((fr) => {
+          const ring = axes.map((_, i) => {
+            const a = angleAt(i)
+            const r = R * fr
+            return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`
+          }).join(" ")
+          return (
+            <polygon
+              key={fr}
+              points={ring}
+              fill="none"
+              stroke={RADAR_GRID_LINE}
+              strokeWidth={fr === 1 ? 1.1 : 0.85}
+            />
+          )
+        })}
+
+        {axes.map((_, i) => {
+          const outer = pt(100, i)
+          return (
+            <line
+              key={i}
+              x1={cx}
+              y1={cy}
+              x2={outer.x}
+              y2={outer.y}
+              stroke={RADAR_GRID_AXIS}
+              strokeWidth={1}
+            />
+          )
+        })}
+
+        <polygon
+          points={tourPoly}
+          fill="none"
+          stroke={RADAR_TOUR_LINE}
+          strokeWidth={1.5}
+          strokeDasharray="5 4"
+          strokeLinejoin="round"
+        />
+
+        <polygon
+          points={playerPoly}
+          fill={fillAverage}
+          fillOpacity={0.22}
+          stroke="none"
+        />
+
+        {axes.map((_, i) => {
+          const a = playerPoints[i]!
+          const b = playerPoints[(i + 1) % n]!
+          return (
+            <line
+              key={`e-${i}`}
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              stroke={edgeStroke(i)}
+              strokeWidth={2.75}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )
+        })}
+
+        {axes.map((ax, i) => {
+          const p = playerPoints[i]!
+          const raw = rawByAxis[i]
+          const labelPt = pt(108, i)
+          const disp = raw != null && Number.isFinite(raw) ? signed(raw) : "—"
+          return (
+            <g key={ax.key}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={6}
+                fill={vertexColors[i]}
+                stroke="rgba(8, 10, 11, 0.65)"
+                strokeWidth={1}
+              >
+                <title>{`${ax.label}: ${disp} SG (heat spectrum)`}</title>
+              </circle>
+              <text
+                x={labelPt.x}
+                y={labelPt.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={RADAR_GRID_LINE}
+                fontSize={10}
+                fontWeight={600}
+                fontFamily={T.mono}
+                style={{ letterSpacing: "0.06em" }}
+              >
+                {ax.label}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 20,
+          paddingTop: 4,
+          paddingBottom: 2,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 14,
+              height: 8,
+              background: RADAR_TOUR_LINE,
+              borderRadius: 2,
+              opacity: 0.95,
+            }}
+            aria-hidden
+          />
+          <span style={{ fontSize: 9, color: T.muted, letterSpacing: "0.06em" }}>Tour Average</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 28,
+              height: 8,
+              borderRadius: 2,
+              background: `linear-gradient(90deg, ${vertexColors.join(", ")})`,
+            }}
+            aria-hidden
+          />
+          <span style={{ fontSize: 9, color: fillAverage, fontWeight: 600, letterSpacing: "0.04em" }}>{playerName}</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
