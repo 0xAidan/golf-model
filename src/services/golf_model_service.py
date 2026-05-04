@@ -111,9 +111,9 @@ class GolfModelService:
         }
 
         # Resolve output_dir to project output so app can read card regardless of cwd
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         if not os.path.isabs(output_dir):
-            _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            output_dir = os.path.join(_project_root, output_dir)
+            output_dir = os.path.join(project_root, output_dir)
 
         # Step 1: Detect current event if not specified
         event_info = None

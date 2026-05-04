@@ -34,7 +34,8 @@ async def select_best_baseline(request: Request):
     from backtester.strategy import StrategyConfig
     from backtester.model_registry import set_research_champion
 
-    payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    content_type = (request.headers.get("content-type") or "").lower()
+    payload = await request.json() if content_type.startswith("application/json") else {}
     scope = payload.get("scope", "global")
     limit = int(payload.get("limit", 200))
     set_champion = bool(payload.get("set_research_champion", False))
