@@ -107,6 +107,27 @@ def _safe_float(val) -> float | None:
         return None
 
 
+def _parse_total_to_par(raw_val: Any) -> int | None:
+    """Parse strokes vs par from API (int, float, 'E', '+2', '-3', etc.)."""
+    if raw_val is None:
+        return None
+    if isinstance(raw_val, str):
+        s = raw_val.strip().upper()
+        if s in ("", "-", "—", "N/A"):
+            return None
+        if s == "E":
+            return 0
+        s = s.replace("T", "").strip()
+        try:
+            return int(float(s))
+        except (TypeError, ValueError):
+            return None
+    try:
+        return int(float(raw_val))
+    except (TypeError, ValueError):
+        return None
+
+
 def _get_api_key() -> str:
     key = os.environ.get("DATAGOLF_API_KEY", "")
     if not key:
@@ -1320,7 +1341,7 @@ def get_schedule_events(tour: str = "pga", upcoming_only: bool = True) -> list[d
 def fetch_in_play_predictions(
     tour: str = "pga",
     *,
-    odds_format: str = "percent",
+    odds_format: str | None = None,
     cache_ttl_seconds: int = 45,
 ) -> dict | list:
     """
@@ -1328,8 +1349,13 @@ def fetch_in_play_predictions(
 
     Returns raw JSON (shape varies by tour). Used for point-in-time tournament
     state during active events.
+
+    Note: scripts/generate_backtest_report.py calls this endpoint with only ``tour``.
+    Passing ``odds_format`` can change the payload shape; omit it unless you need it.
     """
-    params: dict[str, str] = {"tour": tour, "odds_format": odds_format}
+    params: dict[str, str] = {"tour": tour}
+    if odds_format:
+        params["odds_format"] = odds_format
     return _call_api("preds/in-play", params, cache_ttl_seconds=cache_ttl_seconds)
 
 
@@ -1345,6 +1371,10 @@ def _flatten_in_play_player_rows(raw: Any) -> list[dict]:
     data_list = raw.get("data")
     if isinstance(data_list, list) and data_list:
         return [x for x in data_list if isinstance(x, dict)]
+    for alt in ("predictions", "players", "leaderboard", "field", "scores"):
+        block = raw.get(alt)
+        if isinstance(block, list) and block:
+            return [x for x in block if isinstance(x, dict)]
     skip = {"info", "updated", "timestamp", "last_updated", "last_update", "notes"}
     rows: list[dict] = []
     for key, val in raw.items():
@@ -1403,7 +1433,10 @@ def parse_in_play_leaderboard(
         if wp is None:
             wp = _safe_float(row.get("win"))
         if wp is not None:
-            win_prob_by_key[pk] = float(wp)
+            wv = float(wp)
+            if wv > 1.0:
+                wv = wv / 100.0
+            win_prob_by_key[pk] = wv
         ttp = row.get("total")
         if ttp is None:
             ttp = row.get("total_to_par")
@@ -1416,10 +1449,11 @@ def parse_in_play_leaderboard(
             ttp = row.get("current_score")
         if ttp is None:
             ttp = row.get("score")
-        try:
-            total_to_par = int(ttp) if ttp is not None else None
-        except (TypeError, ValueError):
-            total_to_par = None
+        if ttp is None:
+            ttp = row.get("proj_score")
+        if ttp is None:
+            ttp = row.get("trailing_strokes")
+        total_to_par = _parse_total_to_par(ttp)
         rnd = row.get("round") or row.get("current_round") or row.get("rnd")
         try:
             latest_round_num = int(rnd) if rnd is not None else None

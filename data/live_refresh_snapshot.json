@@ -1,0 +1,2253 @@
+{
+  "generated_at": "2026-04-13T17:43:25.274583+00:00",
+  "cadence_mode": "off_window",
+  "event_context": {
+    "event_name": "RBC Heritage",
+    "event_id": "12",
+    "course": "Harbour Town Golf Links",
+    "upcoming_event_names": [
+      "RBC Heritage",
+      "Zurich Classic of New Orleans",
+      "Miami Championship"
+    ],
+    "resolved_completed_event_name": "Valero Texas Open",
+    "resolved_completed_event_course": null
+  },
+  "live_tournament": {
+    "event_name": "Valero Texas Open",
+    "course_name": "Harbour Town Golf Links",
+    "field_size": 82,
+    "tournament_id": 100007,
+    "course_num": null,
+    "rankings": [
+      {
+        "rank": 1,
+        "player_key": "ludvig_aberg",
+        "player": "Ludvig Aberg",
+        "composite": 57.6,
+        "course_fit": 67.3,
+        "form": 91.8,
+        "momentum": 69.1,
+        "finish_state": null
+      },
+      {
+        "rank": 2,
+        "player_key": "russell_henley",
+        "player": "Russell Henley",
+        "composite": 56.5,
+        "course_fit": 67.2,
+        "form": 89.4,
+        "momentum": 65.2,
+        "finish_state": null
+      },
+      {
+        "rank": 3,
+        "player_key": "collin_morikawa",
+        "player": "Collin Morikawa",
+        "composite": 52.0,
+        "course_fit": 60.9,
+        "form": 90.7,
+        "momentum": 56.5,
+        "finish_state": null
+      },
+      {
+        "rank": 4,
+        "player_key": "sepp_straka",
+        "player": "Sepp Straka",
+        "composite": 50.8,
+        "course_fit": 62.1,
+        "form": 80.2,
+        "momentum": 66.4,
+        "finish_state": null
+      },
+      {
+        "rank": 5,
+        "player_key": "sam_burns",
+        "player": "Sam Burns",
+        "composite": 50.7,
+        "course_fit": 61.1,
+        "form": 82.9,
+        "momentum": 64.4,
+        "finish_state": null
+      },
+      {
+        "rank": 6,
+        "player_key": "keith_mitchell",
+        "player": "Keith Mitchell",
+        "composite": 50.3,
+        "course_fit": 65.3,
+        "form": 79.4,
+        "momentum": 55.3,
+        "finish_state": null
+      },
+      {
+        "rank": 7,
+        "player_key": "michael_thorbjornsen",
+        "player": "Michael Thorbjornsen",
+        "composite": 49.8,
+        "course_fit": 59.1,
+        "form": 80.2,
+        "momentum": 67.7,
+        "finish_state": null
+      },
+      {
+        "rank": 8,
+        "player_key": "nicolai_hojgaard",
+        "player": "Nicolai Hojgaard",
+        "composite": 49.6,
+        "course_fit": 64.4,
+        "form": 87.2,
+        "momentum": 42.5,
+        "finish_state": null
+      },
+      {
+        "rank": 9,
+        "player_key": "gary_woodland",
+        "player": "Gary Woodland",
+        "composite": 49.1,
+        "course_fit": 57.6,
+        "form": 78.0,
+        "momentum": 70.0,
+        "finish_state": null
+      },
+      {
+        "rank": 10,
+        "player_key": "si_woo_kim",
+        "player": "Si Woo Kim",
+        "composite": 49.1,
+        "course_fit": 69.2,
+        "form": 79.9,
+        "momentum": 36.5,
+        "finish_state": null
+      },
+      {
+        "rank": 11,
+        "player_key": "jordan_spieth",
+        "player": "Jordan Spieth",
+        "composite": 48.9,
+        "course_fit": 68.5,
+        "form": 84.6,
+        "momentum": 50.9,
+        "finish_state": null
+      },
+      {
+        "rank": 12,
+        "player_key": "robert_macintyre",
+        "player": "Robert MacIntyre",
+        "composite": 48.8,
+        "course_fit": 62.3,
+        "form": 87.1,
+        "momentum": 43.1,
+        "finish_state": null
+      },
+      {
+        "rank": 13,
+        "player_key": "sam_stevens",
+        "player": "Sam Stevens",
+        "composite": 48.6,
+        "course_fit": 57.9,
+        "form": 80.9,
+        "momentum": 62.1,
+        "finish_state": null
+      },
+      {
+        "rank": 14,
+        "player_key": "min_woo_lee",
+        "player": "Min Woo Lee",
+        "composite": 48.5,
+        "course_fit": 59.9,
+        "form": 90.7,
+        "momentum": 42.8,
+        "finish_state": null
+      },
+      {
+        "rank": 15,
+        "player_key": "hideki_matsuyama",
+        "player": "Hideki Matsuyama",
+        "composite": 48.5,
+        "course_fit": 68.5,
+        "form": 79.0,
+        "momentum": 35.7,
+        "finish_state": null
+      },
+      {
+        "rank": 16,
+        "player_key": "denny_mccarthy",
+        "player": "Denny McCarthy",
+        "composite": 48.1,
+        "course_fit": 59.4,
+        "form": 70.5,
+        "momentum": 68.4,
+        "finish_state": null
+      },
+      {
+        "rank": 17,
+        "player_key": "daniel_berger",
+        "player": "Daniel Berger",
+        "composite": 47.8,
+        "course_fit": 58.8,
+        "form": 73.1,
+        "momentum": 64.6,
+        "finish_state": null
+      },
+      {
+        "rank": 18,
+        "player_key": "ryo_hisatsune",
+        "player": "Ryo Hisatsune",
+        "composite": 47.7,
+        "course_fit": 61.2,
+        "form": 80.1,
+        "momentum": 48.1,
+        "finish_state": null
+      },
+      {
+        "rank": 19,
+        "player_key": "chris_gotterup",
+        "player": "Chris Gotterup",
+        "composite": 47.7,
+        "course_fit": 60.8,
+        "form": 83.1,
+        "momentum": 44.8,
+        "finish_state": null
+      },
+      {
+        "rank": 20,
+        "player_key": "maverick_mcnealy",
+        "player": "Maverick McNealy",
+        "composite": 47.6,
+        "course_fit": 67.3,
+        "form": 82.4,
+        "momentum": 41.5,
+        "finish_state": null
+      }
+    ],
+    "matchups": [
+      {
+        "player": "Sudarshan Yellamaraju",
+        "player_key": "sudarshan_yellamaraju",
+        "opponent": "Johnny Keefer",
+        "opponent_key": "johnny_keefer",
+        "bookmaker": "bet365",
+        "market_odds": "+110",
+        "model_prob": 0.626,
+        "ev": 0.315,
+        "market_type": "tournament_matchups"
+      },
+      {
+        "player": "Ludvig Aberg",
+        "player_key": "ludvig_aberg",
+        "opponent": "Tommy Fleetwood",
+        "opponent_key": "tommy_fleetwood",
+        "bookmaker": "bet365",
+        "market_odds": "-110",
+        "model_prob": 0.644,
+        "ev": 0.23,
+        "market_type": "tournament_matchups"
+      },
+      {
+        "player": "Alex Smalley",
+        "player_key": "alex_smalley",
+        "opponent": "Marco Penge",
+        "opponent_key": "marco_penge",
+        "bookmaker": "bet365",
+        "market_odds": "+105",
+        "model_prob": 0.532,
+        "ev": 0.09,
+        "market_type": "tournament_matchups"
+      },
+      {
+        "player": "Michael Thorbjornsen",
+        "player_key": "michael_thorbjornsen",
+        "opponent": "Rickie Fowler",
+        "opponent_key": "rickie_fowler",
+        "bookmaker": "bet365",
+        "market_odds": "+100",
+        "model_prob": 0.544,
+        "ev": 0.08800000000000001,
+        "market_type": "tournament_matchups"
+      },
+      {
+        "player": "Sepp Straka",
+        "player_key": "sepp_straka",
+        "opponent": "Jordan Spieth",
+        "opponent_key": "jordan_spieth",
+        "bookmaker": "bet365",
+        "market_odds": "+105",
+        "model_prob": 0.523,
+        "ev": 0.073,
+        "market_type": "tournament_matchups"
+      },
+      {
+        "player": "Jordan Smith",
+        "player_key": "jordan_smith",
+        "opponent": "Will Zalatoris",
+        "opponent_key": "will_zalatoris",
+        "bookmaker": "bet365",
+        "market_odds": "+100",
+        "model_prob": 0.531,
+        "ev": 0.062,
+        "market_type": "tournament_matchups"
+      }
+    ],
+    "matchup_bets": [
+      {
+        "player": "Sudarshan Yellamaraju",
+        "player_key": "sudarshan_yellamaraju",
+        "opponent": "Johnny Keefer",
+        "opponent_key": "johnny_keefer",
+        "bookmaker": "bet365",
+        "market_odds": "+110",
+        "model_prob": 0.626,
+        "ev": 0.315,
+        "market_type": "tournament_matchups",
+        "pick": "Sudarshan Yellamaraju",
+        "pick_key": "sudarshan_yellamaraju",
+        "book": "bet365",
+        "odds": "+110",
+        "model_win_prob": 0.626,
+        "ev_pct": "31.5%",
+        "reason": "Hydrated from always-on snapshot"
+      },
+      {
+        "player": "Ludvig Aberg",
+        "player_key": "ludvig_aberg",
+        "opponent": "Tommy Fleetwood",
+        "opponent_key": "tommy_fleetwood",
+        "bookmaker": "bet365",
+        "market_odds": "-110",
+        "model_prob": 0.644,
+        "ev": 0.23,
+        "market_type": "tournament_matchups",
+        "pick": "Ludvig Aberg",
+        "pick_key": "ludvig_aberg",
+        "book": "bet365",
+        "odds": "-110",
+        "model_win_prob": 0.644,
+        "ev_pct": "23.0%",
+        "reason": "Hydrated from always-on snapshot"
+      },
+      {
+        "player": "Alex Smalley",
+        "player_key": "alex_smalley",
+        "opponent": "Marco Penge",
+        "opponent_key": "marco_penge",
+        "bookmaker": "bet365",
+        "market_odds": "+105",
+        "model_prob": 0.532,
+        "ev": 0.09,
+        "market_type": "tournament_matchups",
+        "pick": "Alex Smalley",
+        "pick_key": "alex_smalley",
+        "book": "bet365",
+        "odds": "+105",
+        "model_win_prob": 0.532,
+        "ev_pct": "9.0%",
+        "reason": "Hydrated from always-on snapshot"
+      },
+      {
+        "player": "Michael Thorbjornsen",
+        "player_key": "michael_thorbjornsen",
+        "opponent": "Rickie Fowler",
+        "opponent_key": "rickie_fowler",
+        "bookmaker": "bet365",
+        "market_odds": "+100",
+        "model_prob": 0.544,
+        "ev": 0.08800000000000001,
+        "market_type": "tournament_matchups",
+        "pick": "Michael Thorbjornsen",
+        "pick_key": "michael_thorbjornsen",
+        "book": "bet365",
+        "odds": "+100",
+        "model_win_prob": 0.544,
+        "ev_pct": "8.8%",
+        "reason": "Hydrated from always-on snapshot"
+      },
+      {
+        "player": "Sepp Straka",
+        "player_key": "sepp_straka",
+        "opponent": "Jordan Spieth",
+        "opponent_key": "jordan_spieth",
+        "bookmaker": "bet365",
+        "market_odds": "+105",
+        "model_prob": 0.523,
+        "ev": 0.073,
+        "market_type": "tournament_matchups",
+        "pick": "Sepp Straka",
+        "pick_key": "sepp_straka",
+        "book": "bet365",
+        "odds": "+105",
+        "model_win_prob": 0.523,
+        "ev_pct": "7.3%",
+        "reason": "Hydrated from always-on snapshot"
+      },
+      {
+        "player": "Jordan Smith",
+        "player_key": "jordan_smith",
+        "opponent": "Will Zalatoris",
+        "opponent_key": "will_zalatoris",
+        "bookmaker": "bet365",
+        "market_odds": "+100",
+        "model_prob": 0.531,
+        "ev": 0.062,
+        "market_type": "tournament_matchups",
+        "pick": "Jordan Smith",
+        "pick_key": "jordan_smith",
+        "book": "bet365",
+        "odds": "+100",
+        "model_win_prob": 0.531,
+        "ev_pct": "6.2%",
+        "reason": "Hydrated from always-on snapshot"
+      }
+    ],
+    "value_bets": {},
+    "card_path": "/Users/aidannugent/Documents/golf-model/output/rbc_heritage_20260413.md",
+    "source_card_path": "/Users/aidannugent/Downloads/valero_texas_open_20260331.md",
+    "active": false,
+    "source_event_id": "",
+    "source_event_name": "Valero Texas Open",
+    "data_mode": "full",
+    "source": "current_event_model",
+    "ranking_source": "previous_card_snapshot",
+    "generated_from": "previous_card_snapshot",
+    "diagnostics": {
+      "market_counts": {
+        "tournament_matchups": {
+          "raw_rows": 0,
+          "reason_code": "invalid_match_list_type"
+        },
+        "three_ball": {
+          "raw_rows": 0,
+          "reason_code": "invalid_match_list_type"
+        }
+      },
+      "selection_counts": {
+        "input_rows": 0,
+        "selected_rows": 0
+      },
+      "adaptation_state": "normal",
+      "reason_codes": {},
+      "state": "no_market_posted_yet",
+      "errors": []
+    }
+  },
+  "upcoming_tournament": {
+    "event_name": "RBC Heritage",
+    "course_name": "Harbour Town Golf Links",
+    "field_size": 82,
+    "rankings": [
+      {
+        "rank": 1,
+        "player_key": "cameron_young",
+        "player": "Cameron Young",
+        "composite": 74.66,
+        "course_fit": 58.11,
+        "form": 92.8,
+        "momentum": 67.46,
+        "momentum_direction": "hot",
+        "momentum_trend": 62.5,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 95.06
+          },
+          "form_components": {
+            "recent": 100.0,
+            "baseline": 86.42,
+            "sim": 85.51,
+            "multi_sg": 92.46,
+            "dg_skill": 97.5,
+            "dg_ranking": 99.24,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 1.0,
+            "16": 1.0,
+            "24": 4.0,
+            "8": 1.0
+          }
+        }
+      },
+      {
+        "rank": 2,
+        "player_key": "scottie_scheffler",
+        "player": "Scottie Scheffler",
+        "composite": 73.63,
+        "course_fit": 59.0,
+        "form": 95.18,
+        "momentum": 42.5,
+        "momentum_direction": "cold",
+        "momentum_trend": -26.9,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 100.0
+          },
+          "form_components": {
+            "recent": 91.56,
+            "baseline": 99.38,
+            "sim": 97.67,
+            "multi_sg": 86.4,
+            "dg_skill": 100.0,
+            "dg_ranking": 100.0,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 13.0,
+            "16": 9.0,
+            "24": 2.0,
+            "8": 4.0
+          }
+        }
+      },
+      {
+        "rank": 3,
+        "player_key": "matt_fitzpatrick",
+        "player": "Matt Fitzpatrick",
+        "composite": 73.03,
+        "course_fit": 58.78,
+        "form": 91.11,
+        "momentum": 55.78,
+        "momentum_direction": "hot",
+        "momentum_trend": 20.7,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 98.77
+          },
+          "form_components": {
+            "recent": 94.44,
+            "baseline": 89.51,
+            "sim": 86.85,
+            "multi_sg": 86.66,
+            "dg_skill": 96.25,
+            "dg_ranking": 98.48,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 2.0,
+            "16": 5.0,
+            "24": 8.0,
+            "8": 8.0
+          }
+        }
+      },
+      {
+        "rank": 4,
+        "player_key": "xander_schauffele",
+        "player": "Xander Schauffele",
+        "composite": 72.66,
+        "course_fit": 58.33,
+        "form": 92.69,
+        "momentum": 46.98,
+        "momentum_direction": "cooling",
+        "momentum_trend": -10.8,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 96.3
+          },
+          "form_components": {
+            "recent": 96.09,
+            "baseline": 98.15,
+            "sim": 85.83,
+            "multi_sg": 84.81,
+            "dg_skill": 98.75,
+            "dg_ranking": 98.99,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 3.0,
+            "16": 4.0,
+            "24": 3.0,
+            "8": 5.0
+          }
+        }
+      },
+      {
+        "rank": 5,
+        "player_key": "collin_morikawa",
+        "player": "Collin Morikawa",
+        "composite": 72.45,
+        "course_fit": 57.67,
+        "form": 88.64,
+        "momentum": 66.12,
+        "momentum_direction": "hot",
+        "momentum_trend": 57.7,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 92.59
+          },
+          "form_components": {
+            "recent": 97.94,
+            "baseline": 94.44,
+            "sim": 80.18,
+            "multi_sg": 74.57,
+            "dg_skill": 92.5,
+            "dg_ranking": 97.73,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 4.0,
+            "16": 2.0,
+            "24": 6.0,
+            "8": 2.0
+          }
+        }
+      },
+      {
+        "rank": 6,
+        "player_key": "ludvig_aberg",
+        "player": "Ludvig Aberg",
+        "composite": 69.43,
+        "course_fit": 57.22,
+        "form": 87.86,
+        "momentum": 41.47,
+        "momentum_direction": "cold",
+        "momentum_trend": -30.6,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 90.12
+          },
+          "form_components": {
+            "recent": 92.39,
+            "baseline": 93.83,
+            "sim": 78.48,
+            "multi_sg": 79.45,
+            "dg_skill": 95.0,
+            "dg_ranking": 97.98,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 5.0,
+            "16": 3.0,
+            "24": 5.0,
+            "8": 10.0
+          }
+        }
+      },
+      {
+        "rank": 7,
+        "player_key": "robert_macintyre",
+        "player": "Robert MacIntyre",
+        "composite": 69.24,
+        "course_fit": 57.0,
+        "form": 82.77,
+        "momentum": 63.4,
+        "momentum_direction": "hot",
+        "momentum_trend": 48.0,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 88.89
+          },
+          "form_components": {
+            "recent": 90.33,
+            "baseline": 77.16,
+            "sim": 76.57,
+            "multi_sg": 72.73,
+            "dg_skill": 91.25,
+            "dg_ranking": 97.47,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 12.0,
+            "16": 8.0,
+            "24": 15.0,
+            "8": 7.0
+          }
+        }
+      },
+      {
+        "rank": 8,
+        "player_key": "russell_henley",
+        "player": "Russell Henley",
+        "composite": 69.13,
+        "course_fit": 58.56,
+        "form": 85.81,
+        "momentum": 41.65,
+        "momentum_direction": "cold",
+        "momentum_trend": -29.9,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 97.53
+          },
+          "form_components": {
+            "recent": 84.57,
+            "baseline": 88.89,
+            "sim": 85.86,
+            "multi_sg": 76.25,
+            "dg_skill": 90.0,
+            "dg_ranking": 98.74,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 10.0,
+            "16": 10.0,
+            "24": 10.0,
+            "8": 17.0
+          }
+        }
+      },
+      {
+        "rank": 9,
+        "player_key": "patrick_cantlay",
+        "player": "Patrick Cantlay",
+        "composite": 67.72,
+        "course_fit": 56.78,
+        "form": 80.19,
+        "momentum": 60.79,
+        "momentum_direction": "hot",
+        "momentum_trend": 38.6,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 87.65
+          },
+          "form_components": {
+            "recent": 82.51,
+            "baseline": 85.8,
+            "sim": 76.61,
+            "multi_sg": 67.78,
+            "dg_skill": 83.75,
+            "dg_ranking": 96.21,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 15.0,
+            "16": 22.0,
+            "24": 22.0,
+            "8": 13.0
+          }
+        }
+      },
+      {
+        "rank": 10,
+        "player_key": "sam_burns",
+        "player": "Sam Burns",
+        "composite": 66.93,
+        "course_fit": 55.67,
+        "form": 79.45,
+        "momentum": 61.26,
+        "momentum_direction": "hot",
+        "momentum_trend": 40.3,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 81.48
+          },
+          "form_components": {
+            "recent": 87.45,
+            "baseline": 79.01,
+            "sim": 72.91,
+            "multi_sg": 69.94,
+            "dg_skill": 81.25,
+            "dg_ranking": 96.46,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 8.0,
+            "16": 18.0,
+            "24": 19.0,
+            "8": 11.0
+          }
+        }
+      },
+      {
+        "rank": 11,
+        "player_key": "tommy_fleetwood",
+        "player": "Tommy Fleetwood",
+        "composite": 66.71,
+        "course_fit": 57.89,
+        "form": 81.36,
+        "momentum": 40.44,
+        "momentum_direction": "cold",
+        "momentum_trend": -34.2,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 93.83
+          },
+          "form_components": {
+            "recent": 73.87,
+            "baseline": 87.04,
+            "sim": 82.27,
+            "multi_sg": 68.62,
+            "dg_skill": 93.75,
+            "dg_ranking": 98.23,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 16.0,
+            "16": 29.0,
+            "24": 14.0,
+            "8": 24.0
+          }
+        }
+      },
+      {
+        "rank": 12,
+        "player_key": "jake_knapp",
+        "player": "Jake Knapp",
+        "composite": 66.14,
+        "course_fit": 55.89,
+        "form": 81.73,
+        "momentum": 42.16,
+        "momentum_direction": "cold",
+        "momentum_trend": -28.1,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.5,
+            "dg_decomp": 82.72
+          },
+          "form_components": {
+            "recent": 92.39,
+            "baseline": 65.43,
+            "sim": 73.37,
+            "multi_sg": 82.1,
+            "dg_skill": 88.75,
+            "dg_ranking": 96.97,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 9.0,
+            "16": 7.0,
+            "24": 1.0,
+            "8": 6.0
+          }
+        }
+      },
+      {
+        "rank": 13,
+        "player_key": "maverick_mcnealy",
+        "player": "Maverick McNealy",
+        "composite": 64.37,
+        "course_fit": 56.56,
+        "form": 74.54,
+        "momentum": 53.76,
+        "momentum_direction": "warming",
+        "momentum_trend": 13.5,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 86.42
+          },
+          "form_components": {
+            "recent": 77.16,
+            "baseline": 76.54,
+            "sim": 75.21,
+            "multi_sg": 49.43,
+            "dg_skill": 85.0,
+            "dg_ranking": 95.96,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 20.0,
+            "16": 17.0,
+            "24": 21.0,
+            "8": 20.0
+          }
+        }
+      },
+      {
+        "rank": 14,
+        "player_key": "jason_day",
+        "player": "Jason Day",
+        "composite": 63.31,
+        "course_fit": 54.33,
+        "form": 71.75,
+        "momentum": 65.76,
+        "momentum_direction": "hot",
+        "momentum_trend": 56.4,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 74.07
+          },
+          "form_components": {
+            "recent": 77.78,
+            "baseline": 67.9,
+            "sim": 70.74,
+            "multi_sg": 69.73,
+            "dg_skill": 62.5,
+            "dg_ranking": 91.92,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 21.0,
+            "16": 45.0,
+            "24": 33.0,
+            "8": 9.0
+          }
+        }
+      },
+      {
+        "rank": 15,
+        "player_key": "viktor_hovland",
+        "player": "Viktor Hovland",
+        "composite": 63.07,
+        "course_fit": 56.33,
+        "form": 73.13,
+        "momentum": 48.18,
+        "momentum_direction": "cooling",
+        "momentum_trend": -6.5,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 85.19
+          },
+          "form_components": {
+            "recent": 68.31,
+            "baseline": 80.25,
+            "sim": 73.75,
+            "multi_sg": 58.69,
+            "dg_skill": 80.0,
+            "dg_ranking": 95.45,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 19.0,
+            "16": 23.0,
+            "24": 28.0,
+            "8": 33.0
+          }
+        }
+      },
+      {
+        "rank": 16,
+        "player_key": "chris_gotterup",
+        "player": "Chris Gotterup",
+        "composite": 62.23,
+        "course_fit": 52.11,
+        "form": 72.77,
+        "momentum": 60.36,
+        "momentum_direction": "hot",
+        "momentum_trend": 37.1,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "dg_decomp": 61.73
+          },
+          "form_components": {
+            "recent": 77.78,
+            "baseline": 59.26,
+            "sim": 68.31,
+            "multi_sg": 72.09,
+            "dg_skill": 78.75,
+            "dg_ranking": 94.7,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 24.0,
+            "16": 21.0,
+            "24": 25.0,
+            "8": 15.0
+          }
+        }
+      },
+      {
+        "rank": 17,
+        "player_key": "sam_stevens",
+        "player": "Sam Stevens",
+        "composite": 62.22,
+        "course_fit": 52.78,
+        "form": 71.14,
+        "momentum": 64.54,
+        "momentum_direction": "hot",
+        "momentum_trend": 52.0,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 65.43
+          },
+          "form_components": {
+            "recent": 77.16,
+            "baseline": 50.0,
+            "sim": 68.88,
+            "multi_sg": 79.65,
+            "dg_skill": 71.25,
+            "dg_ranking": 89.9,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 25.0,
+            "16": 25.0,
+            "24": 39.0,
+            "8": 14.0
+          }
+        }
+      },
+      {
+        "rank": 18,
+        "player_key": "jacob_bridgeman",
+        "player": "Jacob Bridgeman",
+        "composite": 61.96,
+        "course_fit": 56.11,
+        "form": 73.8,
+        "momentum": 35.0,
+        "momentum_direction": "cold",
+        "momentum_trend": -53.8,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 83.95
+          },
+          "form_components": {
+            "recent": 73.05,
+            "baseline": 75.93,
+            "sim": 73.16,
+            "multi_sg": 58.15,
+            "dg_skill": 82.5,
+            "dg_ranking": 95.2,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 17.0,
+            "16": 16.0,
+            "24": 9.0,
+            "8": 29.0
+          }
+        }
+      },
+      {
+        "rank": 19,
+        "player_key": "akshay_bhatia",
+        "player": "Akshay Bhatia",
+        "composite": 61.71,
+        "course_fit": 53.67,
+        "form": 75.44,
+        "momentum": 36.07,
+        "momentum_direction": "cold",
+        "momentum_trend": -49.9,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 70.37
+          },
+          "form_components": {
+            "recent": 81.48,
+            "baseline": 79.63,
+            "sim": 69.84,
+            "multi_sg": 66.12,
+            "dg_skill": 73.75,
+            "dg_ranking": 93.69,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 11.0,
+            "16": 11.0,
+            "24": 7.0,
+            "8": 21.0
+          }
+        }
+      },
+      {
+        "rank": 20,
+        "player_key": "si_woo_kim",
+        "player": "Si Woo Kim",
+        "composite": 61.52,
+        "course_fit": 57.44,
+        "form": 67.9,
+        "momentum": 51.21,
+        "momentum_direction": "warming",
+        "momentum_trend": 4.3,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 91.36
+          },
+          "form_components": {
+            "recent": 54.12,
+            "baseline": 56.17,
+            "sim": 79.4,
+            "multi_sg": 54.56,
+            "dg_skill": 87.5,
+            "dg_ranking": 95.71,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 43.0,
+            "16": 35.0,
+            "24": 37.0,
+            "8": 36.0
+          }
+        }
+      },
+      {
+        "rank": 21,
+        "player_key": "ryo_hisatsune",
+        "player": "Ryo Hisatsune",
+        "composite": 61.23,
+        "course_fit": 52.56,
+        "form": 71.9,
+        "momentum": 52.26,
+        "momentum_direction": "warming",
+        "momentum_trend": 8.1,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 64.2
+          },
+          "form_components": {
+            "recent": 81.48,
+            "baseline": 62.35,
+            "sim": 67.82,
+            "multi_sg": 72.48,
+            "dg_skill": 66.25,
+            "dg_ranking": 88.38,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-05",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 14.0,
+            "16": 14.0,
+            "24": 17.0,
+            "8": 18.0
+          }
+        }
+      },
+      {
+        "rank": 22,
+        "player_key": "jj_spaun",
+        "player": "J.J. Spaun",
+        "composite": 59.85,
+        "course_fit": 55.22,
+        "form": 64.61,
+        "momentum": 59.24,
+        "momentum_direction": "hot",
+        "momentum_trend": 33.1,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 79.01
+          },
+          "form_components": {
+            "recent": 62.76,
+            "baseline": 34.57,
+            "sim": 72.02,
+            "multi_sg": 62.87,
+            "dg_skill": 77.5,
+            "dg_ranking": 93.43,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 28.0,
+            "16": 47.0,
+            "24": 50.0,
+            "8": 28.0
+          }
+        }
+      },
+      {
+        "rank": 23,
+        "player_key": "alex_noren",
+        "player": "Alex Noren",
+        "composite": 59.42,
+        "course_fit": 55.44,
+        "form": 66.28,
+        "momentum": 46.49,
+        "momentum_direction": "cooling",
+        "momentum_trend": -12.6,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.25,
+            "dg_decomp": 80.25
+          },
+          "form_components": {
+            "recent": 62.55,
+            "baseline": 73.46,
+            "sim": 71.97,
+            "multi_sg": 47.71,
+            "dg_skill": 65.0,
+            "dg_ranking": 94.44,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 33.0,
+            "16": 32.0,
+            "24": 23.0,
+            "8": 30.0
+          }
+        }
+      },
+      {
+        "rank": 24,
+        "player_key": "min_woo_lee",
+        "player": "Min Woo Lee",
+        "composite": 58.95,
+        "course_fit": 55.0,
+        "form": 68.22,
+        "momentum": 35.0,
+        "momentum_direction": "cold",
+        "momentum_trend": -58.8,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 77.78
+          },
+          "form_components": {
+            "recent": 61.93,
+            "baseline": 61.73,
+            "sim": 72.1,
+            "multi_sg": 52.13,
+            "dg_skill": 86.25,
+            "dg_ranking": 93.94,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 27.0,
+            "16": 20.0,
+            "24": 12.0,
+            "8": 39.0
+          }
+        }
+      },
+      {
+        "rank": 25,
+        "player_key": "gary_woodland",
+        "player": "Gary Woodland",
+        "composite": 58.95,
+        "course_fit": 47.22,
+        "form": 68.41,
+        "momentum": 69.16,
+        "momentum_direction": "hot",
+        "momentum_trend": 68.6,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 34.57
+          },
+          "form_components": {
+            "recent": 94.03,
+            "baseline": 52.47,
+            "sim": 63.45,
+            "multi_sg": 79.08,
+            "dg_skill": 33.75,
+            "dg_ranking": 84.85,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 7.0,
+            "16": 12.0,
+            "24": 29.0,
+            "8": 3.0
+          }
+        }
+      },
+      {
+        "rank": 26,
+        "player_key": "sudarshan_yellamaraju",
+        "player": "Sudarshan Yellamaraju",
+        "composite": 58.93,
+        "course_fit": 47.0,
+        "form": 72.28,
+        "momentum": 52.55,
+        "momentum_direction": "warming",
+        "momentum_trend": 9.1,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "dg_decomp": 33.33
+          },
+          "form_components": {
+            "recent": 90.12,
+            "baseline": 89.51,
+            "sim": 63.16,
+            "multi_sg": 73.78,
+            "dg_skill": 36.25,
+            "dg_ranking": 80.56,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-05",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 6.0,
+            "16": 6.0,
+            "24": 11.0,
+            "8": 12.0
+          }
+        }
+      },
+      {
+        "rank": 27,
+        "player_key": "jordan_spieth",
+        "player": "Jordan Spieth",
+        "composite": 58.82,
+        "course_fit": 54.56,
+        "form": 68.85,
+        "momentum": 32.9,
+        "momentum_direction": "cold",
+        "momentum_trend": -61.2,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 75.31
+          },
+          "form_components": {
+            "recent": 56.38,
+            "baseline": 77.16,
+            "sim": 71.03,
+            "multi_sg": 66.24,
+            "dg_skill": 72.5,
+            "dg_ranking": 92.17,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 30.0,
+            "16": 26.0,
+            "24": 16.0,
+            "8": 44.0
+          }
+        }
+      },
+      {
+        "rank": 28,
+        "player_key": "harris_english",
+        "player": "Harris English",
+        "composite": 58.46,
+        "course_fit": 54.78,
+        "form": 62.9,
+        "momentum": 55.07,
+        "momentum_direction": "hot",
+        "momentum_trend": 18.1,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.71,
+            "dg_decomp": 76.54
+          },
+          "form_components": {
+            "recent": 53.29,
+            "baseline": 67.28,
+            "sim": 70.96,
+            "multi_sg": 44.82,
+            "dg_skill": 68.75,
+            "dg_ranking": 94.19,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 60.0,
+            "16": 38.0,
+            "24": 30.0,
+            "8": 25.0
+          }
+        }
+      },
+      {
+        "rank": 29,
+        "player_key": "nicolai_hojgaard",
+        "player": "Nicolai Hojgaard",
+        "composite": 58.38,
+        "course_fit": 50.56,
+        "form": 71.46,
+        "momentum": 34.69,
+        "momentum_direction": "cold",
+        "momentum_trend": -54.8,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "dg_decomp": 53.09
+          },
+          "form_components": {
+            "recent": 69.14,
+            "baseline": 74.07,
+            "sim": 67.03,
+            "multi_sg": 68.3,
+            "dg_skill": 76.25,
+            "dg_ranking": 92.42,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 22.0,
+            "16": 19.0,
+            "24": 13.0,
+            "8": 31.0
+          }
+        }
+      },
+      {
+        "rank": 30,
+        "player_key": "ben_griffin",
+        "player": "Ben Griffin",
+        "composite": 58.03,
+        "course_fit": 54.11,
+        "form": 61.82,
+        "momentum": 58.66,
+        "momentum_direction": "hot",
+        "momentum_trend": 31.0,
+        "course_confidence": 0.3,
+        "course_rounds": 0,
+        "weather_adjustment": 0.0,
+        "finish_state": null,
+        "details": {
+          "course_components": {
+            "sg_tot": 50.0,
+            "sg_app": 50.0,
+            "sg_ott": 50.0,
+            "sg_putt": 50.0,
+            "par_eff": 50.0,
+            "time_decay": 0.35,
+            "dg_decomp": 72.84
+          },
+          "form_components": {
+            "recent": 47.94,
+            "baseline": 58.64,
+            "sim": 70.23,
+            "multi_sg": 50.59,
+            "dg_skill": 75.0,
+            "dg_ranking": 92.93,
+            "availability_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "recent_rounds_count": 24.0,
+            "comparable_recent_rounds": 24.0
+          },
+          "form_flags": [],
+          "form_notes": [],
+          "availability": {
+            "score_adjustment": 0.0,
+            "layoff_adjustment": 0.0,
+            "coverage_adjustment": 0.0,
+            "manual_adjustment": 0.0,
+            "days_since_last_round": null,
+            "last_round_date": "2026-04-12",
+            "recent_rounds_count": 24,
+            "comparable_recent_rounds": 24,
+            "flags": [],
+            "notes": []
+          },
+          "momentum_windows": {
+            "12": 52.0,
+            "16": 59.0,
+            "24": 57.0,
+            "8": 32.0
+          }
+        }
+      }
+    ],
+    "matchups": [],
+    "matchup_bets": [],
+    "value_bets": {},
+    "card_path": "/Users/aidannugent/Documents/golf-model/output/rbc_heritage_20260413.md",
+    "source_event_id": "12",
+    "source_event_name": "RBC Heritage",
+    "generated_from": "upcoming_event_model",
+    "source_card_path": "/Users/aidannugent/Documents/golf-model/output/rbc_heritage_20260413.md",
+    "ranking_source": "upcoming_event_model",
+    "diagnostics": {
+      "market_counts": {
+        "tournament_matchups": {
+          "raw_rows": 0,
+          "reason_code": "invalid_match_list_type"
+        },
+        "three_ball": {
+          "raw_rows": 0,
+          "reason_code": "invalid_match_list_type"
+        }
+      },
+      "selection_counts": {
+        "input_rows": 0,
+        "selected_rows": 0
+      },
+      "adaptation_state": "normal",
+      "reason_codes": {},
+      "state": "no_market_posted_yet",
+      "errors": []
+    },
+    "active": true,
+    "data_mode": "full",
+    "source": "upcoming_event_model"
+  },
+  "diagnostics": {
+    "market_counts": {
+      "tournament_matchups": {
+        "raw_rows": 0,
+        "reason_code": "invalid_match_list_type"
+      },
+      "three_ball": {
+        "raw_rows": 0,
+        "reason_code": "invalid_match_list_type"
+      }
+    },
+    "live_state": "no_market_posted_yet",
+    "upcoming_state": "no_market_posted_yet"
+  }
+}
