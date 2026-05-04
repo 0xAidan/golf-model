@@ -116,7 +116,7 @@ export function CockpitModeSwitch({
   ]
 
   return (
-    <div className="mode-switcher" role="tablist" aria-label="Event mode">
+    <div className="mode-switcher" role="radiogroup" aria-label="Event mode">
       {options.map((opt) => {
         const active = opt.value === value
         const isLive = opt.value === "live"
@@ -124,8 +124,8 @@ export function CockpitModeSwitch({
           <button
             key={opt.value}
             type="button"
-            role="tab"
-            aria-selected={active}
+            role="radio"
+            aria-checked={active}
             onClick={() => onChange(opt.value)}
             className={cn("mode-tab", active && "active")}
             data-testid={`mode-btn-${opt.value}`}

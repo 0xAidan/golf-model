@@ -91,7 +91,18 @@ describe("mergeTrackRecordEvents", () => {
 
     expect(result.events).toHaveLength(2)
     expect(result.events[0]?.picks).toEqual([
-      { pick: "Player C", opponent: "Player D", odds: "-115", result: "win", pl: 1.15 },
+      {
+        pick: "Player C",
+        opponent: "Player D",
+        odds: "-115",
+        result: "win",
+        pl: 1.15,
+        modelVariant: "baseline",
+        edgePct: null,
+        winProbPct: null,
+        finish: null,
+        gradedAt: null,
+      },
     ])
     expect(result.events[1]?.name).toBe("Static Only Event")
     expect(result.totals).toEqual({

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Download, ExternalLink, Radar } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -241,6 +241,24 @@ export function PredictionWorkspacePage({
       pastReplayHasHistoryLanes,
     staleTime: 30_000,
   })
+  const pastReplayHasError =
+    pastEventsQuery.isError ||
+    pastSnapshotQuery.isError ||
+    pastTimelineQuery.isError ||
+    pastMarketRowsQuery.isError
+  const pastReplayErrorMessage = (
+    pastEventsQuery.error ??
+    pastSnapshotQuery.error ??
+    pastTimelineQuery.error ??
+    pastMarketRowsQuery.error
+  ) instanceof Error
+    ? (
+        pastEventsQuery.error ??
+        pastSnapshotQuery.error ??
+        pastTimelineQuery.error ??
+        pastMarketRowsQuery.error
+      )?.message
+    : "Replay API request failed."
 
   const pastSnapshotSection = pastSnapshotQuery.data?.ok
     ? (pastSnapshotQuery.data.snapshot ?? null)
@@ -457,7 +475,7 @@ export function PredictionWorkspacePage({
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* ── Notice bar ──────────────────────────── */}
       {snapshotNotice && (
-        <div className="alert-banner">
+        <div className="alert-banner" role="status" aria-live="polite">
           <Radar size={11} style={{ flexShrink: 0 }} />
           {snapshotNotice}
         </div>
@@ -513,6 +531,7 @@ export function PredictionWorkspacePage({
                     <select
                       value={selectedPastEventKey || selectedPastEvent?.event_id || ""}
                       onChange={(e) => setSelectedPastEventKey(e.target.value)}
+                      aria-label="Select past event for replay"
                       style={{
                         width: "100%",
                         background: "var(--surface-2)",
@@ -540,7 +559,9 @@ export function PredictionWorkspacePage({
                       {(["completed", "live", "upcoming"] as const).map((lane) => (
                         <button
                           key={lane}
+                          type="button"
                           onClick={() => setPastReplaySection(lane)}
+                          aria-pressed={pastReplaySection === lane}
                           style={{
                             flex: 1,
                             padding: "5px 0",
@@ -561,6 +582,41 @@ export function PredictionWorkspacePage({
                       ))}
                     </div>
                   </div>
+                  {pastReplayHasError && (
+                    <div
+                      role="alert"
+                      style={{
+                        border: "1px solid rgba(239,68,68,0.25)",
+                        background: "var(--red-bg)",
+                        color: "var(--red)",
+                        borderRadius: "var(--r-sm)",
+                        padding: "8px 10px",
+                        fontSize: 11,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                      }}
+                    >
+                      <div>Replay request failed: {pastReplayErrorMessage}</div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: "3px 8px", fontSize: 10 }}
+                          onClick={() => {
+                            void pastEventsQuery.refetch()
+                            void pastSnapshotQuery.refetch()
+                            if (pastReplayHasHistoryLanes) {
+                              void pastTimelineQuery.refetch()
+                              void pastMarketRowsQuery.refetch()
+                            }
+                          }}
+                        >
+                          Retry replay fetch
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -756,6 +812,7 @@ export function PredictionWorkspacePage({
                       <div className="empty-state-desc">
                         Switch to{" "}
                         <button
+                          type="button"
                           style={{ color: "var(--cyan)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: "inherit" }}
                           onClick={() => onPredictionTabChange("upcoming")}
                         >
@@ -782,9 +839,8 @@ export function PredictionWorkspacePage({
                         const key = buildMatchupKey(matchup)
                         const isExpanded = expandedMatchupKey === key
                         return (
-                          <>
+                          <Fragment key={key}>
                             <tr
-                              key={key}
                               onClick={() => setExpandedMatchupKey(isExpanded ? null : key)}
                               style={{ cursor: "pointer" }}
                               data-testid={`matchup-row-${key}`}
@@ -826,7 +882,7 @@ export function PredictionWorkspacePage({
                               </td>
                             </tr>
                             {isExpanded && (
-                              <tr key={`${key}-detail`}>
+                              <tr>
                                 <td colSpan={6} style={{ padding: 0 }}>
                                   <div className="matchup-detail">
                                     <div className="matchup-detail-grid">
@@ -866,7 +922,7 @@ export function PredictionWorkspacePage({
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </Fragment>
                         )
                       })}
                     </tbody>
@@ -932,7 +988,13 @@ export function PredictionWorkspacePage({
                           >
                             <td className="rank-cell">{player.rank}</td>
                             <td className="player-name">
-                              <button onClick={() => onPlayerSelect(player.player_key)}>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onPlayerSelect(player.player_key)
+                                }}
+                              >
                                 {player.player_display}
                               </button>
                             </td>
@@ -998,7 +1060,13 @@ export function PredictionWorkspacePage({
                             data-testid={`secondary-row-${bet.player}`}
                           >
                             <td className="player-name">
-                              <button onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  if (bet.player_key) onPlayerSelect(bet.player_key)
+                                }}
+                              >
                                 {bet.player}
                               </button>
                             </td>

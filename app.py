@@ -120,6 +120,36 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
 
+
+def _expected_dashboard_api_key() -> str:
+    """Optional shared secret for mutating API endpoints."""
+    return os.environ.get("DASHBOARD_API_KEY", "").strip()
+
+
+@app.middleware("http")
+async def _mutating_api_auth(request: Request, call_next):
+    if request.method not in {"POST", "PATCH", "DELETE"}:
+        return await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+
+    expected = _expected_dashboard_api_key()
+    if not expected:
+        return await call_next(request)
+
+    provided = request.headers.get("x-api-key", "").strip()
+    if not provided:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            provided = auth_header[7:].strip()
+
+    if provided != expected:
+        return JSONResponse(
+            {"error": "Unauthorized mutating API request. Provide x-api-key."},
+            status_code=401,
+        )
+    return await call_next(request)
+
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
 FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR / "index.html"
