@@ -2,7 +2,6 @@ export type WorkspaceId =
   | "prediction"
   | "players"
   | "matchups"
-  | "course"
   | "grading"
   | "track-record"
   | "champion-challenger"

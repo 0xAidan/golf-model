@@ -4,7 +4,6 @@ import {
   FlaskConical,
   GraduationCap,
   LayoutDashboard,
-  Route,
   Swords,
   Trophy,
   Users,
@@ -23,7 +22,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "prediction",   label: "Cockpit",      href: "/",            icon: LayoutDashboard },
   { id: "players",      label: "Players",      href: "/players",     icon: Users },
   { id: "matchups",     label: "Picks",        href: "/matchups",    icon: Swords },
-  { id: "course",       label: "Course",       href: "/course",      icon: Route },
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
   { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
@@ -83,7 +81,7 @@ export function SuiteShell({
         {/* Navigation */}
         <nav className="sidebar-nav" aria-label="Main navigation">
           <div className="sidebar-section-label">Workspace</div>
-          {NAV_ITEMS.slice(0, 4).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(0, 3).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}
@@ -99,7 +97,7 @@ export function SuiteShell({
           ))}
 
           <div className="sidebar-section-label" style={{ marginTop: 8 }}>Records</div>
-          {NAV_ITEMS.slice(4, 6).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(3, 5).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}
@@ -115,7 +113,7 @@ export function SuiteShell({
           ))}
 
           <div className="sidebar-section-label" style={{ marginTop: 8 }}>Research</div>
-          {NAV_ITEMS.slice(6).map(({ href, icon: Icon, label, id }) => (
+          {NAV_ITEMS.slice(5).map(({ href, icon: Icon, label, id }) => (
             <NavLink
               key={href}
               to={href}

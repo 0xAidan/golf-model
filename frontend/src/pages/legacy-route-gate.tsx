@@ -4,7 +4,7 @@ import { Link } from "react-router-dom"
 import { SectionTitle, SurfaceCard } from "@/components/shell"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 
-type LegacyReplayBlockedRoute = "players" | "matchups" | "course"
+type LegacyReplayBlockedRoute = "players" | "matchups"
 
 const ROUTE_COPY: Record<LegacyReplayBlockedRoute, { title: string; message: string }> = {
   players: {
@@ -14,10 +14,6 @@ const ROUTE_COPY: Record<LegacyReplayBlockedRoute, { title: string; message: str
   matchups: {
     title: "Legacy matchups route unavailable in replay mode",
     message: "Use the cockpit home route for stored matchup replay, featured edges, and the full generated picks inventory.",
-  },
-  course: {
-    title: "Legacy course route unavailable in replay mode",
-    message: "Use the cockpit home route for replay-aware course context, weather/feed framing, and stored event diagnostics.",
   },
 }
 
