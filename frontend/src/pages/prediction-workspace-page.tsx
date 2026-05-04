@@ -13,6 +13,7 @@ import {
 import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
 import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
 import { isTeamEvent } from "@/lib/event-format"
+import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-stack"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
@@ -778,16 +779,28 @@ export function PredictionWorkspacePage({
         center={
           <>
             {showTeamEventNotice && (
-              <TeamEventNotice
-                eventName={eventName}
-                courseName={courseName}
-                mode={predictionTab === "live" ? "live" : "upcoming"}
-              />
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                <TeamEventNotice
+                  eventName={eventName}
+                  courseName={courseName}
+                  mode={predictionTab === "live" ? "live" : "upcoming"}
+                />
+              </div>
             )}
             {!showTeamEventNotice && (
-              <>
-            {/* ── Power Rankings table ──────────────── */}
-            <div className="card">
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                <CockpitResizableStack
+                  showLeaderboard={predictionTab !== "upcoming"}
+                  rankings={
+            <div className="card cockpit-stack-card">
               <div className="card-header">
                 <div>
                   <div className="card-title">
@@ -877,9 +890,9 @@ export function PredictionWorkspacePage({
                 )}
               </div>
             </div>
-
-            {/* ── Top Plays (Matchups) ──────────────── */}
-            <div className="card">
+                  }
+                  topPicks={
+            <div className="card cockpit-stack-card">
               <div className="card-header">
                 <div>
                   <div className="card-title">
@@ -1034,10 +1047,9 @@ export function PredictionWorkspacePage({
                 )}
               </div>
             </div>
-
-            {/* ── Secondary bets ───────────────────── */}
-            {displaySecondaryBets.length > 0 && (
-              <div className="card" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+                  }
+                  secondary={
+              <div className="card cockpit-stack-card">
                 <div className="card-header">
                   <div className="card-title">Secondary markets</div>
                   <div className="card-desc">
@@ -1051,6 +1063,7 @@ export function PredictionWorkspacePage({
                   </div>
                 </div>
                 <div className="table-scroll">
+                  {displaySecondaryBets.length > 0 ? (
                   <table className="data-table">
                     <thead>
                       <tr>
@@ -1101,13 +1114,18 @@ export function PredictionWorkspacePage({
                       })}
                     </tbody>
                   </table>
+                  ) : (
+                    <div className="card-body">
+                      <EmptyState message="No secondary market edges in this context." />
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-
-            {/* ── Leaderboard — live & past only, not upcoming ─── */}
-            {predictionTab !== "upcoming" && (
+                  }
+                  leaderboard={
+              predictionTab !== "upcoming" ? (
               <CockpitModule
+                className="cockpit-stack-card"
                 title={predictionTab === "past" ? "Final leaderboard" : "Live leaderboard"}
                 description={
                   predictionTab === "past"
@@ -1123,8 +1141,10 @@ export function PredictionWorkspacePage({
                   onPlayerSelect={onPlayerSelect}
                 />
               </CockpitModule>
-            )}
-              </>
+              ) : undefined
+                  }
+                />
+              </div>
             )}
           </>
         }

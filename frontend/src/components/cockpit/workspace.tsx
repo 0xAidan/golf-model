@@ -33,8 +33,18 @@ export function CockpitWorkspace({
       <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
         {leftRail}
       </div>
-      {/* Center column */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+      {/* Center column — bounded height; main tables use vertical split panes */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          minHeight: 0,
+          height: "100%",
+          overflow: "hidden",
+          overflowX: "hidden",
+        }}
+      >
         {center}
       </div>
       {/* Right column */}

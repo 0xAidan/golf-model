@@ -1417,3 +1417,65 @@ body {
   min-height: 0 !important;
   overflow: hidden !important;
 }
+
+/* ─────────────────────────────────────────────────────
+   COCKPIT CENTER — vertical split panes (react-resizable-panels)
+   ───────────────────────────────────────────────────── */
+.cockpit-vertical-panels {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.cockpit-panel-shell {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-panel-fill {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Cards inside a pane fill height and scroll inside .table-scroll */
+.card.cockpit-stack-card {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.cockpit-module.cockpit-stack-card {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.cockpit-resize-handle {
+  flex-shrink: 0;
+  height: 6px;
+  margin: 0;
+  border-radius: var(--r-sm);
+  background: var(--border);
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+  transition: background var(--ease), box-shadow var(--ease);
+}
+
+.cockpit-resize-handle:hover,
+.cockpit-resize-handle:focus-visible {
+  background: rgba(34, 197, 94, 0.28);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
+}
+
+.cockpit-resize-handle:active {
+  background: var(--green-dim);
+}
