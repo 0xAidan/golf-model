@@ -55,3 +55,47 @@ def test_build_ab_report_pairs_v5_and_legacy(tmp_db, tmp_path):
 def test_build_ab_report_requires_event_id():
     out = build_ab_report("", write_files=False)
     assert out["ok"] is False
+
+
+def test_build_ab_report_pairs_lab_v5_with_cockpit_baseline(tmp_db, tmp_path):
+    """After Cockpit uses baseline snapshot, AB pairs lab_* v5 vs live/upcoming baseline."""
+    base_row = {
+        "snapshot_id": "snap_ab2",
+        "generated_at": "2026-05-04T12:00:00",
+        "tour": "pga",
+        "event_id": "evt_ab2",
+        "event_name": "Test Open",
+        "market_family": "matchup",
+        "market_type": "tournament_matchups",
+        "player_key": "p1",
+        "player_display": "P1",
+        "opponent_key": "p2",
+        "opponent_display": "P2",
+        "book": "draftkings",
+        "odds": "+100",
+        "implied_prob": 0.50,
+        "is_value": 1,
+    }
+    rows = [
+        {
+            **base_row,
+            "section": "lab_upcoming",
+            "model_prob": 0.56,
+            "ev": 0.06,
+            "payload_json": json.dumps({"model_variant": "v5"}),
+        },
+        {
+            **base_row,
+            "section": "upcoming",
+            "model_prob": 0.50,
+            "ev": 0.02,
+            "payload_json": json.dumps({"model_variant": "baseline"}),
+        },
+    ]
+    tmp_db.store_market_prediction_rows(rows)
+
+    report = build_ab_report("evt_ab2", output_dir=tmp_path, write_files=False)
+    assert report["ok"] is True
+    assert report["counts"]["paired_keys"] == 1
+    assert report["paired_metrics"]["mean_model_prob_delta_v5_minus_legacy"] == 0.06
+    assert report["paired_metrics"]["mean_ev_delta_v5_minus_legacy"] == 0.04

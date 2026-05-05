@@ -1738,7 +1738,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         mode=mode,
         enable_ai=False,
         enable_backfill=False,
-        model_variant=config.DEFAULT_MODEL_VARIANT,
+        model_variant=config.COCKPIT_SNAPSHOT_MODEL_VARIANT,
     )
     generated_at = _iso_now()
     snapshot_id = uuid.uuid4().hex
@@ -1759,7 +1759,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         "field_size": live_result.get("field_size"),
         "tournament_id": live_result.get("tournament_id"),
         "course_num": live_result.get("course_num"),
-        "model_variant": live_result.get("model_variant", config.DEFAULT_MODEL_VARIANT),
+        "model_variant": live_result.get("model_variant", config.COCKPIT_SNAPSHOT_MODEL_VARIANT),
         "event_format": live_result.get("event_format"),
         "skipped_reason": live_result.get("skipped_reason"),
         "rankings": _extract_rankings(
@@ -1820,7 +1820,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 mode="full",
                 enable_ai=False,
                 enable_backfill=False,
-                model_variant=config.DEFAULT_MODEL_VARIANT,
+                model_variant=config.COCKPIT_SNAPSHOT_MODEL_VARIANT,
             )
         except Exception as exc:
             _logger.warning("Upcoming snapshot recompute failed; attempting verified snapshot fallback: %s", exc)
@@ -1952,20 +1952,29 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     )
     legacy_result: dict[str, Any] = {}
     if legacy_target_name:
-        try:
-            legacy_result = run_snapshot_analysis(
-                tour=tour,
-                event_id=legacy_target_event_id or None,
-                tournament_name=str(legacy_target_name).strip() or None,
-                course_name=str(legacy_target_course).strip() or None,
-                mode=mode if live_is_active else "full",
-                enable_ai=False,
-                enable_backfill=False,
-                model_variant=config.LEGACY_MODEL_VARIANT,
-            )
-        except Exception as exc:
-            _logger.warning("Legacy baseline snapshot recompute failed: %s", exc)
-            legacy_result = {}
+        reuse_legacy_from_upcoming = (
+            config.COCKPIT_SNAPSHOT_MODEL_VARIANT == config.LEGACY_MODEL_VARIANT
+            and bool(upcoming_result)
+            and str(legacy_target_event_id or "").strip() == str(upcoming_event_id or "").strip()
+            and str(legacy_target_name or "").strip() == str(upcoming_event_name or "").strip()
+        )
+        if reuse_legacy_from_upcoming:
+            legacy_result = upcoming_result
+        else:
+            try:
+                legacy_result = run_snapshot_analysis(
+                    tour=tour,
+                    event_id=legacy_target_event_id or None,
+                    tournament_name=str(legacy_target_name).strip() or None,
+                    course_name=str(legacy_target_course).strip() or None,
+                    mode=mode if live_is_active else "full",
+                    enable_ai=False,
+                    enable_backfill=False,
+                    model_variant=config.LEGACY_MODEL_VARIANT,
+                )
+            except Exception as exc:
+                _logger.warning("Legacy baseline snapshot recompute failed: %s", exc)
+                legacy_result = {}
 
     if legacy_result:
         legacy_value_bets, legacy_value_filters = _extract_board_value_bets(

@@ -13,9 +13,15 @@ from typing import Any
 # Model version (single source of truth; was v3.0 in card.py, v4.0 in methodology)
 # ---------------------------------------------------------------------------
 MODEL_VERSION = "5.0"
+ALLOWED_MODEL_VARIANTS = {"baseline", "v5"}
 DEFAULT_MODEL_VARIANT = os.environ.get("DEFAULT_MODEL_VARIANT", "v5").strip().lower() or "v5"
 LEGACY_MODEL_VARIANT = os.environ.get("LEGACY_MODEL_VARIANT", "baseline").strip().lower() or "baseline"
-ALLOWED_MODEL_VARIANTS = {"baseline", "v5"}
+# Operator Cockpit (`/`): live_tournament + upcoming_tournament in live-refresh snapshot.
+# Default baseline matches pre–full-v5-switchover / Masters-era main boards; Lab uses lab_sandbox (typically v5).
+_raw_cockpit = os.environ.get("COCKPIT_SNAPSHOT_MODEL_VARIANT", "baseline").strip().lower() or "baseline"
+COCKPIT_SNAPSHOT_MODEL_VARIANT = (
+    _raw_cockpit if _raw_cockpit in ALLOWED_MODEL_VARIANTS else "baseline"
+)
 
 # ---------------------------------------------------------------------------
 # T3 — Pair / team matchup model (Zurich Classic). See issue #47.

@@ -219,6 +219,7 @@ function App() {
   const playerProfileQuery = useQuery({
     queryKey: [
       "player-profile",
+      labRouteActive ? "lab" : "cockpit",
       selectedPlayerKey,
       profileTournamentId,
       profileCourseNum,
@@ -514,6 +515,17 @@ function App() {
     onError: setUiAlert,
   })
 
+  const cockpitPowerRankingsSubtitle = useMemo(() => {
+    if (predictionTab === "past") return null
+    const sec =
+      predictionTab === "upcoming"
+        ? liveSnapshot?.upcoming_tournament
+        : liveSnapshot?.live_tournament
+    const mv = sec?.model_variant
+    if (!mv) return null
+    return `Cockpit — snapshot model "${String(mv)}" (default baseline operator path). Compare with Lab (research v5).`
+  }, [liveSnapshot, predictionTab])
+
   const cockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
     () => ({
       liveSnapshot,
@@ -543,6 +555,7 @@ function App() {
       },
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets,
+      powerRankingsSubtitle: cockpitPowerRankingsSubtitle,
     }),
     [
       liveSnapshot,
@@ -569,6 +582,7 @@ function App() {
       playerProfileErrorMessage,
       playerProfileQuery.refetch,
       secondaryBets,
+      cockpitPowerRankingsSubtitle,
     ],
   )
 
@@ -578,7 +592,7 @@ function App() {
       return "Lab track unavailable — showing production snapshot boards until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh worker, wait for next tick). For independent Lab vs Cockpit comparison, lab_* sections must be non-null."
     }
     const mv = labWorkspaceHydrated?.model_variant ?? "unknown"
-    return `Lab Cockpit (research track) — model variant "${mv}" from profiles.yaml (lab profile via live_refresh.lab_profile_name). Production Cockpit (/) uses the shipped default model path (typically v5). Tracks are independent; compare logged picks by source (cockpit vs lab).`
+    return `Lab Cockpit — research model "${mv}" (profiles.yaml via live_refresh.lab_profile_name). Production / uses baseline snapshot by default.`
   }, [isCockpitLabRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant])
 
   const labCockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(

@@ -36,14 +36,23 @@ def _payload_variant(row: dict[str, Any]) -> str:
 
 
 def _is_v5_lane_row(row: dict[str, Any]) -> bool:
+    """Research / v5 challenger rows: lab_* sections (v5) or live/upcoming with v5 payload."""
     sec = (row.get("section") or "").strip().lower()
-    if sec not in {"live", "upcoming"}:
-        return False
-    return _payload_variant(row) == "v5"
+    if sec in {"lab_live", "lab_upcoming"}:
+        return _payload_variant(row) == "v5"
+    if sec in {"live", "upcoming"}:
+        return _payload_variant(row) == "v5"
+    return False
 
 
 def _is_legacy_lane_row(row: dict[str, Any]) -> bool:
-    return (row.get("section") or "").strip().lower() == "legacy"
+    """Reference / baseline rows: explicit legacy section or operator Cockpit live/upcoming (baseline)."""
+    sec = (row.get("section") or "").strip().lower()
+    if sec == "legacy":
+        return True
+    if sec in {"live", "upcoming"}:
+        return _payload_variant(row) == "baseline"
+    return False
 
 
 def _latest_by_key(rows: list[dict[str, Any]], predicate) -> dict[tuple[str, ...], dict[str, Any]]:
@@ -68,8 +77,9 @@ def build_ab_report(
     row_limit: int = 50_000,
 ) -> dict[str, Any]:
     """
-    Load ``market_prediction_rows`` for ``event_id``, align v5 (live/upcoming + v5
-    payload) vs legacy (section ``legacy``), emit summary JSON (+ optional markdown).
+    Load ``market_prediction_rows`` for ``event_id``, align **research v5** (``lab_*`` with
+    v5, or legacy live/upcoming v5 rows) vs **reference baseline** (section ``legacy``, or
+    operator ``live`` / ``upcoming`` with baseline payload), emit summary JSON (+ optional markdown).
 
     Returns a dict with counts, paired metrics, and optional ``artifact_paths``.
     """
@@ -167,8 +177,10 @@ def build_ab_report(
             "",
             "Rows are matched on `(market_family, market_type, player_key, opponent_key, book)` "
             "using the latest tick per lane (`generated_at`, `id`). "
-            "v5 lane = section `live` or `upcoming` with `payload.model_variant == 'v5'`. "
-            "Legacy lane = section `legacy`.",
+            "v5 lane = section `lab_live` / `lab_upcoming` with v5 payload, or `live` / `upcoming` "
+            "with `payload.model_variant == 'v5'`. "
+            "Reference lane = section `legacy`, or `live` / `upcoming` with baseline payload "
+            "(operator Cockpit after Masters-era split).",
             "",
         ]
         md_path.write_text("\n".join(lines), encoding="utf-8")

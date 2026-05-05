@@ -2045,7 +2045,10 @@ async def get_live_refresh_past_snapshot(
     section_value = _normalize_replay_section(raw_section)
     if section_value is None:
         return JSONResponse(
-            {"ok": False, "error": "section must be 'completed', 'live', or 'upcoming'"},
+            {
+                "ok": False,
+                "error": "section must be 'completed' or one of: live, upcoming, lab_live, lab_upcoming",
+            },
             status_code=400,
         )
 
