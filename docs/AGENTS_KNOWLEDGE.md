@@ -143,6 +143,7 @@ golf-model/
 │ ── scripts/ (UTILITIES, 10+ files) ────────────────────────────
 ├── scripts/
 │   ├── datagolf_build_article_index.py  # Merge Data Golf URLs into docs/research/datagolf_article_index.csv
+│   ├── datagolf_llm_extract.py          # OpenAI structured extract → datagolf_extractions.jsonl + CSV columns
 │   ├── grade_tournament.py
 │   ├── backfill_matchup_odds.py
 │   ├── backtest_v41_cognizant.py
@@ -238,7 +239,7 @@ golf-model/
 ├── docs/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
 │   ├── MASTERS_COCKPIT_FREEZE.md  # Operator / vs Lab model split (COCKPIT_SNAPSHOT_MODEL_VARIANT)
-│   ├── research/            # Research reports + Data Golf URL index (datagolf_*.md/csv; refresh: python scripts/datagolf_build_article_index.py)
+│   ├── research/            # Data Golf index (datagolf_*.md/csv/jsonl); URLs: python scripts/datagolf_build_article_index.py; LLM extract: python scripts/datagolf_llm_extract.py
 │   ├── plans/               # 4 implementation plans
 │   ├── autoresearch/        # pilot_contract.json, evaluation_contract.md
 │   ├── sportsbook_strategy.md

@@ -22,6 +22,18 @@ Manual seeds (sidebar `recents` / `popular` from a sample Analytics page) are pr
 - **`/blog` “load more”** is mostly JS-driven; this script uses **`/blog-home/`** link harvest plus research-doc URLs instead of full per-tag pagination. Re-run after major site changes or extend the script if you capture the XHR the blog uses.
 - **Model Talk** rows come from the **index page** only (10 posts visible in static HTML today); older posts may need manual rows or a deeper crawl.
 
+## Automated LLM extraction (OpenAI)
+
+Put `OPENAI_API_KEY` in `.env` (see repo `.env.example`). From repo root:
+
+```bash
+python3 scripts/datagolf_llm_extract.py --limit 10
+```
+
+- Appends one JSON object per article to **`datagolf_extractions.jsonl`** (full structured extraction: sections, quantitative claims, modeling implications, backtest ideas).
+- Updates **`datagolf_article_index.csv`** for those URLs: `summary_bullets`, `proposed_change`, `code_touchpoints`, `verify_with`, `model_dimensions`, `status=llm_extracted_v1`, `extraction_method=openai_json_schema`.
+- Flags: `--dry-run` (fetch + size only), `--force` (re-run even if already extracted), `--status pending_read` (default), `--temperature 0.2`.
+
 ## Next (human / QA phase)
 
-Fill `summary_bullets`, `proposed_change`, `verify_with`; set `superseded_by` when Model Talk overrides an older post; use `artifacts_note` for charts. See [datagolf_topic_taxonomy.md](datagolf_topic_taxonomy.md) and [datagolf_enumeration.md](datagolf_enumeration.md).
+Optionally refine rows after LLM pass; set `superseded_by` when Model Talk overrides an older post; use `artifacts_note` for charts. See [datagolf_topic_taxonomy.md](datagolf_topic_taxonomy.md) and [datagolf_enumeration.md](datagolf_enumeration.md).

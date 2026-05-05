@@ -87,7 +87,8 @@ def _get_provider() -> str:
 
 
 def _call_ai(system_prompt: str, user_prompt: str,
-             response_schema: dict = None) -> dict:
+             response_schema: dict = None,
+             temperature: float | None = None) -> dict:
     """
     Call the configured AI provider and return parsed JSON.
 
@@ -97,7 +98,9 @@ def _call_ai(system_prompt: str, user_prompt: str,
     provider = _get_provider()
 
     if provider == "openai":
-        return _call_openai(system_prompt, user_prompt, response_schema)
+        return _call_openai(
+            system_prompt, user_prompt, response_schema, temperature=temperature
+        )
     elif provider == "anthropic":
         return _call_anthropic(system_prompt, user_prompt, response_schema)
     elif provider == "gemini":
@@ -107,7 +110,8 @@ def _call_ai(system_prompt: str, user_prompt: str,
 
 
 def _call_openai(system_prompt: str, user_prompt: str,
-                 response_schema: dict = None) -> dict:
+                 response_schema: dict = None,
+                 temperature: float | None = None) -> dict:
     """Call OpenAI with structured outputs for guaranteed JSON."""
     try:
         from openai import OpenAI
@@ -127,10 +131,11 @@ def _call_openai(system_prompt: str, user_prompt: str,
         {"role": "user", "content": user_prompt},
     ]
 
+    temp = 0.7 if temperature is None else temperature
     kwargs = {
         "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
         "messages": messages,
-        "temperature": 0.7,
+        "temperature": temp,
     }
 
     # Use structured outputs if schema provided
@@ -851,7 +856,8 @@ def is_ai_available() -> bool:
 
 
 def call_ai(prompt: str, system_prompt: str = None,
-            max_tokens: int = None, response_schema: dict = None) -> dict:
+            max_tokens: int = None, response_schema: dict = None,
+            temperature: float | None = None) -> dict:
     """
     Public interface for making AI calls.
 
@@ -860,6 +866,7 @@ def call_ai(prompt: str, system_prompt: str = None,
         system_prompt: Optional system prompt (defaults to a generic golf analyst).
         max_tokens: Ignored (kept for API compatibility; provider handles limits).
         response_schema: Optional JSON schema for structured output.
+        temperature: Optional sampling temperature (OpenAI only when set).
 
     Returns: Parsed JSON dict from the AI provider.
     """
@@ -868,7 +875,7 @@ def call_ai(prompt: str, system_prompt: str = None,
             "You are an expert golf analytics researcher. "
             "Respond with valid JSON only."
         )
-    return _call_ai(system_prompt, prompt, response_schema)
+    return _call_ai(system_prompt, prompt, response_schema, temperature=temperature)
 
 
 def get_ai_status() -> dict:
