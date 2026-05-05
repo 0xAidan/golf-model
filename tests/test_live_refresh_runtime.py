@@ -330,9 +330,11 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     def _fake_run_snapshot_analysis(**kwargs):
         calls.append(kwargs)
         event_name = kwargs.get("tournament_name") or "Current Event"
+        model_variant = str(kwargs.get("model_variant") or "baseline").strip().lower() or "baseline"
         if event_name == "Next Event":
             return {
                 "status": "complete",
+                "model_variant": model_variant,
                 "event_name": "Next Event",
                 "course_name": "Next Course",
                 "field_size": 70,
@@ -433,6 +435,7 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
             }
         return {
             "status": "complete",
+            "model_variant": model_variant,
             "event_name": "Current Event",
             "course_name": "Current Course",
             "field_size": 80,
@@ -507,6 +510,11 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
     monkeypatch.setattr(runtime, "parse_in_play_leaderboard", lambda raw: ([], {}, "no_rows"))
     monkeypatch.setattr(runtime, "_maybe_freeze_pre_teeoff", lambda **kwargs: None)
     monkeypatch.setattr(runtime.db, "upsert_pre_teeoff_candidate", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runtime,
+        "get_settings",
+        lambda: {"live_refresh": {"lab_profile_enabled": False, "tour": "pga"}},
+    )
 
     snapshot = runtime._run_recompute(
         "pga",
@@ -523,18 +531,15 @@ def test_run_recompute_builds_true_upcoming_section(monkeypatch):
         },
     )
 
-    assert len(calls) == 3
+    assert len(calls) == 2
     assert calls[0]["mode"] == "round-matchups"
-    assert calls[0]["model_variant"] == "v5"
+    assert calls[0]["model_variant"] == "baseline"
     assert calls[1]["mode"] == "full"
     assert calls[1]["tournament_name"] == "Next Event"
-    assert calls[1]["model_variant"] == "v5"
-    assert calls[2]["mode"] == "round-matchups"
-    assert calls[2]["tournament_name"] == "Next Event"
-    assert calls[2]["model_variant"] == "baseline"
+    assert calls[1]["model_variant"] == "baseline"
     assert snapshot["upcoming_tournament"]["event_name"] == "Next Event"
-    assert snapshot["upcoming_tournament"]["generated_from"] == "upcoming_event_model_v5"
-    assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model_v5"
+    assert snapshot["upcoming_tournament"]["generated_from"] == "upcoming_event_model_baseline"
+    assert snapshot["upcoming_tournament"]["ranking_source"] == "upcoming_event_model_baseline"
     assert snapshot["upcoming_tournament"]["diagnostics"]["state"] == "edges_available"
     assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets"]] == ["betonline", "draftkings"]
     assert [row["book"] for row in snapshot["upcoming_tournament"]["matchup_bets_all_books"]] == ["betonline", "draftkings", "fanduel"]
@@ -1278,13 +1283,13 @@ def test_live_refresh_replay_endpoints_reject_invalid_section_consistently(monke
     assert snapshot_response.status_code == 400
     assert snapshot_response.json() == {
         "ok": False,
-        "error": "section must be 'completed', 'live', or 'upcoming'",
+        "error": "section must be 'completed' or one of: live, upcoming, lab_live, lab_upcoming",
     }
     for response in (timeline_response, market_rows_response):
         assert response.status_code == 400
         assert response.json() == {
             "ok": False,
-            "error": "section must be one of: live, upcoming",
+            "error": "section must be one of: live, upcoming, lab_live, lab_upcoming",
         }
 
 

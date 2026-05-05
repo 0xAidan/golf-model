@@ -37,7 +37,7 @@ def test_persist_lab_logged_picks_writes_lab_sandbox_source(tmp_db):
     ).fetchone()
     conn.close()
     assert row["source"] == "lab_sandbox"
-    assert row["model_variant"] == "baseline"
+    assert row["model_variant"] == "v5"
 
 
 def test_store_picks_defaults_source_to_cockpit(tmp_db):

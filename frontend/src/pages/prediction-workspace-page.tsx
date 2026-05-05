@@ -503,6 +503,15 @@ export function PredictionWorkspacePage({
 
   const topPlays = predictionTab === "past" ? pastMatchups : filteredMatchups
 
+  const topPicksEmptyMessage = useMemo(() => {
+    if (predictionTab === "past") return diagnosticsMessage
+    const rawLen = rawGeneratedMatchups.length
+    if (rawLen > 0 && topPlays.length === 0) {
+      return `${diagnosticsMessage} ${rawLen} matchup line(s) from the model did not pass your filters or min edge — try more books or a lower edge threshold.`
+    }
+    return diagnosticsMessage
+  }, [diagnosticsMessage, predictionTab, rawGeneratedMatchups.length, topPlays.length])
+
   // Team-format events (Zurich Classic) intentionally short-circuit the
   // pipeline in the backend (see src/event_format.py). Mirror the skip on
   // the frontend by replacing the bettable-card modules with an explanatory
@@ -1157,7 +1166,7 @@ export function PredictionWorkspacePage({
                   </table>
                 ) : (
                   <div className="card-body">
-                    <EmptyState message={diagnosticsMessage} />
+                    <EmptyState message={topPicksEmptyMessage} />
                   </div>
                 )}
               </div>
