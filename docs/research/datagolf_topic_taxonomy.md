@@ -2,7 +2,7 @@
 
 **Companion:** [datagolf_enumeration.md](datagolf_enumeration.md) (how URLs are discovered; sitemap check; Analytics sidebar mechanics).
 
-**CSV:** [datagolf_article_index.csv](datagolf_article_index.csv) — one row per URL; fill `summary_bullets` and `proposed_change` in your own words.
+**CSV:** [datagolf_article_index.csv](datagolf_article_index.csv) — one row per URL; fill `summary_bullets` and `proposed_change` in your own words. Optional columns for extraction QA: `extraction_method` (`curl_html` | `rendered` | `manual`), `superseded_by` (newer DG URL if stale), `artifacts_note` (charts/tables not auto-captured).
 
 ## `model_dimensions` (tag rows with one or more)
 

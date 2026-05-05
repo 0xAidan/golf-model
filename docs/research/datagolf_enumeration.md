@@ -55,3 +55,8 @@ Captured from page source 2026-05-05:
 - `/performance-and-pressure` — Sleeping on the lead  
 
 `popular` (commented in sidebar; still in source): `/predictive-model-methodology/`, `http://datagolfblogs.ca/does-a-players-course-history-predict-performance/`, `/comparing-pro-tours/`, `http://datagolfblogs.ca/the-luck-of-the-draw/`, `/important-holes-at-augusta/`, `/whats-the-strongest-field-in-professional-golf/`.
+
+## Extraction feasibility (for model-relevant notes)
+
+- **URL list (L0):** Achievable with the waves above; `/blog` is the primary Analytics archive.
+- **Key claims (L1):** Article **prose is present in server HTML** for representative Analytics posts (spot-check 2026-05-05: `curl` on `/where-to-miss-tpc-sawgrass` returned ~188kB HTML containing obvious article tokens). Automated or LLM summarization still needs a **QA gate** (two-pass review + spot sampling) before tying rows to code changes—see project plan “accuracy contract” and optional CSV columns `extraction_method`, `superseded_by`, `artifacts_note` in [datagolf_topic_taxonomy.md](datagolf_topic_taxonomy.md).
