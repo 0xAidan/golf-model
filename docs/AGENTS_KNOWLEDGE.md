@@ -237,7 +237,7 @@ golf-model/
 ├── docs/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
 │   ├── MASTERS_COCKPIT_FREEZE.md  # Operator / vs Lab model split (COCKPIT_SNAPSHOT_MODEL_VARIANT)
-│   ├── research/            # 10 research reports (market efficiency, calibration, ML, etc.)
+│   ├── research/            # Research reports + Data Golf URL index: datagolf_enumeration.md, datagolf_topic_taxonomy.md, datagolf_article_index.csv
 │   ├── plans/               # 4 implementation plans
 │   ├── autoresearch/        # pilot_contract.json, evaluation_contract.md
 │   ├── sportsbook_strategy.md

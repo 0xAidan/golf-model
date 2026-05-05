@@ -1,0 +1,21 @@
+url,title,published_date,source_family,source_domain,discovery_source,content_tier,implementation_lane,series,dg_tags,model_dimensions,summary_bullets,proposed_change,code_touchpoints,verify_with,status
+https://datagolf.com/shot-level-course-fit,Shot-level course fit at Augusta,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,src/models/course_fit.py,,pending_read
+https://datagolf.com/what-makes-a-golf-tournament-entertaining,What makes golf entertaining?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,,,,,pending_read
+https://datagolf.com/how-sharp-are-bookmakers-part-2,How sharp are bookmakers? Part II,2023-02-03,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,odds_market_efficiency,,,src/value.py,,pending_read
+https://datagolf.com/what-makes-justin-thomas-great,What makes Justin Thomas a great iron player?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,skill_sg_decomposition,,,src/models/form.py,,pending_read
+https://datagolf.com/who-plays-well-at-the-open,Who plays well at The Open?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,field_strength_tours,,,,,pending_read
+https://datagolf.com/where-to-miss-tpc-sawgrass,Where to miss at TPC Sawgrass,2022-03-08,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,src/models/course_fit.py,,pending_read
+https://datagolf.com/who-benefits-from-wide-fairways,Who benefits from wide fairways?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,src/models/course_fit.py,,pending_read
+https://datagolf.com/data-driven-history-augusta-national,Data-driven history of Augusta,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,,,pending_read
+https://datagolf.com/performance-and-pressure,Sleeping on the lead,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,live_pressure,,,,,pending_read
+https://datagolf.com/predictive-model-methodology/,Predictive model methodology,,C,datagolf.com,page_sidebar_popular_js,canonical_hub,,analytics_blog,,multiple,,,,,pending_read
+https://datagolfblogs.ca/does-a-players-course-history-predict-performance/,Is course history predictive?,,A,datagolfblogs.ca,page_sidebar_popular_js,canonical_hub,,legacy_blog,,course_fit,,,src/models/course_fit.py,,pending_read
+https://datagolf.com/comparing-pro-tours/,Comparing development tours,,C,datagolf.com,page_sidebar_popular_js,canonical_hub,,analytics_blog,,field_strength_tours,,,,,pending_read
+https://datagolfblogs.ca/the-luck-of-the-draw/,The luck of the draw,,A,datagolfblogs.ca,page_sidebar_popular_js,,,legacy_blog,,field_strength_tours,,,,,pending_read
+https://datagolf.com/important-holes-at-augusta/,Important holes at Augusta,,C,datagolf.com,page_sidebar_popular_js,,,analytics_blog,,course_fit,,,,,pending_read
+https://datagolf.com/whats-the-strongest-field-in-professional-golf/,Strongest fields in golf,,C,datagolf.com,page_sidebar_popular_js,,,analytics_blog,,field_strength_tours,,,,,pending_read
+https://datagolf.com/how-sharp-are-bookmakers,How sharp are bookmakers? (Part I),,C,datagolf.com,research_doc_golf_betting_market_efficiency,,,analytics_blog,,odds_market_efficiency,,,src/value.py,,pending_read
+https://datagolf.com/model-talk/leaders,Does Our Model Overvalue Leaders?,,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,live_pressure,,,,,pending_read
+https://datagolf.com/model-talk/2024-offseason-tweaks,Off-Season Model Tweaks (2024),,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,multiple,,,,,pending_read
+https://datagolf.com/model-talk/2026-offseason-tweaks,Off-Season Model Tweaks (2026),,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,multiple,,,,,pending_read
+https://datagolf.com/frequently-asked-questions,FAQ,,C,datagolf.com,research_doc_golf_betting_market_efficiency,canonical_hub,,standalone,,multiple,,,,,pending_read
