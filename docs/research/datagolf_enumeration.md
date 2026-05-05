@@ -14,17 +14,19 @@ These paths all returned **HTTP 404** (HTML app shell, not XML):
 
 So there is **no** standard sitemap at the usual locations for automated URL harvest. Enumeration must use **on-site navigation and HTML parsing**.
 
-## “Analytics Blog” vs `/blog` vs `/blog-home/`
+## “Analytics Blog” — **`/blog` is the main archive**
+
+**[`https://datagolf.com/blog`](https://datagolf.com/blog)** is the **single listing** you want for Analytics-style posts: tag filters, “load more,” and the same root-slug URLs as the sidebar (verified 2026-05-05: e.g. `where-to-miss-tpc-sawgrass`, `shot-level-course-fit`, `how-sharp-are-bookmakers-part-2` all appear in `/blog` HTML). Treat **`/blog` as the primary crawl for Family B** on `datagolf.com`—not `/blog-home/`.
 
 From the **Analytics Blog** article template (verified on `https://datagolf.com/how-sharp-are-bookmakers-part-2`):
 
-1. **“More from the Analytics Blog”** — built in-page from a JavaScript array `var recents = [ ... ]` (titles, paths, one-line descriptions). It is a **curated short list**, not the full archive. The same pattern appears on other Analytics posts; **recents may differ or be updated** over time—treat as hints, not a complete index.
+1. **“More from the Analytics Blog”** — built in-page from a JavaScript array `var recents = [ ... ]` (titles, paths, one-line descriptions). It is a **curated short list** for the sidebar only, not the full catalog. **Do not rely on `recents` alone**—use **`/blog`** for completeness.
 
-2. **“Archive →”** in that sidebar — implemented as a link to **`/blog`** (tagged blog listing with “load more”), not a separate `/analytics-archive` URL.
+2. **“Archive →”** in that sidebar — links to **`/blog`** (same archive as above).
 
-3. **Site nav “Analytics Blog”** (top menu) — points to **`/blog-home/`**, which is a **landing page** with many internal links (mix of **articles**, **tools**, **archives**, etc.). A single scrape of `/blog-home/` is **not** article-only; filter with a denylist (e.g. `betting-tool-*`, `fantasy-projections*`, `*-archive`, `player-profiles`).
+3. **Site nav “Analytics Blog”** (top menu) — still points to **`/blog-home/`**, a **marketing-style landing page** (articles + tools + archives mixed). Optional extra link harvest after **`/blog`** is exhausted; if you scrape it, apply the same **tool/archive denylist** as before.
 
-4. **Related streams** (same sidebar block): **Model Talk** → `/model-talk`; **Data Visualization Blog** → `/viz-blog`.
+4. **Related streams** (same sidebar block): **Model Talk** → `/model-talk`; **Data Visualization Blog** → `/viz-blog` (these are **not** fully duplicated on `/blog`—enumerate those hubs separately).
 
 5. **Commented `popular` array** in the same template still contains useful **seed URLs** (methodology, a few `datagolfblogs.ca` links, etc.)—worth grepping from any Analytics page that includes it.
 
@@ -33,10 +35,10 @@ From the **Analytics Blog** article template (verified on `https://datagolf.com/
 | Step | Source | Notes |
 |------|--------|--------|
 | A | `https://datagolfblogs.ca/old-blogs-directory/` | Directory of legacy posts |
-| B | `https://datagolf.com/blog` | All tags + load more |
-| C | `https://datagolf.com/blog-home/` | Extract `href="/..."`; **filter** tools/archives |
-| C | Root-slug Analytics posts | e.g. `/where-to-miss-tpc-sawgrass`; grep `var recents` / `var popular` on samples |
-| C | `/model-talk`, `/viz-blog` | Series indexes |
+| B | **`https://datagolf.com/blog`** | **Primary:** all tags + “load more” until empty — this is the consolidated Analytics (and related) feed |
+| C | `https://datagolf.com/blog-home/` | **Optional:** extra links after `/blog`; **filter** tools/archives |
+| C | `/model-talk`, `/viz-blog` | Series indexes (parallel to `/blog`) |
+| C | `var recents` / `var popular` on sample Analytics pages | Optional seeds / cross-check only |
 
 ## `recents` excerpt (HSB Part II page, for regression / testing)
 

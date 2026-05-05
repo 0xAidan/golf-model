@@ -34,6 +34,6 @@ Research-driven code changes from this index should target **`v5` / lab** paths 
 | Value | Meaning |
 |-------|---------|
 | `A` | `datagolfblogs.ca` (e.g. old blogs directory) |
-| `B` | `datagolf.com/blog` tagged listing |
-| `C` | `datagolf.com` root slugs, `/blog-home/`, `/model-talk/`, etc. |
+| `B` | **`datagolf.com/blog`** — primary tagged listing (“load more”) for the Analytics feed |
+| `C` | Root slugs, `/model-talk/`, `/viz-blog/`, optional `/blog-home/` extras — not a substitute for `/blog` |
 | `D` | Expand later (other hosts / tools docs) |
