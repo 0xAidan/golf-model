@@ -15,6 +15,7 @@ Usage (repo root):
   python3 scripts/datagolf_llm_extract.py --limit 5
   python3 scripts/datagolf_llm_extract.py --dry-run --limit 2
   python3 scripts/datagolf_llm_extract.py --force --limit 1   # re-run even if extracted
+  python3 scripts/datagolf_llm_extract.py --sync-csv-from-jsonl  # merge jsonl into CSV only
 """
 
 from __future__ import annotations
@@ -42,6 +43,35 @@ DEFAULT_JSONL = REPO_ROOT / "docs/research/datagolf_extractions.jsonl"
 USER_AGENT = "golf-model-datagolf-research/1.0 (+local lab extraction)"
 MAX_BODY_CHARS = 120_000
 SUMMARY_CSV_MAX = 20_000
+
+
+def _is_article_fetch_url(url: str) -> bool:
+    """Skip junk rows (markdown typos, endpoints) that are not HTML articles."""
+    if not url.startswith("https://"):
+        return False
+    if "**" in url or "*" in url:
+        return False
+    if "xmlrpc" in url.lower():
+        return False
+    low = url.lower()
+    for tail in (
+        "/robots.txt",
+        "/sitemap.xml",
+        "/sitemap_index.xml",
+        "/wp-sitemap.xml",
+    ):
+        if low.endswith(tail):
+            return False
+    if "):" in url:
+        return False
+    if url.rstrip("/") in ("https://datagolf.com", "https://datagolfblogs.ca"):
+        return False
+    if not (
+        url.startswith("https://datagolf.com/")
+        or url.startswith("https://datagolfblogs.ca/")
+    ):
+        return False
+    return True
 
 
 def _strip_html_to_text(html: str) -> str:
@@ -182,6 +212,40 @@ def _append_jsonl(path: Path, record: dict) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def sync_csv_from_jsonl(csv_path: Path, jsonl_path: Path) -> int:
+    """Apply existing jsonl extraction payloads to matching CSV rows (no API calls)."""
+    if not jsonl_path.is_file():
+        print(f"No jsonl at {jsonl_path}", file=sys.stderr)
+        return 1
+    rows = _rows_from_csv(csv_path)
+    if not rows:
+        print("CSV has no rows.", file=sys.stderr)
+        return 1
+    fieldnames = list(rows[0].keys())
+    by_url = {(r.get("url") or "").strip(): r for r in rows}
+    updated = 0
+    for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        url = (obj.get("url") or "").strip()
+        ext = obj.get("extraction")
+        if not url or not isinstance(ext, dict):
+            continue
+        row = by_url.get(url)
+        if not row:
+            continue
+        _apply_extraction_to_row(row, ext)
+        updated += 1
+    _write_csv(csv_path, rows, fieldnames)
+    print(f"Synced {updated} CSV row(s) from {jsonl_path}")
+    return 0
+
+
 def _apply_extraction_to_row(row: dict, ext: dict) -> None:
     dims = ext.get("model_dimension_ids") or []
     row["model_dimensions"] = ";".join(str(x) for x in dims if str(x).strip())
@@ -230,10 +294,18 @@ def main() -> int:
         action="store_true",
         help="Fetch and print sizes only; no OpenAI calls or file writes.",
     )
+    ap.add_argument(
+        "--sync-csv-from-jsonl",
+        action="store_true",
+        help="Copy extraction fields from jsonl into CSV for matching URLs; no network.",
+    )
     args = ap.parse_args()
 
     csv_path: Path = args.csv
     jsonl_path: Path = args.jsonl
+    if args.sync_csv_from_jsonl:
+        return sync_csv_from_jsonl(csv_path, jsonl_path)
+
     if not csv_path.is_file():
         print(f"CSV not found: {csv_path}", file=sys.stderr)
         return 1
@@ -262,6 +334,9 @@ def main() -> int:
             break
         url = (row.get("url") or "").strip()
         if not url:
+            continue
+        if not _is_article_fetch_url(url):
+            print(f"[skip bad url] {url}", file=sys.stderr)
             continue
         st = (row.get("status") or "").strip()
         if st != args.status and not args.force:
@@ -303,12 +378,12 @@ def main() -> int:
         jsonl_urls.add(url)
         _apply_extraction_to_row(row, ext)
         processed += 1
-        print(f"[ok] {url}")
+        _write_csv(csv_path, rows, fieldnames)
+        print(f"[ok] {url}", flush=True)
         time.sleep(args.sleep)
 
     if not args.dry_run and processed:
-        _write_csv(csv_path, rows, fieldnames)
-        print(f"Wrote {processed} extraction(s); CSV updated; jsonl appended at {jsonl_path}")
+        print(f"Finished {processed} extraction(s); CSV updated each step; jsonl at {jsonl_path}")
     elif args.dry_run:
         print(f"Dry-run complete ({processed} row(s) checked).")
     else:

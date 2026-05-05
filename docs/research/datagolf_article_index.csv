@@ -1,115 +1,872 @@
 url,title,published_date,source_family,source_domain,discovery_source,content_tier,implementation_lane,series,dg_tags,model_dimensions,summary_bullets,proposed_change,code_touchpoints,verify_with,status,extraction_method,superseded_by,artifacts_note
-https://datagolfblogs.ca/a-golf-fans-reflection,A golf fans reflection,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/a-predictive-model-of-tournament-outcomes-on-the-pga-tour,A predictive model of tournament outcomes on the pga tour,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/a-quick-look-at-differences-in-field-quality-on-the-us-and-european-tours,A quick look at differences in field quality on the us and european tours,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/an-intergenerational-approach-to-ranking-pga-tour-players,An intergenerational approach to ranking pga tour players,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/analysis-of-tigers-past-performances-coming-off-long-layoffs,Analysis of tigers past performances coming off long layoffs,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/benchmarking-the-models-betting-performance-through-17-weeks,Benchmarking the models betting performance through 17 weeks,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/brief-summary-of-our-2017-in-golf-betting,Brief summary of our 2017 in golf betting,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/comments/feed,Feed,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/course-history-revisited-course-length-as-an-indicator-of-course-fit,Course history revisited course length as an indicator of course fit,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/data-golf-blogs-2,Data golf blogs 2,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/data-visualizations-2,Data visualizations 2,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/distance-adjusted-driving-accuracy,Distance adjusted driving accuracy,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/does-a-players-course-history-predict-performance/,Is course history predictive?,,A,datagolfblogs.ca,page_sidebar_popular_js,canonical_hub,,legacy_blog,,course_fit,,,src/models/course_fit.py,,pending_read,,,
-https://datagolfblogs.ca/dropping-the-anchor,Dropping the anchor,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/first-tee-jitters,First tee jitters,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/hangitupmike,Hangitupmike,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/how-hard-is-it-to-follow-up-a-great-round-with-a-good-round,How hard is it to follow up a great round with a good round,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/how-much-can-we-learn-from-the-pga-tours-strokes-gained-statistics,How much can we learn from the pga tours strokes gained statistics,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/how-much-deeper-has-golf-become-in-the-last-25-years,How much deeper has golf become in the last 25 years,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/hows-the-model-doing-so-far,Hows the model doing so far,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/is-golfs-next-generation-as-good-as-we-say-they-are,Is golfs next generation as good as we say they are,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/live-prediction-model-the-week-that-was,Live prediction model the week that was,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/match-play-data-exploration-exercise,Match play data exploration exercise,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/my-blog,My blog,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/old-blogs-directory,Old blogs directory,,A,datagolfblogs.ca,research_doc_scan,blog_tagged,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/penalty-strokes-on-the-pga-tour,Penalty strokes on the pga tour,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/predicting-the-wgc-dell-match-play-championship,Predicting the wgc dell match play championship,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/pressure-in-golf-can-we-quantify-it,Pressure in golf can we quantify it,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/quantifying-the-tiger-effect,Quantifying the tiger effect,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/random-forests-using-python-predicting-titanic-survivors,Random forests using python predicting titanic survivors,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/revisiting-the-question-of-pressure-in-golf,Revisiting the question of pressure in golf,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/should-ryder-cup-partners-that-win-their-match-play-in-the-next-session,Should ryder cup partners that win their match play in the next session,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/simple-linear-regression-what-the-heck-are-we-estimating,Simple linear regression what the heck are we estimating,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/strokes-gained-when-in-contention,Strokes gained when in contention,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/the-hot-hand-fallacy-application-to-golf,The hot hand fallacy application to golf,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/the-luck-of-the-draw/,The luck of the draw,,A,datagolfblogs.ca,page_sidebar_popular_js,,,legacy_blog,,field_strength_tours,,,,,pending_read,,,
-https://datagolfblogs.ca/tiger-destroyed-his-playing-partners,Tiger destroyed his playing partners,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/tiger-vs-jordan-vs-rory-whos-best-at-their-best,Tiger vs jordan vs rory whos best at their best,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/whats-wrong-with-rory,Whats wrong with rory,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/which-is-more-important-putting-or-ball-striking,Which is more important putting or ball striking,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolfblogs.ca/xmlrpc.php,Xmlrpc.php,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/betting-blog-introduction,Betting blog introduction,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/betting-results-2019,Betting results 2019,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/betting-results-2020,Betting results 2020,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/betting-results-2021,Betting results 2021,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/blog)**,Blog)**,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/career-evolutions,Career evolutions,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/career-evolutions-old,Career evolutions old,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/comparing-pro-tours/,Comparing development tours,,C,datagolf.com,page_sidebar_popular_js,canonical_hub,,analytics_blog,,field_strength_tours,,,,,pending_read,,,
-https://datagolf.com/data-driven-history-augusta-national,Data-driven history of Augusta,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,,,pending_read,,,
-https://datagolf.com/data-viz-of-the-week,Data viz of the week,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/data-viz-of-the-week-2,Data viz of the week 2,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/data-viz-of-the-week-3,Data viz of the week 3,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/does-experience-matter-at-augusta,Does experience matter at augusta,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/fav-longshot-not-a-bias,Fav longshot not a bias,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/frequently-asked-questions,FAQ,,C,datagolf.com,research_doc_golf_betting_market_efficiency,canonical_hub,,standalone,,multiple,,,,,pending_read,,,
-https://datagolf.com/how-sharp-are-bookmakers,How sharp are bookmakers? (Part I),,C,datagolf.com,research_doc_golf_betting_market_efficiency,,,analytics_blog,,odds_market_efficiency,,,src/value.py,,pending_read,,,
-https://datagolf.com/how-sharp-are-bookmakers-part-2,How sharp are bookmakers? Part II,2023-02-03,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,odds_market_efficiency,,,src/value.py,,pending_read,,,
-https://datagolf.com/important-holes-at-augusta/,Important holes at Augusta,,C,datagolf.com,page_sidebar_popular_js,,,analytics_blog,,course_fit,,,,,pending_read,,,
-https://datagolf.com/inside-the-numbers,Inside the numbers,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-1,Inside the numbers 1,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-10,Inside the numbers 10,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-11,Inside the numbers 11,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-12,Inside the numbers 12,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-13,Inside the numbers 13,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-14,Inside the numbers 14,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-15,Inside the numbers 15,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-16,Inside the numbers 16,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-17,Inside the numbers 17,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-18,Inside the numbers 18,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-19,Inside the numbers 19,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-2,Inside the numbers 2,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-20,Inside the numbers 20,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-21,Inside the numbers 21,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-22,Inside the numbers 22,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-23,Inside the numbers 23,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-24,Inside the numbers 24,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-25,Inside the numbers 25,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-26,Inside the numbers 26,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-27,Inside the numbers 27,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-28,Inside the numbers 28,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-3,Inside the numbers 3,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-4,Inside the numbers 4,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-5,Inside the numbers 5,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-6,Inside the numbers 6,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-7,Inside the numbers 7,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-8,Inside the numbers 8,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/inside-the-numbers-9,Inside the numbers 9,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/2022-offseason-tweaks,2022 offseason tweaks,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/2024-offseason-tweaks,Off-Season Model Tweaks (2024),,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,multiple,,,,,pending_read,,,
-https://datagolf.com/model-talk/2026-offseason-tweaks,Off-Season Model Tweaks (2026),,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,multiple,,,,,pending_read,,,
-https://datagolf.com/model-talk/brent-grants-putting,Brent grants putting,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/leaders,Does Our Model Overvalue Leaders?,,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,live_pressure,,,,,pending_read,,,
-https://datagolf.com/model-talk/pressure-revisited-again,Pressure revisited again,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/variance,Variance,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/weighting-rounds-sequence-or-time,Weighting rounds sequence or time,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/who-cares-about-ties-part-1,Who cares about ties part 1,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/model-talk/who-cares-about-ties-part-2,Who cares about ties part 2,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,,,,,pending_read,curl_html,,
-https://datagolf.com/performance-and-pressure,Sleeping on the lead,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,live_pressure,,,,,pending_read,,,
-https://datagolf.com/predictive-model-methodology/,Predictive model methodology,,C,datagolf.com,page_sidebar_popular_js,canonical_hub,,analytics_blog,,multiple,,,,,pending_read,,,
-https://datagolf.com/raw-data-notes,Raw data notes,,C,datagolf.com,wave_c_tier1_seed,canonical_hub,,standalone,,,,,,,pending_read,curl_html,,
-https://datagolf.com/raw-data-notes):,Raw data notes):,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/robots.txt,Robots.txt,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/shot-level-course-fit,Shot-level course fit at Augusta,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,src/models/course_fit.py,,pending_read,,,
-https://datagolf.com/sitemap.xml,Sitemap.xml,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/sitemap_index.xml,Sitemap_index.xml,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/viz-blog/peaking-for-augusta,Peaking for augusta,,C,datagolf.com,wave_c_viz_blog_index,viz_or_betting,,viz_blog,,,,,,,pending_read,curl_html,,
-https://datagolf.com/what-makes-a-golf-tournament-entertaining,What makes golf entertaining?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,,,,,pending_read,,,
-https://datagolf.com/what-makes-justin-thomas-great,What makes Justin Thomas a great iron player?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,skill_sg_decomposition,,,src/models/form.py,,pending_read,,,
-https://datagolf.com/whats-the-strongest-field-in-professional-golf/,Strongest fields in golf,,C,datagolf.com,page_sidebar_popular_js,,,analytics_blog,,field_strength_tours,,,,,pending_read,,,
-https://datagolf.com/where-to-miss-tpc-sawgrass,Where to miss at TPC Sawgrass,2022-03-08,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,src/models/course_fit.py,,pending_read,,,
-https://datagolf.com/who-benefits-from-wide-fairways,Who benefits from wide fairways?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,course_fit,,,src/models/course_fit.py,,pending_read,,,
-https://datagolf.com/who-plays-well-at-the-open,Who plays well at The Open?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,field_strength_tours,,,,,pending_read,,,
-https://datagolf.com/wp-sitemap.xml,Wp sitemap.xml,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,,,,,pending_read,curl_html,,
+https://datagolfblogs.ca/a-golf-fans-reflection,A golf fans reflection,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"A reflective piece on the legacy of Tiger Woods and the emotional connection fans have with his career.
+
+The article reflects on the impact of Tiger Woods on golf and the emotional connection fans have with his journey. It draws parallels between Woods' career and popular television series, suggesting that his story could have been scripted like a show finale, particularly highlighting the 2008 US Open as a poignant moment. The author expresses a desire for a fitting farewell to Woods, akin to iconic moments in sports history.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/a-predictive-model-of-tournament-outcomes-on-the-pga-tour,A predictive model of tournament outcomes on the pga tour,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,model_tournament_outcomes;model_player_performance;model_simulation;model_probability_forecasting,"A predictive model for forecasting PGA Tour tournament outcomes based on player performance metrics.
+
+This model aims to provide probabilistic forecasts for PGA Tour events, focusing on outcomes such as winning, top 5 finishes, top 20 finishes, and making the cut. Key player characteristics include adjusted scoring averages over different time frames, the number of rounds played, and the standard deviation of scores. The model simulates tournament outcomes by combining predicted and random components of player scores, allowing for the estimation of win probabilities and other outcomes through repeated simulations.
+
+- Consider incorporating machine learning techniques for improved predictive power.
+- Evaluate the impact of additional player characteristics on scoring predictions.","Consider incorporating machine learning techniques for improved predictive power.
+Evaluate the impact of additional player characteristics on scoring predictions.",score_adjustment.py; simulation_engine.py; model_evaluation.py; data_collection.py,"Use data from 2016 to validate model predictions against actual outcomes.
+Perform cross-validation using different years of data to assess model robustness.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/a-quick-look-at-differences-in-field-quality-on-the-us-and-european-tours,A quick look at differences in field quality on the us and european tours,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;field_strength;tournament_analysis,"Comparison of field quality between the US and European Tours based on player performance.
+
+This analysis investigates the relative strength of fields in the PGA Tour compared to the European Tour by examining the performance of players who have competed on both tours. A sample of 36 players was analyzed, with findings indicating that players generally perform better on the European Tour, suggesting weaker competition. On average, players performed 0.95 shots better relative to the field on the European Tour than on the PGA Tour, translating to approximately 4 shots per event.
+
+- Incorporate field strength adjustments based on tour performance.
+- Consider historical performance trends when modeling player outcomes.","Incorporate field strength adjustments based on tour performance.
+Consider historical performance trends when modeling player outcomes.",performance_analysis.py; field_strength.py; tournament_simulation.py,"Compare historical data across different decades to validate findings.
+Analyze performance of players transitioning between tours.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/an-intergenerational-approach-to-ranking-pga-tour-players,An intergenerational approach to ranking pga tour players,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf.performance;golf.player;golf.tournament,"A method for comparing the performances of golfers across different generations using statistical techniques.
+
+This article presents a methodology for ranking PGA Tour players from different generations by comparing their performances against a common set of competitors. The approach involves breaking down each player's career into 2-year blocks to account for changes in performance over time and to ensure overlapping competition. The resulting metric, the All-Time Performance Index (ATPI), provides a relative measure of a player's performance in a given year compared to the average player in the year 2000. The methodology relies on fixed-effects regressions and random assignment of 2-year blocks to maintain overlap across players' careers.
+
+- The model can be used to compare players from different eras under controlled conditions.
+- Adjustments may be needed to account for technological advancements and course conditions.","The model can be used to compare players from different eras under controlled conditions.
+Adjustments may be needed to account for technological advancements and course conditions.",performance_analysis.py; atpi_calculation.py; regression_model.py,"Validate the ATPI values against historical performance data of players within the same era.
+Check for biases in ATPI values across different generations.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/analysis-of-tigers-past-performances-coming-off-long-layoffs,Analysis of tigers past performances coming off long layoffs,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_analysis;strokes_gained_metrics,"Examining Tiger Woods' performance after long layoffs to predict future outcomes.
+
+This article analyzes Tiger Woods' historical performance in tournaments following extended breaks from competitive golf. It highlights a significant decline in performance post-2010 compared to pre-2010, suggesting that while he performed well in comeback events before 2010, he has generally played below his baseline level after 2010. The analysis uses strokes gained metrics to compare his performance in return events to his historical averages, concluding that predicting his current performance remains uncertain due to the lack of a clear baseline.
+
+- Incorporate historical performance data for players returning from layoffs into predictive models.
+- Adjust baseline performance expectations based on historical trends observed in players like Tiger Woods.","Incorporate historical performance data for players returning from layoffs into predictive models.
+Adjust baseline performance expectations based on historical trends observed in players like Tiger Woods.",performance_analysis.py; strokes_gained_calculation.py; baseline_comparison.py,"Validate the model by comparing predicted outcomes for players returning from layoffs against actual performance data.
+Use historical data to simulate outcomes of return events to refine predictive accuracy.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/benchmarking-the-models-betting-performance-through-17-weeks,Benchmarking the models betting performance through 17 weeks,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_betting_performance;predictive_modeling;PGA_Tour_events,"Benchmarking the model's betting performance over 17 weeks on PGA Tour events.
+
+The article discusses the performance of a predictive betting model over a 17-week period, focusing on Top 20 bets. The model achieved a total return of 151%, significantly outperforming typical betting outcomes. Simulations using adjusted implied probabilities and model probabilities were conducted to assess the model's performance against expected returns, revealing insights into the variance and potential luck involved in the betting outcomes.
+
+- The model's performance suggests a potential edge in betting strategies based on predictive modeling.
+- Variance in returns indicates the need for larger sample sizes to validate model accuracy.","The model's performance suggests a potential edge in betting strategies based on predictive modeling.
+Variance in returns indicates the need for larger sample sizes to validate model accuracy.",simulation.py; betting_performance.py; model_probabilities.py,"Conduct additional simulations with larger sample sizes to validate model predictions.
+Compare model performance against historical betting data to assess accuracy.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/brief-summary-of-our-2017-in-golf-betting,Brief summary of our 2017 in golf betting,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_betting_model;performance_evaluation;simulation_methods,"Summary of Data Golf's betting model performance in 2017.
+
+In 2017, Data Golf placed 268 bets over 30 weeks, primarily on Top20 finishes. The model's performance showed that realized profit converged to expected profit as the number of bets increased, suggesting effective modeling despite the inherent randomness of golf. The model explained only 6-8% of daily score variation on the PGA TOUR, favored lower-ranked golfers, and emphasized long-term performance over short-term trends. It did not incorporate player-course specific characteristics, which contrasts with market behavior. Overall, the model successfully simulated scores for the entire field, aiding in probability assessments for finishes.
+
+- Model should incorporate more robust statistical methods to account for randomness in golf.
+- Consider adjusting for player-course characteristics if more data becomes available.
+- Explore alternative weighting strategies for performance metrics.","Model should incorporate more robust statistical methods to account for randomness in golf.
+Consider adjusting for player-course characteristics if more data becomes available.
+Explore alternative weighting strategies for performance metrics.",betting_model.py; performance_evaluation.py; simulation_engine.py,"Compare model predictions against actual outcomes for various player rankings.
+Conduct simulations with historical data to validate profit paths.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/comments/feed,Feed,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"Comments on various golf analytics topics including player performance and statistical analysis.
+
+The comments reflect a range of opinions on golf analytics, player performance, and the impact of variables such as injuries and equipment changes on scoring. Key themes include the importance of understanding wave scoring, the influence of intangible factors on player performance, and the challenges of using small sample sizes for statistical analysis. The discussions highlight the need for continuous improvement in golf algorithms to account for both tangible and intangible variances in player performance.
+
+- Consider the impact of wave scoring on player performance and outcomes.
+- Account for intangible factors such as injuries and equipment changes in player performance models.","Consider the impact of wave scoring on player performance and outcomes.
+Account for intangible factors such as injuries and equipment changes in player performance models.",,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/course-history-revisited-course-length-as-an-indicator-of-course-fit,Course history revisited course length as an indicator of course fit,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;course_characteristics;player_statistics,"Evaluating course length as an indicator of course fit for predicting golfer performance.
+
+This article revisits the predictive power of course history by examining the relationship between golfers' past performances at courses of varying lengths and their future performances. The analysis indicates that while there is a slight correlation between historical performance at long courses and future performance, the overall predictive power remains very low, with R-squared values peaking at 0.2%. The findings suggest that course length may not be a strong predictor of performance, particularly for shorter courses, where the analysis yielded no robust relationships. The article emphasizes the need for larger sample sizes and more nuanced categorization of courses to improve predictive modeling.
+
+- Consider using larger sample sizes for more accurate predictions.
+- Explore more nuanced definitions of course fit beyond just length.
+- Investigate other player-course variables that may influence performance.","Consider using larger sample sizes for more accurate predictions.
+Explore more nuanced definitions of course fit beyond just length.
+Investigate other player-course variables that may influence performance.",course_fit.py; performance_prediction.py; data_analysis.py,"Test different definitions of course length to assess impact on predictive power.
+Analyze performance across different player profiles to identify potential course fit effects.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/data-golf-blogs-2,Data golf blogs 2,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"Archive of old Data Golf blog posts.
+
+This website serves as an archive for previous blog posts from Data Golf, with no new content being added. It includes various topics related to golf analytics and player performance.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/data-visualizations-2,Data visualizations 2,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_statistics;tournament_analysis,"Exploration of various data visualizations related to golf performance metrics.
+
+This article presents a series of data visualizations that analyze golf performance across different metrics and generations. Key visualizations include the All-Time Performance Index (ATPI), Performance Ratio (PR) for young players, and the concept of a 'hot-hand' in golf. Each visualization provides insights into player performance trends and comparisons, utilizing tools like R and D3.js for interactive analysis.
+
+- Incorporate ATPI as a performance metric in stroke-gained models.
+- Adjust models to account for age-related performance trends using PR.
+- Evaluate the impact of sequential performance (hot-hand) on scoring models.","Incorporate ATPI as a performance metric in stroke-gained models.
+Adjust models to account for age-related performance trends using PR.
+Evaluate the impact of sequential performance (hot-hand) on scoring models.",performance_metrics.py; age_analysis.py; hot_hand_analysis.py,"Validate ATPI against historical tournament outcomes.
+Test PR calculations against player performance data over multiple seasons.
+Analyze hot-hand effects in simulation scenarios.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/distance-adjusted-driving-accuracy,Distance adjusted driving accuracy,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_metrics;driving_accuracy;distance_adjustment,"Creating a distance-adjusted measure of driving accuracy in golf.
+
+This article discusses the concept of distance-adjusted driving accuracy, which accounts for the relationship between driving distance and accuracy off the tee. The author uses trigonometry to derive an adjusted accuracy metric based on average driving distance and distance from the center of the fairway. The analysis is based on 2015 Shot Link data for par 5 tee shots, revealing that while the adjusted rankings do not drastically differ from unadjusted rankings, there is notable movement among players. The method is deemed intuitive and computationally simple, though the author acknowledges potential limitations in the linearity assumption.
+
+- Consider incorporating distance-adjusted metrics into stroke-gained models.
+- Explore non-linear relationships between driving distance and accuracy for more precise modeling.","Consider incorporating distance-adjusted metrics into stroke-gained models.
+Explore non-linear relationships between driving distance and accuracy for more precise modeling.",distance_adjustment.py; driving_accuracy.py; shot_link_analysis.py,"Validate the Adjusted Accuracy metric against historical performance data.
+Compare player rankings using Adjusted Accuracy with actual tournament outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/does-a-players-course-history-predict-performance/,Is course history predictive?,,A,datagolfblogs.ca,page_sidebar_popular_js,canonical_hub,,legacy_blog,,golf_performance;predictive_modeling;course_history_analysis,"Examining the predictive power of course history on player performance in golf.
+
+This article investigates whether a player's historical performance on specific golf courses can predict their future performance. It highlights the importance of empirical evidence in validating the course history hypothesis, noting that while some players have strong course histories, this does not necessarily correlate with future performance. The analysis reveals that course history has a minimal impact on predictive power, with an R-squared value ranging from 0.02% to 0.2% depending on the sample size. The findings suggest that while course history can provide some insight, it is far less predictive than long-term and short-term player form.
+
+- Course history should be included in models but weighted less than long-term and short-term form.
+- Consider using residual scores to adjust for player ability when calculating course history.","Course history should be included in models but weighted less than long-term and short-term form.
+Consider using residual scores to adjust for player ability when calculating course history.",course_history.py; performance_prediction.py; data_adjustment.py,"Validate the model using different sample sizes to assess the impact of course history on predictions.
+Compare predictions with and without course history to evaluate its incremental value.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/dropping-the-anchor,Dropping the anchor,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;equipment_change;player_statistics,"Impact of the long putter ban on PGA Tour players' performance.
+
+The article examines the effects of the USGA's ban on long putters, focusing on the performance of three major winners who used them: Keegan Bradley, Webb Simpson, and Adam Scott. It highlights a decline in their putting performance post-ban, suggesting that the ban negatively impacted their overall game due to the mental and physical adjustments required.
+
+- Consider the psychological impact of equipment changes on player performance.
+- Incorporate the effects of rule changes on player statistics over time.","Consider the psychological impact of equipment changes on player performance.
+Incorporate the effects of rule changes on player statistics over time.",performance_analysis.py; putting_metrics.py; player_history.py,"Analyze performance trends of players before and after the ban to validate findings.
+Compare strokes gained metrics of players who switched to short putters post-ban.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/first-tee-jitters,First tee jitters,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_analysis;tournament_simulation,"Exploration of first-tee jitters and their impact on golfer performance.
+
+This article investigates whether first-tee nerves negatively affect golfers' performance by comparing the average performance of players on hole #1 when starting their round versus when playing it as their 10th hole. Using Shot Link data from the PGA Tour in 2015, it was found that players are, on average, almost a full yard further from the center of the fairway on their opening tee shot compared to when they play the same hole later in the round. This difference diminishes in the second round, suggesting heightened nerves during the first round's opening tee shot. Additionally, a comparison of Tiger Woods' opening tee shots to his other tee shots from 2010-2015 indicates he performs better off the first tee in most rounds, although the sample size for first tee shots is smaller, leading to less precise estimates.
+
+- Consider incorporating first-tee performance metrics into stroke-gained models.
+- Analyze the impact of starting hole on player performance in simulations.","Consider incorporating first-tee performance metrics into stroke-gained models.
+Analyze the impact of starting hole on player performance in simulations.",performance_analysis.py; tee_shot_comparison.py; first_tee_nerves.py,"Validate findings by analyzing additional years of Shot Link data.
+Compare results across different tournaments and player profiles.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/hangitupmike,Hangitupmike,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"Discussion on Mike Weir's performance and its implications for PGA Tour opportunities.
+
+The article critiques Mike Weir's current performance on the PGA Tour, particularly focusing on his driving accuracy and distance compared to other players like Rory McIlroy. It highlights concerns about Weir taking up valuable spots in tournaments due to his past achievements despite his recent struggles. Summary statistics indicate that Weir is hitting significantly more crooked than both Rory and the rest of the tour, and he is well behind the Tour Average in driving distance.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/how-hard-is-it-to-follow-up-a-great-round-with-a-good-round,How hard is it to follow up a great round with a good round,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;strokes_gained;player_statistics,"Exploration of the relationship between consecutive rounds of golf performance.
+
+This article investigates the common belief that it is difficult for golfers to follow up a great round with another good round. Using PGA Tour data from 2000-2016, the analysis calculates 'personal strokes-gained' for players and examines the conditional distributions of performance based on previous rounds. The findings suggest that good or bad form tends to persist across rounds, contradicting the notion that exceptional rounds are unlikely to be followed by good performance.
+
+- Incorporate personal strokes-gained calculations into performance models.
+- Utilize conditional distributions to predict future performance based on past rounds.","Incorporate personal strokes-gained calculations into performance models.
+Utilize conditional distributions to predict future performance based on past rounds.",calculate_strokes_gained.py; performance_bins.py; conditional_distribution_analysis.py,"Validate the model against historical performance data from the PGA Tour.
+Test the predictive power of the model using recent tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/how-much-can-we-learn-from-the-pga-tours-strokes-gained-statistics,How much can we learn from the pga tours strokes gained statistics,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"Analyzing the reliability of PGA Tour's Strokes-Gained statistics for evaluating player performance.
+
+The article discusses the utility and limitations of Strokes-Gained statistics in assessing golfers' true performance over time. It emphasizes the randomness inherent in golf performance and the need for sufficient data to draw reliable conclusions about a player's abilities. The analysis focuses on Strokes Gained: Putting (SG:P) and Strokes Gained: Off the Tee (SG:OTT), highlighting the statistical significance of differences in rankings and the implications for understanding player performance.
+
+- Incorporate standard error calculations for SG statistics.
+- Adjust player rankings based on statistical significance of SG differences.
+- Use probability distributions to model player performance variability.","Incorporate standard error calculations for SG statistics.
+Adjust player rankings based on statistical significance of SG differences.
+Use probability distributions to model player performance variability.",strokes_gained_analysis.py; inferential_statistics.py; player_ranking.py,"Compare historical SG data across multiple seasons.
+Validate model predictions against actual tournament outcomes.
+Test the robustness of SG statistics by simulating different sample sizes.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/how-much-deeper-has-golf-become-in-the-last-25-years,How much deeper has golf become in the last 25 years,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_depth_analysis;player_performance_metrics;tournament_simulation,"Exploration of how the depth of professional golf has changed over the last 25 years.
+
+This article analyzes the depth of professional golf over the past 25 years using three measures: the difference between the cut line and leaders after 36 holes, the number of players with at least one top 10 finish per year, and the variance of scoring averages. The findings indicate that while the leaderboard is more bunched, the trend is weaker than expected. The number of players achieving top 10 finishes has steadily increased, suggesting a deeper field of competitors. Additionally, the variance in scoring averages has decreased, indicating that the talent level on tour is becoming more uniform. Overall, the analysis suggests that it is becoming increasingly difficult to win on the PGA Tour due to the growing competition.
+
+- Incorporate the decreasing variance of scoring averages into player performance models.
+- Adjust win probability calculations to account for increased competition and deeper fields.","Incorporate the decreasing variance of scoring averages into player performance models.
+Adjust win probability calculations to account for increased competition and deeper fields.",cut_line_analysis.py; top_10_finishers.py; scoring_variance.py,"Compare historical performance data to validate the trends observed in the analysis.
+Simulate tournament outcomes using historical cut line and scoring variance data.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/hows-the-model-doing-so-far,Hows the model doing so far,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,PGA_Tour;stroke_gained;predictive_modeling,"Evaluation of a predictive model for PGA Tour events based on probabilistic predictions.
+
+The article discusses the performance of a predictive model used for forecasting outcomes in PGA Tour events over an 8-week period, focusing on 7 stroke play events. The model has generated 3404 predictions across various categories, and the evaluation of these predictions is based on the accuracy of outcomes compared to predicted probabilities. The analysis reveals that while the model performs well in general, there are concerns regarding the definition of the cut and the accuracy of certain predictions.
+
+- Consider refining the definition of the cut to improve prediction accuracy.
+- Ensure a minimum of 100 observations for reliable evaluation of prediction categories.","Consider refining the definition of the cut to improve prediction accuracy.
+Ensure a minimum of 100 observations for reliable evaluation of prediction categories.",model_evaluation.py; probability_bins.py; cut_definition.py,"Use historical data to validate the model's predictions against actual outcomes.
+Implement a more rigorous simulation for defining the cut.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/is-golfs-next-generation-as-good-as-we-say-they-are,Is golfs next generation as good as we say they are,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_demographics;tournament_analysis,"Analyzing the performance of young golfers on the PGA Tour over time.
+
+This analysis investigates whether the new generation of golfers is indeed better than previous generations by examining their performance metrics on the PGA Tour. The study reveals that while young players today are achieving higher percentages of wins and top finishes, this trend is influenced by the increasing number of young players on Tour. A 'Performance Ratio' is introduced to adjust for this increase, showing that today's young players perform better than their predecessors, particularly when excluding the influence of dominant players like Tiger Woods.
+
+- Incorporate age-adjusted performance metrics into the simulation model.
+- Consider the impact of player demographics on performance predictions.
+- Adjust for the influence of dominant players when evaluating generational talent.","Incorporate age-adjusted performance metrics into the simulation model.
+Consider the impact of player demographics on performance predictions.
+Adjust for the influence of dominant players when evaluating generational talent.",performance_analysis.py; age_adjustment.py; historical_data_processing.py,"Validate the Performance Ratio against historical tournament outcomes.
+Test the model's predictions against actual finishes of young players in recent tournaments.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/live-prediction-model-the-week-that-was,Live prediction model the week that was,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_modeling;live_predictions;tournament_analysis,"Review of live prediction model performance during recent golf tournaments.
+
+This blog post analyzes the performance of the live prediction model during recent tournaments, highlighting instances where players with low win probabilities ended up performing well. It discusses the model's methodology, including adjustments made during tournaments and the implications of hole difficulty and player performance persistence. The analysis reveals that low win probabilities for eventual winners are not uncommon, and the model's predictions should be interpreted with caution, especially regarding changing conditions and player strategies.
+
+- Consider incorporating within-round performance persistence into the model.
+- Adjust for changing conditions (e.g., wind) that affect hole difficulty during play.
+- Evaluate the correlation of player performances to improve accuracy of win probability estimates.","Consider incorporating within-round performance persistence into the model.
+Adjust for changing conditions (e.g., wind) that affect hole difficulty during play.
+Evaluate the correlation of player performances to improve accuracy of win probability estimates.",live_predictions.py; hole_difficulty.py; performance_persistence.py,"Analyze historical data to compare predicted probabilities with actual outcomes.
+Conduct simulations to test model assumptions about player performance independence.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/match-play-data-exploration-exercise,Match play data exploration exercise,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,match_play_analysis;predictive_modeling;strokes_gained_metrics,"Exploration of match play data and its implications for predictive modeling in golf.
+
+This article discusses the challenges of analyzing match play data in golf, particularly due to the lack of available statistics. The author developed a web scraping script to gather match play data from 2008 to 2016, focusing on strokes gained metrics and world rankings. Initial analyses suggest that strokes gained putting and driving are significant predictors of match outcomes, with a logistic regression model achieving a 60% prediction accuracy. The article also examines the performance of US vs Europe players in match play and highlights the need for further research into predictive modeling for golf tournaments.
+
+- Incorporate strokes gained metrics into predictive models for match play outcomes.
+- Consider world ranking differences as a significant factor in predictions.","Incorporate strokes gained metrics into predictive models for match play outcomes.
+Consider world ranking differences as a significant factor in predictions.",match_play_data_extraction.py; strokes_gained_analysis.py; predictive_modeling.py,"Validate model predictions against historical match outcomes.
+Test model performance with different features and metrics.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/my-blog,My blog,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"A blog about applied econometrics and data analysis in golf.
+
+This blog features posts from Matt and Will, focusing on applied econometrics, causal inference, and data-oriented analysis related to golf. The motivation is to formalize thoughts in an organized manner.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/old-blogs-directory,Old blogs directory,,A,datagolfblogs.ca,research_doc_scan,blog_tagged,,legacy_blog,,,"A directory of past Data Golf blog articles.
+
+This directory lists various blog posts from Data Golf, covering topics such as course history, predictive modeling, and player performance analysis. The articles span several years and include discussions on the importance of different aspects of golf performance, such as putting versus ball-striking, and the impact of pressure on players.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/penalty-strokes-on-the-pga-tour,Penalty strokes on the pga tour,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_statistics;penalty_strokes;player_performance;course_analysis,"Analysis of penalty strokes on the PGA Tour from 2007-2016.
+
+This article analyzes the occurrence of penalty strokes on the PGA Tour, utilizing shot-level data from 2007-2016, excluding majors, WGC events, and events held opposite to majors. It discusses the distribution of average penalty strokes per round among players, the relationship between penalty strokes and course difficulty, and adjustments made for player ability and course effects. The analysis reveals that the majority of players average between 0.25-0.50 penalty strokes per round, with a weak relationship between penalty strokes and scoring averages by course. Adjustments for course-specific averages and player ability using linear regression provide insights into players' performance regarding penalty strokes, particularly focusing on tee shot penalties.
+
+- Incorporate course-specific penalty stroke averages into player models.
+- Use linear regression to predict expected penalty strokes based on scoring averages.
+- Analyze the impact of tee shot penalties on overall performance.","Incorporate course-specific penalty stroke averages into player models.
+Use linear regression to predict expected penalty strokes based on scoring averages.
+Analyze the impact of tee shot penalties on overall performance.",penalty_strokes_analysis.py; course_penalty_statistics.py; player_performance_adjustments.py,"Validate adjusted penalty stroke rates against historical performance data.
+Test the predictive power of adjusted penalty strokes on tournament outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/predicting-the-wgc-dell-match-play-championship,Predicting the wgc dell match play championship,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_modeling;match_play;simulation;probability_forecasting,"Probabilistic forecasting for the WGC-Dell Match Play Championship using a modified stroke play model.
+
+This article discusses the methodology for predicting outcomes in the WGC-Dell Match Play Championship, highlighting adjustments made to a standard stroke play model to accommodate the unique format of match play. The model simulates player scores over a maximum of 7 rounds, allowing for round-to-round performance persistence. Match outcomes are determined by comparing simulated scores, with provisions for halved matches and tiebreakers. The model updates predictions after each round based on actual scores, recognizing the limitations of using stroke totals in match play.
+
+- Adjust the round-to-round persistence parameter for match play settings.
+- Incorporate a mechanism for handling halved matches in simulations.
+- Consider the volatility of player performance in match play when interpreting results.","Adjust the round-to-round persistence parameter for match play settings.
+Incorporate a mechanism for handling halved matches in simulations.
+Consider the volatility of player performance in match play when interpreting results.",match_play_simulation.py; score_adjustment.py; tiebreaker_logic.py,"Simulate past tournaments to validate the accuracy of predictions.
+Compare predicted outcomes with actual match results to assess model performance.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/pressure-in-golf-can-we-quantify-it,Pressure in golf can we quantify it,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,pressure_effects;player_performance;tournament_analysis,"Exploration of quantifying pressure effects on golfer performance in tournaments.
+
+The article investigates whether golfers perform worse under pressure, particularly in the final rounds of tournaments. Using ShotLink data from 2012 to 2016, the analysis compares the 4th round scores of players in the top 3 to those outside this group. Initial findings suggest that players in contention perform better, with an average score difference of -0.27. However, a refined analysis comparing individual players' performances under pressure versus non-pressure situations reveals a slight average performance decline of 0.114 relative to the field when under pressure. This indicates that pressure may negatively impact performance, contrary to initial assumptions.
+
+- Incorporate pressure effects into player performance models.
+- Adjust scoring averages based on pressure situations for individual players.
+- Consider player-specific performance metrics when simulating tournament outcomes.","Incorporate pressure effects into player performance models.
+Adjust scoring averages based on pressure situations for individual players.
+Consider player-specific performance metrics when simulating tournament outcomes.",pressure_analysis.py; performance_metrics.py; tournament_simulation.py,"Validate performance under pressure measures against historical tournament outcomes.
+Test model predictions against actual player performances in high-pressure situations.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/quantifying-the-tiger-effect,Quantifying the tiger effect,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;tournament_analysis;player_pairing_effects,"Quantifying the impact of Tiger Woods on the performance of other players during tournaments.
+
+This article analyzes the so-called 'Tiger Effect', where players perform worse when paired with Tiger Woods during tournaments. By comparing players' scoring averages with and without Tiger in their group, the study finds a significant negative impact on performance, particularly in the years 1997-2013, with the most pronounced effect in 2006 at -1.2 strokes. The overall average 'Tiger Effect' from 1997-2015 is -0.47 strokes. The analysis considers potential confounding factors, such as the pressure of being near the lead, but maintains that the presence of Tiger is a significant factor in player performance.
+
+- Incorporate 'Tiger Effect' as a variable in stroke-gained models.
+- Adjust player performance predictions based on pairing with Tiger.","Incorporate 'Tiger Effect' as a variable in stroke-gained models.
+Adjust player performance predictions based on pairing with Tiger.",tiger_effect_analysis.py; scoring_average_calculation.py; player_performance_comparison.py,"Validate findings against more recent data post-2015.
+Test the model's predictions against actual tournament outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/random-forests-using-python-predicting-titanic-survivors,Random forests using python predicting titanic survivors,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_modeling;predictive_modeling;random_forests,"Using Random Forests in Python for predictive modeling.
+
+This article provides a tutorial on implementing Random Forests to predict Titanic survivors using Python. It explains the concept of Random Forests, the importance of decision trees, and the process of cleaning data before fitting a model. The model achieved 98% accuracy on training data and around 75% accuracy on test data, with Fare, Age, and Gender identified as the most important features for prediction.
+
+- Consider using Random Forests for predicting golf tournament outcomes based on player statistics.
+- Explore feature importance to identify key performance indicators for golfers.","Consider using Random Forests for predicting golf tournament outcomes based on player statistics.
+Explore feature importance to identify key performance indicators for golfers.",data_cleaning.py; model_fitting.py; feature_importance.py,"Compare model predictions against historical tournament results.
+Use cross-validation to assess model stability.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/revisiting-the-question-of-pressure-in-golf,Revisiting the question of pressure in golf,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;pressure_analysis;strokes_gained;player_comparison,"Exploration of the impact of pressure on golfer performance in final rounds of PGA Tour events.
+
+This article investigates whether pressure affects golfers' performance during the final round of tournaments on the PGA Tour. By analyzing strokes-gained measures adjusted for course difficulty and field strength, the study compares players' performance in the final round to their 'pressure-free' averages from earlier rounds. The findings suggest that players tend to perform worse when near the lead, with an average drop of approximately 0.3-0.4 strokes compared to their typical performance. This drop is attributed to the pressure of being in contention, despite players generally playing well leading up to the final round. The analysis is supported by data from 2011-2016 and includes comparisons between elite and non-elite players.
+
+- Incorporate pressure effects into performance models for final rounds.
+- Adjust player performance predictions based on proximity to the lead.
+- Differentiate between elite and non-elite player models to account for varying pressure responses.","Incorporate pressure effects into performance models for final rounds.
+Adjust player performance predictions based on proximity to the lead.
+Differentiate between elite and non-elite player models to account for varying pressure responses.",pressure_analysis.py; strokes_gained_calculation.py; player_performance_comparison.py; regression_analysis.py,"Validate findings with more recent data beyond 2016.
+Test the model's predictions against actual final round performances in subsequent tournaments.
+Analyze additional variables that may influence performance under pressure.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/should-ryder-cup-partners-that-win-their-match-play-in-the-next-session,Should ryder cup partners that win their match play in the next session,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf.performance;golf.match_play;golf.statistics,"Exploration of whether Ryder Cup partners that win their matches should play in the next session.
+
+The analysis of Ryder Cup data from 1991 to 2014 reveals that losing pairs (13-13-4) perform better than winning pairs (17-22-8) when sent out for the next session. Surprisingly, pairs that halved their previous match performed the best (10-4-2). The findings challenge conventional wisdom about momentum in match play and suggest that statistical noise may play a significant role in observed outcomes. A probability analysis indicates an 18% chance that the observed performance of tied pairs is due to randomness, while a broader analysis shows a 45% chance of observing extreme win-loss records across all pairing groups if matches are coin flips.
+
+- Consider the impact of previous match outcomes on future performance in modeling.
+- Incorporate statistical noise assessments into performance predictions.
+- Re-evaluate the assumptions about momentum in match play scenarios.","Consider the impact of previous match outcomes on future performance in modeling.
+Incorporate statistical noise assessments into performance predictions.
+Re-evaluate the assumptions about momentum in match play scenarios.",match_play_analysis.py; performance_metrics.py; probability_calculations.py,"Validate findings with additional Ryder Cup data from 2016 onwards.
+Test the model against other match play formats to assess generalizability.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/simple-linear-regression-what-the-heck-are-we-estimating,Simple linear regression what the heck are we estimating,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,,"Exploration of the interpretations of regression coefficients in linear regression analysis.
+
+The article discusses the interpretation of coefficients in simple linear regression, emphasizing that these coefficients can represent different concepts such as marginal effects or average marginal effects depending on the context. It clarifies that regression is a statistical tool that does not inherently imply causality, and highlights the importance of understanding the underlying structural model when interpreting results.
+
+- Understanding the distinction between statistical and causal relationships is crucial for accurate modeling in golf analytics.
+- Regression coefficients should be interpreted with caution, considering the underlying assumptions and model structure.","Understanding the distinction between statistical and causal relationships is crucial for accurate modeling in golf analytics.
+Regression coefficients should be interpreted with caution, considering the underlying assumptions and model structure.",,,llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/strokes-gained-when-in-contention,Strokes gained when in contention,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;pressure_analysis;strokes_gained_metrics,"Analyzing player performance under pressure in golf tournaments using a strokes-gained approach.
+
+This article presents a method to quantify player performance in contention during golf tournaments by comparing their scores to the field average. The measure focuses on players' performances when they are in contention (top 5 heading into the final round) versus their normal play, using PGA Tour data from 1983-2016. The methodology involves calculating relative scores, defining pressure zones, and averaging these scores to derive a strokes-gained metric. The findings indicate how much better or worse players perform under pressure compared to their usual standards, with implications for understanding player behavior in high-stakes situations.
+
+- Incorporate pressure zone metrics into player performance models.
+- Adjust for sample size limitations when evaluating player performance under pressure.
+- Consider the impact of player form leading into contention on performance metrics.","Incorporate pressure zone metrics into player performance models.
+Adjust for sample size limitations when evaluating player performance under pressure.
+Consider the impact of player form leading into contention on performance metrics.",pressure_zones.py; strokes_gained_calculation.py; player_performance_analysis.py,"Validate the model using historical tournament outcomes to assess predictive accuracy.
+Compare strokes gained metrics with actual tournament finishes to evaluate performance under pressure.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/the-hot-hand-fallacy-application-to-golf,The hot hand fallacy application to golf,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_statistics;shot_analysis;bias_correction;simulation_methods,"Exploration of the hot-hand fallacy in golf performance.
+
+This article discusses the hot-hand fallacy, particularly its application to golf, and presents a methodology for measuring the hot-hand effect using PGA Tour data. It highlights the biases in measuring performance following good or bad outcomes and proposes a simulation-based approach to correct for these biases. The findings suggest that PGA Tour players exhibit a hot-hand phenomenon, with average differences in performance following birdies versus bogeys, although the effect size is relatively small.
+
+- Incorporate bias correction methods in stroke-gained models.
+- Use simulation techniques to validate player performance measures.
+- Explore individual player variability in hot-hand effects.","Incorporate bias correction methods in stroke-gained models.
+Use simulation techniques to validate player performance measures.
+Explore individual player variability in hot-hand effects.",hot_hand_analysis.py; score_adjustment.py; simulation_utils.py,"Validate hot-hand measures against historical performance data.
+Test the robustness of bias correction methods across different datasets.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/the-luck-of-the-draw/,The luck of the draw,,A,datagolfblogs.ca,page_sidebar_popular_js,,,legacy_blog,,,"Examining the impact of tee time draws on PGA TOUR performance.
+
+This article investigates the quantifiable effects of luck in golf, specifically focusing on the differences in course conditions between morning and afternoon tee times on the PGA TOUR. By analyzing 32 events from 2016, we determine how these draws affect player performance, revealing that some players benefit significantly from favorable tee times while others suffer from unfavorable conditions.
+
+- Incorporate tee time draw effects into player performance models.
+- Adjust player projections based on historical draw data.
+- Consider course condition variability when simulating tournament outcomes.","Incorporate tee time draw effects into player performance models.
+Adjust player projections based on historical draw data.
+Consider course condition variability when simulating tournament outcomes.",draw_analysis.py; strokes_gained_calculation.py; tournament_simulation.py,"Validate model predictions against historical tournament outcomes.
+Analyze player performance trends based on tee time draws over multiple seasons.
+Test the impact of draw adjustments on simulated tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/tiger-destroyed-his-playing-partners,Tiger destroyed his playing partners,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,performance_metrics;tournament_outcomes;player_history,"Analysis of Tiger Woods' dominance in final rounds from 2003 to 2016.
+
+This article examines Tiger Woods' performance in final rounds of tournaments from 2003 to 2016, highlighting his dominance over playing partners when in the final group. The analysis shows that Tiger won 45 out of 52 final rounds, losing only 7 tournaments total and only being beaten by his playing partner 3 times. The average stroke differential was 3.7 shots in his favor, indicating a significant level of performance superiority during these rounds.
+
+- Incorporate final round performance metrics for players in the simulation model.
+- Adjust probabilities of winning based on historical performance in final groups.","Incorporate final round performance metrics for players in the simulation model.
+Adjust probabilities of winning based on historical performance in final groups.",final_round_analysis.py; tournament_simulation.py; player_performance_metrics.py,"Validate model predictions against historical final round outcomes for Tiger Woods.
+Test model accuracy by simulating final rounds with varying player performance metrics.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/tiger-vs-jordan-vs-rory-whos-best-at-their-best,Tiger vs jordan vs rory whos best at their best,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_statistics;tournament_analysis,"Comparative analysis of Tiger Woods, Jordan Spieth, and Rory McIlroy during their best years.
+
+This article compares the performance of Tiger Woods (2007), Jordan Spieth (2015), and Rory McIlroy (2014) across key golf metrics: driving distance and accuracy, approach shots, and putting. Each player excels in different areas, with Rory leading in driving distance, Tiger in approach accuracy, and Jordan in putting. The analysis highlights the strengths and weaknesses of each player, suggesting that while Tiger was superior in certain metrics, the overall comparison is complex and nuanced.
+
+- Incorporate driving distance and accuracy as key variables in simulation models.
+- Weight approach shot accuracy more heavily for players with strong iron games.
+- Adjust putting performance metrics to reflect long-distance putting capabilities.","Incorporate driving distance and accuracy as key variables in simulation models.
+Weight approach shot accuracy more heavily for players with strong iron games.
+Adjust putting performance metrics to reflect long-distance putting capabilities.",driving_analysis.py; approach_shots.py; putting_performance.py,"Compare model predictions against historical performance in major tournaments.
+Validate driving and putting metrics against player performance in specific courses.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/whats-wrong-with-rory,Whats wrong with rory,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;player_statistics;tournament_simulation,"An analysis of Rory McIlroy's recent performance and the randomness of golf scores.
+
+The article discusses Rory McIlroy's recent missed cuts and argues that golf scores are inherently random. It presents a statistical analysis of Rory's performance over the last two years, suggesting that his recent struggles are not indicative of a decline in skill but rather a result of random variation in scores. The author simulates Rory's performance over 38 events and finds that back-to-back missed cuts occur in 35% of simulations, indicating that such performance is not unusual for a player of his caliber.
+
+- Incorporate randomness in player performance to account for variability in scores.
+- Adjust models to reflect the statistical likelihood of missed cuts based on historical performance.","Incorporate randomness in player performance to account for variability in scores.
+Adjust models to reflect the statistical likelihood of missed cuts based on historical performance.",score_distribution.py; simulation_model.py; performance_analysis.py,"Validate the model by comparing simulated results with actual performance data over multiple tournaments.
+Test the model's predictions against historical data to assess accuracy.",llm_extracted_v1,openai_json_schema,,
+https://datagolfblogs.ca/which-is-more-important-putting-or-ball-striking,Which is more important putting or ball striking,,A,datagolfblogs.ca,wave_a_old_blogs_directory,directory_listed,,legacy_blog,,golf_performance;strokes_gained;variance_analysis,"Exploration of the importance of putting versus ball-striking in golf performance.
+
+This article discusses the relative importance of putting and ball-striking in golf, referencing Mark Broadie's analysis which shows that over a season, 72% of variance in strokes-gained is due to long game, while only 17% is due to putting. However, in specific weeks, putting can be more significant, as evidenced by the variance decomposition from the 2017 WGC-Bridgestone Championship, where putting accounted for 38% of variance compared to 15% for off-the-tee play.
+
+- Incorporate variance decomposition analysis into the model to differentiate between long-term and short-term performance.
+- Adjust the weight of putting in the model based on weekly performance data.","Incorporate variance decomposition analysis into the model to differentiate between long-term and short-term performance.
+Adjust the weight of putting in the model based on weekly performance data.",variance_decomposition.py; weekly_performance_analysis.py; long_term_vs_short_term.py,"Validate model predictions against historical performance data from various tournaments.
+Test model sensitivity to changes in the weighting of putting versus ball-striking.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/betting-blog-introduction,Betting blog introduction,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Introduction to a new series of blogs focused on betting and statistical modeling in golf.
+
+This blog series aims to document the learning experience of the authors as they delve into golf betting and statistical modeling. They will share insights on how to find value in betting markets, focusing on specific bets where their model has an edge. The authors acknowledge their inexperience in gambling and reflect on their past betting performance, emphasizing the variance in outcomes.
+
+- The model's responsiveness to short-term form changes may improve predictive accuracy.
+- Incorporating strokes-gained data emphasizes the importance of ball-striking over short-game and putting.","The model's responsiveness to short-term form changes may improve predictive accuracy.
+Incorporating strokes-gained data emphasizes the importance of ball-striking over short-game and putting.",model.py; betting_analysis.py; strokes_gained.py,"Evaluate model predictions against actual outcomes for various bet types.
+Compare model performance across different betting markets.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/betting-results-2019,Betting results 2019,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Overview of betting results for the year 2019.
+
+The 2019 betting results provide insights into the performance of various bets placed throughout the PGA Tour season. This data can be utilized to refine betting strategies and improve predictive models for future tournaments.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/betting-results-2020,Betting results 2020,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Overview of betting results for the year 2020 in golf.
+
+The article provides a summary of betting results for the year 2020, detailing the performance of various bets made throughout the PGA Tour and other golf events. It emphasizes the importance of using data-driven approaches to identify +EV (positive expected value) betting opportunities.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/betting-results-2021,Betting results 2021,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Overview of 2021 betting results and insights for golf analytics.
+
+The 2021 betting results provide insights into the performance of various betting strategies and highlight the effectiveness of the models used in predicting outcomes. The data reflects the success rates of different bets and offers a foundation for future improvements in betting models.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/career-evolutions,Career evolutions,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Analysis of career evolutions of professional golfers based on performance metrics.
+
+The article presents a detailed visualization of the career evolution of professional golfers who have participated in at least 25 Major Championships or PGA Tour events since 1983. It includes metrics such as wins, top 5 finishes, top 20 finishes, cuts made, and true strokes-gained. The data allows for filtering by player and event type, providing insights into player performance over time.
+
+- Incorporate true strokes-gained metrics into predictive models for player performance.
+- Analyze trends in player performance over time to identify potential future outcomes.","Incorporate true strokes-gained metrics into predictive models for player performance.
+Analyze trends in player performance over time to identify potential future outcomes.",career_evolution.py; performance_metrics.py; data_visualization.py,"Validate the model by comparing predicted outcomes against actual performance in recent tournaments.
+Use historical data to backtest the accuracy of strokes-gained predictions.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/career-evolutions-old,Career evolutions old,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Career evolution statistics of professional golfers with at least 25 Major Championship or PGA Tour starts since 1983.
+
+The article presents a detailed analysis of the career evolution of professional golfers, focusing on metrics such as wins, top 5 finishes, top 20 finishes, cuts made, and true strokes-gained. It provides insights into how these metrics change over a player's career, using data from official PGA Tour events and major championships.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/comparing-pro-tours/,Comparing development tours,,C,datagolf.com,page_sidebar_popular_js,canonical_hub,,analytics_blog,,,"Analyzing the ability gap between professional golfers on the PGA Tour and developmental tours.
+
+This article examines the performance differences between golfers on the PGA Tour and those on developmental tours (Web.com, Mackenzie, and Latinoamerica) using strokes-gained measures from 2015-2017. The analysis reveals significant skill gaps, with very few players on the developmental tours performing at or above PGA Tour standards. The findings suggest that consistent high-level performance is necessary to transition from these tours to the PGA Tour.
+
+- Incorporate strokes-gained measures for players transitioning from developmental tours to PGA Tour.
+- Adjust expected finish position calculations based on field strength and player performance.","Incorporate strokes-gained measures for players transitioning from developmental tours to PGA Tour.
+Adjust expected finish position calculations based on field strength and player performance.",strokes_gained_analysis.py; expected_finish_position.py; tour_comparison_model.py,"Validate strokes-gained measures against historical performance data.
+Test expected finish position predictions against actual tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/data-driven-history-augusta-national,Data-driven history of Augusta,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Analysis of skill profiles and course fit for Augusta National based on historical data.
+
+This article analyzes the skill profiles of past Masters winners at Augusta National since 1983, focusing on how specific skills are rewarded at the course. It examines the evolution of driving distance and accuracy in relation to performance, highlighting the increasing importance of distance over time. The analysis includes hole-level fit and the expected increase in strokes-gained from improving specific skills.
+
+- Incorporate hole-level analysis to refine player skill evaluations.
+- Adjust weightings for driving distance and accuracy based on historical trends.
+- Consider the evolving nature of course fit when predicting outcomes.","Incorporate hole-level analysis to refine player skill evaluations.
+Adjust weightings for driving distance and accuracy based on historical trends.
+Consider the evolving nature of course fit when predicting outcomes.",course_fit.py; skill_profiles.py; hole_analysis.py,"Validate model predictions against historical Masters outcomes.
+Test the impact of different skill profiles on tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/data-viz-of-the-week,Data viz of the week,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Exploration of data visualization techniques in golf analytics.
+
+This article discusses the latest data visualization techniques used in golf analytics, focusing on how these visualizations can enhance understanding of player performance and tournament outcomes. It emphasizes the importance of accurate data representation in making informed predictions and decisions in golf.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/data-viz-of-the-week-2,Data viz of the week 2,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Exploration of PGA Tour data visualization and analysis.
+
+This article discusses the various data visualizations available on the Data Golf platform, focusing on PGA Tour statistics and their implications for modeling player performance. It highlights the importance of accurate data collection and the use of historical data to inform predictions and analyses in golf analytics.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/data-viz-of-the-week-3,Data viz of the week 3,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Overview of Data Golf's tools and resources for PGA stroke-gained analysis.
+
+This article provides a comprehensive overview of Data Golf's offerings, including various models, statistics, and tools designed to enhance golf analytics and predictions. It emphasizes the importance of accurate data in modeling player performance and tournament outcomes, while also highlighting the range of resources available for users to analyze and visualize golf data effectively.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/does-experience-matter-at-augusta,Does experience matter at augusta,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Exploring the impact of experience on performance at Augusta National.
+
+This article investigates whether experience at Augusta National significantly influences player performance during the Masters Tournament. Using strokes-gained data from 1995 to 2018, the analysis reveals that more experienced players tend to perform better, particularly until age-related declines impact performance. Adjusting for baseline skill levels shows that less experienced golfers underperform relative to expectations, while more experienced players exceed theirs, indicating that experience does matter.
+
+- Incorporate experience as a variable in performance models.
+- Adjust for baseline skill levels when evaluating player performance.
+- Consider course history as a factor influencing expected performance.","Incorporate experience as a variable in performance models.
+Adjust for baseline skill levels when evaluating player performance.
+Consider course history as a factor influencing expected performance.",experience_analysis.py; baseline_adjustment.py; course_history_adjustment.py,"Validate findings using data from other major tournaments.
+Test model predictions against historical performance data.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/fav-longshot-not-a-bias,Fav longshot not a bias,,C,datagolf.com,research_doc_scan,blog_tagged,,analytics_blog,,,"The Favourite-Longshot Bias is not a bias.
+
+The article argues that the so-called favourite-longshot bias observed in betting markets, where bets placed at higher odds yield worse rates of return than those at lower odds, is not a result of irrational behavior or market inefficiency. Instead, it presents a model showing that lower returns at longer odds are expected in any betting market with non-zero margin, and highlights the differences in definitions of the bias between traditional and prediction markets.
+
+- Lower returns at longer odds should be expected in any betting market with non-zero margin.
+- The model suggests that heterogeneous bettor beliefs lead to expected returns declining as odds lengthen.","Lower returns at longer odds should be expected in any betting market with non-zero margin.
+The model suggests that heterogeneous bettor beliefs lead to expected returns declining as odds lengthen.",market_analysis.py; odds_calculation.py; bias_analysis.py,"Validate the model against historical betting data from various sports.
+Test the model's predictions on different betting markets.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/frequently-asked-questions,FAQ,,C,datagolf.com,research_doc_golf_betting_market_efficiency,canonical_hub,,standalone,,,"FAQ on Data Golf's predictive model and data sources.
+
+This FAQ provides insights into the methodology behind Data Golf's predictive model, detailing data sources, model updates, and the interpretation of various statistics. It emphasizes the importance of course-specific adjustments and the impact of player performance on finish probabilities.
+
+- Incorporate course-specific adjustments into the predictive model.
+- Use historical data to inform player skill estimates.","Incorporate course-specific adjustments into the predictive model.
+Use historical data to inform player skill estimates.",model.py; data_processing.py; simulation.py,"Compare model predictions against actual tournament outcomes.
+Analyze the impact of course-specific adjustments on predictions.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/how-sharp-are-bookmakers,How sharp are bookmakers? (Part I),,C,datagolf.com,research_doc_golf_betting_market_efficiency,,,analytics_blog,,,"Analyzing matchup and 3-ball odds from the 2019 and 2020 seasons.
+
+This article evaluates the performance of various bookmakers' odds against a model developed by Data Golf. It highlights the overround or margin in betting odds, the effectiveness of a blind betting strategy, and the calibration of odds from different bookmakers. The findings suggest that while bookmakers like Pinnacle provide relatively accurate odds, there are opportunities for bettors to exploit discrepancies between model predictions and bookmaker odds.
+
+- Incorporate course-specific adjustments to improve model accuracy.
+- Focus on maximizing expected value thresholds for betting strategies.","Incorporate course-specific adjustments to improve model accuracy.
+Focus on maximizing expected value thresholds for betting strategies.",odds_analysis.py; model_performance.py; betting_strategy.py,"Simulate betting outcomes using historical odds data.
+Compare model predictions against actual match results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/how-sharp-are-bookmakers-part-2,How sharp are bookmakers? Part II,2023-02-03,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Analysis of bookmaker sharpness and calibration in golf betting.
+
+This article examines the performance of various sportsbooks in terms of margin, calibration, and betting results for golf matchups and 3-balls over the 2021 and 2022 seasons. It highlights discrepancies in bookmaker odds, the presence of a favourite-longshot bias, and the calibration of Data Golf's predictions against actual outcomes.
+
+- Adjust model calibration techniques to account for sample selection bias.
+- Incorporate bookmaker margin analysis to refine probability estimates.
+- Monitor favourite-longshot bias in model predictions.","Adjust model calibration techniques to account for sample selection bias.
+Incorporate bookmaker margin analysis to refine probability estimates.
+Monitor favourite-longshot bias in model predictions.",model_calibration.py; betting_analysis.py; odds_movement.py,"Validate model predictions against historical betting results.
+Test model performance across different sportsbooks.
+Analyze the impact of sample selection on model calibration.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/important-holes-at-augusta/,Important holes at Augusta,,C,datagolf.com,page_sidebar_popular_js,,,analytics_blog,,,"Analysis of the importance of specific holes at Augusta National based on variance in scores.
+
+This article analyzes the contribution of each hole at Augusta National to the total variance in scores during The Masters from 1983 to 2017. Using variance decomposition, it identifies critical holes, particularly in the back nine, while also noting surprises such as the seventh hole's increasing importance post-2000. The findings align with traditional narratives about Amen Corner but also highlight the impact of course changes on scoring dynamics.
+
+- Incorporate hole-specific variance contributions into simulation models.
+- Adjust hole importance based on historical changes and trends.
+- Consider round-specific contributions for more accurate predictions.","Incorporate hole-specific variance contributions into simulation models.
+Adjust hole importance based on historical changes and trends.
+Consider round-specific contributions for more accurate predictions.",variance_decomposition.py; hole_importance_analysis.py; masters_tournament_simulation.py,"Validate model predictions against historical scoring data.
+Test the impact of course changes on hole contributions over time.
+Analyze player performance trends relative to hole contributions.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers,Inside the numbers,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Analysis of the hardest around-the-green shots at Augusta National using strokes-gained data.
+
+This article ranks the five hardest around-the-green spots at Augusta National based on data from the 2021 Masters. The analysis utilizes strokes-gained metrics to estimate shot difficulty relative to the PGA Tour baseline, employing an empirical Bayes method to address sample size issues. Each shot's difficulty is assessed based on its proximity to the pin and the concept of 'short-sidedness'.
+
+- Incorporate empirical Bayes methods for better handling of small sample sizes in shot difficulty estimation.
+- Utilize short-sidedness as a key factor in evaluating shot difficulty.","Incorporate empirical Bayes methods for better handling of small sample sizes in shot difficulty estimation.
+Utilize short-sidedness as a key factor in evaluating shot difficulty.",strokes_gained_analysis.py; around_the_green_difficulty.py; empirical_bayes_method.py,"Validate shot difficulty rankings against historical performance data from Augusta National.
+Test the impact of short-sidedness on player performance in simulations.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-1,Inside the numbers 1,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of recent golf performances and rankings.
+
+This article provides insights into the recent performances of various golfers, highlighting their strokes-gained metrics and movements in rankings. It discusses the performance levels of Max Homa, Mikko Korhonen, Jorge Campillo, and Rory McIlroy, illustrating how their recent play has affected their standings in the golf world.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-10,Inside the numbers 10,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in the world of golf.
+
+This article provides insights into the performance metrics of various golfers, highlighting their strokes-gained averages and comparing them to historical data. It emphasizes the predictive nature of ball-striking performance over short game performance and discusses the implications for upcoming tournaments.
+
+- Incorporate strokes-gained categories to improve predictive skill levels.
+- Focus on ball-striking performance as a more reliable predictor than short game performance.","Incorporate strokes-gained categories to improve predictive skill levels.
+Focus on ball-striking performance as a more reliable predictor than short game performance.",,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-11,Inside the numbers 11,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,golf.performance;golf.tournament;golf.player,"A numerical summary of current happenings in golf, focusing on player performance and tournament predictions.
+
+This article discusses the performance of Rory McIlroy at the Open Championship, highlighting the fluctuations in his cut probability due to his performance. It also compares true strokes-gained metrics for players who missed the cut in different tournaments, and presents insights on expected wins based on strokes-gained performance.
+
+- Incorporate cut probability fluctuations based on round performance into the model.
+- Adjust true strokes-gained metrics to account for field strength and cutline variations.","Incorporate cut probability fluctuations based on round performance into the model.
+Adjust true strokes-gained metrics to account for field strength and cutline variations.",cut_probability.py; strokes_gained_analysis.py; expected_wins_calculator.py,"Compare predicted cut probabilities with actual outcomes from recent tournaments.
+Validate expected wins against historical tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-12,Inside the numbers 12,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in the world of golf.
+
+This article discusses various statistical insights from recent PGA Tour events, focusing on player performances, expected wins, and the impact of driving distance on scoring. It highlights specific players' standings and their implications for the FedEx Cup playoffs, as well as performance metrics that reveal trends in player capabilities.
+
+- Incorporate true strokes-gained metrics to evaluate player performances more accurately.
+- Adjust expected win calculations based on player performance trends over time.
+- Analyze the impact of driving distance on course-specific performance to refine player evaluations.","Incorporate true strokes-gained metrics to evaluate player performances more accurately.
+Adjust expected win calculations based on player performance trends over time.
+Analyze the impact of driving distance on course-specific performance to refine player evaluations.",performance_metrics.py; expected_wins_calculator.py; course_analysis.py,"Validate expected wins against actual tournament outcomes.
+Backtest driving distance impact on scoring across different courses.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-13,Inside the numbers 13,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Analysis of win probabilities and strokes gained in professional golf.
+
+This article discusses the win probabilities of golfers in tournaments, highlighting J.T. Poston's unexpected victory at the Wyndham Championship despite a low pre-tournament win probability of 0.5%. It also examines the performance of long hitters on the PGA Tour over different eras, noting an increase in strokes gained per round. Additionally, it addresses the inconsistency in player rankings and performance metrics, particularly focusing on Webb Simpson's recent success and Richy Werenski's unfortunate FedExCup ranking.
+
+- Incorporate low win probability scenarios into predictive models.
+- Adjust strokes gained metrics to reflect changes in player performance over time.
+- Consider the impact of putting performance on overall player rankings.","Incorporate low win probability scenarios into predictive models.
+Adjust strokes gained metrics to reflect changes in player performance over time.
+Consider the impact of putting performance on overall player rankings.",win_probability.py; strokes_gained_analysis.py; player_rankings.py,"Validate win probability predictions against actual tournament outcomes.
+Backtest strokes gained metrics across different eras to assess consistency.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-14,Inside the numbers 14,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of the current happenings in the world of golf, focusing on player performance and PGA Tour card probabilities.
+
+This article discusses the fluctuating probabilities of players regaining their PGA Tour cards, highlighting Ollie Schniederjans' struggles and the performance of other golfers in the Korn Ferry Tour Finals. It emphasizes the randomness of golf performance and the challenges players face in maintaining their tour status.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-15,Inside the numbers 15,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,golf_performance_metrics;player_statistics;course_fit_analysis,"A numerical summary of recent golf events and performance metrics.
+
+This article provides insights into player performance metrics during the Sentry Tournament of Champions, highlighting win probabilities, strokes gained, and course fit adjustments. It discusses how these metrics impact player expectations and outcomes in tournaments, particularly focusing on Patrick Reed, Justin Thomas, and Xander Schauffele.
+
+- Adjust win probability calculations based on player performance metrics and course fit.
+- Incorporate historical performance data to refine player projections for specific courses.","Adjust win probability calculations based on player performance metrics and course fit.
+Incorporate historical performance data to refine player projections for specific courses.",win_probability.py; course_fit.py; performance_trends.py,"Validate win probability models against historical tournament outcomes.
+Test course fit adjustments by comparing predicted vs actual performance at various courses.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-16,Inside the numbers 16,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in the world of golf.
+
+This article discusses various statistical insights from the PGA Tour, focusing on player performances, course characteristics, and predictive modeling adjustments for the 2020 season. It highlights Tony Finau's expected wins, course dissimilarity, Jon Rahm's consistent performance, and the impact of course-specific adjustments on player probabilities.
+
+- Incorporate course-specific adjustments to improve predictive accuracy.
+- Evaluate player performance under pressure to refine expected win calculations.","Incorporate course-specific adjustments to improve predictive accuracy.
+Evaluate player performance under pressure to refine expected win calculations.",course_fit.py; strokes_gained_analysis.py; player_probability_adjustments.py,"Validate expected wins against actual performance over multiple seasons.
+Test course-specific adjustments by comparing predicted vs actual finishes.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-17,Inside the numbers 17,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in golf, focusing on player performance and betting odds.
+
+This article discusses various metrics related to player performance and betting odds leading into The Masters. It highlights Hideki Matsuyama's odds, course fit adjustments at Bay Hill, Tommy Fleetwood's performance comparison, and field strength differences between the PGA and European tours.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-18,Inside the numbers 18,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of golf performance metrics and insights.
+
+This article discusses various performance metrics in golf, focusing on win probabilities, strokes-gained statistics, and player rankings. It highlights the performance of notable players like Tiger Woods and Xander Schauffele, providing context for their skills and achievements over time.
+
+- Incorporate win probability metrics into tournament simulations.
+- Utilize strokes-gained data to refine player skill assessments.
+- Adjust player rankings based on recent performance metrics.","Incorporate win probability metrics into tournament simulations.
+Utilize strokes-gained data to refine player skill assessments.
+Adjust player rankings based on recent performance metrics.",strokes_gained.py; win_probability_model.py; player_rankings.py,"Validate win probability models against historical tournament outcomes.
+Backtest strokes-gained metrics with past player performances.
+Compare predicted driving distances with actual performance data.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-19,Inside the numbers 19,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in the world of golf, focusing on rankings and performance metrics.
+
+The article discusses updates to the Data Golf rankings, highlighting discrepancies between the Data Golf rankings and the Official World Golf Rankings (OWGR). It emphasizes the performance of golfers across various tours and the allocation of OWGR points, particularly noting the unfair treatment of the Mackenzie Tour compared to the Asian Tour. The article also touches on the expected OWGR points for average players across different tours.
+
+- Consider the discrepancies in OWGR points allocation when modeling player rankings.
+- Adjust expected performance metrics based on tour-specific factors.","Consider the discrepancies in OWGR points allocation when modeling player rankings.
+Adjust expected performance metrics based on tour-specific factors.",,"Validate the expected OWGR points against historical performance data.
+Test the fairness of point allocations across different tours.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-2,Inside the numbers 2,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in professional golf.
+
+This article provides insights into player performance metrics, including strokes gained and win probabilities, highlighting trends and historical context for various golfers as they approach major tournaments.
+
+- Incorporate player performance metrics like strokes gained into predictive models.
+- Adjust win probabilities based on historical performance and current form.
+- Use course history adjustments to refine player projections for specific tournaments.","Incorporate player performance metrics like strokes gained into predictive models.
+Adjust win probabilities based on historical performance and current form.
+Use course history adjustments to refine player projections for specific tournaments.",,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-20,Inside the numbers 20,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of golf performance trends and modeling insights.
+
+This article discusses the impact of the pandemic on player performance, particularly focusing on Jordan Spieth's resurgence, the ranking discrepancies between amateurs and professionals, and the adjustments made to the tournament prediction model, including course history and player experience.
+
+- Incorporate course history adjustments into predictions
+- Differentiate between experience and historical performance at courses","Incorporate course history adjustments into predictions
+Differentiate between experience and historical performance at courses",course_fit.py; player_history.py; strokes_gained_calculator.py,"Validate model adjustments against historical performance data
+Test predictions against actual tournament outcomes",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-21,Inside the numbers 21,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Analysis of player performance and betting market perceptions in golf.
+
+This article discusses the performance of professional golfers, particularly focusing on Bubba Watson and Bryson DeChambeau, while also highlighting the impact of course familiarity on player performance and betting odds. It provides numerical insights into how players' skills are perceived in different contexts, including their historical performance at specific courses.
+
+- Consider adjusting player skill estimates based on course familiarity and historical performance.
+- Incorporate betting market perceptions into player performance models to better align with market odds.","Consider adjusting player skill estimates based on course familiarity and historical performance.
+Incorporate betting market perceptions into player performance models to better align with market odds.",course_fit; player_performance_adjustments; betting_market_analysis,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-22,Inside the numbers 22,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,golf_performance;player_rankings;tournament_simulations,"Insights and predictions related to the FedExCup Playoffs and player performances.
+
+This article provides a numerical summary of the current state of golf, focusing on the FedExCup Playoffs and notable player performances. It discusses the probabilities of players advancing to the TOUR Championship, the points required for advancement, and highlights exceptional performances, particularly by Dustin Johnson and Will Zalatoris. The analysis includes simulations and historical comparisons to contextualize current player standings and performances.
+
+- Incorporate live-updating probabilities for player advancement in simulations.
+- Adjust player rankings based on recent performance trends and historical data.","Incorporate live-updating probabilities for player advancement in simulations.
+Adjust player rankings based on recent performance trends and historical data.",fedexcup_simulation.py; player_performance_analysis.py; strokes_gained_calculations.py,"Validate simulation outcomes against actual tournament results.
+Analyze historical performance data to refine predictive models.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-23,Inside the numbers 23,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,golf.performance;golf.simulation;golf.probability,"Analysis of Dustin Johnson's performance probabilities in the final round of the Masters.
+
+The article discusses Dustin Johnson's performance probabilities in the final round of the Masters, based on 25,000 simulations. It highlights the range of possible scores, win probabilities based on those scores, and the impact of course difficulty on performance expectations. The analysis reveals that Johnson's historical performance in final rounds has been below expectations, with implications for future predictions.
+
+- Adjust win probability calculations based on historical performance under pressure.
+- Incorporate course difficulty into score simulations for more accurate predictions.
+- Refine expected majors calculations based on final round performance history.","Adjust win probability calculations based on historical performance under pressure.
+Incorporate course difficulty into score simulations for more accurate predictions.
+Refine expected majors calculations based on final round performance history.",score_simulation.py; win_probability_calculator.py; performance_adjustment.py,"Validate model predictions against historical final round performances.
+Test model accuracy by comparing simulated outcomes with actual tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-24,Inside the numbers 24,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,golf_performance;tournament_simulation;player_skill_distribution,"A numerical summary of current happenings in the world of golf, focusing on player performance and tournament predictions.
+
+This article discusses various aspects of player performance and tournament predictions, highlighting the skill levels of amateur golfers, the performance of Max Homa, Tony Finau's win probabilities, and the unique skill distribution in the Puerto Rico Open. It emphasizes the importance of understanding golfer skill distributions when simulating tournament outcomes.
+
+- Understanding skill distributions is crucial for accurate tournament simulations.
+- Adjusting win probabilities based on player performance in final rounds can enhance predictive accuracy.","Understanding skill distributions is crucial for accurate tournament simulations.
+Adjusting win probabilities based on player performance in final rounds can enhance predictive accuracy.",tournament_simulation.py; player_performance_analysis.py; skill_distribution_model.py,"Validate the model by comparing predicted cut probabilities with actual outcomes in tournaments.
+Backtest player performance metrics against historical data to refine skill estimates.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-25,Inside the numbers 25,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Analysis of player performance adjustments and tournament simulations for the Players Championship.
+
+This article discusses the adjustments made to player performance metrics based on recent form, course fit, and historical performance at TPC Sawgrass. It highlights the impact of these adjustments on win probabilities and provides insights into the variance of specific holes at the course.
+
+- Adjust player skill levels based on recent form and course fit.
+- Incorporate variance of holes into predictive models.
+- Refine strokes-gained calculations to account for luck-based outcomes.","Adjust player skill levels based on recent form and course fit.
+Incorporate variance of holes into predictive models.
+Refine strokes-gained calculations to account for luck-based outcomes.",course_fit.py; player_adjustments.py; tournament_simulation.py,"Validate adjustments against historical tournament outcomes.
+Backtest win probability predictions against actual results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-26,Inside the numbers 26,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in the world of golf.
+
+This article discusses various players' performances, including Will Zalatoris' rise in rankings and Bryson DeChambeau's distance strategy. It highlights the importance of modeling uncertainties in golf tournament outcomes, particularly in predicting winning scores and cutlines.
+
+- Incorporate player performance consistency across tours into the model.
+- Adjust for scoring condition uncertainties in tournament simulations.
+- Enhance the model's ability to predict extreme outcomes based on historical data.","Incorporate player performance consistency across tours into the model.
+Adjust for scoring condition uncertainties in tournament simulations.
+Enhance the model's ability to predict extreme outcomes based on historical data.",tournament_simulation.py; player_performance_analysis.py; scoring_conditions_model.py,"Validate player performance predictions against actual tournament outcomes.
+Backtest scoring condition models using historical tournament data.
+Compare simulation results with real-world cutlines and winning scores.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-27,Inside the numbers 27,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in professional golf.
+
+This article discusses notable performances and statistics from the PGA Tour, focusing on Phil Mickelson's longevity, driving distance advantages at the Ocean Course, Brooks Koepka's Major Championship performance, and Mickelson's driving accuracy and layup strategy.
+
+- Adjust model to account for Koepka's performance in Majors.
+- Incorporate driving distance and accuracy balance for course fit evaluations.","Adjust model to account for Koepka's performance in Majors.
+Incorporate driving distance and accuracy balance for course fit evaluations.",course_fit; player_performance; strokes_gained_analysis,"Validate Koepka's Major performance against historical data.
+Test driving distance vs. accuracy impact on tournament outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-28,Inside the numbers 28,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,golf:strokes_gained;golf:course_difficulty;golf:shot_analysis,"Analysis of the hardest around-the-green shots at Augusta National based on 2021 Masters data.
+
+This article ranks the five hardest around-the-green spots at Augusta National using data from the 2021 Masters. Each green surround is divided into quadrants, and shots are grouped by pin position and lie. The difficulty is estimated using strokes-gained relative to the PGA Tour baseline, with an empirical Bayes method applied to account for sample size issues. The analysis provides insights into shot difficulty and player performance in these challenging areas.
+
+- Incorporate short-sidedness as a key metric in the model
+- Adjust difficulty ratings based on empirical Bayes results
+- Enhance shot grouping methodology for better accuracy","Incorporate short-sidedness as a key metric in the model
+Adjust difficulty ratings based on empirical Bayes results
+Enhance shot grouping methodology for better accuracy",course_fit.py; strokes_gained_analysis.py; empirical_bayes_adjustment.py,"Validate model predictions against historical performance data
+Test model accuracy using different sample sizes
+Compare model outputs with actual tournament results",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-3,Inside the numbers 3,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in professional golf.
+
+This article discusses the performance of various golfers in recent tournaments, focusing on strokes-gained metrics and win probabilities. Key players highlighted include Brooks Koepka, Jordan Spieth, and Bryson DeChambeau, with insights into their performances in major championships and other tournaments.
+
+- Incorporate true strokes-gained metrics for major vs non-major performance.
+- Adjust player performance models based on putting efficiency.","Incorporate true strokes-gained metrics for major vs non-major performance.
+Adjust player performance models based on putting efficiency.",performance_metrics.py; win_probability_calculations.py; strokes_gained_analysis.py,"Validate strokes-gained metrics against historical performance data.
+Backtest win probability models using past tournament data.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-4,Inside the numbers 4,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"Summary of current golf statistics and player performances.
+
+This article provides a numerical summary of notable performances and statistics in professional golf, highlighting players' strokes-gained metrics, historical performance, and discrepancies in rankings. Key insights include Scottie Scheffler's strong performance on the Web.com Tour, Mike Weir's long absence from making cuts in non-opposite-field events, and Tiger Woods' underperformance at Muirfield Village. Additionally, the article discusses the ranking discrepancies for Lucas Glover and Jordan Spieth's recent performance metrics.",,,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-5,Inside the numbers 5,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of recent golf performances and statistics.
+
+This article provides insights into recent performances on the PGA Tour, highlighting key statistics such as strokes-gained metrics, expected wins, and win probabilities. It emphasizes the significance of these metrics in evaluating player performances and predicting outcomes in tournaments.
+
+- Incorporate strokes-gained metrics to evaluate player performance more accurately.
+- Utilize expected wins calculations to predict tournament outcomes.
+- Analyze performance variability to understand rare occurrences in player performances.","Incorporate strokes-gained metrics to evaluate player performance more accurately.
+Utilize expected wins calculations to predict tournament outcomes.
+Analyze performance variability to understand rare occurrences in player performances.",performance_analysis.py; expected_wins_calculator.py; strokes_gained_metrics.py,"Validate expected wins against actual tournament outcomes.
+Analyze historical performance differences to assess model accuracy.
+Test win probability calculations against past tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-6,Inside the numbers 6,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of current happenings in golf, focusing on performance metrics and player statistics.
+
+This article discusses various performance metrics in golf, highlighting notable player performances and statistical trends. It emphasizes how historical performances can inform current expectations and predictions in the sport.
+
+- Consider historical performance baselines when predicting player outcomes.
+- Account for age-related performance trends in player projections.
+- Incorporate live predictive models for win probabilities during tournaments.","Consider historical performance baselines when predicting player outcomes.
+Account for age-related performance trends in player projections.
+Incorporate live predictive models for win probabilities during tournaments.",,"Validate player performance predictions against historical data.
+Test the accuracy of win probability models in live scenarios.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-7,Inside the numbers 7,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of recent golf performances and statistics.
+
+This article presents various statistics related to recent golf tournaments, highlighting players' performances through true strokes-gained metrics. It compares current players' performances to historical benchmarks, providing insights into their competitive standings.
+
+- Consider historical performance benchmarks when evaluating current player performances.
+- Adjust player skill levels based on course history and specific course characteristics.","Consider historical performance benchmarks when evaluating current player performances.
+Adjust player skill levels based on course history and specific course characteristics.",,,llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-8,Inside the numbers 8,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of recent golf performances and statistics.
+
+This article summarizes key performance metrics from recent golf tournaments, highlighting players' strokes gained, win probabilities, and notable performances. It provides insights into how these metrics can be interpreted in the context of PGA Tour events.
+
+- Incorporate true expected wins as a metric for evaluating player performance.
+- Adjust win probability calculations based on player performance trends in final rounds.
+- Utilize true strokes-gained metrics to assess player consistency across different tours.","Incorporate true expected wins as a metric for evaluating player performance.
+Adjust win probability calculations based on player performance trends in final rounds.
+Utilize true strokes-gained metrics to assess player consistency across different tours.",performance_metrics.py; win_probability_calculator.py; strokes_gained_analysis.py,"Validate true expected wins against historical tournament outcomes.
+Backtest win probability models using data from previous tournaments.
+Analyze the correlation between strokes-gained metrics and actual tournament finishes.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/inside-the-numbers-9,Inside the numbers 9,,C,datagolf.com,wave_c_blog_home_crawl,blog_tagged,,analytics_blog,,,"A numerical summary of recent golf events and performances.
+
+The article discusses recent performances in professional golf, highlighting the significant skill differences between PGA Tour players and those on other tours. It emphasizes the importance of strokes gained metrics in evaluating player performance and true expected wins as a measure of performance quality.
+
+- Incorporate true expected wins as a metric for evaluating player performance.
+- Adjust player skill ratings based on strokes gained metrics.
+- Consider the baseline skill differences between tours when modeling player performance.","Incorporate true expected wins as a metric for evaluating player performance.
+Adjust player skill ratings based on strokes gained metrics.
+Consider the baseline skill differences between tours when modeling player performance.",strokes_gained_analysis.py; true_expected_wins.py; player_rankings.py,"Validate true expected wins against historical tournament outcomes.
+Backtest strokes gained metrics against player performance in various tournaments.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/2022-offseason-tweaks,2022 offseason tweaks,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,"Discussion of fundamental changes in the PGA model's methodology for estimating player skill.
+
+This article outlines a significant methodological change in the PGA model for estimating player baseline skill. The change involves adjusting true strokes-gained values to account for course difficulty and player performance relative to tee times. This adjustment aims to improve the accuracy of skill estimates by addressing biases in performance data.
+
+- Incorporating course difficulty adjustments improves prediction accuracy.
+- Course fit adjustments can significantly affect skill estimates after events with extreme profiles.","Incorporating course difficulty adjustments improves prediction accuracy.
+Course fit adjustments can significantly affect skill estimates after events with extreme profiles.",baseline_skill.py; course_difficulty_adjustments.py; course_fit_adjustments.py,"Validate the impact of course difficulty adjustments on predictive accuracy.
+Backtest the model's performance with and without course fit adjustments.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/2024-offseason-tweaks,Off-Season Model Tweaks (2024),,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,model_tweaks_2024;player_performance_weighting;days_since_last_event_adjustments,"Tweaks to the PGA model for improved predictive power in 2024.
+
+The article discusses several key updates to the PGA model for 2024, focusing on changes in how player performance is weighted based on past rounds, the impact of days since last event (DSLE), and adjustments to skill estimates for strokes-gained categories. The new weighting scheme emphasizes more recent rounds while still considering long-term performance, aiming to better capture player trends. Additionally, the treatment of DSLE now accounts for the relative performance of the field, potentially altering predictions based on how recently players have competed. Lastly, improvements have been made to skill estimates for players with limited data in certain categories, ensuring more accurate projections.
+
+- Incorporate variable decay for past rounds into the predictive model.
+- Adjust DSLE calculations to reflect field averages for more accurate predictions.
+- Apply regression to the mean for players with limited data in SG categories.","Incorporate variable decay for past rounds into the predictive model.
+Adjust DSLE calculations to reflect field averages for more accurate predictions.
+Apply regression to the mean for players with limited data in SG categories.",weighting.py; dsle_adjustments.py; skill_estimates.py,"Test the new weighting scheme against historical data to evaluate predictive power.
+Analyze player performance trends before and after implementing DSLE adjustments.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/2026-offseason-tweaks,Off-Season Model Tweaks (2026),,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,,"Updates to the PGA stroke-gained model for 2026 focusing on standard deviations and shot-level data.
+
+This article discusses two significant changes made to the PGA stroke-gained model during the 2026 offseason. The first change involves a more complex approach to projecting players' standard deviations (SDs), which now accounts for skill level and driving distance. The second change incorporates shot-level data to better reflect the predictive power of individual shots, particularly in terms of diminishing returns for strokes-gained metrics. These adjustments aim to improve the accuracy of player performance predictions in tournament simulations.
+
+- Incorporate skill-based SD adjustments into simulations.
+- Use shot-level data to refine player skill estimates.
+- Adjust projections based on driving distance and performance consistency.","Incorporate skill-based SD adjustments into simulations.
+Use shot-level data to refine player skill estimates.
+Adjust projections based on driving distance and performance consistency.",standard_deviation.py; shot_level_analysis.py; player_skill_projection.py,"Validate SD adjustments against historical tournament outcomes.
+Test shot-level adjustments by comparing predicted vs. actual performance.
+Analyze the impact of driving distance on variance in player performance.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/brent-grants-putting,Brent grants putting,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,"Analyzing Brent Grant's putting performance and its implications for predictive modeling.
+
+Brent Grant's putting performance, averaging -2.8 strokes-gained per round over four rounds, raises questions about the accuracy of predictive models in estimating future performance. The model predicts his putting skill to be -0.72 strokes per round, which is significantly below average. This analysis highlights the challenges of using limited data to predict performance and the importance of considering overall skill levels.
+
+- Consider the impact of limited data on predictions.
+- Adjust predictions based on overall skill rather than solely on recent performance.
+- Incorporate more detailed data to improve accuracy.","Consider the impact of limited data on predictions.
+Adjust predictions based on overall skill rather than solely on recent performance.
+Incorporate more detailed data to improve accuracy.",putting_model.py; performance_analysis.py; data_integration.py,"Validate predictions against future performances of similar players.
+Conduct sensitivity analysis on the impact of data size on predictions.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/leaders,Does Our Model Overvalue Leaders?,,C,datagolf.com,research_doc_golf_betting_market_efficiency,model_talk,,model_talk,,model_talk;pga_tour;euro_tour;strokes_gained;player_skill,"Analysis of whether the model overvalues leaders in PGA and European Tour events.
+
+The analysis examines the win rates of players entering the final round with a share of the lead or better, comparing predicted win rates from the model against actual outcomes. The model slightly underestimated the win rates for 54-hole leaders on both the PGA and European Tours, particularly for elite players. The findings suggest a divergence between the model's predictions and betting market expectations, especially for unproven players or those with a history of losing leads. The analysis also highlights the impact of player skill levels on win rates and suggests potential adjustments to the model to account for pressure effects based on skill.
+
+- Consider adjusting pressure effects based on leader's skill level.
+- Investigate the impact of player history on win rates for leaders.
+- Explore the potential for a Tiger adjustment in elite player win rates.","Consider adjusting pressure effects based on leader's skill level.
+Investigate the impact of player history on win rates for leaders.
+Explore the potential for a Tiger adjustment in elite player win rates.",pressure_effects.py; leader_skill_adjustments.py; win_rate_analysis.py,"Validate model predictions against historical outcomes for 36-hole leaders.
+Analyze in-play betting odds to refine model predictions.
+Conduct sensitivity analysis on player skill classifications.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/pressure-revisited-again,Pressure revisited again,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,golf_performance;pressure_modeling;strokes_gained_analysis,"Exploration of modeling pressure in professional golf and its impact on performance.
+
+This article revisits the concept of pressure in professional golf, focusing on how to estimate a 'pressure-free' baseline for player performance. The author discusses the challenges of modeling pressure, particularly how a player's leaderboard position influences their performance in final rounds. The analysis highlights the importance of controlling for pressure when estimating the relationship between earlier round performances and final round outcomes. The findings suggest that while pressure affects performance, there are methods to isolate the impact of earlier rounds on final round performance, particularly in specific tournament contexts like the Tour Championship.
+
+- Incorporate pressure-free baseline estimates into performance predictions for final rounds.
+- Adjust models to account for the influence of leaderboard position on player performance.","Incorporate pressure-free baseline estimates into performance predictions for final rounds.
+Adjust models to account for the influence of leaderboard position on player performance.",pressure_model.py; baseline_estimation.py; performance_regression.py,"Validate the pressure-free baseline predictions against actual final round performances in various tournaments.
+Conduct simulations to test the impact of pressure on player performance across different leaderboard scenarios.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/variance,Variance,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,variance_analysis;performance_metrics;course_characteristics,"Exploring the implications of variance in golf scores and its impact on performance measurement.
+
+This article discusses the variation in golf scores, particularly focusing on the standard deviation of scores in PGA Tour events since 2015. It highlights the importance of standardizing scores to accurately measure performance, especially in rounds with varying levels of difficulty and skill distribution. The analysis reveals that about 25% of the variance in scores can be explained by course characteristics, with the difficulty of the course being the strongest determinant. The article concludes that while standardizing scores may seem beneficial, it risks losing valuable information about performance, particularly in rounds influenced by penalty strokes.
+
+- Consider the impact of course difficulty on variance in scores when building models.
+- Incorporate penalty strokes as a significant factor in performance measurement.
+- Evaluate the need for standardization of scores based on course characteristics.","Consider the impact of course difficulty on variance in scores when building models.
+Incorporate penalty strokes as a significant factor in performance measurement.
+Evaluate the need for standardization of scores based on course characteristics.",variance_analysis.py; course_characteristics.py; performance_measurement.py,"Test the model's predictions against historical rounds with high variance.
+Validate the impact of penalty strokes on performance metrics.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/weighting-rounds-sequence-or-time,Weighting rounds sequence or time,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,"Exploring the impact of weighting rounds by sequence versus time in golf performance modeling.
+
+The article discusses the evolution of a golf performance model that estimates baseline skill using historical strokes-gained data. Initially, the model weighted rounds based solely on their sequence, but this was found to be insufficient. A new method was introduced that incorporates the time since rounds were played, allowing for a more nuanced understanding of player performance, especially for those with inconsistent playing schedules. The article highlights the importance of balancing sequence and time weights based on player data and variance in estimates, ultimately leading to improved predictions.
+
+- Incorporate variance of estimates to adjust weights between time-weighted and sequence-weighted averages.
+- Use a dynamic weighting system that adapts based on player performance history.","Incorporate variance of estimates to adjust weights between time-weighted and sequence-weighted averages.
+Use a dynamic weighting system that adapts based on player performance history.",weighting.py; model_predictions.py; variance_adjustments.py,"Test the new weighting method against historical data to validate improvements in prediction accuracy.
+Simulate tournaments using both weighting methods to compare outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/who-cares-about-ties-part-1,Who cares about ties part 1,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,,"The importance of predicting ties in golf match-up betting.
+
+This article discusses the often-overlooked aspect of ties in golf match-up betting, emphasizing their significance in predicting outcomes and how they affect betting odds. It highlights that the probability of a tie between two average PGA Tour golfers is about 10% for a single round and 4.5% for a 72-hole match, with variations based on course variance and golfer skill differences. The article also explains how bookmakers set odds for ties and how this impacts the implied probabilities of winning for golfers.
+
+- Incorporate tie probabilities into the betting model to enhance prediction accuracy.
+- Adjust odds calculations based on golfer skill differences to reflect true tie probabilities.
+- Explore the impact of course variance on tie probabilities in the model.","Incorporate tie probabilities into the betting model to enhance prediction accuracy.
+Adjust odds calculations based on golfer skill differences to reflect true tie probabilities.
+Explore the impact of course variance on tie probabilities in the model.",betting_odds.py; tie_probability_calculator.py; matchup_analysis.py,"Validate tie probability estimates against historical match-up results.
+Backtest betting strategies based on identified lopsided match-ups.
+Analyze the performance of betting models that incorporate tie probabilities.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/model-talk/who-cares-about-ties-part-2,Who cares about ties part 2,,C,datagolf.com,wave_c_model_talk_index,model_talk,,model_talk,,golf_modeling;probability_estimation;betting_analysis,"The importance of modeling ties in golf simulations and their impact on expected value calculations.
+
+This article discusses the significance of modeling tie probabilities in golf match-ups, even when ties are voided in betting scenarios. It explains how different methods of simulating outcomes with or without ties can lead to varying estimates of break-even implied probabilities. The author illustrates this with a detailed example comparing three scenarios: simulating with ties allowed and voiding them, simulating without ties, and simulating with ties while applying dead-heat rules. The findings emphasize that excluding ties can lead to overestimating break-even probabilities, particularly in lopsided match-ups.
+
+- Modeling ties accurately can prevent overestimation of break-even probabilities.
+- Simulations should produce integer scores to reflect the data-generating process of golf scores.","Modeling ties accurately can prevent overestimation of break-even probabilities.
+Simulations should produce integer scores to reflect the data-generating process of golf scores.",matchup_simulation.py; tie_probability_model.py; expected_value_calculations.py,"Validate the model by comparing simulated outcomes with actual tournament results.
+Test the impact of including ties on betting outcomes over multiple tournaments.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/performance-and-pressure,Sleeping on the lead,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Exploring how golfers perform under pressure when near the lead in tournaments.
+
+This analysis investigates the performance of golfers in pressure situations, particularly when they are leading or near the lead in tournaments. Using a predictive model based on historical performance, the study compares actual performance against expected performance to assess the impact of pressure. Key findings include that final round leaders perform an average of 0.44 strokes below expectation, indicating a trend of underperformance under pressure. The analysis also introduces metrics such as conditional expected wins to evaluate golfers' performances relative to their win probabilities.
+
+- Incorporate starting position into predictive models to adjust for pressure effects.
+- Adjust win probabilities for leaders based on historical underperformance.","Incorporate starting position into predictive models to adjust for pressure effects.
+Adjust win probabilities for leaders based on historical underperformance.",performance_analysis.py; pressure_metrics.py; conditional_expected_wins.py,"Validate the model against historical tournament data.
+Test the impact of starting position adjustments on predictive accuracy.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/predictive-model-methodology/,Predictive model methodology,,C,datagolf.com,page_sidebar_popular_js,canonical_hub,,analytics_blog,,,"Methodology for building a predictive model for golf tournament outcomes based on strokes-gained metrics.
+
+This document outlines the methodology for a predictive golf model that estimates tournament outcomes based on golfers' adjusted strokes-gained performance. The model incorporates various statistical techniques to account for course difficulty, player ability, and historical performance, ultimately simulating tournament results to derive probabilities for different finish positions.
+
+- Incorporating course fit may improve predictions but is challenging due to noise.
+- Different weighting schemes for historical data can affect predictions significantly.
+- Live updates to player skill levels can enhance prediction accuracy during tournaments.","Incorporating course fit may improve predictions but is challenging due to noise.
+Different weighting schemes for historical data can affect predictions significantly.
+Live updates to player skill levels can enhance prediction accuracy during tournaments.",adjusted_scores.py; predictive_model.py; cross_validation.py; live_predictions.py,"Use historical tournament data to validate model predictions.
+Perform cross-validation with different parameter settings.
+Test model performance against market odds.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/raw-data-notes,Raw data notes,,C,datagolf.com,wave_c_tier1_seed,canonical_hub,,standalone,,,"Notes on raw data updates and methodologies for golf analytics.
+
+The document outlines various updates and methodologies related to raw data collection and processing for golf analytics, particularly focusing on strokes-gained categories, traditional statistics, and data integrity measures. It emphasizes the importance of accurate data handling, including the treatment of incomplete rounds and the consistency of variable definitions across different tours.
+
+- Adjust calculations for driving accuracy to exclude intermediate rough.
+- Implement checks for data integrity to handle incomplete rounds.
+- Incorporate new variables such as great shots and poor shots into modeling.","Adjust calculations for driving accuracy to exclude intermediate rough.
+Implement checks for data integrity to handle incomplete rounds.
+Incorporate new variables such as great shots and poor shots into modeling.",data_processing.py; data_validation.py; strokes_gained_calculation.py,"Validate strokes-gained calculations against PGA Tour data.
+Test the impact of including/excluding incomplete rounds on model accuracy.
+Analyze the effect of new variables on predictive performance.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/shot-level-course-fit,Shot-level course fit at Augusta,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Exploring shot-level course fit at Augusta National through detailed skill analysis.
+
+This article discusses the methodology of estimating player skills at Augusta National by categorizing them into five attributes: distance, accuracy, approach skill, around-the-green skill, and putting skill. It highlights the importance of understanding how different player types perform at specific courses and proposes a more granular approach to course fit analysis. The analysis includes expected shots from various skill bins and how these relate to player performance, ultimately aiming to provide a more accurate course fit estimate.
+
+- Adjust course fit estimates based on expected shots from skill bins.
+- Incorporate player skill profiles to refine predictions.","Adjust course fit estimates based on expected shots from skill bins.
+Incorporate player skill profiles to refine predictions.",course_fit.py; player_skill_bins.py; augusta_shot_distribution.py,"Validate course fit adjustments against historical performance data.
+Test model predictions against actual tournament outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/viz-blog/peaking-for-augusta,Peaking for augusta,,C,datagolf.com,wave_c_viz_blog_index,viz_or_betting,,viz_blog,,,"Analyzing player performance trends leading up to the Masters Tournament.
+
+This article explores how past Masters Champions have performed in the years leading up to their victories, emphasizing the importance of peaking for the event. It provides a visualization of skill estimates for players in the 2026 Masters field compared to historical champions, highlighting trends and performance metrics.
+
+- Incorporate player performance trends into predictive models for major tournaments.
+- Adjust player skill estimates based on recent performance leading up to the Masters.","Incorporate player performance trends into predictive models for major tournaments.
+Adjust player skill estimates based on recent performance leading up to the Masters.",performance_analysis.py; masters_trends.py; player_skill_visualization.py,"Validate model predictions against historical Masters outcomes.
+Test skill improvement metrics against actual tournament results.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/what-makes-a-golf-tournament-entertaining,What makes golf entertaining?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Proposing metrics to quantify the entertainment value of PGA Tour tournaments.
+
+This article introduces three metrics—Excitement, Volatility, and Star Power—to evaluate the entertainment value of golf tournaments. These metrics are derived from live win probability data and aim to capture the uncertainty of outcomes, the frequency of changes in win probabilities, and the caliber of players in contention. The metrics are correlated and provide a comprehensive view of a tournament's entertainment value, although they may not account for all subjective aspects of entertainment.
+
+- Incorporate live win probability data into simulation models.
+- Adjust metrics to account for subjective entertainment factors.
+- Explore correlations between field size and entertainment metrics.","Incorporate live win probability data into simulation models.
+Adjust metrics to account for subjective entertainment factors.
+Explore correlations between field size and entertainment metrics.",live_win_probability.py; entertainment_metrics.py; tournament_analysis.py,"Validate metrics against historical tournament data.
+Test correlation of metrics with viewer ratings or engagement.
+Analyze impact of different field sizes on metrics.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/what-makes-justin-thomas-great,What makes Justin Thomas a great iron player?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,PGA_Tour;strokes_gained;approach_performance;player_analysis;performance_metrics,"Analyzing Justin Thomas' approach game data using strokes-gained metrics.
+
+Justin Thomas has consistently excelled as an iron player on the PGA Tour, particularly in approach shots from under 200 yards. This analysis delves into his performance metrics, including strokes-gained, adjusted proximity, adjusted GIR, good shot %, and poor shot avoidance %. The findings indicate that while Thomas has a high rate of good shots, he struggles with poor shot avoidance, suggesting a high-risk, high-reward strategy that has proven effective in his approach game.
+
+- Incorporate adjusted proximity and GIR into the simulation model for better accuracy.
+- Use percentile ranks to evaluate player performance across different bins.
+- Consider the stability of metrics when predicting future performance.","Incorporate adjusted proximity and GIR into the simulation model for better accuracy.
+Use percentile ranks to evaluate player performance across different bins.
+Consider the stability of metrics when predicting future performance.",approach_performance.py; strokes_gained_analysis.py; player_metrics.py,"Compare predicted performance based on adjusted metrics to actual outcomes in tournaments.
+Evaluate the effectiveness of the high-risk strategy by analyzing shot outcomes over time.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/whats-the-strongest-field-in-professional-golf/,Strongest fields in golf,,C,datagolf.com,page_sidebar_popular_js,,,analytics_blog,,,"Analyzing the strength of fields in professional golf tournaments.
+
+This article evaluates the strength of fields in professional golf, particularly focusing on THE PLAYERS Championship compared to major tournaments. It categorizes measures of field strength into player quality and difficulty of winning, revealing that while THE PLAYERS has the highest average player quality, it is not the hardest tournament to win.
+
+- Incorporate adjusted strokes-gained into player performance models.
+- Use simulation techniques to estimate win probabilities based on golfer distributions.","Incorporate adjusted strokes-gained into player performance models.
+Use simulation techniques to estimate win probabilities based on golfer distributions.",field_strength_analysis.py; strokes_gained_adjustment.py; tournament_simulation.py,"Validate simulation outcomes against historical tournament results.
+Compare adjusted strokes-gained measures with actual performance metrics.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/where-to-miss-tpc-sawgrass,Where to miss at TPC Sawgrass,2022-03-08,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Analysis of optimal miss strategies at TPC Sawgrass for the 2022 PLAYERS Championship.
+
+The article examines the penalties associated with missing fairways left versus right at TPC Sawgrass, emphasizing that missing left is significantly more penalizing. The analysis uses shot-level data to inform players about where to miss on the course, suggesting that players should avoid left misses due to the higher stroke penalties. The findings indicate that driving accuracy is crucial for success at this course, and players who can avoid left misses are likely to perform better.
+
+- Incorporate left vs right miss penalties into stroke-gained models.
+- Adjust player performance predictions based on tendency to avoid left misses.","Incorporate left vs right miss penalties into stroke-gained models.
+Adjust player performance predictions based on tendency to avoid left misses.",course_fit.py; miss_penalties.py; player_shot_patterns.py,"Validate model predictions against historical performance data at TPC Sawgrass.
+Test the impact of left vs right miss penalties on player outcomes.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/who-benefits-from-wide-fairways,Who benefits from wide fairways?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,,"Analyzing the impact of fairway width on the performance of different types of golfers.
+
+This article explores whether wider fairways benefit short and accurate golfers compared to long and inaccurate golfers. It discusses the relationship between driving accuracy and fairway width, presenting data that suggests the advantage of accurate golfers remains constant regardless of fairway difficulty. The analysis includes scoring data and regression results, concluding that the length of the hole and the penalty for missing the fairway are more significant factors than fairway width in determining golfer performance.
+
+- Focus on hole length and missed-fairway penalties rather than fairway width.
+- Consider interaction effects between hole characteristics in modeling.","Focus on hole length and missed-fairway penalties rather than fairway width.
+Consider interaction effects between hole characteristics in modeling.",course_fit.py; strokes_gained_analysis.py; regression_models.py,"Compare predicted performance of golfer types against actual performance in tournaments.
+Analyze performance at courses with varying fairway widths and penalties.",llm_extracted_v1,openai_json_schema,,
+https://datagolf.com/who-plays-well-at-the-open,Who plays well at The Open?,,C,datagolf.com,page_sidebar_recents_js,blog_sidebar_curated,,analytics_blog,,golf_performance;nationality_effects;course_fit;individual_player_analysis,"Analyzing golfer performance trends by nationality to enhance predictions for The Open Championship.
+
+This article discusses the methodology for assessing golfer performance at The Open Championship by examining nationality-based performance trends. The model incorporates course fit and history while also considering nationality effects to make predictions, especially when historical data is limited. The analysis reveals that certain nationalities tend to over or underperform at events in specific countries, which can be leveraged to improve prediction accuracy. The article presents statistical findings on nationality-country effects and individual golfer performance, highlighting the importance of both group characteristics and individual histories in modeling outcomes.
+
+- Incorporate nationality-based adjustments into the stroke-gained model for better accuracy at The Open.
+- Utilize individual performance histories to override nationality-based priors when sufficient data is available.
+- Adjust predictions based on the specific characteristics of Links courses.","Incorporate nationality-based adjustments into the stroke-gained model for better accuracy at The Open.
+Utilize individual performance histories to override nationality-based priors when sufficient data is available.
+Adjust predictions based on the specific characteristics of Links courses.",nationality_effects.py; course_fit_analysis.py; performance_adjustments.py,"Validate the nationality-country effects by comparing predicted outcomes to actual performance in past Open Championships.
+Test the model's accuracy using historical data from various courses to ensure robustness of nationality adjustments.",llm_extracted_v1,openai_json_schema,,

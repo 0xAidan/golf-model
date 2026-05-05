@@ -33,6 +33,7 @@ python3 scripts/datagolf_llm_extract.py --limit 10
 - Appends one JSON object per article to **`datagolf_extractions.jsonl`** (full structured extraction: sections, quantitative claims, modeling implications, backtest ideas).
 - Updates **`datagolf_article_index.csv`** for those URLs: `summary_bullets`, `proposed_change`, `code_touchpoints`, `verify_with`, `model_dimensions`, `status=llm_extracted_v1`, `extraction_method=openai_json_schema`.
 - Flags: `--dry-run` (fetch + size only), `--force` (re-run even if already extracted), `--status pending_read` (default), `--temperature 0.2`.
+- If jsonl was written but the CSV was not updated (e.g. interrupted run), run: `python3 scripts/datagolf_llm_extract.py --sync-csv-from-jsonl` (no API calls).
 
 ## Next (human / QA phase)
 
