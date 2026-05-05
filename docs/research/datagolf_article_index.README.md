@@ -17,6 +17,11 @@ Sources merged:
 
 Manual seeds (sidebar `recents` / `popular` from a sample Analytics page) are preserved if already present with `discovery_source` `page_sidebar_*`.
 
+### Gaps (follow-up)
+
+- **`/blog` “load more”** is mostly JS-driven; this script uses **`/blog-home/`** link harvest plus research-doc URLs instead of full per-tag pagination. Re-run after major site changes or extend the script if you capture the XHR the blog uses.
+- **Model Talk** rows come from the **index page** only (10 posts visible in static HTML today); older posts may need manual rows or a deeper crawl.
+
 ## Next (human / QA phase)
 
 Fill `summary_bullets`, `proposed_change`, `verify_with`; set `superseded_by` when Model Talk overrides an older post; use `artifacts_note` for charts. See [datagolf_topic_taxonomy.md](datagolf_topic_taxonomy.md) and [datagolf_enumeration.md](datagolf_enumeration.md).
