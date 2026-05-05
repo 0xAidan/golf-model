@@ -120,4 +120,25 @@ describe("CockpitLabPage", () => {
     expect(await screen.findByText(/source_event_id/i)).toBeInTheDocument()
     expect(apiMock.getResearchAbReport).not.toHaveBeenCalled()
   })
+
+  it("shows partial-lab warning when only one lab section is populated", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <CockpitLabPage
+            cockpitWorkspaceProps={buildMinimalCockpitProps()}
+            usingProdSnapshotFallback={false}
+            labLanePartialSections
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByTestId("cockpit-lab-partial-sections-banner")).toHaveTextContent(
+      /partial lab snapshot/i,
+    )
+  })
 })

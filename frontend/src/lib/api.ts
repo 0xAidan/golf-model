@@ -65,12 +65,17 @@ export const api = {
     const qs = params.toString()
     return request<GradingHistoryResponse>(`/api/grading/history${qs ? `?${qs}` : ""}`)
   },
-  getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) =>
-    request<PlayerProfile>(
-      `/api/players/${playerKey}/profile?tournament_id=${tournamentId}${courseNum === undefined || courseNum === null ? "" : `&course_num=${courseNum}`}`,
-    ),
+  getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) => {
+    const enc = encodeURIComponent(playerKey)
+    const qs =
+      `tournament_id=${tournamentId}` +
+      (courseNum === undefined || courseNum === null ? "" : `&course_num=${courseNum}`)
+    return request<PlayerProfile>(`/api/players/${enc}/profile?${qs}`)
+  },
   getPlayerStandaloneProfile: (playerKey: string) =>
-    request<StandalonePlayerProfile>(`/api/players/${playerKey}/standalone-profile`),
+    request<StandalonePlayerProfile>(
+      `/api/players/${encodeURIComponent(playerKey)}/standalone-profile`,
+    ),
   searchPlayers: (q: string) =>
     request<{ players: Array<{ player_key: string; player_display: string }> }>(`/api/players/search?q=${encodeURIComponent(q)}`),
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),

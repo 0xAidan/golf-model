@@ -307,6 +307,20 @@ Use these fields to separate causes:
 - `diagnostics.selection_counts.selected_rows` (card-curated rows after exposure/pair caps)
 - `diagnostics.reason_codes` (where rows were excluded)
 
+### Live-refresh ops verification (Lab lane & Cockpit Lab)
+
+Before treating Lab Cockpit as broken or “same as production”, verify on the host:
+
+1. **`GET /api/live-refresh/status`** — worker **`running`** (and no sustained client errors).
+2. **`GET /api/live-refresh/snapshot`** — JSON includes **`lab_upcoming_tournament`** and/or **`lab_live_tournament`** when the parallel lane is enabled and healthy. If **both** are `null`, the SPA falls back to the **production** snapshot for Lab routes (amber “Lab lane off” banner). **`diagnostics.lab_upcoming_state`** / **`lab_live_state`** may hint lane failures.
+3. **`data/autoresearch_settings.json`** — **`live_refresh.lab_profile_enabled`**, **`live_refresh.lab_profile_name`** (must match a profile under `profiles:`, default **`lab_sandbox`**).
+4. **Environment** — **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** (overrides persisted JSON when set), **`DEFAULT_MODEL_VARIANT`** (production path), **`LEGACY_MODEL_VARIANT`** (legacy tournament section for AB rows).
+5. **Worker logs** — search for **`Lab upcoming snapshot recompute failed`**, **`Lab live snapshot recompute failed`**, **`Parallel lab snapshot lane failed`** in `backtester/dashboard_runtime.py` warning paths.
+
+**Two-track intent:** **Cockpit (`/`)** uses **`live_tournament` / `upcoming_tournament`** (shipped model path). **Lab Cockpit (`/cockpit-lab`)** hydrates from **`lab_live_tournament` / `lab_upcoming_tournament`** after merge (`frontend/src/lib/lab-snapshot.ts`) — parallel **`run_snapshot_analysis`** with **`resolve_lab_model_variant(lab_profile_name)`**. Tracks are independent for evaluation; grading distinguishes **`pick_source`** cockpit vs lab.
+
+**AB report vs Lab board:** **`GET /api/research/ab-report`** compares stored **`market_prediction_rows`** for **production v5** (`live`/`upcoming` sections) vs **`legacy`** — **not** Lab **`lab_*`** sections (those rows are excluded from that pairing). Do not read AB deltas as “Lab vs Cockpit.”
+
 ### Measurement APIs (v5 Milestone A)
 
 - `GET /api/calibration` — calibration summary from `prediction_log` (existing).
@@ -355,7 +369,9 @@ All default to false if missing. Current flags: `dynamic_blend`, `exposure_caps`
 
 ### `profiles.yaml` (run profiles)
 
-Three profiles: `default` (AI + backfill 2024–2026), `quick` (no AI, no backfill), `full` (AI + backfill 2020–2026). Keys: `tour`, `enable_ai`, `enable_backfill`, `backfill_years`, `output_dir`.
+Standard profiles: `default` (AI + backfill 2024–2026), `quick` (no AI, no backfill), `full` (AI + backfill 2020–2026). Keys: `tour`, `enable_ai`, `enable_backfill`, `backfill_years`, `output_dir`.
+
+**Lab lane:** **`lab_sandbox`** — used when **`live_refresh.lab_profile_name`** is `lab_sandbox` (default). Includes **`model_variant`** (`baseline` or `v5`) for the **parallel** lab snapshot recomputation (`lab_*` sections); tune here to differentiate Lab from production without changing **`DEFAULT_MODEL_VARIANT`**.
 
 ### `src/config.py` (model tuning — single source of truth)
 

@@ -19,11 +19,12 @@ profiles:
     backfill_years: [2020, 2021, 2022, 2023, 2024, 2025, 2026]
     output_dir: output
 
-  # Parallel lab snapshot lane (see live_refresh.lab_profile_* in autoresearch settings).
-  # model_variant: baseline vs production v5 — change to v5 to A/B two v5 configs if needed.
+  # Parallel lab snapshot lane — Cockpit (Lab) / lab_* snapshot sections (see live_refresh.lab_profile_*).
+  # Independent research track for comparison vs production Cockpit (DEFAULT_MODEL_VARIANT, typically v5).
+  # Tune weights/thresholds here to differentiate Lab from production without changing the shipped default.
   lab_sandbox:
     tour: pga
-    model_variant: baseline
+    model_variant: v5
     enable_ai: false
     enable_backfill: false
     output_dir: output

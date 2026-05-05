@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 
@@ -65,17 +66,21 @@ export function ResearchInstrumentationDeck({
     staleTime: 30_000,
   })
 
+  const [abTableExpanded, setAbTableExpanded] = useState(false)
+
   return (
     <div
+      className="research-instrumentation-deck"
       style={{
         flexShrink: 0,
         padding: "12px 12px 24px",
         display: "flex",
         flexDirection: "column",
         gap: 16,
-        maxWidth: 1200,
+        maxWidth: "min(100%, 720px)",
         margin: "0 auto",
         width: "100%",
+        fontSize: 12,
       }}
     >
       <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: "var(--text-muted)" }}>
@@ -105,8 +110,8 @@ export function ResearchInstrumentationDeck({
                     {rows.length === 0 ? (
                       <div className="empty-state-title">No rows.</div>
                     ) : (
-                      <div style={{ overflowX: "auto" }}>
-                        <table className="data-table">
+                      <div className="research-instrumentation-table-wrap">
+                        <table className="data-table research-instrumentation-data-table">
                           <thead>
                             <tr>
                               <th>Bucket</th>
@@ -164,8 +169,8 @@ export function ResearchInstrumentationDeck({
                   <span style={{ color: "var(--text-faint)" }}>(below min for significance)</span>
                 )}
               </div>
-              <div style={{ overflowX: "auto" }}>
-                <table className="data-table">
+              <div className="research-instrumentation-table-wrap">
+                <table className="data-table research-instrumentation-data-table">
                   <thead>
                     <tr>
                       <th>Book</th>
@@ -196,7 +201,8 @@ export function ResearchInstrumentationDeck({
           <div>
             <div className="card-title">AB report (v5 vs legacy)</div>
             <div className="card-desc">
-              Dense comparison from market_prediction_rows for the active snapshot event_id.
+              Stored rows: <strong>live/upcoming (v5)</strong> vs <strong>legacy</strong> — not Lab{" "}
+              <code style={{ fontSize: 10 }}>lab_*</code> sections.
             </div>
           </div>
         </div>
@@ -230,8 +236,13 @@ export function ResearchInstrumentationDeck({
                   Sample table truncated (first 200 pairs).
                 </div>
               ) : null}
-              <div style={{ overflowX: "auto" }}>
-                <table className="data-table">
+              <p style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.5, color: "var(--text-muted)" }}>
+                This report pairs <strong>production snapshot</strong> rows — use it for calibration research, not as a
+                diff vs the <strong>Lab Cockpit</strong> center board (Lab uses <code style={{ fontSize: 10 }}>lab_*</code>{" "}
+                recomputation).
+              </p>
+              <div className="research-instrumentation-table-wrap">
+                <table className="data-table research-instrumentation-data-table research-instrumentation-ab-table">
                   <thead>
                     <tr>
                       <th>Market</th>
@@ -244,12 +255,14 @@ export function ResearchInstrumentationDeck({
                     </tr>
                   </thead>
                   <tbody>
-                    {(abQuery.data?.paired_samples ?? []).slice(0, 50).map((s, i) => (
+                    {(abQuery.data?.paired_samples ?? [])
+                      .slice(0, abTableExpanded ? 50 : 10)
+                      .map((s, i) => (
                       <tr key={i}>
                         <td>
                           {s.key.market_family}/{s.key.market_type}
                         </td>
-                        <td style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <td className="research-instrumentation-pick-cell">
                           {s.key.player_key} vs {s.key.opponent_key}
                         </td>
                         <td>{s.key.book}</td>
@@ -262,6 +275,16 @@ export function ResearchInstrumentationDeck({
                   </tbody>
                 </table>
               </div>
+              {(abQuery.data?.paired_samples?.length ?? 0) > 10 ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ marginTop: 8, fontSize: 11 }}
+                  onClick={() => setAbTableExpanded((v) => !v)}
+                >
+                  {abTableExpanded ? "Show fewer rows" : `Show more sample rows (${Math.min(50, abQuery.data?.paired_samples?.length ?? 0)} max)`}
+                </button>
+              ) : null}
             </>
           )}
         </div>

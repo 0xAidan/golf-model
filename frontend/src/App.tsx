@@ -136,6 +136,12 @@ function App() {
     return labSnapshotMerged ?? liveSnapshot ?? null
   }, [labRouteActive, labSnapshotMerged, liveSnapshot])
   const labUsingProdSnapshotFallback = Boolean(labRouteActive && !labSnapshotMerged && liveSnapshot)
+  /** Only one of lab_live / lab_upcoming populated — merged board mixes lab + production for the missing side. */
+  const labLanePartialSections = Boolean(
+    liveSnapshot &&
+      ((liveSnapshot.lab_upcoming_tournament != null && liveSnapshot.lab_live_tournament == null) ||
+        (liveSnapshot.lab_upcoming_tournament == null && liveSnapshot.lab_live_tournament != null)),
+  )
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
   const [uiAlert, setUiAlert] = useState<string | null>(null)
 
@@ -241,16 +247,18 @@ function App() {
     if (!selectedPlayerKey || !hasProfileTournamentContext) {
       return "unavailable"
     }
-    if (playerProfileQuery.isPending || playerProfileQuery.isFetching) {
-      return "loading"
-    }
     if (playerProfileQuery.isError) {
       return "error"
     }
+    const profileData = playerProfileQuery.data
+    const dataMatchesPlayer = profileData?.player_key === selectedPlayerKey
     if (
-      playerProfileQuery.data &&
-      playerProfileQuery.data.player_key === selectedPlayerKey
+      playerProfileQuery.isPending ||
+      (!dataMatchesPlayer && (playerProfileQuery.isFetching || playerProfileQuery.isLoading))
     ) {
+      return "loading"
+    }
+    if (dataMatchesPlayer && profileData) {
       return "ready"
     }
     return "unavailable"
@@ -259,6 +267,7 @@ function App() {
     playerProfileQuery.data,
     playerProfileQuery.isError,
     playerProfileQuery.isFetching,
+    playerProfileQuery.isLoading,
     playerProfileQuery.isPending,
     selectedPlayerKey,
   ])
@@ -566,13 +575,10 @@ function App() {
   const labPowerRankingsSubtitle = useMemo(() => {
     if (!isCockpitLabRoute) return null
     if (!labSnapshotMerged) {
-      return "Using the main snapshot until lab sections populate (live-refresh worker with lab lane enabled)."
+      return "Lab track unavailable — showing production snapshot boards until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh worker, wait for next tick). For independent Lab vs Cockpit comparison, lab_* sections must be non-null."
     }
-    const mv = labWorkspaceHydrated?.model_variant
-    if (mv) {
-      return `This board uses model variant "${mv}" from profiles.yaml (lab_sandbox). Production cockpit defaults to v5 — power rankings and edges can differ.`
-    }
-    return "Parallel lab lane — power rankings use the lab profile’s model variant from profiles.yaml."
+    const mv = labWorkspaceHydrated?.model_variant ?? "unknown"
+    return `Lab Cockpit (research track) — model variant "${mv}" from profiles.yaml (lab profile via live_refresh.lab_profile_name). Production Cockpit (/) uses the shipped default model path (typically v5). Tracks are independent; compare logged picks by source (cockpit vs lab).`
   }, [isCockpitLabRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant])
 
   const labCockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
@@ -706,6 +712,7 @@ function App() {
               <CockpitLabPage
                 cockpitWorkspaceProps={labCockpitWorkspaceProps}
                 usingProdSnapshotFallback={labUsingProdSnapshotFallback}
+                labLanePartialSections={labLanePartialSections}
               />
             ) : (
               <Navigate to="/" replace />

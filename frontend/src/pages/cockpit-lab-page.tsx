@@ -9,17 +9,19 @@ import {
 export function CockpitLabPage({
   cockpitWorkspaceProps,
   usingProdSnapshotFallback = false,
+  labLanePartialSections = false,
 }: {
   cockpitWorkspaceProps: PredictionWorkspacePageProps
   usingProdSnapshotFallback?: boolean
+  /** True when only one of lab_live / lab_upcoming exists — merged view mixes lab + production. */
+  labLanePartialSections?: boolean
 }) {
   return (
     <div
+      className="cockpit-lab-root"
       style={{
         flex: 1,
         minHeight: 0,
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) minmax(340px, 420px)",
         overflow: "hidden",
       }}
     >
@@ -54,12 +56,28 @@ export function CockpitLabPage({
               profile and the next recompute fills <code style={{ fontSize: 11 }}>lab_*</code> sections.
             </div>
           ) : null}
+          {!usingProdSnapshotFallback && labLanePartialSections ? (
+            <div
+              className="term-notice amber"
+              style={{
+                margin: "8px 12px 0",
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+              data-testid="cockpit-lab-partial-sections-banner"
+            >
+              <strong>Partial lab snapshot.</strong> Only one of <code style={{ fontSize: 11 }}>lab_live_tournament</code>{" "}
+              / <code style={{ fontSize: 11 }}>lab_upcoming_tournament</code> is populated — the missing side still uses
+              the production board until both sections fill.
+            </div>
+          ) : null}
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <PredictionWorkspacePage {...cockpitWorkspaceProps} />
         </div>
       </div>
       <aside
+        className="cockpit-lab-research-aside"
         style={{
           minHeight: 0,
           overflowY: "auto",

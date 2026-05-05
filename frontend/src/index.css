@@ -1530,3 +1530,52 @@ body {
 .cockpit-resize-handle:active {
   background: var(--green-dim);
 }
+
+/* ─────────────────────────────────────────────────────
+   COCKPIT LAB — two-column layout + research pane tables
+   ───────────────────────────────────────────────────── */
+.cockpit-lab-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, min(420px, 38vw));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+@media (max-width: 1200px) {
+  .cockpit-lab-root {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(280px, 45vh);
+  }
+
+  .cockpit-lab-research-aside {
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+    max-height: min(480px, 50vh);
+  }
+}
+
+.research-instrumentation-table-wrap {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.research-instrumentation-data-table {
+  font-size: 11px;
+  min-width: 520px;
+}
+
+.research-instrumentation-data-table th,
+.research-instrumentation-data-table td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.research-instrumentation-ab-table {
+  min-width: 640px;
+}
+
+.research-instrumentation-pick-cell {
+  max-width: 220px;
+  word-break: break-word;
+  white-space: normal;
+}
