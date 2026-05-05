@@ -60,3 +60,5 @@ Captured from page source 2026-05-05:
 
 - **URL list (L0):** Achievable with the waves above; `/blog` is the primary Analytics archive.
 - **Key claims (L1):** Article **prose is present in server HTML** for representative Analytics posts (spot-check 2026-05-05: `curl` on `/where-to-miss-tpc-sawgrass` returned ~188kB HTML containing obvious article tokens). Automated or LLM summarization still needs a **QA gate** (two-pass review + spot sampling) before tying rows to code changes—see project plan “accuracy contract” and optional CSV columns `extraction_method`, `superseded_by`, `artifacts_note` in [datagolf_topic_taxonomy.md](datagolf_topic_taxonomy.md).
+
+**Refresh URL inventory:** `python3 scripts/datagolf_build_article_index.py` (rewrites [datagolf_article_index.csv](datagolf_article_index.csv); see [datagolf_article_index.README.md](datagolf_article_index.README.md)).

@@ -140,8 +140,9 @@ golf-model/
 │   │                           #   snapshots, serves via /api/live-refresh/snapshot
 │   └── intel_harvester.py   # Scrapes external intelligence sources
 │
-│ ── scripts/ (UTILITIES, 9 files) ─────────────────────────────
+│ ── scripts/ (UTILITIES, 10+ files) ────────────────────────────
 ├── scripts/
+│   ├── datagolf_build_article_index.py  # Merge Data Golf URLs into docs/research/datagolf_article_index.csv
 │   ├── grade_tournament.py
 │   ├── backfill_matchup_odds.py
 │   ├── backtest_v41_cognizant.py
@@ -237,7 +238,7 @@ golf-model/
 ├── docs/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
 │   ├── MASTERS_COCKPIT_FREEZE.md  # Operator / vs Lab model split (COCKPIT_SNAPSHOT_MODEL_VARIANT)
-│   ├── research/            # Research reports + Data Golf URL index: datagolf_enumeration.md, datagolf_topic_taxonomy.md, datagolf_article_index.csv
+│   ├── research/            # Research reports + Data Golf URL index (datagolf_*.md/csv; refresh: python scripts/datagolf_build_article_index.py)
 │   ├── plans/               # 4 implementation plans
 │   ├── autoresearch/        # pilot_contract.json, evaluation_contract.md
 │   ├── sportsbook_strategy.md
