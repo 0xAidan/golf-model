@@ -5,6 +5,8 @@ set -euo pipefail
 
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/golf-model}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+# Disk budget: typical golf.db ~6GB; 14 retained copies can exceed a small VPS root volume.
+DEPLOY_BACKUP_KEEP="${DEPLOY_BACKUP_KEEP:-4}"
 
 cd "$DEPLOY_PATH"
 
@@ -15,7 +17,7 @@ if [ -x venv/bin/python ]; then
     DB_PATH="$(python -m src.backup --print-path 2>/dev/null || echo "data/golf.db")"
     if [ -f "$DB_PATH" ]; then
         echo "[deploy] backing up $DB_PATH"
-        python -m src.backup --keep 14 || true
+        python -m src.backup --keep "$DEPLOY_BACKUP_KEEP" || true
     else
         echo "[deploy] no DB at $DB_PATH yet; skipping pre-update backup"
     fi
