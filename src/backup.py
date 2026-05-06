@@ -52,6 +52,18 @@ def create_backup(keep: int = 7) -> str | None:
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
+    # Prune *before* creating a new file so peak disk use stays at ~`keep` full
+    # copies (not `keep` + 1). Small VPS volumes often fail sqlite backup with
+    # "database or disk is full" when rotation ran only after the new backup.
+    backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")))
+    while len(backups) >= int(keep):
+        oldest = backups.pop(0)
+        try:
+            os.remove(oldest)
+            print(f"  Removed old backup to free space: {oldest}")
+        except OSError as exc:
+            print(f"  Warning: could not remove {oldest}: {exc}")
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
 
@@ -59,18 +71,25 @@ def create_backup(keep: int = 7) -> str | None:
     backup_conn = sqlite3.connect(backup_path)
     try:
         source_conn.backup(backup_conn)
+    except Exception:
+        if os.path.exists(backup_path):
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+        raise
     finally:
         backup_conn.close()
         source_conn.close()
 
-    # Rotate old backups
+    # Rotate old backups (safety if keep changed or races added files)
     backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")))
-    while len(backups) > keep:
+    while len(backups) > int(keep):
         os.remove(backups.pop(0))
 
     size_mb = os.path.getsize(backup_path) / (1024 * 1024)
     print(f"  Backup created: {backup_path} ({size_mb:.1f} MB)")
-    print(f"  Backups retained: {min(len(backups) + 1, keep)}")
+    print(f"  Backups retained: {len(backups)}")
 
     return backup_path
 
