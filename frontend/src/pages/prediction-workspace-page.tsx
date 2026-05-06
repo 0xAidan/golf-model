@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react"
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Download, ExternalLink, Radar } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -614,7 +615,13 @@ export function PredictionWorkspacePage({
       <CockpitWorkspace
         className="cockpit-fill"
         leftRail={
-          <>
+          <PanelGroup
+            direction="vertical"
+            autoSaveId="golf-model-cockpit-left-rail"
+            className="cockpit-vertical-panels cockpit-left-rail-panels"
+          >
+            <Panel defaultSize={42} minSize={14} className="cockpit-panel-shell">
+              <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
             {/* Past event selector */}
             {predictionTab === "past" && (
               <div className="card">
@@ -726,7 +733,14 @@ export function PredictionWorkspacePage({
                 feedItems={courseFeedModel.feedItems}
               />
             </CockpitModule>
-
+              </div>
+            </Panel>
+            <PanelResizeHandle
+              className="cockpit-resize-handle"
+              aria-label="Resize course area and book filters"
+            />
+            <Panel defaultSize={38} minSize={16} className="cockpit-panel-shell">
+              <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
             {/* Book filters */}
             <div className="card">
               <div className="card-header">
@@ -807,7 +821,14 @@ export function PredictionWorkspacePage({
                 </div>
               </div>
             </div>
-
+              </div>
+            </Panel>
+            <PanelResizeHandle
+              className="cockpit-resize-handle"
+              aria-label="Resize filters and recent results"
+            />
+            <Panel defaultSize={20} minSize={12} className="cockpit-panel-shell">
+              <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
             {/* Recent grading */}
             <div className="card">
               <div className="card-header">
@@ -867,7 +888,9 @@ export function PredictionWorkspacePage({
                 )}
               </div>
             </div>
-          </>
+              </div>
+            </Panel>
+          </PanelGroup>
         }
         center={
           <>
