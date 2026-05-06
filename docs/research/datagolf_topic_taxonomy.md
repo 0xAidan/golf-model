@@ -22,12 +22,12 @@
 | `betting_ops` | `src/kelly.py`, `src/portfolio.py`, `src/clv.py` |
 | `multiple` | Cross-cutting — split after reading |
 
-## Lab vs cockpit (implementation)
+## Lab vs dashboard (implementation)
 
-- **Lab:** `/cockpit-lab`, profile `lab_sandbox` → `src/lab_profile.resolve_lab_model_variant` (typically **`v5`** in `profiles.yaml`).
-- **Cockpit:** `COCKPIT_SNAPSHOT_MODEL_VARIANT` in `src/config.py` (typically **`baseline`**).
+- **Lab:** `/lab`, profile `lab_sandbox` → `src/lab_profile.resolve_lab_model_variant` (typically **`v5`** in `profiles.yaml`). Legacy URL `/cockpit-lab` redirects to `/lab`.
+- **Dashboard (`/`):** `COCKPIT_SNAPSHOT_MODEL_VARIANT` in `src/config.py` (typically **`baseline`**).
 
-Research-driven code changes from this index should target **`v5` / lab** paths or variant-gated branches; do not change baseline cockpit behavior in the same pass unless explicitly intended.
+Research-driven code changes from this index should target **`v5` / lab** paths or variant-gated branches; do not change baseline dashboard behavior in the same pass unless explicitly intended.
 
 ## `source_family`
 

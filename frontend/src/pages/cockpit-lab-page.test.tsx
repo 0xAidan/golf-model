@@ -6,10 +6,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 
 import { CockpitLabPage } from "@/pages/cockpit-lab-page"
 import type { PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
-import { LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY } from "@/lib/lab-research-instrumentation-storage"
+import {
+  LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY,
+} from "@/lib/lab-research-instrumentation-storage"
+
+const LEGACY_LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY =
+  "golf-model:cockpit-lab-research-instrumentation-expanded"
 
 vi.mock("@/pages/prediction-workspace-page", () => ({
-  PredictionWorkspacePage: () => <div data-testid="cockpit-stub">Cockpit stub</div>,
+  PredictionWorkspacePage: () => <div data-testid="lab-board-workspace-stub">Dashboard workspace stub</div>,
 }))
 
 const { apiMock } = vi.hoisted(() => ({
@@ -94,24 +99,25 @@ function renderLab(overrides?: Partial<PredictionWorkspacePageProps>) {
   )
 }
 
-describe("CockpitLabPage", () => {
+describe("LabBoardPage (CockpitLabPage)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.removeItem(LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY)
+    window.localStorage.removeItem(LEGACY_LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY)
   })
 
   it("renders banner and collapsible research deck (expand to see cards)", async () => {
     const user = userEvent.setup()
     renderLab()
 
-    expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/lab_live_tournament/i)
-    expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/lab_profile_enabled/i)
-    expect(screen.getByTestId("cockpit-stub")).toBeInTheDocument()
+    expect(screen.getByTestId("lab-board-banner")).toHaveTextContent(/lab_live_tournament/i)
+    expect(screen.getByTestId("lab-board-banner")).toHaveTextContent(/lab_profile_enabled/i)
+    expect(screen.getByTestId("lab-board-workspace-stub")).toBeInTheDocument()
 
-    expect(screen.getByTestId("cockpit-lab-research-toggle")).toHaveTextContent(/research instrumentation/i)
+    expect(screen.getByTestId("lab-board-research-toggle")).toHaveTextContent(/research instrumentation/i)
     expect(screen.queryByText(/calibration \(by market\)/i)).not.toBeInTheDocument()
 
-    await user.click(screen.getByTestId("cockpit-lab-research-toggle"))
+    await user.click(screen.getByTestId("lab-board-research-toggle"))
 
     expect(await screen.findByText(/calibration \(by market\)/i)).toBeInTheDocument()
     expect(screen.getByText(/clv by book/i)).toBeInTheDocument()
@@ -126,7 +132,7 @@ describe("CockpitLabPage", () => {
       predictionTab: "past",
     })
 
-    await user.click(screen.getByTestId("cockpit-lab-research-toggle"))
+    await user.click(screen.getByTestId("lab-board-research-toggle"))
     expect(await screen.findByText(/source_event_id/i)).toBeInTheDocument()
     expect(apiMock.getResearchAbReport).not.toHaveBeenCalled()
   })
@@ -147,7 +153,7 @@ describe("CockpitLabPage", () => {
       </QueryClientProvider>,
     )
 
-    expect(screen.getByTestId("cockpit-lab-partial-sections-banner")).toHaveTextContent(
+    expect(screen.getByTestId("lab-board-partial-sections-banner")).toHaveTextContent(
       /partial lab snapshot/i,
     )
   })

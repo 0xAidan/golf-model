@@ -321,7 +321,7 @@ function buildInventoryNotes({
 
   if (notes.length === 0) {
     notes.push({
-      label: "Cockpit context",
+      label: "Dashboard context",
       detail: "This player is currently selected from the active event context even without a featured or generated market mention.",
     })
   }

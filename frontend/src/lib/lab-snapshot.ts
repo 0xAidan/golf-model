@@ -2,7 +2,7 @@ import type { LiveRefreshSnapshot } from "@/lib/types"
 
 /**
  * Build a snapshot object whose ``live_tournament`` / ``upcoming_tournament`` keys
- * point at parallel lab lane sections (for cockpit-lab hydration).
+ * point at parallel lab lane sections (for `/lab` board hydration).
  * Returns null when lab sections are absent or both null (lane disabled / failed).
  */
 export const mergeLabSnapshotSections = (snapshot: LiveRefreshSnapshot | null): LiveRefreshSnapshot | null => {

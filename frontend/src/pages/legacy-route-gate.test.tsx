@@ -15,7 +15,7 @@ describe("LegacyRouteGate", () => {
     )
 
     expect(screen.getByText("Legacy players route unavailable in replay mode")).toBeInTheDocument()
-    expect(screen.getByText(/Use the cockpit home route for replay-aware rankings, spotlight, and player context\./i)).toBeInTheDocument()
+    expect(screen.getByText(/Use the dashboard home route for replay-aware rankings, spotlight, and player context\./i)).toBeInTheDocument()
     expect(screen.queryByText("legacy players content")).not.toBeInTheDocument()
   })
 
@@ -29,7 +29,7 @@ describe("LegacyRouteGate", () => {
     )
 
     expect(screen.getByText("Legacy matchups route unavailable in replay mode")).toBeInTheDocument()
-    expect(screen.getByText(/Use the cockpit home route for stored matchup replay, featured edges, and the full generated picks inventory\./i)).toBeInTheDocument()
+    expect(screen.getByText(/Use the dashboard home route for stored matchup replay, featured edges, and the full generated picks inventory\./i)).toBeInTheDocument()
     expect(screen.queryByText("legacy matchups content")).not.toBeInTheDocument()
   })
 

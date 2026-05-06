@@ -242,7 +242,7 @@ export function GradingPage() {
             onClick={() => setPickSource(value)}
             data-testid={`grading-source-${value}`}
           >
-            {value === "cockpit" ? "Cockpit" : value === "lab" ? "Lab" : "All"}
+            {value === "cockpit" ? "Dashboard" : value === "lab" ? "Lab" : "All"}
           </button>
         ))}
         {gradingHistoryQuery.isFetching ? (

@@ -47,7 +47,7 @@ fi
 
 python -c "from src.db import init_db; init_db()"
 
-# Cockpit (Lab): ensure parallel lab lane is on for the live-refresh worker + API unless
+# Lab board (/lab): ensure parallel lab lane is on for the live-refresh worker + API unless
 # operators already set LIVE_REFRESH_LAB_PROFILE_ENABLED in .env (set to 0 on tiny VPS to save CPU).
 venv/bin/python - <<'PY'
 from __future__ import annotations
@@ -61,7 +61,7 @@ if re.search(r"^\s*LIVE_REFRESH_LAB_PROFILE_ENABLED\s*=", prior, flags=re.MULTIL
     print("[deploy] LIVE_REFRESH_LAB_PROFILE_ENABLED already present in .env; leaving unchanged.")
 else:
     block = (
-        "\n# Cockpit (Lab): parallel snapshot lane (profiles.yaml lab_sandbox). "
+        "\n# Lab board (/lab): parallel snapshot lane (profiles.yaml lab_sandbox). "
         "Set to 0/false on very small hosts to skip extra model passes.\n"
         "LIVE_REFRESH_LAB_PROFILE_ENABLED=1\n"
     )

@@ -38,7 +38,7 @@ export function CockpitLabPage({
       }}
     >
       <div style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ flexShrink: 0 }} data-testid="cockpit-lab-banner-wrap">
+        <div style={{ flexShrink: 0 }} data-testid="lab-board-banner-wrap">
           <div
             className="term-notice"
             style={{
@@ -46,12 +46,12 @@ export function CockpitLabPage({
               fontSize: 12,
               lineHeight: 1.45,
             }}
-            data-testid="cockpit-lab-banner"
+            data-testid="lab-board-banner"
           >
-            <strong>Cockpit (Lab)</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
+            <strong>Lab</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
             <strong>lab_upcoming_tournament</strong> when the server has{" "}
-            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on. Production{" "}
-            <Link to="/">Cockpit</Link> and <Link to="/matchups">Picks</Link> stay on the main snapshot only.
+            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on.{" "}
+            <Link to="/">Dashboard</Link> and <Link to="/matchups">Picks</Link> stay on the main snapshot only.
             Lab-only picks logging: <Link to="/lab/picks">Lab picks</Link>.
           </div>
           {usingProdSnapshotFallback ? (
@@ -62,7 +62,7 @@ export function CockpitLabPage({
                 fontSize: 12,
                 lineHeight: 1.45,
               }}
-              data-testid="cockpit-lab-prod-fallback-banner"
+              data-testid="lab-board-prod-fallback-banner"
             >
               <strong>Lab lane off.</strong> Boards below mirror the main snapshot until the server enables the lab
               profile and the next recompute fills <code style={{ fontSize: 11 }}>lab_*</code> sections.
@@ -76,7 +76,7 @@ export function CockpitLabPage({
                 fontSize: 12,
                 lineHeight: 1.45,
               }}
-              data-testid="cockpit-lab-partial-sections-banner"
+              data-testid="lab-board-partial-sections-banner"
             >
               <strong>Partial lab snapshot.</strong> Only one of <code style={{ fontSize: 11 }}>lab_live_tournament</code>{" "}
               / <code style={{ fontSize: 11 }}>lab_upcoming_tournament</code> is populated — the missing side still uses
@@ -96,7 +96,7 @@ export function CockpitLabPage({
           borderLeft: "1px solid var(--border)",
           background: "var(--surface-0)",
         }}
-        data-testid="cockpit-lab-research-pane"
+        data-testid="lab-board-research-pane"
         data-research-expanded={researchExpanded ? "true" : "false"}
       >
         <div className="box-border h-full min-h-0 px-3 pb-3 pt-2">

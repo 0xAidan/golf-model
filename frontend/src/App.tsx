@@ -29,7 +29,7 @@ import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pa
 
 // Code-split heavy / rarely-visited routes. The default "/" route
 // (PredictionWorkspacePage) and the primary Picks route stay eager so the
-// cockpit boots without a Suspense flicker. Players, Grading,
+// dashboard boots without a Suspense flicker. Players, Grading,
 // Track Record, and Champion-Challenger are all secondary nav targets — the
 // operator clicks into them, so a single network round-trip on first visit
 // is acceptable and trims ~400-600 kB off the initial bundle.
@@ -82,7 +82,7 @@ const DEFAULT_REQUEST: PredictionRunRequest = {
 }
 
 const RICH_PLAYER_PROFILES_ENABLED = import.meta.env.VITE_RICH_PLAYER_PROFILES !== "0"
-/** Lab route/nav on unless production build explicitly sets `VITE_COCKPIT_LAB=0`. */
+/** Lab board + Lab picks routes on unless build sets `VITE_COCKPIT_LAB=0` (legacy env name). */
 const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
 function App() {
@@ -106,7 +106,7 @@ function App() {
     refetchInterval: 30_000,
   })
   const gradingHistoryQuery = useQuery({
-    queryKey: ["grading-history", "cockpit"],
+    queryKey: ["grading-history", "dashboard"],
     queryFn: () => api.getGradingHistory({ pickSource: "cockpit" }),
   })
   const liveRefreshStatusQuery = useQuery({
@@ -127,9 +127,11 @@ function App() {
   const liveSnapshot: LiveRefreshSnapshot | null = liveSnapshotEnvelope?.snapshot ?? null
   const location = useLocation()
   const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(liveSnapshot), [liveSnapshot])
-  const isCockpitLabRoute = location.pathname.startsWith("/cockpit-lab")
+  const isLegacyLabBoardPath =
+    location.pathname === "/cockpit-lab" || location.pathname.startsWith("/cockpit-lab/")
+  const isLabBoardRoute = location.pathname === "/lab" || isLegacyLabBoardPath
   const isLabPicksRoute = location.pathname.startsWith("/lab/picks")
-  const labRouteActive = isCockpitLabRoute || isLabPicksRoute
+  const labRouteActive = isLabBoardRoute || isLabPicksRoute
   /** When the parallel lab lane is off, lab routes still hydrate from production snapshot so the UI is usable. */
   const labDisplaySnapshot = useMemo(() => {
     if (!labRouteActive) return null
@@ -219,7 +221,7 @@ function App() {
   const playerProfileQuery = useQuery({
     queryKey: [
       "player-profile",
-      labRouteActive ? "lab" : "cockpit",
+      labRouteActive ? "lab" : "dashboard",
       selectedPlayerKey,
       profileTournamentId,
       profileCourseNum,
@@ -332,7 +334,7 @@ function App() {
 
   const matchupsPageEmptyMessage = useMemo(() => {
     if (predictionTab === "past")
-      return "Use the cockpit home to review past-event matchup replay."
+      return "Use the dashboard home to review past-event matchup replay."
     if (predictionTab === "live" && !isLiveActive)
       return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
     const diagnostics =
@@ -387,7 +389,7 @@ function App() {
 
   const labMatchupsEmptyMessage = useMemo(() => {
     if (predictionTab === "past")
-      return "Use the cockpit home to review past-event matchup replay."
+      return "Use the dashboard home to review past-event matchup replay."
     if (predictionTab === "live" && !isLiveActive)
       return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
     if (!labSnapshotMerged) {
@@ -515,7 +517,7 @@ function App() {
     onError: setUiAlert,
   })
 
-  const cockpitPowerRankingsSubtitle = useMemo(() => {
+  const dashboardPowerRankingsSubtitle = useMemo(() => {
     if (predictionTab === "past") return null
     const sec =
       predictionTab === "upcoming"
@@ -523,7 +525,7 @@ function App() {
         : liveSnapshot?.live_tournament
     const mv = sec?.model_variant
     if (!mv) return null
-    return `Cockpit — snapshot model "${String(mv)}" (default baseline operator path). Compare with Lab (research v5).`
+    return `Dashboard — snapshot model "${String(mv)}" (default baseline operator path). Compare with Lab (research v5).`
   }, [liveSnapshot, predictionTab])
 
   const cockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
@@ -555,7 +557,7 @@ function App() {
       },
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets,
-      powerRankingsSubtitle: cockpitPowerRankingsSubtitle,
+      powerRankingsSubtitle: dashboardPowerRankingsSubtitle,
     }),
     [
       liveSnapshot,
@@ -582,20 +584,20 @@ function App() {
       playerProfileErrorMessage,
       playerProfileQuery.refetch,
       secondaryBets,
-      cockpitPowerRankingsSubtitle,
+      dashboardPowerRankingsSubtitle,
     ],
   )
 
   const labPowerRankingsSubtitle = useMemo(() => {
-    if (!isCockpitLabRoute) return null
+    if (!isLabBoardRoute) return null
     if (!labSnapshotMerged) {
-      return "Lab track unavailable — showing production snapshot boards until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh worker, wait for next tick). For independent Lab vs Cockpit comparison, lab_* sections must be non-null."
+      return "Lab track unavailable — showing production snapshot boards until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh worker, wait for next tick). For an independent Lab vs Dashboard comparison, lab_* sections must be non-null."
     }
     const mv = labWorkspaceHydrated?.model_variant ?? "unknown"
-    return `Lab Cockpit — research model "${mv}" (profiles.yaml via live_refresh.lab_profile_name). Production / uses baseline snapshot by default.`
-  }, [isCockpitLabRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant])
+    return `Lab — research model "${mv}" (profiles.yaml via live_refresh.lab_profile_name). Production / (Dashboard) uses the baseline snapshot by default.`
+  }, [isLabBoardRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant])
 
-  const labCockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
+  const labBoardWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
     () => ({
       liveSnapshot: labDisplaySnapshot,
       runtimeStatus,
@@ -720,20 +722,6 @@ function App() {
           element={<PredictionWorkspacePage {...cockpitWorkspaceProps} />}
         />
         <Route
-          path="/cockpit-lab"
-          element={
-            COCKPIT_LAB_ENABLED ? (
-              <CockpitLabPage
-                cockpitWorkspaceProps={labCockpitWorkspaceProps}
-                usingProdSnapshotFallback={labUsingProdSnapshotFallback}
-                labLanePartialSections={labLanePartialSections}
-              />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-        <Route
           path="/lab/picks"
           element={
             COCKPIT_LAB_ENABLED ? (
@@ -758,6 +746,24 @@ function App() {
               <Navigate to="/" replace />
             )
           }
+        />
+        <Route
+          path="/lab"
+          element={
+            COCKPIT_LAB_ENABLED ? (
+              <CockpitLabPage
+                cockpitWorkspaceProps={labBoardWorkspaceProps}
+                usingProdSnapshotFallback={labUsingProdSnapshotFallback}
+                labLanePartialSections={labLanePartialSections}
+              />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
+          path="/cockpit-lab"
+          element={<Navigate to={COCKPIT_LAB_ENABLED ? "/lab" : "/"} replace />}
         />
         <Route
           path="/players"

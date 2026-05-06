@@ -9,11 +9,11 @@ type LegacyReplayBlockedRoute = "players" | "matchups"
 const ROUTE_COPY: Record<LegacyReplayBlockedRoute, { title: string; message: string }> = {
   players: {
     title: "Legacy players route unavailable in replay mode",
-    message: "Use the cockpit home route for replay-aware rankings, spotlight, and player context.",
+    message: "Use the dashboard home route for replay-aware rankings, spotlight, and player context.",
   },
   matchups: {
     title: "Legacy matchups route unavailable in replay mode",
-    message: "Use the cockpit home route for stored matchup replay, featured edges, and the full generated picks inventory.",
+    message: "Use the dashboard home route for stored matchup replay, featured edges, and the full generated picks inventory.",
   },
 }
 
@@ -46,7 +46,7 @@ export function LegacyRouteGate({
           to="/"
           className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/5 px-3 text-sm font-medium text-white transition hover:bg-white/10"
         >
-          Return to cockpit home
+          Return to dashboard home
         </Link>
       </div>
     </SurfaceCard>

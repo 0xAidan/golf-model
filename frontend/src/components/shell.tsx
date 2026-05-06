@@ -21,7 +21,7 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "prediction",   label: "Cockpit",      href: "/",            icon: LayoutDashboard },
+  { id: "prediction",   label: "Dashboard",    href: "/",            icon: LayoutDashboard },
   { id: "players",      label: "Players",      href: "/players",     icon: Users },
   { id: "matchups",     label: "Picks",        href: "/matchups",    icon: Swords },
   { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]
 
-/** Sidebar lab link on unless build sets `VITE_COCKPIT_LAB=0`. */
+/** Lab board + Lab picks nav on unless build sets `VITE_COCKPIT_LAB=0` (legacy env name). */
 const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
 /* ── Logo SVG mark ────────────────────────────── */
@@ -103,28 +103,24 @@ export function SuiteShell({
           {COCKPIT_LAB_ENABLED ? (
             <>
               <NavLink
-                to="/cockpit-lab"
+                to="/lab"
                 className={({ isActive }) => cn("nav-item", isActive && "active")}
-                data-testid="nav-cockpit-lab"
+                data-testid="nav-lab-board"
                 style={{ opacity: 0.92 }}
+                aria-label="Lab — sandbox boards"
               >
                 <Beaker size={15} />
-                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, opacity: 0.75 }}>Lab</span>
-                  <span>Cockpit (Lab)</span>
-                </span>
+                <span>Lab</span>
               </NavLink>
               <NavLink
                 to="/lab/picks"
                 className={({ isActive }) => cn("nav-item", isActive && "active")}
                 data-testid="nav-lab-picks"
                 style={{ opacity: 0.92 }}
+                aria-label="Lab picks"
               >
                 <Beaker size={15} />
-                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, opacity: 0.75 }}>Lab</span>
-                  <span>Picks (Lab)</span>
-                </span>
+                <span>Lab picks</span>
               </NavLink>
             </>
           ) : null}

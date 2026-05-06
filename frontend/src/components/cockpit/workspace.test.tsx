@@ -11,23 +11,23 @@ describe("SuiteShell", () => {
       <MemoryRouter>
         <SuiteShell
           headline="RBC Heritage"
-          subheadline="One cockpit for live, upcoming, and replay context."
+          subheadline="One dashboard for live, upcoming, and replay context."
           modeSwitcher={<div>Live / Upcoming / Past</div>}
           frameStatus={<div>Runtime active · 12s old</div>}
           actions={<button type="button">Refresh now</button>}
         >
-          <div>Cockpit body</div>
+          <div>Dashboard body</div>
         </SuiteShell>
       </MemoryRouter>,
     )
 
     expect(screen.getByText("Live / Upcoming / Past")).toBeInTheDocument()
     expect(screen.getByTestId("nav-prediction")).toBeInTheDocument()
-    expect(screen.getByTestId("nav-cockpit-lab")).toBeInTheDocument()
+    expect(screen.getByTestId("nav-lab-board")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /players/i })).toBeInTheDocument()
     expect(screen.getByTestId("nav-matchups")).toBeInTheDocument()
     expect(screen.getByText("Runtime active · 12s old")).toBeInTheDocument()
-    expect(screen.getByText("Cockpit body")).toBeInTheDocument()
+    expect(screen.getByText("Dashboard body")).toBeInTheDocument()
   })
 })
 
@@ -56,7 +56,7 @@ describe("CockpitWorkspace", () => {
             <CockpitModule
               title="Player spotlight"
               description="Selected player summary and deep profile space."
-              emptyState="Select a player from the cockpit to load the spotlight."
+              emptyState="Select a player from the dashboard to load the spotlight."
             />
             <CockpitModule title="Diagnostics / grading context" description="System health and review lane." />
           </>
@@ -65,7 +65,7 @@ describe("CockpitWorkspace", () => {
     )
 
     // "Left area" / "Center modules" / "Right rail" placeholder labels were
-    // removed when the cockpit shell collapsed to a borderless three-column
+    // removed when the workspace shell collapsed to a borderless three-column
     // layout; test now asserts on the real module titles rendered in each rail.
     expect(screen.getByText("Event switchboard")).toBeInTheDocument()
     expect(screen.getByText("Context rail")).toBeInTheDocument()
@@ -76,7 +76,7 @@ describe("CockpitWorkspace", () => {
     expect(screen.getByText("Power rankings")).toBeInTheDocument()
     expect(screen.getByText("Market intel")).toBeInTheDocument()
     expect(screen.getByText("Player spotlight")).toBeInTheDocument()
-    expect(screen.getByText("Select a player from the cockpit to load the spotlight.")).toBeInTheDocument()
+    expect(screen.getByText("Select a player from the dashboard to load the spotlight.")).toBeInTheDocument()
     expect(screen.getByText("Diagnostics / grading context")).toBeInTheDocument()
   })
 })
