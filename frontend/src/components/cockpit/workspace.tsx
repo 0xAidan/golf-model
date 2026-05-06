@@ -3,7 +3,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 
 import { cn } from "@/lib/utils"
 
-/* ── Three-column cockpit — fills viewport height; columns resize via drag handles.
+/* ── Three-column dashboard workspace — fills viewport height; columns resize via drag handles.
     Sizes persist in localStorage (autoSaveId). Center uses CockpitResizableStack for
     vertical splits; left rail may nest a vertical PanelGroup from the page. */
 export function CockpitWorkspace({
@@ -44,7 +44,7 @@ export function CockpitWorkspace({
   )
 }
 
-/* ── Cockpit module card — fills its grid cell, body scrolls */
+/* ── Workspace module card — fills its grid cell, body scrolls */
 export function CockpitModule({
   title,
   description,

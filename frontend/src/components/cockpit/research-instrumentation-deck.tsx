@@ -243,7 +243,7 @@ export function ResearchInstrumentationDeck({
               ) : null}
               <p style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.5, color: "var(--text-muted)" }}>
                 This report pairs <strong>production snapshot</strong> rows — use it for calibration research, not as a
-                diff vs the <strong>Lab Cockpit</strong> center board (Lab uses <code style={{ fontSize: 10 }}>lab_*</code>{" "}
+                diff vs the <strong>Lab</strong> center board (Lab uses <code style={{ fontSize: 10 }}>lab_*</code>{" "}
                 recomputation).
               </p>
               <div className="research-instrumentation-table-wrap">

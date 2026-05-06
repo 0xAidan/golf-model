@@ -1,5 +1,8 @@
 /** localStorage so power users can keep the lab research deck open across visits */
 export const LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY =
+  "golf-model:lab-board-research-instrumentation-expanded"
+
+const LEGACY_LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY =
   "golf-model:cockpit-lab-research-instrumentation-expanded"
 
 export function readLabResearchInstrumentationExpanded(): boolean {
@@ -12,6 +15,13 @@ export function readLabResearchInstrumentationExpanded(): boolean {
       return true
     }
     if (v === "0" || v === "false") {
+      return false
+    }
+    const legacy = window.localStorage.getItem(LEGACY_LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY)
+    if (legacy === "1" || legacy === "true") {
+      return true
+    }
+    if (legacy === "0" || legacy === "false") {
       return false
     }
   } catch {

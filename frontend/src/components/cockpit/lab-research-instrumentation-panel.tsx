@@ -24,7 +24,7 @@ export function LabResearchInstrumentationPanel({
         <Collapsible.Trigger
           type="button"
           data-slot="button"
-          data-testid="cockpit-lab-research-toggle"
+          data-testid="lab-board-research-toggle"
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
             "h-auto min-h-8 w-full justify-between gap-2 py-2 font-normal whitespace-normal",

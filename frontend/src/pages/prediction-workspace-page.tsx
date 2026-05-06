@@ -521,7 +521,7 @@ export function PredictionWorkspacePage({
   const showTeamEventNotice =
     (predictionTab === "live" || predictionTab === "upcoming") && isTeamEvent(activeSection)
 
-  // Cockpit modules (using exact API signatures from cockpit-event-models.ts)
+  // Dashboard workspace modules (using exact API signatures from cockpit-event-models.ts)
   const mode = predictionTab as "live" | "upcoming" | "past"
 
   const leaderboardModel = buildLeaderboardModel({
@@ -611,7 +611,7 @@ export function PredictionWorkspacePage({
         </div>
       </div>
 
-      {/* ── Three-column cockpit ─────────────────── */}
+      {/* ── Three-column dashboard workspace ─────────────────── */}
       <CockpitWorkspace
         className="cockpit-fill"
         leftRail={

@@ -310,9 +310,9 @@ Use these fields to separate causes:
 - `diagnostics.selection_counts.selected_rows` (card-curated rows after exposure/pair caps)
 - `diagnostics.reason_codes` (where rows were excluded)
 
-### Live-refresh ops verification (Lab lane & Cockpit Lab)
+### Live-refresh ops verification (Lab lane & Lab board)
 
-Before treating Lab Cockpit as broken or “same as production”, verify on the host:
+Before treating the Lab board as broken or “same as production”, verify on the host:
 
 1. **`GET /api/live-refresh/status`** — worker **`running`** (and no sustained client errors).
 2. **`GET /api/live-refresh/snapshot`** — JSON includes **`lab_upcoming_tournament`** and/or **`lab_live_tournament`** when the parallel lane is enabled and healthy. If **both** are `null`, the SPA falls back to the **production** snapshot for Lab routes (amber “Lab lane off” banner). **`diagnostics.lab_upcoming_state`** / **`lab_live_state`** may hint lane failures.
@@ -320,7 +320,7 @@ Before treating Lab Cockpit as broken or “same as production”, verify on the
 4. **Environment** — **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** (overrides persisted JSON when set), **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (operator **`/`** live+upcoming snapshot; default **`baseline`** / Masters-era boards), **`DEFAULT_MODEL_VARIANT`** (CLI / non-snapshot defaults, typically **`v5`**), **`LEGACY_MODEL_VARIANT`** (legacy tournament section for AB rows).
 5. **Worker logs** — search for **`Lab upcoming snapshot recompute failed`**, **`Lab live snapshot recompute failed`**, **`Parallel lab snapshot lane failed`** in `backtester/dashboard_runtime.py` warning paths.
 
-**Two-track intent:** **Cockpit (`/`)** uses **`live_tournament` / `upcoming_tournament`** built with **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (default **`baseline`**, Masters-era operator boards). **Lab Cockpit (`/cockpit-lab`)** hydrates from **`lab_live_tournament` / `lab_upcoming_tournament`** after merge (`frontend/src/lib/lab-snapshot.ts`) — parallel **`run_snapshot_analysis`** with **`resolve_lab_model_variant(lab_profile_name)`** (default **`lab_sandbox`** → **`v5`**). Tracks are independent; grading uses **`pick_source`** cockpit vs lab.
+**Two-track intent:** **Dashboard (`/`)** uses **`live_tournament` / `upcoming_tournament`** built with **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (default **`baseline`**, Masters-era operator boards). **Lab (`/lab`)** hydrates from **`lab_live_tournament` / `lab_upcoming_tournament`** after merge (`frontend/src/lib/lab-snapshot.ts`) — parallel **`run_snapshot_analysis`** with **`resolve_lab_model_variant(lab_profile_name)`** (default **`lab_sandbox`** → **`v5`**). Legacy SPA URL **`/cockpit-lab`** redirects to **`/lab`**. Tracks are independent; grading uses **`pick_source`** `cockpit` (main) vs `lab` (unchanged API values).
 
 **AB report vs Lab board:** **`GET /api/research/ab-report`** pairs **research v5** rows (`section` **`lab_live` / `lab_upcoming`** with v5 payload, or legacy **`live` / `upcoming`** v5 rows) vs **reference baseline** (`section` **`legacy`**, or **`live` / `upcoming`** with baseline payload). Lab-only rows still log under **`lab_*`** sections in **`market_prediction_rows`**.
 
@@ -331,14 +331,14 @@ Before treating Lab Cockpit as broken or “same as production”, verify on the
 - `GET /api/clv/summary` — CLV overall and segmented by `market_book`.
 - `GET /api/research/ab-report?event_id=...` — pairs research **v5** (`lab_*` or live/upcoming v5) vs reference **baseline** (legacy section or live/upcoming baseline) using `market_prediction_rows` (optional `persist=false` to skip writing files under `output/research/ab_reports/`).
 
-### Cockpit dashboard tabs (React SPA)
+### Dashboard tabs (React SPA)
 
 - **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`).
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed` merges `pre_teeoff_frozen` with the latest stored `live` leaderboard for that event.
 - **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses `grid-template-rows: minmax(0, 1fr)` so columns stay within the viewport. Center column: **vertical split panes** (`react-resizable-panels`, `CockpitResizableStack`) between power rankings, top picks, secondary markets, and (live/past only) leaderboard — drag horizontal gutters to resize; each pane scrolls internally. Sizes persist in `localStorage` (`autoSaveId` per layout). Without the `fr` grid row, implicit `auto` rows grow with content and clip the center column.
-- **Cockpit (Lab) — `/cockpit-lab`:** Hydrates boards from **`lab_live_tournament` / `lab_upcoming_tournament`** on the snapshot (same JSON shape as production) when the worker has computed them. **Default is on:** `live_refresh.lab_profile_enabled` defaults **true** in `src/live_refresh_policy.py`; **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** in `.env` overrides persisted JSON when set (`1`/`true` on, `0`/`false` off). **`live_refresh.lab_profile_name`** maps to `profiles.yaml` (e.g. `lab_sandbox`). **`scripts/deploy-update-steps.sh`** appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` on deploy if the key is absent so existing hosts pick up the lab lane without manual toggles. **CPU:** each enabled tick runs extra `run_snapshot_analysis` passes for the lab model variant — set env to `0` on very small VPS if needed. Parallel rows in **`market_prediction_rows`** use **`section` `lab_live` / `lab_upcoming`** so AB / v5 pairing ignores them.
-- **Lab picks — `/lab/picks`:** Same pick tables as `/matchups` but sourced from lab snapshot sections; **POST `/api/lab/log-displayed-picks`** writes `picks` with **`source=lab_sandbox`** (and `lab_sandbox_candidate` for failed-line candidates). The SPA **auto-syncs** displayed lab matchups/value rows when the snapshot changes (deduped via DB unique index); manual **Log** still available. Production cockpit logging uses **`source=cockpit`** (legacy `ui_display` rows are still read by grading filters as cockpit). **`GET /api/grading/history?pick_source=cockpit|lab|all`** filters the pick list.
+- **Lab — `/lab`:** Hydrates boards from **`lab_live_tournament` / `lab_upcoming_tournament`** on the snapshot (same JSON shape as production) when the worker has computed them. **Default is on:** `live_refresh.lab_profile_enabled` defaults **true** in `src/live_refresh_policy.py`; **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** in `.env` overrides persisted JSON when set (`1`/`true` on, `0`/`false` off). **`live_refresh.lab_profile_name`** maps to `profiles.yaml` (e.g. `lab_sandbox`). **`scripts/deploy-update-steps.sh`** appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` on deploy if the key is absent so existing hosts pick up the lab lane without manual toggles. **CPU:** each enabled tick runs extra `run_snapshot_analysis` passes for the lab model variant — set env to `0` on very small VPS if needed. Parallel rows in **`market_prediction_rows`** use **`section` `lab_live` / `lab_upcoming`** so AB / v5 pairing ignores them. **`/cockpit-lab`** redirects to **`/lab`** (bookmarks).
+- **Lab picks — `/lab/picks`:** Same pick tables as `/matchups` but sourced from lab snapshot sections; **POST `/api/lab/log-displayed-picks`** writes `picks` with **`source=lab_sandbox`** (and `lab_sandbox_candidate` for failed-line candidates). The SPA **auto-syncs** displayed lab matchups/value rows when the snapshot changes (deduped via DB unique index); manual **Log** still available. Production (Dashboard) logging uses **`source=cockpit`** (legacy `ui_display` rows are still read by grading filters under the `cockpit` pick source). **`GET /api/grading/history?pick_source=cockpit|lab|all`** filters the pick list.
 
 ---
 
@@ -365,7 +365,7 @@ Before treating Lab Cockpit as broken or “same as production”, verify on the
 | `PREFERRED_BOOK` | No | `bet365` | Optional preferred-book metadata shown alongside best-line pricing (no filtering) |
 | `PREFERRED_BOOK_ONLY` | No | `false` | Deprecated legacy toggle (not used by current pipelines) |
 | `LIVE_REFRESH_LAB_PROFILE_ENABLED` | No | *(unset)* | When set, forces parallel lab snapshot lane on/off for `get_settings()` / worker (overrides `data/autoresearch_settings.json`). Deploy appends `=1` if missing. Use `0`/`false` on tiny VPS to save CPU. |
-| `COCKPIT_SNAPSHOT_MODEL_VARIANT` | No | `baseline` | **`live_tournament` / `upcoming_tournament`** model variant in live-refresh (`backtester/dashboard_runtime.py`). Default **baseline** = Masters-era operator Cockpit; set **`v5`** to put research stack back on `/`. |
+| `COCKPIT_SNAPSHOT_MODEL_VARIANT` | No | `baseline` | **`live_tournament` / `upcoming_tournament`** model variant in live-refresh (`backtester/dashboard_runtime.py`). Default **baseline** = Masters-era operator Dashboard; set **`v5`** to put research stack back on `/`. |
 
 ### `feature_flags.yaml` (booleans, read by `src/feature_flags.py`)
 
@@ -614,7 +614,7 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 - **First-time setup:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --setup`
 - **Status check:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --status`
 
-Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, **appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` when that key is absent** (parallel lab lane for Cockpit Lab), and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
+Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, **appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` when that key is absent** (parallel lab lane for `/lab`), and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
 
 ### What `--update` does
 
@@ -656,7 +656,7 @@ The React frontend builds to `frontend/dist/` and is served by FastAPI at `/`. O
 cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 ```
 
-**Vite env (baked at build time):** `VITE_RICH_PLAYER_PROFILES` — set to `0` to disable rich player profiles. **`VITE_COCKPIT_LAB=0`** — hides the Cockpit (Lab) sidebar entry and `/cockpit-lab` route (default is **shown** unless you opt out at build time).
+**Vite env (baked at build time):** `VITE_RICH_PLAYER_PROFILES` — set to `0` to disable rich player profiles. **`VITE_COCKPIT_LAB=0`** (legacy name) — hides the **Lab** and **Lab picks** sidebar entries and the **`/lab`** / **`/lab/picks`** routes (default is **shown** unless you opt out at build time).
 
 ---
 
@@ -683,7 +683,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
 | Frontend dashboard (React SPA) | `frontend/src/App.tsx` |
-| Cockpit lab route + research deck | `frontend/src/pages/cockpit-lab-page.tsx`, `frontend/src/components/cockpit/research-instrumentation-deck.tsx` (opt out with `VITE_COCKPIT_LAB=0` at build) |
+| Lab board route + research deck | `frontend/src/pages/cockpit-lab-page.tsx` (URL **`/lab`**; **`/cockpit-lab`** → redirect), `frontend/src/components/cockpit/research-instrumentation-deck.tsx` (opt out with `VITE_COCKPIT_LAB=0` at build) |
 | Frontend API client / types | `frontend/src/lib/api.ts`, `frontend/src/lib/types.ts` |
 | Frontend UI components | `frontend/src/components/` |
 | Frontend build config | `frontend/vite.config.ts`, `frontend/tailwind.config.ts` |

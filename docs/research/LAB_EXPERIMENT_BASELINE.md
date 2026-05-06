@@ -1,6 +1,6 @@
-# Lab experiment baseline (cockpit-lab / `v5`)
+# Lab experiment baseline (`/lab` / `v5`)
 
-**Purpose:** frozen measurement contract for comparing lab (`lab_sandbox` → `v5`) vs operator cockpit snapshot variant (`COCKPIT_SNAPSHOT_MODEL_VARIANT`, typically `baseline`).
+**Purpose:** frozen measurement contract for comparing lab (`lab_sandbox` → `v5`) vs operator dashboard snapshot variant (`COCKPIT_SNAPSHOT_MODEL_VARIANT`, typically `baseline`).
 
 **Scope:** Research-backed changes ship behind `model_variant == "v5"` and lab snapshot lanes (`lab_live_tournament`, `lab_upcoming_tournament`). Operator `/` boards remain unchanged unless explicitly promoted.
 

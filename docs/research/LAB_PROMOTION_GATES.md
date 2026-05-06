@@ -1,6 +1,6 @@
 # Lab promotion gates
 
-Research-driven features are implemented under **`model_variant == "v5"`** (lab / `lab_sandbox`). Nothing listed here promotes changes to operator cockpit by default.
+Research-driven features are implemented under **`model_variant == "v5"`** (lab / `lab_sandbox`). Nothing listed here promotes changes to the operator dashboard by default.
 
 ## Phase gates (pass all that apply before widening exposure)
 
@@ -30,9 +30,9 @@ Research-driven features are implemented under **`model_variant == "v5"`** (lab 
 - **Pass:** `INPLAY_ROUND_MATCHUPS_SHADOW` path only; documented sample counts; no staking path enabled.
 - **Fail:** pressure feature affects non-shadow pricing.
 
-## Operator cockpit promotion (explicit)
+## Operator dashboard promotion (explicit)
 
-Promotion of any lab change to **baseline** cockpit requires:
+Promotion of any lab change to **baseline** dashboard (main `/` snapshot) requires:
 
 1. Documented AB + soak period.
 2. Explicit change to `COCKPIT_SNAPSHOT_MODEL_VARIANT` or profile merge — **out of scope** for automated lab implementation.

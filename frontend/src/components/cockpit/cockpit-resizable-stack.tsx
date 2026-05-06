@@ -10,7 +10,7 @@ type CockpitResizableStackProps = {
   showLeaderboard: boolean
 }
 
-/* Vertical split panes for cockpit center — sizes persist in localStorage per layout mode. */
+/* Vertical split panes for dashboard center column — sizes persist in localStorage per layout mode. */
 export function CockpitResizableStack({
   rankings,
   topPicks,

@@ -1,6 +1,6 @@
-# Masters-era Cockpit snapshot (operator `/`)
+# Masters-era Dashboard snapshot (operator `/`)
 
-**Purpose:** Record what “roll back Cockpit to Masters” means in this repo for agents and operators.
+**Purpose:** Record what “roll back the main dashboard snapshot to Masters” means in this repo for agents and operators.
 
 **Anchor commits (April 2026, pre–full v5 on main snapshot):**
 
@@ -11,6 +11,6 @@
 
 - **`live_tournament` / `upcoming_tournament`** use `config.COCKPIT_SNAPSHOT_MODEL_VARIANT` (default **`baseline`** via env `COCKPIT_SNAPSHOT_MODEL_VARIANT`, unset = baseline).
 - **`lab_live_tournament` / `lab_upcoming_tournament`** use `profiles.yaml` → `live_refresh.lab_profile_name` (default `lab_sandbox`, typically **`model_variant: v5`**).
-- **`legacy_tournament`** still uses `LEGACY_MODEL_VARIANT` (**baseline**). When the upcoming event matches the legacy target and cockpit is already baseline, the runtime **reuses** the upcoming analysis dict to avoid a duplicate baseline `run_snapshot_analysis`.
+- **`legacy_tournament`** still uses `LEGACY_MODEL_VARIANT` (**baseline**). When the upcoming event matches the legacy target and the main snapshot is already baseline, the runtime **reuses** the upcoming analysis dict to avoid a duplicate baseline `run_snapshot_analysis`.
 
 **Promote research to `/` again:** set `COCKPIT_SNAPSHOT_MODEL_VARIANT=v5` (or change the default in `src/config.py` with care) after you intentionally want operator boards on v5.

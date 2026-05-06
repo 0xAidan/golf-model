@@ -16,7 +16,7 @@ MODEL_VERSION = "5.0"
 ALLOWED_MODEL_VARIANTS = {"baseline", "v5"}
 DEFAULT_MODEL_VARIANT = os.environ.get("DEFAULT_MODEL_VARIANT", "v5").strip().lower() or "v5"
 LEGACY_MODEL_VARIANT = os.environ.get("LEGACY_MODEL_VARIANT", "baseline").strip().lower() or "baseline"
-# Operator Cockpit (`/`): live_tournament + upcoming_tournament in live-refresh snapshot.
+# Operator dashboard (`/`): live_tournament + upcoming_tournament in live-refresh snapshot.
 # Default baseline matches pre–full-v5-switchover / Masters-era main boards; Lab uses lab_sandbox (typically v5).
 _raw_cockpit = os.environ.get("COCKPIT_SNAPSHOT_MODEL_VARIANT", "baseline").strip().lower() or "baseline"
 COCKPIT_SNAPSHOT_MODEL_VARIANT = (
