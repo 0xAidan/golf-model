@@ -1469,6 +1469,91 @@ body {
   overflow: hidden !important;
 }
 
+/* Three main columns (react-resizable-panels, direction horizontal) */
+.cockpit-horizontal-panels {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 6px;
+  gap: 0;
+}
+
+.cockpit-column-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-column-stack {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cockpit-column-fill {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  gap: 4px;
+}
+
+.cockpit-column-scroll {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.cockpit-left-rail-panels {
+  min-height: 0;
+}
+
+.cockpit-left-rail-section {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.cockpit-resize-handle-col {
+  width: 6px;
+  min-width: 6px;
+  margin: 0 1px;
+  height: auto;
+  align-self: stretch;
+  cursor: col-resize;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  background: var(--border);
+  touch-action: none;
+  outline: none;
+  transition: background var(--ease), box-shadow var(--ease);
+}
+
+.cockpit-resize-handle-col:hover,
+.cockpit-resize-handle-col:focus-visible {
+  background: rgba(34, 197, 94, 0.28);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
+}
+
+.cockpit-resize-handle-col:active {
+  background: var(--green-dim);
+}
+
 /* ─────────────────────────────────────────────────────
    COCKPIT CENTER — vertical split panes (react-resizable-panels)
    ───────────────────────────────────────────────────── */
@@ -1492,6 +1577,12 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Left rail vertical panels scroll inside each band */
+.cockpit-panel-fill.cockpit-left-rail-section {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Cards inside a pane fill height and scroll inside .table-scroll */

@@ -1,57 +1,46 @@
+import type { ReactNode } from "react"
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
+
 import { cn } from "@/lib/utils"
 
-/* ── Three-column cockpit — fills viewport height, columns scroll internally */
+/* ── Three-column cockpit — fills viewport height; columns resize via drag handles.
+    Sizes persist in localStorage (autoSaveId). Center uses CockpitResizableStack for
+    vertical splits; left rail may nest a vertical PanelGroup from the page. */
 export function CockpitWorkspace({
   leftRail,
   center,
   rightRail,
   className,
 }: {
-  leftRail: React.ReactNode
-  center: React.ReactNode
-  rightRail: React.ReactNode
+  leftRail: ReactNode
+  center: ReactNode
+  rightRail: ReactNode
   className?: string
 }) {
   return (
-    <div
-      className={cn(className)}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "240px minmax(0,1fr) 380px",
-        /* Single fr row keeps the grid within the flex parent height; implicit auto
-           rows grow with max-content and prevent column scrollbars (center content
-           clipped with no way to reach picks below power rankings). */
-        gridTemplateRows: "minmax(0, 1fr)",
-        gap: 4,
-        padding: 6,
-        flex: 1,
-        minHeight: 0,
-        overflow: "hidden",
-      }}
+    <PanelGroup
+      direction="horizontal"
+      autoSaveId="golf-model-cockpit-columns"
+      className={cn("cockpit-horizontal-panels", className)}
     >
-      {/* Left column — scrolls internally */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-        {leftRail}
-      </div>
-      {/* Center column — bounded height; main tables use vertical split panes */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          minHeight: 0,
-          height: "100%",
-          overflow: "hidden",
-          overflowX: "hidden",
-        }}
-      >
-        {center}
-      </div>
-      {/* Right column */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-        {rightRail}
-      </div>
-    </div>
+      <Panel defaultSize={17} minSize={12} maxSize={42} className="cockpit-column-panel">
+        <div className="cockpit-column-stack">{leftRail}</div>
+      </Panel>
+      <PanelResizeHandle
+        className="cockpit-resize-handle cockpit-resize-handle-col"
+        aria-label="Resize left and center columns"
+      />
+      <Panel defaultSize={56} minSize={32} className="cockpit-column-panel">
+        <div className="cockpit-column-fill">{center}</div>
+      </Panel>
+      <PanelResizeHandle
+        className="cockpit-resize-handle cockpit-resize-handle-col"
+        aria-label="Resize center and right columns"
+      />
+      <Panel defaultSize={27} minSize={15} maxSize={52} className="cockpit-column-panel">
+        <div className="cockpit-column-scroll">{rightRail}</div>
+      </Panel>
+    </PanelGroup>
   )
 }
 
@@ -68,8 +57,8 @@ export function CockpitModule({
 }: {
   title: string
   description?: string
-  action?: React.ReactNode
-  children?: React.ReactNode
+  action?: ReactNode
+  children?: ReactNode
   emptyState?: string
   className?: string
   flex?: number
