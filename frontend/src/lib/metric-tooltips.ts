@@ -58,6 +58,8 @@ export const MATCHUP_TABLE_TOOLTIPS = {
   reason: "Short model rationale when the pipeline attached one.",
   ev: "Expected value vs posted implied probability (model edge).",
   winPct: "Model win probability for the pick side, before vig.",
+  result:
+    "Past events only: graded head-to-head result from final finishes (W/L), push (P), Pending when data is incomplete, or unavailable (—) for markets we do not derive here.",
   lane: "Bet type or pipeline lane (e.g. matchup vs alternate line).",
   market: "Secondary market type (top 5, top 10, etc.).",
   player: "Player named on the prop or finishing market.",
@@ -208,7 +210,7 @@ export const SPOTLIGHT_NOTE_TOOLTIPS: Record<string, string> = {
   "Captured featured play": "Featured play saved on the past-event replay snapshot.",
   "Best secondary market": "Strongest EV secondary (prop/top-N) line for this player.",
   "Generated matchup inventory": "Number of generated matchup rows mentioning this player.",
-  "Cockpit context": "Player is selected for context even without a featured or secondary line.",
+  "Dashboard context": "Player is selected for context even without a featured or secondary line.",
 }
 
 export const PROFILE_CHART_LABEL_TOOLTIPS: Record<string, string> = {

@@ -1,4 +1,5 @@
 import { flattenSecondaryBets } from "@/lib/prediction-board"
+import { readStoredMatchupOutcome } from "@/lib/matchup-pick-grade"
 import type { FlattenedSecondaryBet, MatchupBet, PastMarketPredictionRow, PredictionRunResponse } from "@/lib/types"
 
 export function getRawGeneratedMatchups(predictionRun: PredictionRunResponse | null): MatchupBet[] {
@@ -14,6 +15,7 @@ export function buildReplayGeneratedMatchups(rows: PastMarketPredictionRow[]): M
     .filter((row) => row.market_family === "matchup")
     .map((row) => {
       const payload = row.payload ?? {}
+      const storedGrade = readStoredMatchupOutcome(payload as Record<string, unknown>)
       const ev = typeof row.ev === "number" ? row.ev : Number(payload.ev ?? 0)
       const modelWinProb =
         typeof row.model_prob === "number"
@@ -49,6 +51,7 @@ export function buildReplayGeneratedMatchups(rows: PastMarketPredictionRow[]): M
         opp_momentum: numberFromPayload(payload.opp_momentum),
         momentum_aligned: typeof payload.momentum_aligned === "boolean" ? payload.momentum_aligned : undefined,
         market_type: row.market_type ?? undefined,
+        ...(storedGrade ? { graded_result: storedGrade } : {}),
       }
     })
     .sort((left, right) => right.ev - left.ev)
