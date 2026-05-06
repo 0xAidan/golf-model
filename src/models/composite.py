@@ -12,6 +12,7 @@ import logging
 
 from src import db
 from src import config
+from src.lab_field_context import compute_field_strength_context
 from src.models.course_fit import compute_course_fit
 from src.models.form import compute_form
 from src.models.momentum import compute_momentum
@@ -87,8 +88,13 @@ def compute_composite(tournament_id: int, weights: dict = None,
                 weights["momentum"] = 0.0
 
     # Compute each sub-model
-    course_scores = compute_course_fit(tournament_id, weights, course_name=course_name)
-    form_scores = compute_form(tournament_id, weights)
+    field_ctx = compute_field_strength_context(tournament_id)
+    course_scores = compute_course_fit(
+        tournament_id, weights, course_name=course_name, model_variant=variant
+    )
+    form_scores = compute_form(
+        tournament_id, weights, model_variant=variant, field_context=field_ctx
+    )
 
     # Identify elite players (top 15 by DG skill rating) for momentum floor
     elite_players = set()
@@ -151,7 +157,8 @@ def compute_composite(tournament_id: int, weights: dict = None,
                     "course_confidence": cs.get("confidence"),
                     "momentum": momentum_score,
                     "form_flags": fs.get("flags") or [],
-                }
+                },
+                field_strength_index=field_ctx.get("index"),
             )
             # v5 ranking path: preserve signal while shrinking noisier players
             # toward neutral and de-emphasizing volatile momentum swings.
@@ -186,6 +193,7 @@ def compute_composite(tournament_id: int, weights: dict = None,
             "course_confidence": cs.get("confidence", 0),
             "course_rounds": cs.get("rounds", 0),
             "model_variant": variant,
+            "field_strength_index": field_ctx.get("index"),
             "v5_uncertainty": round(uncertainty, 4) if uncertainty is not None else None,
             "weather_adjustment": round(weather_adj, 2),
             "weather_info": weather_info,

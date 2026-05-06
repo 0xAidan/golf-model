@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import math
 
-
+from src import config
 def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def estimate_player_uncertainty(player_row: dict | None) -> float:
+def estimate_player_uncertainty(
+    player_row: dict | None,
+    *,
+    field_strength_index: float | None = None,
+) -> float:
     """
     Estimate a 0-1 uncertainty score from existing model features.
 
@@ -38,8 +42,23 @@ def estimate_player_uncertainty(player_row: dict | None) -> float:
     form_flags = player_row.get("form_flags") or []
     flag_penalty = 0.05 * len(form_flags)
 
+    fs_penalty = 0.0
+    if field_strength_index is not None:
+        try:
+            fi = float(field_strength_index)
+        except (TypeError, ValueError):
+            fi = 0.5
+        # Weaker fields (index below 0.5) → modest uncertainty bump (research: field strength).
+        fs_penalty = max(0.0, (0.5 - fi)) * float(
+            getattr(config, "V5_UNCERTAINTY_FIELD_STRENGTH_COEF", 0.12)
+        )
+
     base = 0.20
-    return _clamp(base + confidence_penalty + momentum_penalty + flag_penalty, 0.05, 0.90)
+    return _clamp(
+        base + confidence_penalty + momentum_penalty + flag_penalty + fs_penalty,
+        0.05,
+        0.90,
+    )
 
 
 def v5_matchup_win_probability(
@@ -56,8 +75,14 @@ def v5_matchup_win_probability(
     gap = abs(float(composite_gap))
     raw_prob = 1.0 / (1.0 + math.exp(platt_a * gap + platt_b))
 
-    pick_unc = estimate_player_uncertainty(pick_data)
-    opp_unc = estimate_player_uncertainty(opp_data)
+    fs_idx = None
+    if isinstance(pick_data, dict):
+        fs_idx = pick_data.get("field_strength_index")
+    if fs_idx is None and isinstance(opp_data, dict):
+        fs_idx = opp_data.get("field_strength_index")
+
+    pick_unc = estimate_player_uncertainty(pick_data, field_strength_index=fs_idx)
+    opp_unc = estimate_player_uncertainty(opp_data, field_strength_index=fs_idx)
     uncertainty = _clamp((pick_unc + opp_unc) / 2.0, 0.05, 0.90)
 
     # Shrink toward 50/50 under uncertainty.

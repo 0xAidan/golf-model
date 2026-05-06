@@ -239,7 +239,7 @@ golf-model/
 ├── docs/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
 │   ├── MASTERS_COCKPIT_FREEZE.md  # Operator / vs Lab model split (COCKPIT_SNAPSHOT_MODEL_VARIANT)
-│   ├── research/            # Data Golf index (datagolf_*.md/csv/jsonl); URLs: python scripts/datagolf_build_article_index.py; LLM extract: python scripts/datagolf_llm_extract.py
+│   ├── research/            # Data Golf index + lab experiment docs (LAB_EXPERIMENT_BASELINE.md, LAB_PROMOTION_GATES.md); URLs: datagolf_build_article_index.py; LLM: datagolf_llm_extract.py
 │   ├── plans/               # 4 implementation plans
 │   ├── autoresearch/        # pilot_contract.json, evaluation_contract.md
 │   ├── sportsbook_strategy.md

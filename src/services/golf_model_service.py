@@ -245,6 +245,15 @@ class GolfModelService:
         result["rolling_stats"] = rolling
         result["total_rounds"] = db.get_rounds_count()
 
+        if self.model_variant == "v5" and getattr(config, "LAB_V5_DATA_INTEGRITY_REPORT", True):
+            from src.lab_data_integrity import evaluate_lab_data_integrity
+
+            lab_diag = evaluate_lab_data_integrity(tid)
+            result["lab_data_integrity"] = lab_diag
+            for w in lab_diag.get("warnings") or []:
+                if w not in result["warnings"]:
+                    result["warnings"].append(w)
+
         # Step 7: Load course profile
         print("  Loading course profile...")
         profile = self._load_course_profile(course_name, sync_result.get("decompositions_raw"))

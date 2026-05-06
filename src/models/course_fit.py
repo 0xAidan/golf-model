@@ -120,8 +120,12 @@ def _get_course_recency(tournament_id: int) -> dict:
     return recency
 
 
-def compute_course_fit(tournament_id: int, weights: dict,
-                       course_name: str = None) -> dict:
+def compute_course_fit(
+    tournament_id: int,
+    weights: dict,
+    course_name: str = None,
+    model_variant: str | None = None,
+) -> dict:
     """
     Compute course fit score for every player in the tournament.
 
@@ -171,6 +175,17 @@ def compute_course_fit(tournament_id: int, weights: dict,
 
     # Get course recency data for time decay
     course_recency = _get_course_recency(tournament_id)
+
+    variant_cf = str(model_variant or config.DEFAULT_MODEL_VARIANT).strip().lower()
+    shot_lab: dict = {}
+    if (
+        course_name
+        and variant_cf == "v5"
+        and getattr(config, "V5_LAB_COURSE_SHOT_FIT", True)
+    ):
+        prof = load_course_profile(course_name)
+        if isinstance(prof, dict):
+            shot_lab = prof.get("lab_research") or prof.get("model_extensions") or {}
 
     # Organize by player
     player_data = {}
@@ -384,6 +399,19 @@ def compute_course_fit(tournament_id: int, weights: dict,
 
         elif not course_metrics and not dg_data and not dg_sk:
             pass
+
+        asym = shot_lab.get("miss_left_minus_right_penalty_strokes")
+        if asym is not None and variant_cf == "v5":
+            try:
+                ott_signal = (components["sg_ott"] - 50.0) / 50.0
+                score += (
+                    float(asym)
+                    * ott_signal
+                    * float(getattr(config, "V5_LAB_SHOT_FIT_SCALE", 0.45))
+                )
+                components["lab_shot_asym"] = round(float(asym) * ott_signal, 4)
+            except (TypeError, ValueError):
+                pass
 
         # Apply confidence modifier AFTER all blends (prevents double-penalizing
         # low-confidence players who also get heavy DG blending)

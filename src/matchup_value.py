@@ -13,8 +13,24 @@ import time
 from src.player_normalizer import normalize_name
 from src import config, db
 from src.odds import american_to_implied_prob
+from src.odds_utils import american_to_decimal
 
 logger = logging.getLogger("matchup_value")
+
+
+def _estimate_matchup_tie_probability(gap: float, uncertainty: float | None) -> float:
+    """Heuristic tie probability for void-style matchup markets (research: Model Talk ties)."""
+    base = float(getattr(config, "V5_MATCHUP_TIE_BASE", 0.11))
+    scale = float(getattr(config, "V5_MATCHUP_TIE_GAP_SCALE", 14.0))
+    u = 0.25 if uncertainty is None else float(uncertainty)
+    spread = base * math.exp(-abs(float(gap)) / scale) * (1.0 + 0.5 * u)
+    return min(float(getattr(config, "V5_MATCHUP_MAX_TIE_PROB", 0.14)), max(0.0, spread))
+
+
+def _v5_matchup_ev_void_tie(model_win_prob: float, decimal_odds: float, tie_prob: float) -> float:
+    """EV per unit stake when ties push (profit win, loss lose, tie refund)."""
+    p_loss = max(1e-9, 1.0 - float(model_win_prob) - float(tie_prob))
+    return float(model_win_prob) * (float(decimal_odds) - 1.0) - p_loss
 
 _platt_cache = None
 _platt_cache_time = 0
@@ -356,6 +372,10 @@ def _find_matchup_value_bets_core(
             platt_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
             v5_uncertainty = None
 
+        tie_prob = 0.0
+        if model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True):
+            tie_prob = _estimate_matchup_tie_probability(gap, v5_uncertainty)
+
         # Blend with DG's own matchup model probability if available
         model_win_prob = platt_win_prob
         dg_prob = None
@@ -498,7 +518,11 @@ def _find_matchup_value_bets_core(
                 diagnostics["reason_codes"]["invalid_implied_prob"] += 1
                 continue
 
-            ev = (model_win_prob / implied_prob) - 1.0
+            dec_pick = american_to_decimal(int(pick_odds))
+            if model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True):
+                ev = _v5_matchup_ev_void_tie(model_win_prob, dec_pick, tie_prob)
+            else:
+                ev = (model_win_prob / implied_prob) - 1.0
             if ev < ev_threshold:
                 diagnostics["reason_codes"]["below_ev_threshold"] += 1
                 if len(failed_candidates) < FAILED_CANDIDATE_LIMIT:

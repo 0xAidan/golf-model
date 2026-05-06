@@ -301,6 +301,43 @@ FIELD_SIZE_MIN = 50
 FIELD_SIZE_MAX = 170
 PROBABILITY_SUM_TOLERANCE = 0.05   # outright probs sum in [0.95, 1.05]
 
+# ---------------------------------------------------------------------------
+# Lab / v5 research features (gated in code by model_variant == "v5")
+# Defaults favor lab experiments; baseline cockpit remains on variant "baseline".
+# ---------------------------------------------------------------------------
+LAB_V5_DATA_INTEGRITY_REPORT: bool = os.environ.get(
+    "LAB_V5_DATA_INTEGRITY_REPORT", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+V5_LAB_ADAPTIVE_RECENCY: bool = os.environ.get(
+    "V5_LAB_ADAPTIVE_RECENCY", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+V5_LAB_RECENCY_EXP_DECAY: float = float(os.environ.get("V5_LAB_RECENCY_EXP_DECAY", "0.35"))
+V5_LAB_FIELD_STRENGTH_FORM: bool = os.environ.get(
+    "V5_LAB_FIELD_STRENGTH_FORM", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+V5_LAB_FIELD_STRENGTH_STRETCH: float = float(
+    os.environ.get("V5_LAB_FIELD_STRENGTH_STRETCH", "0.12")
+)
+V5_LAB_COURSE_SHOT_FIT: bool = os.environ.get(
+    "V5_LAB_COURSE_SHOT_FIT", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+V5_LAB_SHOT_FIT_SCALE: float = float(os.environ.get("V5_LAB_SHOT_FIT_SCALE", "0.45"))
+V5_LAB_TIE_AWARE_MATCHUP_EV: bool = os.environ.get(
+    "V5_LAB_TIE_AWARE_MATCHUP_EV", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+V5_MATCHUP_TIE_BASE: float = float(os.environ.get("V5_MATCHUP_TIE_BASE", "0.11"))
+V5_MATCHUP_TIE_GAP_SCALE: float = float(os.environ.get("V5_MATCHUP_TIE_GAP_SCALE", "14.0"))
+V5_MATCHUP_MAX_TIE_PROB: float = float(os.environ.get("V5_MATCHUP_MAX_TIE_PROB", "0.14"))
+V5_UNCERTAINTY_FIELD_STRENGTH_COEF: float = float(
+    os.environ.get("V5_UNCERTAINTY_FIELD_STRENGTH_COEF", "0.12")
+)
+V5_LAB_PRESSURE_SHADOW: bool = os.environ.get(
+    "V5_LAB_PRESSURE_SHADOW", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+V5_LAB_PRESSURE_MAX_NUDGE: float = float(
+    os.environ.get("V5_LAB_PRESSURE_MAX_NUDGE", "0.04")
+)
+
 # Pipeline timing: block execution after R1 starts unless --force is used.
 # Mid-tournament odds are in-play prices, not pre-tournament — comparing them
 # to static DG sim probabilities produces meaningless EV calculations.

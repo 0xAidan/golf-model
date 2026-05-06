@@ -125,7 +125,16 @@ def predict_inplay_round(
     # P(diff_so_far + X < 0) = Phi((-diff_so_far - mu_remaining) / sd_remaining)
     z = (-diff_so_far - mu_remaining) / sd_remaining
     p = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
-    return min(0.999, max(0.001, p))
+    p = min(0.999, max(0.001, p))
+
+    if getattr(config, "V5_LAB_PRESSURE_SHADOW", True) and features:
+        lab = features.get("pressure_lab") if isinstance(features, Mapping) else None
+        if isinstance(lab, Mapping):
+            stress = _safe_float(lab.get("stress_index"), 0.0)
+            mx = float(getattr(config, "V5_LAB_PRESSURE_MAX_NUDGE", 0.04))
+            nudge = max(-mx, min(mx, stress * mx))
+            p = min(0.999, max(0.001, p + nudge))
+    return p
 
 
 def assert_inplay_staking_disabled(source: str | None = None) -> None:

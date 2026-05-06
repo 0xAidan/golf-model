@@ -17,6 +17,7 @@ Output: per-player form_score (0-100, higher = better form)
 
 from __future__ import annotations
 
+import math
 import os
 from datetime import date, datetime
 
@@ -85,6 +86,17 @@ def _discover_available_categories(tournament_id: int) -> list[str]:
     ).fetchall()
     conn.close()
     return [r["metric_category"] for r in rows]
+
+
+def _v5_exponential_recent_weights(n: int, decay: float) -> list[float]:
+    """Normalized exponential weights — favours most recent windows."""
+    if n <= 0:
+        return []
+    raw = [math.exp(-decay * float(i)) for i in range(n)]
+    s = sum(raw)
+    if s <= 0:
+        return [1.0 / n] * n
+    return [x / s for x in raw]
 
 
 def _sample_size_confidence(rounds_used: int, threshold: int = 8) -> float:
@@ -366,7 +378,12 @@ def _get_dg_ranking_data(tournament_id: int) -> dict:
     return player_ranks
 
 
-def compute_form(tournament_id: int, weights: dict) -> dict:
+def compute_form(
+    tournament_id: int,
+    weights: dict,
+    model_variant: str | None = None,
+    field_context: dict | None = None,
+) -> dict:
     """
     Compute form score for every player.
 
@@ -376,6 +393,13 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
 
     Returns: {player_key: {"score": float, "components": dict, "windows_used": list}}
     """
+    variant = str(model_variant or config.DEFAULT_MODEL_VARIANT).strip().lower()
+    if variant not in config.ALLOWED_MODEL_VARIANTS:
+        variant = config.DEFAULT_MODEL_VARIANT
+    fs_index = None
+    if isinstance(field_context, dict):
+        fs_index = field_context.get("index")
+
     # Auto-discover available windows
     available_windows = _discover_available_windows(tournament_id)
 
@@ -487,12 +511,19 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
                 windows_used.append(f"recent:{w}")
         if recent_scores:
             # Weight more recent windows higher
-            # First (most recent) gets weight n, second gets n-1, etc.
-            n = len(recent_scores)
-            total_w = sum(range(1, n + 1))
-            recent_score = sum(
-                score * (n - i) / total_w for i, (_, score) in enumerate(recent_scores)
-            )
+            if variant == "v5" and getattr(config, "V5_LAB_ADAPTIVE_RECENCY", True):
+                decay = float(getattr(config, "V5_LAB_RECENCY_EXP_DECAY", 0.35))
+                wts = _v5_exponential_recent_weights(len(recent_scores), decay)
+                recent_score = sum(
+                    wts[i] * recent_scores[i][1] for i in range(len(recent_scores))
+                )
+            else:
+                # Triangular: first (most recent) gets weight n, second n-1, etc.
+                n = len(recent_scores)
+                total_w = sum(range(1, n + 1))
+                recent_score = sum(
+                    score * (n - i) / total_w for i, (_, score) in enumerate(recent_scores)
+                )
         else:
             recent_score = 50.0
         components["recent"] = recent_score
@@ -606,6 +637,21 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
                     dg_skill_score = 100.0 * below / max(len(all_dg_totals) - 1, 1)
                     has_dg_skill = True
                     windows_used.append("dg_skill")
+        if (
+            variant == "v5"
+            and getattr(config, "V5_LAB_FIELD_STRENGTH_FORM", True)
+            and fs_index is not None
+            and has_dg_skill
+        ):
+            # Slightly compress skill spread in weaker fields (research: field context).
+            try:
+                fi = float(fs_index)
+            except (TypeError, ValueError):
+                fi = 0.5
+            stretch = 1.0 - float(getattr(config, "V5_LAB_FIELD_STRENGTH_STRETCH", 0.12)) * (
+                0.5 - fi
+            )
+            dg_skill_score = 50.0 + stretch * (dg_skill_score - 50.0)
         components["dg_skill"] = dg_skill_score
 
         # ── DG Ranking score (global rank signal) ──
@@ -644,12 +690,20 @@ def compute_form(tournament_id: int, weights: dict) -> dict:
 
         # Recent form windows
         if recent_scores:
-            raw_weights["recent"] = 0.25
+            if variant == "v5" and getattr(config, "V5_LAB_ADAPTIVE_RECENCY", True):
+                sample_conf = _sample_size_confidence(total_rounds, threshold=10)
+                raw_weights["recent"] = 0.18 + 0.22 * sample_conf
+            else:
+                raw_weights["recent"] = 0.25
             component_scores["recent"] = recent_score
 
         # Baseline form windows
         if baseline_scores:
-            raw_weights["baseline"] = 0.15
+            if variant == "v5" and getattr(config, "V5_LAB_ADAPTIVE_RECENCY", True):
+                sample_conf = _sample_size_confidence(total_rounds, threshold=10)
+                raw_weights["baseline"] = 0.10 + 0.12 * (1.0 - sample_conf)
+            else:
+                raw_weights["baseline"] = 0.15
             component_scores["baseline"] = baseline_score
 
         # DG skill ratings (highest quality signal)
