@@ -1634,13 +1634,33 @@ body {
 @media (max-width: 1200px) {
   .cockpit-lab-root {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(280px, 45vh);
+    /* Main cockpit gets remaining height; research band sizes to content when collapsed */
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
-  .cockpit-lab-research-aside {
+  .cockpit-lab-research-aside[data-research-expanded="true"] {
     border-left: none !important;
     border-top: 1px solid var(--border);
     max-height: min(480px, 50vh);
+    overflow-y: auto;
+  }
+
+  .cockpit-lab-research-aside[data-research-expanded="false"] {
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* Wide layout: aside still uses border-left from inline style */
+@media (min-width: 1201px) {
+  .cockpit-lab-research-aside[data-research-expanded="true"] {
+    overflow-y: auto;
+  }
+
+  .cockpit-lab-research-aside[data-research-expanded="false"] {
+    overflow-y: visible;
   }
 }
 

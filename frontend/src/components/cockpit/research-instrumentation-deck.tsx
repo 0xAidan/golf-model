@@ -33,9 +33,12 @@ function ErrorPanel({ message }: { message: string }) {
 export function ResearchInstrumentationDeck({
   liveSnapshot,
   predictionTab,
+  hideTitle = false,
 }: {
   liveSnapshot: LiveRefreshSnapshot | null
   predictionTab: PredictionTab
+  /** When wrapped (e.g. lab cockpit collapsible), omit the section heading */
+  hideTitle?: boolean
 }) {
   const eventId = resolveLabEventId(liveSnapshot, predictionTab)
 
@@ -83,9 +86,11 @@ export function ResearchInstrumentationDeck({
         fontSize: 12,
       }}
     >
-      <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: "var(--text-muted)" }}>
-        Research instrumentation
-      </h2>
+      {!hideTitle ? (
+        <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: "var(--text-muted)" }}>
+          Research instrumentation
+        </h2>
+      ) : null}
 
       <div className="card">
         <div className="card-header">

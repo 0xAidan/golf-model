@@ -1,6 +1,11 @@
+import { useCallback, useState } from "react"
 import { Link } from "react-router-dom"
 
-import { ResearchInstrumentationDeck } from "@/components/cockpit/research-instrumentation-deck"
+import { LabResearchInstrumentationPanel } from "@/components/cockpit/lab-research-instrumentation-panel"
+import {
+  persistLabResearchInstrumentationExpanded,
+  readLabResearchInstrumentationExpanded,
+} from "@/lib/lab-research-instrumentation-storage"
 import {
   PredictionWorkspacePage,
   type PredictionWorkspacePageProps,
@@ -16,6 +21,13 @@ export function CockpitLabPage({
   /** True when only one of lab_live / lab_upcoming exists — merged view mixes lab + production. */
   labLanePartialSections?: boolean
 }) {
+  const [researchExpanded, setResearchExpanded] = useState(readLabResearchInstrumentationExpanded)
+
+  const handleResearchExpandedChange = useCallback((open: boolean) => {
+    setResearchExpanded(open)
+    persistLabResearchInstrumentationExpanded(open)
+  }, [])
+
   return (
     <div
       className="cockpit-lab-root"
@@ -80,16 +92,21 @@ export function CockpitLabPage({
         className="cockpit-lab-research-aside"
         style={{
           minHeight: 0,
-          overflowY: "auto",
+          overflowY: researchExpanded ? "auto" : "visible",
           borderLeft: "1px solid var(--border)",
           background: "var(--surface-0)",
         }}
         data-testid="cockpit-lab-research-pane"
+        data-research-expanded={researchExpanded ? "true" : "false"}
       >
-        <ResearchInstrumentationDeck
-          liveSnapshot={cockpitWorkspaceProps.liveSnapshot}
-          predictionTab={cockpitWorkspaceProps.predictionTab}
-        />
+        <div className="box-border h-full min-h-0 px-3 pb-3 pt-2">
+          <LabResearchInstrumentationPanel
+            expanded={researchExpanded}
+            onExpandedChange={handleResearchExpandedChange}
+            liveSnapshot={cockpitWorkspaceProps.liveSnapshot}
+            predictionTab={cockpitWorkspaceProps.predictionTab}
+          />
+        </div>
       </aside>
     </div>
   )

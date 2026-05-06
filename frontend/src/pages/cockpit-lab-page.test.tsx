@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 
 import { CockpitLabPage } from "@/pages/cockpit-lab-page"
 import type { PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
+import { LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY } from "@/lib/lab-research-instrumentation-storage"
 
 vi.mock("@/pages/prediction-workspace-page", () => ({
   PredictionWorkspacePage: () => <div data-testid="cockpit-stub">Cockpit stub</div>,
@@ -95,28 +97,36 @@ function renderLab(overrides?: Partial<PredictionWorkspacePageProps>) {
 describe("CockpitLabPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.removeItem(LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY)
   })
 
-  it("renders streak-safety banner and research deck headings", async () => {
+  it("renders banner and collapsible research deck (expand to see cards)", async () => {
+    const user = userEvent.setup()
     renderLab()
 
     expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/lab_live_tournament/i)
     expect(screen.getByTestId("cockpit-lab-banner")).toHaveTextContent(/lab_profile_enabled/i)
     expect(screen.getByTestId("cockpit-stub")).toBeInTheDocument()
 
-    expect(await screen.findByText(/research instrumentation/i)).toBeInTheDocument()
-    expect(screen.getByText(/calibration \(by market\)/i)).toBeInTheDocument()
+    expect(screen.getByTestId("cockpit-lab-research-toggle")).toHaveTextContent(/research instrumentation/i)
+    expect(screen.queryByText(/calibration \(by market\)/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId("cockpit-lab-research-toggle"))
+
+    expect(await screen.findByText(/calibration \(by market\)/i)).toBeInTheDocument()
     expect(screen.getByText(/clv by book/i)).toBeInTheDocument()
     expect(screen.getByText(/ab report \(v5 vs legacy\)/i)).toBeInTheDocument()
     expect(screen.getByText(/shadow monte carlo/i)).toBeInTheDocument()
   })
 
   it("shows AB empty-state copy when no source_event_id for tab", async () => {
+    const user = userEvent.setup()
     renderLab({
       liveSnapshot: {},
       predictionTab: "past",
     })
 
+    await user.click(screen.getByTestId("cockpit-lab-research-toggle"))
     expect(await screen.findByText(/source_event_id/i)).toBeInTheDocument()
     expect(apiMock.getResearchAbReport).not.toHaveBeenCalled()
   })
