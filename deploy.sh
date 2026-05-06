@@ -228,7 +228,7 @@ Type=oneshot
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
 EnvironmentFile=-/opt/golf-model/.env
-ExecStart=/opt/golf-model/venv/bin/python -m src.backup --keep 14
+ExecStart=/opt/golf-model/venv/bin/python -m src.backup --keep 4
 SVC
 
         cat > /etc/systemd/system/golf-backup.timer << 'SVC'
