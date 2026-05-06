@@ -32,14 +32,14 @@ export function CockpitResizableStack({
         <div className="cockpit-panel-fill">{rankings}</div>
       </Panel>
       <PanelResizeHandle
-        className="cockpit-resize-handle"
+        className="cockpit-resize-handle cockpit-resize-handle-row"
         aria-label="Resize power rankings and top picks"
       />
       <Panel defaultSize={showLeaderboard ? 32 : 38} minSize={10} className="cockpit-panel-shell">
         <div className="cockpit-panel-fill">{topPicks}</div>
       </Panel>
       <PanelResizeHandle
-        className="cockpit-resize-handle"
+        className="cockpit-resize-handle cockpit-resize-handle-row"
         aria-label="Resize top picks and secondary markets"
       />
       <Panel defaultSize={showLeaderboard ? 18 : 20} minSize={8} className="cockpit-panel-shell">
@@ -48,7 +48,7 @@ export function CockpitResizableStack({
       {showLeaderboard && leaderboard != null && (
         <>
           <PanelResizeHandle
-            className="cockpit-resize-handle"
+            className="cockpit-resize-handle cockpit-resize-handle-row"
             aria-label="Resize secondary markets and leaderboard"
           />
           <Panel defaultSize={12} minSize={10} className="cockpit-panel-shell">

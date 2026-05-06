@@ -736,7 +736,7 @@ export function PredictionWorkspacePage({
               </div>
             </Panel>
             <PanelResizeHandle
-              className="cockpit-resize-handle"
+              className="cockpit-resize-handle cockpit-resize-handle-row"
               aria-label="Resize course area and book filters"
             />
             <Panel defaultSize={38} minSize={16} className="cockpit-panel-shell">
@@ -824,7 +824,7 @@ export function PredictionWorkspacePage({
               </div>
             </Panel>
             <PanelResizeHandle
-              className="cockpit-resize-handle"
+              className="cockpit-resize-handle cockpit-resize-handle-row"
               aria-label="Resize filters and recent results"
             />
             <Panel defaultSize={20} minSize={12} className="cockpit-panel-shell">
