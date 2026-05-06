@@ -1,6 +1,6 @@
 export type WorkspaceId =
   | "prediction"
-  | "cockpit-lab"
+  | "lab-board"
   | "players"
   | "matchups"
   | "grading"
@@ -524,6 +524,8 @@ export type MatchupBet = {
   momentum_aligned?: boolean
   conviction?: number
   market_type?: string
+  /** When set (replay payload or upstream), overrides leaderboard-derived grade in Past tab. */
+  graded_result?: "win" | "loss" | "push"
 }
 
 export type SecondaryBet = {

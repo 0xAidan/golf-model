@@ -726,6 +726,24 @@ body {
 .tier-badge.GOOD   { background: var(--cyan-bg);   color: var(--cyan); }
 .tier-badge.LEAN   { background: var(--surface-2); color: var(--text-muted); }
 
+/* Past matchup graded result (W/L/P) */
+.pick-result-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.pick-result-badge.win  { background: var(--green-dim); color: var(--green); }
+.pick-result-badge.loss { background: rgba(239, 68, 68, 0.12); color: var(--red); }
+.pick-result-badge.push { background: var(--surface-2); color: var(--text-muted); }
+
 /* Status pills */
 .status-pill {
   display: inline-flex;

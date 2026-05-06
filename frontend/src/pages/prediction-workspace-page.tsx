@@ -27,6 +27,7 @@ import {
   getRawGeneratedMatchups,
   getRawGeneratedSecondaryBets,
 } from "@/lib/cockpit-picks"
+import { resolvePastMatchupGrade } from "@/lib/matchup-pick-grade"
 import { formatNumber, formatUnits } from "@/lib/format"
 import {
   EV_BADGE_TOOLTIP,
@@ -48,6 +49,7 @@ import type {
   CompositePlayer,
   FlattenedSecondaryBet,
   GradedTournamentSummary,
+  LiveLeaderboardRow,
   LiveRefreshSnapshot,
   LiveTournamentSnapshot,
   MatchupBet,
@@ -74,6 +76,36 @@ function TierBadge({ tier }: { tier?: string }) {
   return (
     <span className={`tier-badge ${t}`} title={TIER_BADGE_TOOLTIP} style={{ cursor: "help" }}>
       {t}
+    </span>
+  )
+}
+
+function PastPickGradeCell({
+  matchup,
+  leaderboard,
+}: {
+  matchup: MatchupBet
+  leaderboard: LiveLeaderboardRow[] | undefined
+}) {
+  const g = resolvePastMatchupGrade(matchup, leaderboard)
+  if (g.kind === "letter") {
+    const cls = g.letter === "W" ? "win" : g.letter === "L" ? "loss" : "push"
+    return (
+      <span className={`pick-result-badge ${cls}`} title={g.title} aria-label={g.title}>
+        {g.letter}
+      </span>
+    )
+  }
+  if (g.kind === "pending") {
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }} title={g.title}>
+        Pending
+      </span>
+    )
+  }
+  return (
+    <span className="num" style={{ color: "var(--text-faint)" }} title={g.title} aria-label={g.title}>
+      —
     </span>
   )
 }
@@ -378,6 +410,10 @@ export function PredictionWorkspacePage({
   const pastSnapshotSection = pastSnapshotQuery.data?.ok
     ? (pastSnapshotQuery.data.snapshot ?? null)
     : null
+  const pastLeaderboardForGrades = useMemo(
+    () => (predictionTab === "past" ? (pastSnapshotSection?.leaderboard ?? []) : []),
+    [pastSnapshotSection?.leaderboard, predictionTab],
+  )
   const pastPredictionRun = useMemo(
     () => buildPredictionRunFromSection(pastSnapshotSection),
     [pastSnapshotSection],
@@ -503,6 +539,7 @@ export function PredictionWorkspacePage({
         })
 
   const topPlays = predictionTab === "past" ? pastMatchups : filteredMatchups
+  const matchupTableColumnCount = predictionTab === "past" ? 7 : 6
 
   const topPicksEmptyMessage = useMemo(() => {
     if (predictionTab === "past") return diagnosticsMessage
@@ -1073,6 +1110,11 @@ export function PredictionWorkspacePage({
                         <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
                           Tier
                         </th>
+                        {predictionTab === "past" ? (
+                          <th className="center" title={MATCHUP_TABLE_TOOLTIPS.result}>
+                            Res.
+                          </th>
+                        ) : null}
                         <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
                           EV
                         </th>
@@ -1112,6 +1154,11 @@ export function PredictionWorkspacePage({
                               <td className="center">
                                 <TierBadge tier={matchup.tier} />
                               </td>
+                              {predictionTab === "past" ? (
+                                <td className="center" data-testid={`matchup-grade-${key}`}>
+                                  <PastPickGradeCell matchup={matchup} leaderboard={pastLeaderboardForGrades} />
+                                </td>
+                              ) : null}
                               <td className="right">
                                 <EV ev={matchup.ev} evPct={matchup.ev_pct} />
                               </td>
@@ -1131,7 +1178,7 @@ export function PredictionWorkspacePage({
                             </tr>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={6} style={{ padding: 0 }}>
+                                <td colSpan={matchupTableColumnCount} style={{ padding: 0 }}>
                                   <div className="matchup-detail">
                                     <div className="matchup-detail-grid">
                                       <div>

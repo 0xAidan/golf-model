@@ -156,4 +156,26 @@ describe("cockpit pick inventory", () => {
       ev: 0.08,
     })
   })
+
+  it("maps stored payload outcome onto replay matchups when present", () => {
+    const rows: PastMarketPredictionRow[] = [
+      {
+        snapshot_id: "snap-1",
+        event_id: "evt-1",
+        section: "live",
+        market_family: "matchup",
+        market_type: "tournament_matchups",
+        player_key: "scottie_scheffler",
+        player_display: "Scottie Scheffler",
+        opponent_key: "rory_mcilroy",
+        opponent_display: "Rory McIlroy",
+        odds: "-110",
+        book: "fanduel",
+        ev: 0.05,
+        payload: { outcome: "win", tier: "STRONG" },
+      },
+    ]
+    const replayMatchups = buildReplayGeneratedMatchups(rows)
+    expect(replayMatchups[0]?.graded_result).toBe("win")
+  })
 })
