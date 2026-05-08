@@ -411,6 +411,19 @@ class GolfModelService:
                 f"(was {value_count_before}, field={field_strength})"
             )
 
+        # Optional personal Telegram alerts for high-EV matchup lines (deduped in DB).
+        try:
+            from src.telegram_alerts import maybe_send_matchup_ev_alerts
+
+            maybe_send_matchup_ev_alerts(
+                event_name=tournament_name,
+                event_id=str(event_id) if event_id is not None else None,
+                matchup_bets_all_books=matchup_bets_all_books,
+                matchup_diagnostics=matchup_diagnostics,
+            )
+        except Exception:
+            logger.exception("Telegram matchup alerts failed")
+
         # Step 10c: Run quality check before logging anything
         from src.value import compute_run_quality
 

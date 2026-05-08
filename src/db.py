@@ -20,6 +20,7 @@ Tables:
   live_snapshot_history   – persisted live/upcoming snapshot sections
   market_prediction_rows  – dense per-tick betting lines from live refresh
   shadow_event_simulations – append-only shadow Monte Carlo (prob_engine_v1; offline analytics)
+  telegram_alert_sent    – dedupe keys for personal Telegram matchup EV notifications
 """
 
 import logging
@@ -870,6 +871,13 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_inplay_preds_event
             ON inplay_round_matchup_predictions(event_id, round_num);
+
+        -- Personal Telegram matchup alerts (dedupe by stable hash per book line)
+        CREATE TABLE IF NOT EXISTS telegram_alert_sent (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_hash TEXT NOT NULL UNIQUE,
+            sent_at TEXT DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
 
@@ -1190,6 +1198,22 @@ def _run_migrations(conn: sqlite3.Connection):
 
     # Q4: composite indexes for hot-path queries. Idempotent, index-only.
     _ensure_hot_path_indexes(conn)
+
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS telegram_alert_sent (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_hash TEXT NOT NULL UNIQUE,
+                sent_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        logging.getLogger(__name__).debug(
+            "telegram_alert_sent table migration skipped", exc_info=True
+        )
 
 
 def _ensure_hot_path_indexes(conn: sqlite3.Connection) -> None:
@@ -1601,6 +1625,26 @@ def store_results(tournament_id: int, results_list: list[dict]):
     )
     conn.commit()
     conn.close()
+
+
+def try_claim_telegram_alert(alert_hash: str) -> bool:
+    """Insert alert_hash if new. Returns True when this hash was claimed (notify once)."""
+    if not alert_hash:
+        return False
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO telegram_alert_sent (alert_hash) VALUES (?)",
+            (alert_hash,),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    except sqlite3.OperationalError as exc:
+        _logger.warning("telegram_alert_sent insert failed: %s", exc)
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 
 # ── Weights helpers ─────────────────────────────────────────────────

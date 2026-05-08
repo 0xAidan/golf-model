@@ -366,6 +366,10 @@ Before treating the Lab board as broken or “same as production”, verify on t
 | `PREFERRED_BOOK_ONLY` | No | `false` | Deprecated legacy toggle (not used by current pipelines) |
 | `LIVE_REFRESH_LAB_PROFILE_ENABLED` | No | *(unset)* | When set, forces parallel lab snapshot lane on/off for `get_settings()` / worker (overrides `data/autoresearch_settings.json`). Deploy appends `=1` if missing. Use `0`/`false` on tiny VPS to save CPU. |
 | `COCKPIT_SNAPSHOT_MODEL_VARIANT` | No | `baseline` | **`live_tournament` / `upcoming_tournament`** model variant in live-refresh (`backtester/dashboard_runtime.py`). Default **baseline** = Masters-era operator Dashboard; set **`v5`** to put research stack back on `/`. |
+| `TELEGRAM_BOT_TOKEN` | No | — | Bot token from [@BotFather](https://t.me/BotFather); enables personal matchup EV Telegram alerts (`src/telegram_alerts.py`). |
+| `TELEGRAM_CHAT_ID` | No | — | Destination chat or group id for alerts (same bot must be allowed to message it). |
+| `TELEGRAM_MATCHUP_EV_THRESHOLD` | No | `0.085` | Minimum matchup row EV (decimal, e.g. `0.085` = 8.5%) before notifying. |
+| `TELEGRAM_MATCHUP_ALERT_MAX_ROWS` | No | `8` | Max matchup lines per Telegram message (after EV filter + dedupe). |
 
 ### `feature_flags.yaml` (booleans, read by `src/feature_flags.py`)
 
@@ -440,6 +444,8 @@ Major sections and key values:
 **External data:** `equipment_changes`, `intel_events`.
 
 **Live dashboard replay:** `pre_teeoff_candidates` (latest pre-teeoff upcoming section per event while still upcoming), `pre_teeoff_frozen` (immutable freeze when the event goes live), in addition to `live_snapshot_history` and `market_prediction_rows`.
+
+**Notifications:** `telegram_alert_sent` — dedupe hashes for optional personal Telegram matchup EV alerts (`src/telegram_alerts.py`).
 
 **Meta:** `schema_version` (tracks schema version; constraint id=1).
 

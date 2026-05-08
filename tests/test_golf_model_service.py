@@ -288,6 +288,100 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
     assert logged["matchups"] == 1
 
 
+def test_run_analysis_calls_telegram_matchup_alerts_when_matchups_ok(monkeypatch):
+    calls: list[dict] = []
+
+    def spy(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("src.telegram_alerts.maybe_send_matchup_ev_alerts", spy)
+
+    service = GolfModelService(tour="pga")
+    monkeypatch.setattr("src.services.golf_model_service.db.get_or_create_tournament", lambda tournament_name, course_name: 7)
+    monkeypatch.setattr(
+        "src.services.golf_model_service.db.get_all_players",
+        lambda tid, confirmed_field_only=False: ["player_a", "player_b"],
+    )
+    monkeypatch.setattr("src.services.golf_model_service.db.get_rounds_count", lambda: 24)
+    monkeypatch.setattr(
+        GolfModelService,
+        "_sync_tournament_data",
+        lambda self, tid, event_id=None: {"decompositions_raw": None},
+    )
+    monkeypatch.setattr(GolfModelService, "_sync_skill_data", lambda self, tid, field_keys: None)
+    monkeypatch.setattr(
+        GolfModelService,
+        "_validate_field_data",
+        lambda self, tid, tournament_name, field_keys, field_source="unknown", expected_event_id=None: {
+            "has_cross_tour_field_risk": False,
+            "strict_field_verified": True,
+            "failed_invariants": [],
+            "summary": "Field verified for this event.",
+        },
+    )
+    monkeypatch.setattr(GolfModelService, "_compute_rolling_stats", lambda self, tid, field_keys, course_num: {})
+    monkeypatch.setattr(GolfModelService, "_load_course_profile", lambda self, course_name, decompositions_raw=None: {})
+    monkeypatch.setattr(GolfModelService, "_get_weights", lambda self, course_num: {})
+    monkeypatch.setattr(
+        GolfModelService,
+        "_run_composite",
+        lambda self, tid, weights, course_name: [
+            {"player_key": "player_a", "player_display": "Player A", "composite": 70.0},
+            {"player_key": "player_b", "player_display": "Player B", "composite": 62.0},
+        ],
+    )
+    monkeypatch.setattr(GolfModelService, "_fetch_odds", lambda self: {})
+    monkeypatch.setattr(GolfModelService, "_compute_value_bets", lambda self, composite, all_odds, tid: {})
+    monkeypatch.setattr("src.portfolio.enforce_diversification", lambda bets, field_strength=None: bets)
+    monkeypatch.setattr(
+        GolfModelService,
+        "_fetch_matchup_value_bets",
+        lambda self, composite, tid, mode="full": (
+            [{"pick": "Player A", "pick_key": "player_a", "ev": 0.12}],
+            [
+                {
+                    "pick": "Player A",
+                    "pick_key": "player_a",
+                    "opponent": "Player B",
+                    "opponent_key": "player_b",
+                    "book": "bet365",
+                    "odds": 110,
+                    "ev": 0.12,
+                }
+            ],
+            {"state": "edges_available", "errors": []},
+        ),
+    )
+    monkeypatch.setattr(GolfModelService, "_fetch_3ball_value_bets", lambda self, composite, tid: [])
+    monkeypatch.setattr(
+        "src.value.compute_run_quality",
+        lambda value_bets: {"score": 1.0, "issues": [], "pass": True},
+    )
+    monkeypatch.setattr(GolfModelService, "_store_displayed_picks", lambda *a, **k: None)
+    monkeypatch.setattr(GolfModelService, "_log_predictions", lambda self, tid, value_bets: None)
+    monkeypatch.setattr(GolfModelService, "_log_matchup_predictions", lambda self, tid, matchup_bets: None)
+    monkeypatch.setattr(GolfModelService, "_generate_card", lambda self, *args, **kwargs: "/tmp/card.md")
+    monkeypatch.setattr(GolfModelService, "_log_run", lambda self, tid, result: None)
+    monkeypatch.setattr("src.services.golf_model_service.write_run_provenance", lambda **kwargs: None)
+
+    service.run_analysis(
+        tournament_name="RBC Heritage",
+        course_name="Harbour Town",
+        event_id="012",
+        enable_ai=False,
+        enable_backfill=False,
+        include_methodology=False,
+        mode="full",
+        strategy_source="config",
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["event_name"] == "RBC Heritage"
+    assert calls[0]["event_id"] == "012"
+    assert len(calls[0]["matchup_bets_all_books"]) == 1
+    assert calls[0]["matchup_diagnostics"]["state"] == "edges_available"
+
+
 def test_team_event_short_circuits_pipeline(tmp_path, monkeypatch):
     """Zurich-style team events skip field/odds/matchup work entirely."""
     from src.services.golf_model_service import GolfModelService
