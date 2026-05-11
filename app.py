@@ -33,6 +33,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
+from src import config
 from src.csv_parser import ingest_folder, classify_file_type, detect_data_mode, detect_round_window
 from src.db import (
     get_or_create_tournament, get_active_weights, get_all_players,

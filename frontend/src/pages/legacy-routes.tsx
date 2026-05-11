@@ -18,7 +18,6 @@ import {
 } from "@/lib/metric-tooltips"
 import type {
   CompositePlayer,
-  GradedTournamentSummary,
   PlayerProfile,
 } from "@/lib/types"
 import { computeSgTrajectoryBounds } from "@/lib/metric-heat"

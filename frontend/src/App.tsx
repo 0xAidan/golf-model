@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
@@ -278,6 +278,10 @@ function App() {
   ])
   const playerProfileErrorMessage =
     playerProfileQuery.error instanceof Error ? playerProfileQuery.error.message : undefined
+  const selectedPlayerProfile = playerProfileQuery.data
+  const handlePlayerProfileRetry = useCallback(() => {
+    void playerProfileQuery.refetch()
+  }, [playerProfileQuery])
 
   const gradeMutation = useMutation({
     mutationFn: () =>
@@ -553,12 +557,10 @@ function App() {
       predictionRun: effectivePredictionRun,
       selectedPlayerKey,
       onPlayerSelect: setSelectedPlayerKey,
-      selectedPlayerProfile: playerProfileQuery.data,
+      selectedPlayerProfile,
       playerProfileState,
       playerProfileErrorMessage,
-      onPlayerProfileRetry: () => {
-        void playerProfileQuery.refetch()
-      },
+      onPlayerProfileRetry: handlePlayerProfileRetry,
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets,
       powerRankingsSubtitle: dashboardPowerRankingsSubtitle,
@@ -585,10 +587,10 @@ function App() {
       effectivePredictionRun,
       selectedPlayerKey,
       setSelectedPlayerKey,
-      playerProfileQuery.data,
+      selectedPlayerProfile,
       playerProfileState,
       playerProfileErrorMessage,
-      playerProfileQuery.refetch,
+      handlePlayerProfileRetry,
       secondaryBets,
       dashboardPowerRankingsSubtitle,
     ],
@@ -625,12 +627,10 @@ function App() {
       predictionRun: labWorkspaceHydrated,
       selectedPlayerKey,
       onPlayerSelect: setSelectedPlayerKey,
-      selectedPlayerProfile: playerProfileQuery.data,
+      selectedPlayerProfile,
       playerProfileState,
       playerProfileErrorMessage,
-      onPlayerProfileRetry: () => {
-        void playerProfileQuery.refetch()
-      },
+      onPlayerProfileRetry: handlePlayerProfileRetry,
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets: labSecondaryBets,
       powerRankingsSubtitle: labPowerRankingsSubtitle,
@@ -657,10 +657,10 @@ function App() {
       labWorkspaceHydrated,
       selectedPlayerKey,
       setSelectedPlayerKey,
-      playerProfileQuery.data,
+      selectedPlayerProfile,
       playerProfileState,
       playerProfileErrorMessage,
-      playerProfileQuery.refetch,
+      handlePlayerProfileRetry,
       labSecondaryBets,
       labPowerRankingsSubtitle,
     ],
