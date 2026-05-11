@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src import db
+from src.player_normalizer import normalize_name
 
 
 def backfill_completed_market_rows_into_picks(
@@ -80,15 +81,20 @@ def _row_to_pick(
     existing_reason = payload.get("reason") or payload.get("why") or payload.get("reason_code")
     reasoning = f"{provenance}; {existing_reason}" if existing_reason else provenance
 
+    player_display = row.get("player_display") or payload.get("player") or payload.get("pick") or ""
+    opponent_display = row.get("opponent_display") or payload.get("opponent") or ""
+    player_key = str(row.get("player_key") or "").strip() or normalize_name(str(player_display))
+    opponent_key = str(row.get("opponent_key") or "").strip() or normalize_name(str(opponent_display))
+
     return {
         "tournament_id": tournament_id,
         "model_variant": model_variant,
         "source": source,
         "bet_type": bet_type,
-        "player_key": row.get("player_key") or "",
-        "player_display": row.get("player_display") or payload.get("player") or payload.get("pick"),
-        "opponent_key": row.get("opponent_key") or "",
-        "opponent_display": row.get("opponent_display") or payload.get("opponent") or "",
+        "player_key": player_key,
+        "player_display": player_display,
+        "opponent_key": opponent_key,
+        "opponent_display": opponent_display,
         "composite_score": payload.get("composite") or payload.get("composite_score"),
         "course_fit_score": payload.get("course_fit") or payload.get("course_fit_score"),
         "form_score": payload.get("form") or payload.get("form_score"),

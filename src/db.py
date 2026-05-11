@@ -32,6 +32,7 @@ from datetime import datetime
 from typing import Any
 
 from src import config
+from src.player_normalizer import normalize_name
 
 _logger = logging.getLogger("golf.db")
 
@@ -2508,7 +2509,53 @@ def get_completed_market_prediction_rows_for_event(
             row["payload"] = json.loads(raw_payload) if raw_payload else {}
         except json.JSONDecodeError:
             row["payload"] = {}
-    return result
+    return _dedupe_completed_market_rows(result)
+
+
+def _dedupe_completed_market_rows(rows: list[dict]) -> list[dict]:
+    """Keep only the best available book line for each completed replay pick."""
+    best_by_pick: dict[tuple[str, str, str, str], dict] = {}
+    for row in rows:
+        key = _completed_market_row_key(row)
+        if not key:
+            continue
+        current = best_by_pick.get(key)
+        if current is None or _american_odds_score(row.get("odds")) > _american_odds_score(current.get("odds")):
+            best_by_pick[key] = row
+    return list(best_by_pick.values())
+
+
+def _completed_market_row_key(row: dict) -> tuple[str, str, str, str] | None:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    player_key = _row_player_key(row, payload, "player")
+    opponent_key = _row_player_key(row, payload, "opponent")
+    if not player_key:
+        return None
+    market_family = str(row.get("market_family") or "").strip().lower()
+    market_type = str(row.get("market_type") or market_family).strip().lower()
+    return (market_family, market_type, player_key, opponent_key)
+
+
+def _row_player_key(row: dict, payload: dict, side: str) -> str:
+    if side == "player":
+        raw_key = row.get("player_key") or payload.get("player_key") or payload.get("pick_key")
+        raw_name = row.get("player_display") or payload.get("player_display") or payload.get("player") or payload.get("pick")
+    else:
+        raw_key = row.get("opponent_key") or payload.get("opponent_key")
+        raw_name = row.get("opponent_display") or payload.get("opponent")
+    normalized_key = str(raw_key or "").strip().lower()
+    return normalized_key or normalize_name(str(raw_name or ""))
+
+
+def _american_odds_score(raw_odds: Any) -> float:
+    """Higher score means better payout for the picked side."""
+    try:
+        text = str(raw_odds or "").strip().replace("+", "")
+        if not text:
+            return float("-inf")
+        return float(int(float(text)))
+    except (TypeError, ValueError):
+        return float("-inf")
 
 
 # ── AI memory helpers ──────────────────────────────────────────────
