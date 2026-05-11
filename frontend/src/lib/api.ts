@@ -96,14 +96,17 @@ export const api = {
   getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
   getLiveRefreshPastSnapshot: (
     eventId: string,
-    section: "live" | "upcoming" | "completed" = "completed",
+    section: "live" | "upcoming" | "lab_live" | "lab_upcoming" | "completed" = "completed",
+    options?: { source?: "dashboard" | "lab" },
   ) =>
     request<PastSnapshotResponse>(
-      `/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=${encodeURIComponent(section)}`,
+      `/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=${encodeURIComponent(section)}${
+        options?.source ? `&source=${encodeURIComponent(options.source)}` : ""
+      }`,
     ),
   getLiveRefreshPastTimeline: (
     eventId: string,
-    options?: { section?: "live" | "upcoming"; limit?: number },
+    options?: { section?: "live" | "upcoming" | "lab_live" | "lab_upcoming"; limit?: number },
   ) => {
     const params = new URLSearchParams({
       event_id: eventId,
@@ -118,7 +121,8 @@ export const api = {
     eventId: string,
     options?: {
       marketFamily?: "matchup" | "placement" | string
-      section?: "live" | "upcoming" | "lab_live" | "lab_upcoming"
+      section?: "live" | "upcoming" | "lab_live" | "lab_upcoming" | "completed"
+      source?: "dashboard" | "lab"
       limit?: number
     },
   ) => {
@@ -130,6 +134,9 @@ export const api = {
     }
     if (options?.section) {
       params.set("section", options.section)
+    }
+    if (options?.source) {
+      params.set("source", options.source)
     }
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit))

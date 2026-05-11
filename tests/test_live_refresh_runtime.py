@@ -1270,6 +1270,89 @@ def test_live_refresh_past_market_rows_endpoint_returns_stable_contract(monkeypa
     assert body["rows"][0]["payload"]["pick"] == "Player A"
 
 
+def test_live_refresh_past_market_rows_completed_uses_dashboard_preteeoff(monkeypatch):
+    import app as app_module
+
+    calls = []
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "get_completed_market_prediction_rows_for_event",
+        lambda event_id, source="dashboard", market_family=None, limit=2000: calls.append(
+            {
+                "event_id": event_id,
+                "source": source,
+                "market_family": market_family,
+                "limit": limit,
+            }
+        )
+        or [
+            {
+                "snapshot_id": "preteeoff_dash",
+                "generated_at": "2026-05-07T11:55:00+00:00",
+                "section": "upcoming",
+                "event_id": event_id,
+                "market_family": "matchup",
+                "player_display": "Dashboard Pick",
+                "is_value": 1,
+                "payload": {"pick": "Dashboard Pick"},
+            }
+        ],
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/past-market-rows?event_id=480&section=completed")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["section"] == "completed"
+    assert body["source"] == "dashboard"
+    assert body["row_count"] == 1
+    assert body["rows"][0]["snapshot_id"] == "preteeoff_dash"
+    assert calls == [
+        {
+            "event_id": "480",
+            "source": "dashboard",
+            "market_family": None,
+            "limit": 2000,
+        }
+    ]
+
+
+def test_live_refresh_past_market_rows_completed_can_use_lab_preteeoff(monkeypatch):
+    import app as app_module
+
+    calls = []
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "get_completed_market_prediction_rows_for_event",
+        lambda event_id, source="dashboard", market_family=None, limit=2000: calls.append(source)
+        or [
+            {
+                "snapshot_id": "preteeoff_lab",
+                "generated_at": "2026-05-07T11:56:00+00:00",
+                "section": "lab_upcoming",
+                "event_id": event_id,
+                "market_family": "matchup",
+                "player_display": "Lab Pick",
+                "is_value": 1,
+                "payload": {"pick": "Lab Pick"},
+            }
+        ],
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/past-market-rows?event_id=480&section=completed&source=lab")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["section"] == "completed"
+    assert body["source"] == "lab"
+    assert body["rows"][0]["section"] == "lab_upcoming"
+    assert calls == ["lab"]
+
+
 def test_live_refresh_replay_endpoints_reject_invalid_section_consistently(monkeypatch):
     import app as app_module
 
@@ -1300,7 +1383,7 @@ def test_live_refresh_replay_endpoints_treat_empty_section_as_live(monkeypatch):
     monkeypatch.setattr(
         app_module,
         "build_completed_snapshot_section",
-        lambda event_id: {"event_name": "Zurich Classic", "completed_replay": True},
+        lambda event_id, **kwargs: {"event_name": "Zurich Classic", "completed_replay": True},
     )
     monkeypatch.setattr(
         app_module,

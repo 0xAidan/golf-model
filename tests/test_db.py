@@ -164,3 +164,66 @@ def test_store_picks_dedupes_within_lane_but_allows_cross_lane():
     counts = {row["model_variant"]: row["c"] for row in rows}
     assert counts.get("baseline") == 1
     assert counts.get("v5") == 1
+
+
+def test_completed_market_rows_use_latest_dashboard_preteeoff_snapshot():
+    rows = [
+        _market_row("old", "upcoming", "480", "Old Pick", "old_pick", generated_at="2026-05-07T10:00:00+00:00"),
+        _market_row("latest", "upcoming", "480", "Pick A", "pick_a", generated_at="2026-05-07T11:55:00+00:00"),
+        _market_row("latest", "upcoming", "480", "Pick B", "pick_b", generated_at="2026-05-07T11:55:00+00:00"),
+        _market_row("lab-latest", "lab_upcoming", "480", "Lab Pick", "lab_pick", generated_at="2026-05-07T11:56:00+00:00"),
+    ]
+    db.store_market_prediction_rows(rows)
+
+    result = db.get_completed_market_prediction_rows_for_event("480", source="dashboard")
+
+    assert [row["player_display"] for row in result] == ["Pick A", "Pick B"]
+    assert {row["snapshot_id"] for row in result} == {"latest"}
+    assert {row["section"] for row in result} == {"upcoming"}
+
+
+def test_completed_market_rows_use_latest_lab_preteeoff_snapshot():
+    rows = [
+        _market_row("dashboard", "upcoming", "481", "Dashboard Pick", "dash_pick", generated_at="2026-05-07T11:55:00+00:00"),
+        _market_row("lab-old", "lab_upcoming", "481", "Old Lab Pick", "old_lab", generated_at="2026-05-07T10:00:00+00:00"),
+        _market_row("lab-latest", "lab_upcoming", "481", "Lab Pick", "lab_pick", generated_at="2026-05-07T11:56:00+00:00"),
+    ]
+    db.store_market_prediction_rows(rows)
+
+    result = db.get_completed_market_prediction_rows_for_event("481", source="lab")
+
+    assert [row["player_display"] for row in result] == ["Lab Pick"]
+    assert result[0]["snapshot_id"] == "lab-latest"
+    assert result[0]["section"] == "lab_upcoming"
+
+
+def _market_row(
+    snapshot_id: str,
+    section: str,
+    event_id: str,
+    player_display: str,
+    player_key: str,
+    *,
+    generated_at: str,
+) -> dict:
+    return {
+        "snapshot_id": snapshot_id,
+        "generated_at": generated_at,
+        "tour": "pga",
+        "section": section,
+        "event_id": event_id,
+        "event_name": "Truist Championship",
+        "market_family": "matchup",
+        "market_type": "tournament_matchups",
+        "player_key": player_key,
+        "player_display": player_display,
+        "opponent_key": "opponent",
+        "opponent_display": "Opponent",
+        "book": "fanduel",
+        "odds": "-110",
+        "model_prob": 0.56,
+        "implied_prob": 0.52,
+        "ev": 0.08,
+        "is_value": 1,
+        "payload_json": "{}",
+    }
