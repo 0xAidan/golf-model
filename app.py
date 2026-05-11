@@ -49,7 +49,7 @@ from src.models.weights import retune, analyze_pick_performance, get_current_wei
 from src.player_normalizer import normalize_name, display_name
 from src.odds import fetch_odds_api, load_manual_odds, get_best_odds
 from src.value import find_value_bets
-from src.scoring import determine_outcome
+from src.scoring import compute_profit, determine_outcome
 
 import pandas as pd
 from fastapi.staticfiles import StaticFiles
@@ -470,6 +470,135 @@ def _latest_graded_tournament_summary() -> dict | None:
     return dict(row) if row else None
 
 
+def _empty_record_bucket() -> dict:
+    return {
+        "picks": 0,
+        "wins": 0,
+        "losses": 0,
+        "pushes": 0,
+        "profit": 0.0,
+        "hit_rate": None,
+    }
+
+
+def _empty_record_summary() -> dict:
+    return {
+        "outrights": _empty_record_bucket(),
+        "matchups": _empty_record_bucket(),
+        "combined": _empty_record_bucket(),
+    }
+
+
+def _record_market_bucket(bet_type: str | None) -> str:
+    return "matchups" if str(bet_type or "").strip().lower() == "matchup" else "outrights"
+
+
+def _american_odds_rank(market_odds) -> float:
+    """Higher is better for the picked side: +120 > +105 > -105 > -125."""
+    if market_odds is not None:
+        try:
+            return float(int(str(market_odds).strip().replace("+", "")))
+        except (TypeError, ValueError):
+            pass
+    return -1_000_000.0
+
+
+def _matchup_record_key(pick: dict) -> tuple:
+    return (
+        str(pick.get("source") or ""),
+        str(pick.get("model_variant") or ""),
+        str(pick.get("bet_type") or "").strip().lower(),
+        str(pick.get("player_key") or pick.get("player_display") or "").strip().lower(),
+        str(pick.get("opponent_key") or pick.get("opponent_display") or "").strip().lower(),
+    )
+
+
+def _dedupe_record_picks(picks: list[dict]) -> list[dict]:
+    """Keep one graded pick per generated matchup, choosing the best book line."""
+    deduped: list[dict] = []
+    matchup_indexes: dict[tuple, int] = {}
+
+    for pick in picks:
+        if _record_market_bucket(pick.get("bet_type")) != "matchups":
+            deduped.append(pick)
+            continue
+
+        key = _matchup_record_key(pick)
+        existing_index = matchup_indexes.get(key)
+        if existing_index is None:
+            matchup_indexes[key] = len(deduped)
+            deduped.append(pick)
+            continue
+
+        if _american_odds_rank(pick.get("market_odds")) > _american_odds_rank(deduped[existing_index].get("market_odds")):
+            deduped[existing_index] = pick
+
+    return deduped
+
+
+def _one_unit_profit(row: dict) -> float:
+    """Return normalized 1u P&L for a graded pick.
+
+    ``score_picks_for_tournament`` writes ``pick_outcomes.profit`` with a
+    1.0u stake via ``compute_profit``. If a legacy row has a different stake,
+    normalize the stored profit back to one unit. If profit is missing but
+    odds are present, fall back to the same scoring helper for a clean
+    win/loss; dead-heat and push rows need stored profit to be exact.
+    """
+    raw_profit = row.get("profit")
+    raw_stake = row.get("stake")
+    if raw_profit is not None:
+        stake = float(raw_stake) if raw_stake not in (None, 0) else 1.0
+        return float(raw_profit) / stake
+
+    odds_decimal = row.get("odds_decimal")
+    if odds_decimal is None:
+        return 0.0
+
+    hit = int(row.get("hit") or row.get("bet_hit") or 0)
+    return compute_profit(
+        hit=hit,
+        fraction=1.0 if hit else 0.0,
+        is_push=False,
+        odds_decimal=float(odds_decimal),
+        stake=1.0,
+    )
+
+
+def _finalize_record_bucket(bucket: dict) -> dict:
+    picks = int(bucket["picks"])
+    profit = round(float(bucket["profit"]), 2)
+    return {
+        "picks": picks,
+        "wins": int(bucket["wins"]),
+        "losses": int(bucket["losses"]),
+        "pushes": int(bucket["pushes"]),
+        "profit": profit,
+        "hit_rate": round(int(bucket["wins"]) / picks, 3) if picks else None,
+    }
+
+
+def _build_record_summary(picks: list[dict]) -> dict:
+    summary = _empty_record_summary()
+
+    for pick in _dedupe_record_picks(picks):
+        profit = _one_unit_profit(pick)
+        hit = int(pick.get("bet_hit") if pick.get("bet_hit") is not None else pick.get("hit") or 0)
+        bucket_name = _record_market_bucket(pick.get("bet_type"))
+
+        for bucket in (summary[bucket_name], summary["combined"]):
+            bucket["picks"] += 1
+            bucket["profit"] += profit
+            if hit == 1:
+                bucket["wins"] += 1
+            elif round(profit, 8) == 0:
+                bucket["pushes"] += 1
+            else:
+                bucket["losses"] += 1
+
+    return {key: _finalize_record_bucket(bucket) for key, bucket in summary.items()}
+
+
 @app.get("/api/output/latest")
 async def get_latest_output_content(type: str = "backtest"):
     """
@@ -557,13 +686,10 @@ async def get_grading_history(
 ):
     """Return durable grading history from stored tournaments, results, and pick outcomes."""
     src = (pick_source or "all").strip().lower()
-    pick_join_filter = ""
     pick_where = ""
     if src == "cockpit":
-        pick_join_filter = " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
         pick_where = " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
     elif src == "lab":
-        pick_join_filter = " AND p.source IN ('lab_sandbox', 'lab_sandbox_candidate') "
         pick_where = " AND p.source IN ('lab_sandbox', 'lab_sandbox_candidate') "
 
     conn = get_conn()
@@ -588,21 +714,57 @@ async def get_grading_history(
                 )
             ) AS event_id,
             COUNT(DISTINCT r.id) AS results_count,
-            COUNT(DISTINCT p.id) AS picks_count,
-            COUNT(DISTINCT po.id) AS graded_pick_count,
-            COALESCE(SUM(COALESCE(po.model_hit, po.hit)), 0) AS hits,
-            ROUND(COALESCE(SUM(po.profit), 0), 2) AS total_profit,
-            MAX(po.entered_at) AS last_graded_at
+            (
+                SELECT COUNT(*)
+                FROM picks p2
+                WHERE p2.tournament_id = t.id {pick_where.replace("p.", "p2.")}
+            ) AS picks_count,
+            (
+                SELECT COUNT(*)
+                FROM picks p3
+                JOIN pick_outcomes po3 ON po3.pick_id = p3.id
+                WHERE p3.tournament_id = t.id {pick_where.replace("p.", "p3.")}
+            ) AS graded_pick_count,
+            (
+                SELECT COALESCE(SUM(po4.hit), 0)
+                FROM picks p4
+                JOIN pick_outcomes po4 ON po4.pick_id = p4.id
+                WHERE p4.tournament_id = t.id {pick_where.replace("p.", "p4.")}
+            ) AS hits,
+            (
+                SELECT ROUND(COALESCE(SUM(
+                    CASE
+                        WHEN po5.profit IS NOT NULL AND COALESCE(po5.stake, 0) != 0 THEN po5.profit / po5.stake
+                        ELSE COALESCE(po5.profit, 0)
+                    END
+                ), 0), 2)
+                FROM picks p5
+                JOIN pick_outcomes po5 ON po5.pick_id = p5.id
+                WHERE p5.tournament_id = t.id {pick_where.replace("p.", "p5.")}
+            ) AS total_profit,
+            (
+                SELECT MAX(po6.entered_at)
+                FROM picks p6
+                JOIN pick_outcomes po6 ON po6.pick_id = p6.id
+                WHERE p6.tournament_id = t.id {pick_where.replace("p.", "p6.")}
+            ) AS last_graded_at
         FROM tournaments t
         JOIN results r ON r.tournament_id = t.id
-        LEFT JOIN picks p ON p.tournament_id = t.id {pick_join_filter}
-        LEFT JOIN pick_outcomes po ON po.pick_id = p.id
         GROUP BY t.id
-        ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
+        ORDER BY COALESCE(
+            (
+                SELECT MAX(po7.entered_at)
+                FROM picks p7
+                JOIN pick_outcomes po7 ON po7.pick_id = p7.id
+                WHERE p7.tournament_id = t.id {pick_where.replace("p.", "p7.")}
+            ),
+            MAX(r.entered_at)
+        ) DESC, t.id DESC
         LIMIT ?
         """,
         (limit,),
     ).fetchall()
+    overall_picks: list[dict] = []
     tournaments = []
     for row in rows:
         picks = conn.execute(
@@ -612,15 +774,21 @@ async def get_grading_history(
                 p.model_variant,
                 p.source,
                 p.bet_type,
+                p.player_key,
                 p.player_display,
+                p.opponent_key,
                 p.opponent_display,
                 p.market_odds,
+                p.market_book,
                 p.model_prob,
                 p.ev,
                 p.reasoning,
-                COALESCE(po.model_hit, po.hit) AS hit,
+                po.hit AS hit,
+                po.hit AS bet_hit,
                 po.model_hit,
                 po.actual_finish,
+                po.odds_decimal,
+                po.stake,
                 ROUND(COALESCE(po.profit, 0), 2) AS profit,
                 po.entered_at AS graded_at
             FROM picks p
@@ -630,27 +798,38 @@ async def get_grading_history(
             """,
             (row["id"],),
         ).fetchall()
-        variant_stats: dict[str, dict[str, float | int]] = {}
         pick_payloads = []
         for pick in picks:
-            variant = str(pick["model_variant"] or "baseline")
-            stat = variant_stats.setdefault(variant, {"picks": 0, "hits": 0, "profit": 0.0})
-            stat["picks"] += 1
-            stat["hits"] += int(pick["hit"] or 0)
-            stat["profit"] = round(float(stat["profit"]) + float(pick["profit"] or 0), 2)
-            profit = float(pick["profit"] or 0)
+            unit_profit = _one_unit_profit(dict(pick))
+            profit = unit_profit
             outcome = "win" if int(pick["hit"] or 0) == 1 else ("push" if profit == 0 else "loss")
             pick_payloads.append({
                 **dict(pick),
+                "profit": round(profit, 2),
                 "outcome": outcome,
             })
+        record_picks = _dedupe_record_picks(pick_payloads)
+        variant_stats: dict[str, dict[str, float | int]] = {}
+        for pick in record_picks:
+            variant = str(pick.get("model_variant") or "baseline")
+            stat = variant_stats.setdefault(variant, {"picks": 0, "hits": 0, "profit": 0.0})
+            stat["picks"] += 1
+            stat["hits"] += int(pick.get("hit") or 0)
+            stat["profit"] = round(float(stat["profit"]) + float(pick.get("profit") or 0), 2)
+        event_summary = _build_record_summary(record_picks)
+        overall_picks.extend(record_picks)
         tournaments.append({
             **dict(row),
+            "picks_count": event_summary["combined"]["picks"],
+            "graded_pick_count": event_summary["combined"]["picks"],
+            "hits": event_summary["combined"]["wins"],
+            "total_profit": event_summary["combined"]["profit"],
+            "market_stats": event_summary,
             "variant_stats": variant_stats,
-            "picks": pick_payloads,
+            "picks": record_picks,
         })
     conn.close()
-    return {"tournaments": tournaments}
+    return {"tournaments": tournaments, "summary": _build_record_summary(overall_picks)}
 
 
 @app.post("/api/lab/log-displayed-picks")
@@ -707,16 +886,23 @@ async def get_track_record(limit: int = 20):
             """
             SELECT
                 p.model_variant,
+                p.source,
+                p.player_key,
                 p.player_display,
+                p.opponent_key,
                 p.opponent_display,
                 p.market_odds,
+                p.market_book,
                 p.bet_type,
                 p.model_prob,
                 p.ev,
                 p.reasoning,
-                COALESCE(po.model_hit, po.hit) AS hit,
+                po.hit AS hit,
+                po.hit AS bet_hit,
                 po.model_hit,
                 po.actual_finish,
+                po.odds_decimal,
+                po.stake,
                 ROUND(po.profit, 2) AS profit,
                 po.entered_at AS graded_at
             FROM picks p
@@ -729,13 +915,24 @@ async def get_track_record(limit: int = 20):
         pick_payloads = []
         for pick in picks:
             payload = dict(pick)
-            profit = float(payload.get("profit") or 0)
+            profit = _one_unit_profit(payload)
             hit = int(payload.get("hit") or 0)
+            payload["profit"] = round(profit, 2)
             payload["outcome"] = "win" if hit == 1 else ("push" if profit == 0 else "loss")
             pick_payloads.append(payload)
+        record_picks = _dedupe_record_picks(pick_payloads)
+        event_summary = _build_record_summary(record_picks)
+        combined = event_summary["combined"]
         result.append({
             **dict(event),
-            "picks": pick_payloads,
+            "graded_pick_count": combined["picks"],
+            "hits": combined["wins"],
+            "wins": combined["wins"],
+            "pushes": combined["pushes"],
+            "losses": combined["losses"],
+            "total_profit": combined["profit"],
+            "market_stats": event_summary,
+            "picks": record_picks,
         })
     conn.close()
     return {"events": result}

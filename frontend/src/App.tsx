@@ -112,7 +112,7 @@ function App() {
     queryFn: api.getDashboardState,
     refetchInterval: 30_000,
   })
-  const gradingHistoryPickSource = labRouteActive ? "all" : "cockpit"
+  const gradingHistoryPickSource = labRouteActive ? "lab" : "cockpit"
   const gradingHistoryQuery = useQuery({
     queryKey: ["grading-history", gradingHistoryPickSource],
     queryFn: () => api.getGradingHistory({ pickSource: gradingHistoryPickSource }),
@@ -512,6 +512,7 @@ function App() {
       : undefined
 
   const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
+  const gradingRecordSummary = gradingHistoryQuery.data?.summary
   const dashboard = dashboardQuery.data
 
   useLiveRefreshRuntime({
@@ -547,6 +548,7 @@ function App() {
       onMinEdgeChange: setMinEdge,
       filteredMatchups,
       gradingHistory,
+      gradingRecordSummary,
       players,
       predictionRun: effectivePredictionRun,
       selectedPlayerKey,
@@ -578,6 +580,7 @@ function App() {
       setMinEdge,
       filteredMatchups,
       gradingHistory,
+      gradingRecordSummary,
       players,
       effectivePredictionRun,
       selectedPlayerKey,
@@ -617,6 +620,7 @@ function App() {
       onMinEdgeChange: setMinEdge,
       filteredMatchups: labFilteredMatchups,
       gradingHistory,
+      gradingRecordSummary,
       players: labPlayers,
       predictionRun: labWorkspaceHydrated,
       selectedPlayerKey,
@@ -648,6 +652,7 @@ function App() {
       setMinEdge,
       labFilteredMatchups,
       gradingHistory,
+      gradingRecordSummary,
       labPlayers,
       labWorkspaceHydrated,
       selectedPlayerKey,
