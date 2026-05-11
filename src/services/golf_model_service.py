@@ -142,6 +142,20 @@ class GolfModelService:
         result["course_name"] = course_name
         result["course_num"] = course_num
 
+        # Align with run_predictions.py / DB replay: persist DataGolf event_id + year on
+        # `tournaments` so grading history and Past-tab fallbacks are not NULL-filtered out.
+        year_for_tournament_row = datetime.now().year
+        if event_info:
+            raw_y = event_info.get("year")
+            if raw_y is not None:
+                try:
+                    year_for_tournament_row = int(raw_y)
+                except (TypeError, ValueError):
+                    pass
+        event_id_for_db = str(event_id).strip() if event_id else None
+        if event_id_for_db == "":
+            event_id_for_db = None
+
         # Step 1a: Event-format guard — skip the individual-stroke-play
         # pipeline for team events (e.g. Zurich Classic). Placement markets
         # and individual H2H matchups are mispriced or nonexistent for these
@@ -149,7 +163,12 @@ class GolfModelService:
         event_format = classify_event_format(tournament_name, event_id)
         result["event_format"] = event_format
         if event_format == EVENT_FORMAT_TEAM:
-            tid = db.get_or_create_tournament(tournament_name, course_name)
+            tid = db.get_or_create_tournament(
+                tournament_name,
+                course_name,
+                year=year_for_tournament_row,
+                event_id=event_id_for_db,
+            )
             result["tournament_id"] = tid
             team_card_path = self._generate_team_event_card(
                 tournament_name=tournament_name,
@@ -181,7 +200,12 @@ class GolfModelService:
             return result
 
         # Step 2: Create/get tournament
-        tid = db.get_or_create_tournament(tournament_name, course_name)
+        tid = db.get_or_create_tournament(
+            tournament_name,
+            course_name,
+            year=year_for_tournament_row,
+            event_id=event_id_for_db,
+        )
         result["tournament_id"] = tid
 
         # Step 3: Backfill round data if needed

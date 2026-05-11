@@ -666,6 +666,26 @@ export function PredictionWorkspacePage({
                   <div className="card-title">Replay selector</div>
                 </div>
                 <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {pastEventOptions.length === 0 && (
+                    <div
+                      role="status"
+                      data-testid="past-events-empty"
+                      style={{
+                        fontSize: 11,
+                        lineHeight: 1.45,
+                        color: "var(--text-muted)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--r-sm)",
+                        padding: "8px 10px",
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      No past events to replay: snapshot history is empty and no graded tournaments with a
+                      DataGolf <code style={{ fontSize: 10 }}>event_id</code> were found (legacy rows may
+                      still resolve from round data after deploy). Ensure the live-refresh worker has run
+                      for completed events and grading has stored picks linked to the tournament.
+                    </div>
+                  )}
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 4 }}>
                       Event
@@ -674,6 +694,7 @@ export function PredictionWorkspacePage({
                       value={selectedPastEventKey || selectedPastEvent?.event_id || ""}
                       onChange={(e) => setSelectedPastEventKey(e.target.value)}
                       aria-label="Select past event for replay"
+                      disabled={pastEventOptions.length === 0}
                       style={{
                         width: "100%",
                         background: "var(--surface-2)",

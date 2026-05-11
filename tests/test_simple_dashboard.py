@@ -479,6 +479,70 @@ def test_grading_history_endpoint_returns_scored_tournament_summaries(monkeypatc
     assert body["tournaments"][0]["picks"][0]["ev"] == 0.12
 
 
+def test_grading_history_coalesces_event_id_from_rounds_when_tournament_null(monkeypatch, tmp_path):
+    """Past-tab fallback uses event_id; legacy rows with NULL t.event_id still resolve from rounds."""
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_history_event_id_fallback.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "Valero Texas Open", "TPC San Antonio", 2026, None),
+    )
+    conn.execute(
+        """INSERT INTO rounds
+           (dg_id, player_name, player_key, tour, season, year, event_id, event_name,
+            event_completed, course_name, course_num, course_par, round_num, score)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            100,
+            "Test Player",
+            "test_player",
+            "pga",
+            2026,
+            2026,
+            "401155999",
+            "Valero Texas Open",
+            "2026-04-06",
+            "TPC San Antonio",
+            1,
+            72,
+            4,
+            68,
+        ),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display, market_odds, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "v5", "cockpit", "matchup", "test_player", "Test Player", "-110", 0.52, 0.12),
+    )
+    conn.execute(
+        "INSERT INTO results (tournament_id, player_key, player_display, finish_text, made_cut) VALUES (?, ?, ?, ?, ?)",
+        (1, "test_player", "Test Player", "T5", 1),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes
+           (pick_id, hit, actual_finish, odds_decimal, stake, profit, entered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "T5", 1.91, 1.0, 0.91, "2026-04-06 18:45:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/history?pick_source=cockpit")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["tournaments"]) == 1
+    assert body["tournaments"][0]["event_id"] == "401155999"
+
+
 def test_track_record_endpoint_returns_pick_details_with_edge_and_lane(monkeypatch, tmp_path):
     import app as app_module
     from src import db as db_module

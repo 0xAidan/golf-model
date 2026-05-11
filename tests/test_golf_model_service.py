@@ -1,5 +1,7 @@
-from src.services.golf_model_service import GolfModelService
+from datetime import datetime
+
 from src.methodology import _data_sources
+from src.services.golf_model_service import GolfModelService
 
 
 def test_backfill_rounds_includes_alt_for_major_events(monkeypatch):
@@ -160,7 +162,10 @@ def test_run_analysis_logs_matchups_even_when_placement_quality_fails(monkeypatc
     service = GolfModelService(tour="pga")
     logged = {"placements": 0, "matchups": 0}
 
-    monkeypatch.setattr("src.services.golf_model_service.db.get_or_create_tournament", lambda tournament_name, course_name: 7)
+    monkeypatch.setattr(
+        "src.services.golf_model_service.db.get_or_create_tournament",
+        lambda tournament_name, course_name, *args, **kwargs: 7,
+    )
     monkeypatch.setattr(
         "src.services.golf_model_service.db.get_all_players",
         lambda tid, confirmed_field_only=False: ["player_a", "player_b"],
@@ -297,7 +302,10 @@ def test_run_analysis_calls_telegram_matchup_alerts_when_matchups_ok(monkeypatch
     monkeypatch.setattr("src.telegram_alerts.maybe_send_matchup_ev_alerts", spy)
 
     service = GolfModelService(tour="pga")
-    monkeypatch.setattr("src.services.golf_model_service.db.get_or_create_tournament", lambda tournament_name, course_name: 7)
+    monkeypatch.setattr(
+        "src.services.golf_model_service.db.get_or_create_tournament",
+        lambda tournament_name, course_name, *args, **kwargs: 7,
+    )
     monkeypatch.setattr(
         "src.services.golf_model_service.db.get_all_players",
         lambda tid, confirmed_field_only=False: ["player_a", "player_b"],
@@ -408,7 +416,7 @@ def test_team_event_short_circuits_pipeline(tmp_path, monkeypatch):
     # Keep DB + run-log side effects quiet.
     monkeypatch.setattr(
         "src.services.golf_model_service.db.get_or_create_tournament",
-        lambda name, course=None: 12345,
+        lambda name, course=None, *args, **kwargs: 12345,
     )
     monkeypatch.setattr(GolfModelService, "_log_run", lambda self, tid, result: None)
 
@@ -456,9 +464,18 @@ def test_individual_event_is_not_affected_by_guard(monkeypatch, tmp_path):
         raise RuntimeError("stop-after-guard")
 
     monkeypatch.setattr(GolfModelService, "_backfill_rounds", _fake_backfill)
+    goc_calls: dict[str, object] = {}
+
+    def _capture_goc(name, course=None, date=None, year=None, event_id=None):
+        goc_calls["name"] = name
+        goc_calls["course"] = course
+        goc_calls["year"] = year
+        goc_calls["event_id"] = event_id
+        return 7
+
     monkeypatch.setattr(
         "src.services.golf_model_service.db.get_or_create_tournament",
-        lambda name, course=None: 7,
+        _capture_goc,
     )
 
     service = GolfModelService(tour="pga")
@@ -477,3 +494,5 @@ def test_individual_event_is_not_affected_by_guard(monkeypatch, tmp_path):
         assert "stop-after-guard" in str(exc)
 
     assert called["reached_backfill"] is True
+    assert goc_calls.get("event_id") == "012"
+    assert goc_calls.get("year") == datetime.now().year

@@ -573,7 +573,19 @@ async def get_grading_history(
             t.name,
             t.course,
             t.year,
-            t.event_id,
+            COALESCE(
+                NULLIF(TRIM(COALESCE(t.event_id, '')), ''),
+                (
+                    SELECT r2.event_id
+                    FROM rounds r2
+                    WHERE r2.event_name = t.name
+                      AND (t.year IS NULL OR r2.year = t.year)
+                      AND r2.event_id IS NOT NULL
+                      AND TRIM(r2.event_id) != ''
+                    ORDER BY r2.event_completed DESC
+                    LIMIT 1
+                )
+            ) AS event_id,
             COUNT(DISTINCT r.id) AS results_count,
             COUNT(DISTINCT p.id) AS picks_count,
             COUNT(DISTINCT po.id) AS graded_pick_count,
@@ -584,7 +596,7 @@ async def get_grading_history(
         JOIN results r ON r.tournament_id = t.id
         LEFT JOIN picks p ON p.tournament_id = t.id {pick_join_filter}
         LEFT JOIN pick_outcomes po ON po.pick_id = p.id
-        GROUP BY t.id, t.name, t.course, t.year, t.event_id
+        GROUP BY t.id
         ORDER BY COALESCE(MAX(po.entered_at), MAX(r.entered_at)) DESC, t.id DESC
         LIMIT ?
         """,

@@ -100,14 +100,22 @@ function App() {
   const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
 
+  const location = useLocation()
+  const isLegacyLabBoardPath =
+    location.pathname === "/cockpit-lab" || location.pathname.startsWith("/cockpit-lab/")
+  const isLabBoardRoute = location.pathname === "/lab" || isLegacyLabBoardPath
+  const isLabPicksRoute = location.pathname.startsWith("/lab/picks")
+  const labRouteActive = isLabBoardRoute || isLabPicksRoute
+
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
     queryFn: api.getDashboardState,
     refetchInterval: 30_000,
   })
+  const gradingHistoryPickSource = labRouteActive ? "all" : "cockpit"
   const gradingHistoryQuery = useQuery({
-    queryKey: ["grading-history", "dashboard"],
-    queryFn: () => api.getGradingHistory({ pickSource: "cockpit" }),
+    queryKey: ["grading-history", gradingHistoryPickSource],
+    queryFn: () => api.getGradingHistory({ pickSource: gradingHistoryPickSource }),
   })
   const liveRefreshStatusQuery = useQuery({
     queryKey: ["live-refresh-status"],
@@ -125,13 +133,7 @@ function App() {
 
   const liveSnapshotEnvelope = liveSnapshotQuery.data
   const liveSnapshot: LiveRefreshSnapshot | null = liveSnapshotEnvelope?.snapshot ?? null
-  const location = useLocation()
   const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(liveSnapshot), [liveSnapshot])
-  const isLegacyLabBoardPath =
-    location.pathname === "/cockpit-lab" || location.pathname.startsWith("/cockpit-lab/")
-  const isLabBoardRoute = location.pathname === "/lab" || isLegacyLabBoardPath
-  const isLabPicksRoute = location.pathname.startsWith("/lab/picks")
-  const labRouteActive = isLabBoardRoute || isLabPicksRoute
   /** When the parallel lab lane is off, lab routes still hydrate from production snapshot so the UI is usable. */
   const labDisplaySnapshot = useMemo(() => {
     if (!labRouteActive) return null
