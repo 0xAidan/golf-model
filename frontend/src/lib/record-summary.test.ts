@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { buildGradingRecordSummary } from "@/lib/record-summary"
-import type { GradedTournamentSummary } from "@/lib/types"
+import { buildGradingRecordSummary, buildPastReplayRecordSummary } from "@/lib/record-summary"
+import type { GradedTournamentSummary, LiveLeaderboardRow, MatchupBet } from "@/lib/types"
 
 describe("buildGradingRecordSummary", () => {
   it("prefers API-provided 1u market summaries when available", () => {
@@ -45,4 +45,60 @@ describe("buildGradingRecordSummary", () => {
     expect(summary.matchups).toMatchObject({ picks: 2, wins: 1, losses: 1, pushes: 0, profit: -0.09 })
     expect(summary.outrights).toMatchObject({ picks: 2, wins: 1, losses: 0, pushes: 1, profit: 4 })
   })
+})
+
+describe("buildPastReplayRecordSummary", () => {
+  it("summarizes resolved replay matchups from the final leaderboard", () => {
+    const matchups: MatchupBet[] = [
+      matchup("Patrick Rodgers", "patrick_rodgers", "Sungjae Im", "sungjae_im", "+103"),
+      matchup("Adam Scott", "adam_scott", "Rickie Fowler", "rickie_fowler", "-105"),
+      matchup("Pending Player", "pending_player", "Rickie Fowler", "rickie_fowler", "-110"),
+    ]
+    const leaderboard: LiveLeaderboardRow[] = [
+      leaderboardRow("Patrick Rodgers", "patrick_rodgers", "T10", 10),
+      leaderboardRow("Sungjae Im", "sungjae_im", "T22", 22),
+      leaderboardRow("Adam Scott", "adam_scott", "T40", 40),
+      leaderboardRow("Rickie Fowler", "rickie_fowler", "T12", 12),
+    ]
+
+    const summary = buildPastReplayRecordSummary(matchups, leaderboard)
+
+    expect(summary.combined).toMatchObject({ picks: 2, wins: 1, losses: 1, pushes: 0, profit: 0.03 })
+    expect(summary.matchups.recordLabel).toBe("1-1-0")
+    expect(summary.outrights.recordLabel).toBe("0-0-0")
+  })
+})
+
+const matchup = (
+  pick: string,
+  pickKey: string,
+  opponent: string,
+  opponentKey: string,
+  odds: string,
+): MatchupBet => ({
+  pick,
+  pick_key: pickKey,
+  opponent,
+  opponent_key: opponentKey,
+  odds,
+  model_win_prob: 0.53,
+  implied_prob: 0.51,
+  ev: 0.1,
+  ev_pct: "10.0%",
+  composite_gap: 1,
+  form_gap: 1,
+  course_fit_gap: 1,
+  reason: "test",
+})
+
+const leaderboardRow = (
+  player: string,
+  playerKey: string,
+  position: string,
+  rank: number,
+): LiveLeaderboardRow => ({
+  player,
+  player_key: playerKey,
+  position,
+  rank,
 })

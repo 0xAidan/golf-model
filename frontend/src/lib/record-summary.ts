@@ -1,4 +1,5 @@
-import type { GradedTournamentSummary, RecordBucket, RecordSummary } from "@/lib/types"
+import { gradeTournamentMatchupFromLeaderboard } from "@/lib/matchup-pick-grade"
+import type { GradedTournamentSummary, LiveLeaderboardRow, MatchupBet, RecordBucket, RecordSummary } from "@/lib/types"
 
 const EMPTY_BUCKET: RecordBucket = {
   picks: 0,
@@ -88,6 +89,54 @@ export const buildGradingRecordSummary = (
         }
         return accumulator
       }, emptySummary())
+
+  return {
+    outrights: toDisplayBucket(finalizeBucket(summary.outrights)),
+    matchups: toDisplayBucket(finalizeBucket(summary.matchups)),
+    combined: toDisplayBucket(finalizeBucket(summary.combined)),
+  }
+}
+
+const americanOddsProfit = (odds: string | number | undefined | null) => {
+  const raw = typeof odds === "number" ? odds : Number.parseInt(String(odds ?? "").replace("+", ""), 10)
+  if (!Number.isFinite(raw) || raw === 0) return 0
+  if (raw > 0) return raw / 100
+  return 100 / Math.abs(raw)
+}
+
+export const buildPastReplayRecordSummary = (
+  matchups: MatchupBet[],
+  leaderboardRows: LiveLeaderboardRow[],
+): DisplayRecordSummary => {
+  const summary = emptySummary()
+
+  for (const matchup of matchups) {
+    const outcome =
+      matchup.graded_result ??
+      gradeTournamentMatchupFromLeaderboard(matchup, leaderboardRows)
+    if (outcome !== "win" && outcome !== "loss" && outcome !== "push") {
+      continue
+    }
+
+    const profit =
+      outcome === "win"
+        ? americanOddsProfit(matchup.odds)
+        : outcome === "loss"
+          ? -1
+          : 0
+
+    for (const bucket of [summary.matchups, summary.combined]) {
+      bucket.picks += 1
+      bucket.profit += profit
+      if (outcome === "win") {
+        bucket.wins += 1
+      } else if (outcome === "push") {
+        bucket.pushes += 1
+      } else {
+        bucket.losses += 1
+      }
+    }
+  }
 
   return {
     outrights: toDisplayBucket(finalizeBucket(summary.outrights)),
