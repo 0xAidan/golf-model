@@ -50,6 +50,7 @@ MARKET_EV_THRESHOLDS: dict[str, float] = {
     "outright": 0.15,
     "top5": 0.10,
     "top10": 0.08,
+    "top15": 0.08,
     "top20": 0.08,
     "frl": 0.10,
     "make_cut": 0.05,
@@ -75,6 +76,46 @@ PLACEMENT_CARD_MAX = 3                # Max placement bets shown on card
 PHANTOM_EV_THRESHOLD = 1.0        # >100% EV excluded entirely
 MODEL_MARKET_DISCREPANCY_THRESHOLD = 2.0  # model_prob > 2x market_prob -> speculative
 
+# Public / marketing gates (stricter than internal value detection). See src/marketing_safety.py.
+MARKETING_MIN_ABSOLUTE_EDGE_BY_TYPE: dict[str, float] = {
+    "outright": 0.020,
+    "top5": 0.015,
+    "top10": 0.012,
+    "top20": 0.012,
+    "top15": 0.012,
+    "frl": 0.018,
+    "make_cut": 0.025,
+    "3ball": 0.015,
+}
+MARKETING_MAX_EV_PUBLIC_BY_TYPE: dict[str, float] = {
+    "outright": 1.50,
+    "top5": 0.55,
+    "top10": 0.45,
+    "top20": 0.45,
+    "top15": 0.45,
+    "frl": 0.80,
+    "make_cut": 0.35,
+    "3ball": 0.55,
+}
+MARKETING_MAX_AMERICAN_FOR_PUBLIC_OUTRIGHT: int = int(
+    os.environ.get("MARKETING_MAX_AMERICAN_FOR_PUBLIC_OUTRIGHT", "15000")
+)
+MARKETING_LONGSHOT_AMERICAN_OUTRIGHT: int = int(
+    os.environ.get("MARKETING_LONGSHOT_AMERICAN_OUTRIGHT", "8000")
+)
+MARKETING_MIN_ABS_EDGE_LONGSHOT_OUTRIGHT: float = float(
+    os.environ.get("MARKETING_MIN_ABS_EDGE_LONGSHOT_OUTRIGHT", "0.004")
+)
+MARKETING_MAX_EV_PUBLIC_LONGSHOT_OUTRIGHT: float = float(
+    os.environ.get("MARKETING_MAX_EV_PUBLIC_LONGSHOT_OUTRIGHT", "0.35")
+)
+MARKETING_MIN_ABSOLUTE_EDGE_MATCHUP: float = float(
+    os.environ.get("MARKETING_MIN_ABSOLUTE_EDGE_MATCHUP", "0.03")
+)
+MARKETING_MAX_EV_PUBLIC_MATCHUP: float = float(
+    os.environ.get("MARKETING_MAX_EV_PUBLIC_MATCHUP", "0.45")
+)
+
 # Minimum market implied probability to trust odds
 MIN_MARKET_PROB = 0.005
 
@@ -88,6 +129,7 @@ MAX_REASONABLE_ODDS: dict[str, int] = {
     "outright": 30000,
     "top5": 5000,
     "top10": 3000,
+    "top15": 3500,
     "top20": 1500,
     "frl": 10000,
     "make_cut": 500,
@@ -101,6 +143,7 @@ BLEND_WEIGHTS: dict[str, dict[str, float]] = {
     "outright": {"dg": 0.95, "model": 0.05},
     "top5": {"dg": 0.95, "model": 0.05},
     "top10": {"dg": 0.95, "model": 0.05},
+    "top15": {"dg": 0.95, "model": 0.05},
     "top20": {"dg": 0.95, "model": 0.05},
     "frl": {"dg": 0.95, "model": 0.05},
     "make_cut": {"dg": 0.95, "model": 0.05},
@@ -156,6 +199,7 @@ SOFTMAX_TEMP_BY_TYPE: dict[str, float] = {
     "outright": 8.0,
     "top5": 10.0,
     "top10": 12.0,
+    "top15": 12.5,
     "top20": 15.0,
     "make_cut": 20.0,
     "frl": 7.0,
