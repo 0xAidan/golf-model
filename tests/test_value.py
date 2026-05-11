@@ -136,7 +136,7 @@ def test_top5_rejects_excessive_odds():
 
 def test_max_reasonable_odds_keys_cover_all_markets():
     """Every standard bet type should have a defined max."""
-    expected_markets = {"outright", "top5", "top10", "top20", "frl", "make_cut", "3ball"}
+    expected_markets = {"outright", "top5", "top10", "top15", "top20", "frl", "make_cut", "3ball"}
     assert expected_markets == set(MAX_REASONABLE_ODDS.keys())
 
 
@@ -206,6 +206,9 @@ def test_find_value_bets_returns_all_qualifying_books_for_same_player(monkeypatc
     assert {row["best_odds"] for row in player_rows} == {120, 140}
     assert player_rows[0]["ev"] == pytest.approx(0.3248, abs=0.01)
     assert player_rows[0]["ev"] > player_rows[1]["ev"]
+    assert "ev_prob" in player_rows[0]
+    assert "calibrated_prob" in player_rows[0]
+    assert "marketing_safe" in player_rows[0]
 
 
 def test_select_dg_primary_shrinkage_uses_ch_when_close(monkeypatch):

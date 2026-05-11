@@ -56,8 +56,8 @@ export const MATCHUP_TABLE_TOOLTIPS = {
   odds: "American odds as fetched for this pick.",
   tier: "Confidence bucket from model conviction and filters (e.g. STRONG vs LEAN).",
   reason: "Short model rationale when the pipeline attached one.",
-  ev: "Expected value vs posted implied probability (model edge).",
-  winPct: "Model win probability for the pick side, before vig.",
+  ev: "Expected value vs posted implied probability using the model's ev_prob (calibrated, placement dead-heat when applicable) — not vs de-vigged fair odds.",
+  winPct: "Blended model win probability for the pick side (DG + model where applicable). EV uses the same mass as this display unless the row exposes ev_prob for audit.",
   result:
     "Past events only: graded head-to-head result from final finishes (W/L), push (P), Pending when data is incomplete, or unavailable (—) for markets we do not derive here.",
   lane: "Bet type or pipeline lane (e.g. matchup vs alternate line).",
@@ -116,7 +116,7 @@ export const MATCHUP_DETAIL_TOOLTIPS = {
   compositeGap: "Difference in composite model score between pick and opponent — overall strength gap.",
   formGap: "Difference in recent-form sub-score between the two sides.",
   courseGap: "Difference in course-fit sub-score for this venue/setup.",
-  impliedProb: "Win probability implied by the posted odds (market price converted to %).",
+  impliedProb: "Win probability implied by the posted American price (raw, includes vig; not de-vigged).",
   conviction: "Model conviction score for this matchup (internal strength-of-signal, not tier).",
   momentum: "Whether short-term momentum / trajectory lines up with the pick vs mixed signals.",
 } as const

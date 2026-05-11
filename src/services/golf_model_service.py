@@ -872,6 +872,10 @@ class GolfModelService:
                 bt = market_key.replace("top_", "top")
             if allowed is not None and bt not in allowed:
                 continue
+            # top15: DG renormalization / softmax / dead-heat / EV thresholds are not fully
+            # aligned with other placements — skip value rows until wired (see audit doc).
+            if bt == "top15":
+                continue
             vb = find_value_bets(
                 composite,
                 best,

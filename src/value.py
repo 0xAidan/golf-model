@@ -23,6 +23,7 @@ from src.player_normalizer import normalize_name
 from src import db
 from src import config
 from src.calibration import get_calibration_correction
+from src.marketing_safety import assess_placement_marketing
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ def model_score_to_prob(composite_score: float, all_scores: list[float],
         "outright": 1.0,
         "top5": 5.0,
         "top10": 10.0,
+        "top15": 15.0,
         "top20": 20.0,
         "make_cut": 0.65 * field_size,
         "frl": 1.0,
@@ -419,21 +421,41 @@ def find_3ball_value_bets(
 
             opponents = [p["display"] for j, p in enumerate(players) if j != i]
 
-            value_bets.append({
+            row3 = {
                 "player_key": player["key"],
                 "player_display": player["display"],
                 "rank": player["rank"],
                 "bet_type": "3ball",
                 "best_odds": int(best_odds) if isinstance(best_odds, (int, float)) else best_odds,
                 "best_book": best_book or "—",
+                "book": best_book or "—",
                 "model_prob": round(blended, 4),
+                "raw_model_prob": round(model_prob, 4),
+                "blended_prob": round(blended, 4),
+                "calibrated_prob": round(blended, 6),
+                "ev_prob": round(blended, 6),
+                "dead_heat_multiplier": 1.0,
                 "market_prob": round(implied, 4),
+                "market_implied_prob_raw": round(implied, 6),
                 "ev": round(ev_val, 4),
                 "ev_pct": f"{ev_val * 100:.1f}%",
                 "is_value": True,
+                "speculative": False,
+                "suspicious": False,
+                "ev_capped": False,
                 "opponents": " / ".join(opponents),
                 "model_variant": model_variant,
-            })
+                "odds_quality": {
+                    "source": "datagolf_3ball",
+                    "bet_type": "3ball",
+                    "books_in_row": 1,
+                    "stale_odds": False,
+                },
+            }
+            _ms, _mw = assess_placement_marketing(row3)
+            row3["marketing_safe"] = _ms
+            row3["marketing_warnings"] = _mw
+            value_bets.append(row3)
 
     value_bets.sort(key=lambda x: x["ev"], reverse=True)
     return value_bets
@@ -590,6 +612,14 @@ def find_value_bets(composite_results: list[dict],
         elif bet_type == "top20":
             prob_for_ev = corrected_prob * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP20)
 
+        dead_heat_multiplier = 1.0
+        if bet_type == "top5":
+            dead_heat_multiplier = 1.0 - config.DEAD_HEAT_DISCOUNT_TOP5
+        elif bet_type == "top10":
+            dead_heat_multiplier = 1.0 - config.DEAD_HEAT_DISCOUNT_TOP10
+        elif bet_type == "top20":
+            dead_heat_multiplier = 1.0 - config.DEAD_HEAT_DISCOUNT_TOP20
+
         # Comparison logging: dg_only, model_only, blended (for isolation when changing blend/model)
         dg_only_prob = dg_prob_raw if dg_prob_raw is not None else None
         model_only_prob = softmax_prob
@@ -675,7 +705,14 @@ def find_value_bets(composite_results: list[dict],
             if uncertainty_val is None:
                 uncertainty_val = r.get("v5_uncertainty")
 
-            value_bets.append({
+            odds_quality = {
+                "source": "value_pipeline",
+                "bet_type": bet_type,
+                "books_in_row": len(book_rows),
+                "stale_odds": False,
+            }
+
+            row = {
                 "player_key": pkey,
                 "player_display": pdisp,
                 "rank": r["rank"],
@@ -685,12 +722,19 @@ def find_value_bets(composite_results: list[dict],
                 "momentum": r["momentum"],
                 "book": book_name,
                 "odds": odds_text,
+                "bet_type": bet_type,
+                # Display: blended DG+softmax before empirical calibration (matches historical cards).
                 "model_prob": round(model_prob, 4),
+                "raw_model_prob": round(model_only_prob, 4),
+                "blended_prob": round(blended_prob, 4),
+                "calibrated_prob": round(corrected_prob, 6),
+                "ev_prob": round(prob_for_ev, 6),
+                "dead_heat_multiplier": dead_heat_multiplier,
+                "market_prob": round(market_prob, 4),
+                "market_implied_prob_raw": round(market_prob, 6),
                 "dg_prob": round(dg_prob_for_log, 4) if dg_prob_for_log else None,
                 "dg_only_prob": round(dg_only_prob, 4) if dg_only_prob is not None else None,
                 "model_only_prob": round(model_only_prob, 4),
-                "blended_prob": round(blended_prob, 4),
-                "market_prob": round(market_prob, 4),
                 "best_odds": book_price,
                 "best_book": book_name,
                 "best_available_odds": best_available_price,
@@ -713,7 +757,12 @@ def find_value_bets(composite_results: list[dict],
                 "model_variant": model_variant,
                 "uncertainty": uncertainty_val,
                 "v5_uncertainty": uncertainty_val,
-            })
+                "odds_quality": odds_quality,
+            }
+            m_safe, m_warn = assess_placement_marketing(row)
+            row["marketing_safe"] = m_safe
+            row["marketing_warnings"] = m_warn
+            value_bets.append(row)
 
     # Sort by EV descending
     value_bets.sort(key=lambda x: x["ev"], reverse=True)

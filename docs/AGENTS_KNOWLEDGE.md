@@ -71,7 +71,7 @@ golf-model/
 │   │   ├── weather.py       # Weather forecast fetch + adjustments
 │   │   └── weights.py       # Weight management, analysis, suggest_weight_adjustment
 │   │
-│   ├── value.py             # EV calculation, value bet detection (model vs market)
+│   ├── value.py             # EV + value rows: `ev_prob` vs display `model_prob`; marketing_safe; odds_quality
 │   ├── matchup_value.py     # Matchup EV using Platt-sigmoid calibration + DG blend
 │   ├── matchups.py          # Standalone matchup engine (compute_matchup_edge, confidence tiers)
 │   ├── odds.py              # Odds fetch (The Odds API) + best odds per player/market
@@ -150,6 +150,7 @@ golf-model/
 │   ├── backtest_v42_cognizant.py
 │   ├── generate_backtest_report.py
 │   ├── compute_historical_clv.py
+│   ├── audit_ev_math.py     # Read-only EV/implied audit → output/audits/*.json|*.md
 │   ├── run_autoresearch_eval.py
 │   ├── run_autoresearch_loop.py
 │   └── run_autoresearch_holdout.py

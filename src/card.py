@@ -293,8 +293,15 @@ def generate_card(tournament_name: str,
         lines.append("")
         lines.append("## Value Picks: Placement Markets")
         lines.append("")
+        lines.append(
+            "*Posted **market** percentages are **raw implied probability** from the "
+            "American price (includes vig). **Model** is DG+composite **blend** before "
+            "calibration; **EV** uses `ev_prob` (calibrated × dead-heat factor for top-N). "
+            "De-vigged fair prices are **not** used on the card — see `multiplicative_devig` "
+            "in `src/clv.py` for closing-line analytics.*"
+        )
+        lines.append("")
 
-        top15_vb = value_bets.get("top15", [])
         top10_vb = value_bets.get("top10", [])
         top20_vb = value_bets.get("top20", [])
         top5_vb = value_bets.get("top5", [])
@@ -308,15 +315,6 @@ def generate_card(tournament_name: str,
             _write_value_section(lines, qualified, top_n=placement_max)
         else:
             lines.append("*No odds data available for Top 20.*")
-            lines.append("")
-
-        lines.append("### Top 15 Finish")
-        lines.append("")
-        if top15_vb:
-            qualified = [b for b in top15_vb if b.get("is_value") and not b.get("suspicious") and not b.get("ev_capped") and (b.get("ev", 0) or 0) >= ev_floor]
-            _write_value_section(lines, qualified, top_n=placement_max)
-        else:
-            lines.append("*No odds data available for Top 15.*")
             lines.append("")
 
         lines.append("### Top 10 Finish")
@@ -572,12 +570,18 @@ def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
             # Use more decimal places for small probabilities
             model_fmt = _fmt_prob(vb['model_prob'])
             market_fmt = _fmt_prob(vb['market_prob'])
+            pub = vb.get("marketing_safe", False)
+            tag = "**VALUE**" if pub else "**Watchlist (not marketing-safe)**"
+            warn = ""
+            mw = vb.get("marketing_warnings") or []
+            if mw:
+                warn = f" — *Public gate: {'; '.join(mw)}*"
             lines.append(
-                f"- **VALUE** **{vb['player_display']}** "
+                f"- {tag} **{vb['player_display']}** "
                 f"(#{vb['rank']}) — "
                 f"{_fmt_odds(vb['best_odds'])} @ {vb['best_book']}, "
-                f"model {model_fmt} vs market {market_fmt}, "
-                f"EV {vb['ev_pct']}{better}"
+                f"model (blend) {model_fmt} vs posted implied {market_fmt}, "
+                f"EV {vb['ev_pct']}{better}{warn}"
             )
         lines.append("")
     else:
@@ -600,7 +604,7 @@ def _write_value_section(lines: list, value_bets: list, top_n: int = 8):
                 f"- **{vb['player_display']}** "
                 f"(#{vb['rank']}) — "
                 f"{_fmt_odds(vb['best_odds'])} @ {vb['best_book']}, "
-                f"model {model_fmt} vs market {market_fmt}, "
+                f"model (blend) {model_fmt} vs posted implied {market_fmt}, "
                 f"EV {vb['ev_pct']}{better}"
             )
         lines.append("")
@@ -668,6 +672,11 @@ def _write_matchup_value_bets(lines: list, matchup_bets: list[dict] | None):
                 f"| **{bet['pick']}** | {bet['opponent']} "
                 f"| {odds_str} | {model_pct} | {ev_pct} | {conviction_str} | {tier} | {book} | {reason} |"
             )
+        lines.append("")
+        lines.append(
+            "*Model win % is the blended probability used in EV; **posted implied** is raw "
+            "from the American price (not de-vigged). Rows may carry `marketing_safe` for X/public gating.*"
+        )
         lines.append("")
 
     if tournament_matchups:

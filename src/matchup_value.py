@@ -14,6 +14,7 @@ from src.player_normalizer import normalize_name
 from src import config, db
 from src.odds import american_to_implied_prob
 from src.odds_utils import american_to_decimal
+from src.marketing_safety import assess_matchup_marketing
 
 logger = logging.getLogger("matchup_value")
 
@@ -554,7 +555,7 @@ def _find_matchup_value_bets_core(
             else:
                 tier = "LEAN"
 
-            all_qualifying_bets.append({
+            m_row = {
                 "pick": pick_data["player_display"],
                 "pick_key": pick_data["player_key"],
                 "opponent": opp_data["player_display"],
@@ -564,7 +565,9 @@ def _find_matchup_value_bets_core(
                 "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
                 "platt_win_prob": round(platt_win_prob, 4),
                 "model_win_prob": round(model_win_prob, 4),
+                "ev_prob": round(model_win_prob, 6),
                 "implied_prob": round(implied_prob, 4),
+                "market_implied_prob_raw": round(implied_prob, 6),
                 "ev": round(ev, 4),
                 "ev_pct": f"{ev * 100:.1f}%",
                 "composite_gap": round(gap, 1),
@@ -583,7 +586,17 @@ def _find_matchup_value_bets_core(
                 "model_variant": model_variant,
                 "uncertainty": v5_uncertainty,
                 "v5_uncertainty": v5_uncertainty,
-            })
+                "odds_quality": {
+                    "source": "datagolf_matchups",
+                    "market_type": market_type,
+                    "book": normalized_book,
+                    "stale_odds": False,
+                },
+            }
+            _ms_m, _mw_m = assess_matchup_marketing(m_row)
+            m_row["marketing_safe"] = _ms_m
+            m_row["marketing_warnings"] = _mw_m
+            all_qualifying_bets.append(m_row)
 
     all_qualifying_bets.sort(
         key=lambda x: (x["ev"], x.get("momentum_aligned", False), x.get("conviction", 0)),
