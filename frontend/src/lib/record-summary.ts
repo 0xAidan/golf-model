@@ -1,5 +1,13 @@
 import { gradeTournamentMatchupFromLeaderboard } from "@/lib/matchup-pick-grade"
-import type { GradedTournamentSummary, LiveLeaderboardRow, MatchupBet, RecordBucket, RecordSummary } from "@/lib/types"
+import { gradeSecondaryBetFromLeaderboard } from "@/lib/outright-replay-grade"
+import type {
+  FlattenedSecondaryBet,
+  GradedTournamentSummary,
+  LiveLeaderboardRow,
+  MatchupBet,
+  RecordBucket,
+  RecordSummary,
+} from "@/lib/types"
 
 const EMPTY_BUCKET: RecordBucket = {
   picks: 0,
@@ -106,9 +114,22 @@ const americanOddsProfit = (odds: string | number | undefined | null) => {
 
 export const buildPastReplayRecordSummary = (
   matchups: MatchupBet[],
+  outrights: FlattenedSecondaryBet[],
   leaderboardRows: LiveLeaderboardRow[],
 ): DisplayRecordSummary => {
   const summary = emptySummary()
+
+  const applyBucket = (bucket: RecordBucket, outcome: "win" | "loss" | "push", profit: number) => {
+    bucket.picks += 1
+    bucket.profit += profit
+    if (outcome === "win") {
+      bucket.wins += 1
+    } else if (outcome === "push") {
+      bucket.pushes += 1
+    } else {
+      bucket.losses += 1
+    }
+  }
 
   for (const matchup of matchups) {
     const outcome =
@@ -125,17 +146,19 @@ export const buildPastReplayRecordSummary = (
           ? -1
           : 0
 
-    for (const bucket of [summary.matchups, summary.combined]) {
-      bucket.picks += 1
-      bucket.profit += profit
-      if (outcome === "win") {
-        bucket.wins += 1
-      } else if (outcome === "push") {
-        bucket.pushes += 1
-      } else {
-        bucket.losses += 1
-      }
+    applyBucket(summary.matchups, outcome, profit)
+    applyBucket(summary.combined, outcome, profit)
+  }
+
+  for (const bet of outrights) {
+    const graded = gradeSecondaryBetFromLeaderboard(bet, leaderboardRows)
+    if (!graded) {
+      continue
     }
+
+    const outcomeLetter = graded.outcome === "win" ? "win" : "loss"
+    applyBucket(summary.outrights, outcomeLetter, graded.profit)
+    applyBucket(summary.combined, outcomeLetter, graded.profit)
   }
 
   return {

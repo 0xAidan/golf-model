@@ -516,10 +516,21 @@ export function PredictionWorkspacePage({
 
   const recordSummary = useMemo(
     () =>
-      predictionTab === "past" && rawGeneratedMatchups.length > 0
-        ? buildPastReplayRecordSummary(rawGeneratedMatchups, pastLeaderboardForGrades)
+      predictionTab === "past" &&
+      (rawGeneratedMatchups.length > 0 || rawGeneratedSecondaryBets.length > 0)
+        ? buildPastReplayRecordSummary(
+            rawGeneratedMatchups,
+            rawGeneratedSecondaryBets,
+            pastLeaderboardForGrades,
+          )
         : durableRecordSummary,
-    [durableRecordSummary, pastLeaderboardForGrades, predictionTab, rawGeneratedMatchups],
+    [
+      durableRecordSummary,
+      pastLeaderboardForGrades,
+      predictionTab,
+      rawGeneratedMatchups,
+      rawGeneratedSecondaryBets,
+    ],
   )
 
   const activeSection =
