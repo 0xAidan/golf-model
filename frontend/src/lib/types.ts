@@ -424,17 +424,35 @@ export type GradedTournamentSummary = {
   hits?: number
   total_profit?: number
   last_graded_at?: string | null
+  market_stats?: RecordSummary
   variant_stats?: Record<string, { picks: number; hits: number; profit: number }>
   picks?: TrackRecordPick[]
 }
 
+export type RecordBucket = {
+  picks: number
+  wins: number
+  losses: number
+  pushes: number
+  profit: number
+  hit_rate: number | null
+}
+
+export type RecordSummary = {
+  outrights: RecordBucket
+  matchups: RecordBucket
+  combined: RecordBucket
+}
+
 export type GradingHistoryResponse = {
   tournaments: GradedTournamentSummary[]
+  summary?: RecordSummary
 }
 
 export type TrackRecordPick = {
   model_variant?: string
   source?: string | null
+  market_book?: string | null
   player_display: string
   opponent_display?: string
   market_odds?: string
@@ -461,6 +479,7 @@ export type TrackRecordEvent = {
   pushes: number
   losses: number
   total_profit: number
+  market_stats?: RecordSummary
   last_graded_at?: string
   picks: TrackRecordPick[]
 }

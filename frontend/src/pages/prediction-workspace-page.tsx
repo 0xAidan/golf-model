@@ -29,6 +29,7 @@ import {
 } from "@/lib/cockpit-picks"
 import { resolvePastMatchupGrade } from "@/lib/matchup-pick-grade"
 import { formatNumber, formatUnits } from "@/lib/format"
+import { buildGradingRecordSummary } from "@/lib/record-summary"
 import {
   EV_BADGE_TOOLTIP,
   GRADING_TABLE_TOOLTIPS,
@@ -56,6 +57,7 @@ import type {
   PastSnapshotEvent,
   PlayerProfile,
   PredictionRunResponse,
+  RecordSummary,
 } from "@/lib/types"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { computeSgTrajectoryBounds, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
@@ -262,6 +264,7 @@ export type PredictionWorkspacePageProps = {
   onMinEdgeChange: (value: number) => void
   filteredMatchups: MatchupBet[]
   gradingHistory: GradedTournamentSummary[]
+  gradingRecordSummary?: RecordSummary
   players: CompositePlayer[]
   predictionRun: PredictionRunResponse | null
   selectedPlayerKey: string
@@ -293,6 +296,7 @@ export function PredictionWorkspacePage({
   onMinEdgeChange,
   filteredMatchups,
   gradingHistory,
+  gradingRecordSummary,
   players,
   predictionRun,
   selectedPlayerKey,
@@ -316,7 +320,10 @@ export function PredictionWorkspacePage({
     staleTime: 60_000,
   })
 
-  const totalProfit = gradingHistory.reduce((sum, t) => sum + Number(t.total_profit ?? 0), 0)
+  const recordSummary = useMemo(
+    () => buildGradingRecordSummary(gradingHistory, gradingRecordSummary),
+    [gradingHistory, gradingRecordSummary],
+  )
   const liveTournament = liveSnapshot?.live_tournament
   const upcomingTournament = liveSnapshot?.upcoming_tournament
   const isLiveActive = Boolean(liveTournament?.active)
@@ -607,11 +614,6 @@ export function PredictionWorkspacePage({
     URL.revokeObjectURL(url)
   }
 
-  /* ── KPI summary strip ──────────────────────── */
-  const totalHits = gradingHistory.reduce((s, t) => s + (t.hits ?? 0), 0)
-  const totalPicks = gradingHistory.reduce((s, t) => s + (t.graded_pick_count ?? 0), 0)
-  const hitRate = totalPicks > 0 ? (totalHits / totalPicks) * 100 : 0
-
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* ── Notice bar ──────────────────────────── */}
@@ -635,21 +637,31 @@ export function PredictionWorkspacePage({
           <div className="kpi-cell-sub">players</div>
         </div>
         <div className="kpi-cell">
-          <div className="kpi-cell-label">Total P&L</div>
-          <div className={`kpi-cell-value ${totalProfit >= 0 ? "green" : "red"}`}>{formatUnits(totalProfit)}</div>
-          <div className="kpi-cell-sub">all graded events</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Hit rate</div>
-          <div className="kpi-cell-value">{totalPicks > 0 ? `${hitRate.toFixed(0)}%` : "—"}</div>
-          <div className="kpi-cell-sub">{totalHits}/{totalPicks} picks</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Snapshot age</div>
-          <div className={`kpi-cell-value ${snapshotAgeSeconds !== null && snapshotAgeSeconds > 120 ? "gold" : ""}`}>
-            {snapshotAgeSeconds !== null ? `${snapshotAgeSeconds}s` : "—"}
+          <div className="kpi-cell-label">Combined</div>
+          <div className={`kpi-cell-value ${recordSummary.combined.profit >= 0 ? "green" : "red"}`}>
+            {formatUnits(recordSummary.combined.profit)}
           </div>
-          <div className="kpi-cell-sub">data freshness</div>
+          <div className="kpi-cell-sub">
+            {recordSummary.combined.recordLabel} · {recordSummary.combined.hitRateLabel}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Matchups</div>
+          <div className={`kpi-cell-value ${recordSummary.matchups.profit >= 0 ? "green" : "red"}`}>
+            {formatUnits(recordSummary.matchups.profit)}
+          </div>
+          <div className="kpi-cell-sub">
+            {recordSummary.matchups.recordLabel} · {recordSummary.matchups.hitRateLabel}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Outrights</div>
+          <div className={`kpi-cell-value ${recordSummary.outrights.profit >= 0 ? "green" : "red"}`}>
+            {formatUnits(recordSummary.outrights.profit)}
+          </div>
+          <div className="kpi-cell-sub">
+            {recordSummary.outrights.recordLabel} · {recordSummary.outrights.hitRateLabel}
+          </div>
         </div>
       </div>
 

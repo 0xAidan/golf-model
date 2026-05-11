@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "@/App"
 
@@ -56,6 +56,10 @@ function renderAppAtRoute(route: string) {
 }
 
 describe("App legacy route replay gating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   // /players was intentionally un-gated in commit da76a05 (standalone profile
   // page no longer depends on tournament_id), so it is no longer in the gated
   // set. /matchups remains gated until the dashboard home route covers the
@@ -67,5 +71,20 @@ describe("App legacy route replay gating", () => {
 
     expect(await screen.findByText(title)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /return to dashboard home/i })).toBeInTheDocument()
+  })
+
+  it("keeps dashboard and lab grading records on separate sources", async () => {
+    renderAppAtRoute("/lab")
+
+    await waitFor(() => {
+      expect(apiMock.getGradingHistory).toHaveBeenCalledWith({ pickSource: "lab" })
+    })
+
+    vi.clearAllMocks()
+    renderAppAtRoute("/")
+
+    await waitFor(() => {
+      expect(apiMock.getGradingHistory).toHaveBeenCalledWith({ pickSource: "cockpit" })
+    })
   })
 })

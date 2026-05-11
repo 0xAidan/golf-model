@@ -479,6 +479,119 @@ def test_grading_history_endpoint_returns_scored_tournament_summaries(monkeypatc
     assert body["tournaments"][0]["picks"][0]["ev"] == 0.12
 
 
+def test_grading_history_summary_splits_1u_record_by_market_without_result_fanout(monkeypatch, tmp_path):
+    """Past KPI math should use one graded pick once, split into matchup and non-matchup buckets."""
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_history_market_summary.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "RBC Heritage", "Harbour Town", 2026, "512"),
+    )
+    # Multiple results rows used to multiply SUM(po.profit) in the old history query.
+    conn.executemany(
+        "INSERT INTO results (tournament_id, player_key, player_display, finish_text, made_cut) VALUES (?, ?, ?, ?, ?)",
+        [
+            (1, "player_a", "Player A", "1", 1),
+            (1, "player_b", "Player B", "T5", 1),
+            (1, "player_c", "Player C", "CUT", 0),
+        ],
+    )
+    picks = [
+        (1, "cockpit", "matchup", "matchup_win", "Matchup Win", "opp_1", "Opponent 1", "-125", "Book A", 1.80, 1, 0.80),
+        (2, "cockpit", "matchup", "matchup_loss", "Matchup Loss", "opp_2", "Opponent 2", "+120", "Book A", 2.20, 0, -1.00),
+        (3, "cockpit", "matchup", "matchup_push", "Matchup Push", "opp_3", "Opponent 3", "-110", "Book A", 1.91, 0, 0.00),
+        (4, "cockpit", "outright", "outright_win", "Outright Win", None, None, "+400", "Book A", 5.00, 1, 4.00),
+        (5, "cockpit", "top5", "placement_loss", "Placement Loss", None, None, "+200", "Book A", 3.00, 0, -1.00),
+        (6, "cockpit", "top10", "placement_push", "Placement Push", None, None, "+150", "Book A", 2.50, 0, 0.00),
+        # Same generated matchup as pick 1, but a better line. Record math must keep this one only.
+        (7, "cockpit", "matchup", "matchup_win", "Matchup Win", "opp_1", "Opponent 1", "-105", "Book B", 1.95, 1, 0.95),
+        # Lab rows must not leak into dashboard/cockpit summaries.
+        (8, "lab_sandbox", "matchup", "lab_win", "Lab Win", "lab_opp", "Lab Opp", "+100", "Book A", 2.00, 1, 1.00),
+    ]
+    for pick_id, source, bet_type, player_key, player_display, opponent_key, opponent_display, odds, book, odds_decimal, hit, profit in picks:
+        conn.execute(
+            """INSERT INTO picks
+               (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+                opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                pick_id,
+                1,
+                "v5",
+                source,
+                bet_type,
+                player_key,
+                player_display,
+                opponent_key,
+                opponent_display,
+                odds,
+                book,
+                0.52,
+                0.12,
+            ),
+        )
+        conn.execute(
+            """INSERT INTO pick_outcomes
+               (pick_id, hit, model_hit, actual_finish, odds_decimal, stake, profit, entered_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pick_id, hit, hit, "graded", odds_decimal, 1.0, profit, "2026-04-20 18:45:00"),
+        )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/history?pick_source=cockpit")
+
+    assert response.status_code == 200
+    body = response.json()
+    event = body["tournaments"][0]
+    assert event["graded_pick_count"] == 6
+    assert event["total_profit"] == 2.95
+    assert [pick["market_book"] for pick in event["picks"] if pick["player_display"] == "Matchup Win"] == ["Book B"]
+    assert event["market_stats"]["matchups"] == {
+        "picks": 3,
+        "wins": 1,
+        "losses": 1,
+        "pushes": 1,
+        "profit": -0.05,
+        "hit_rate": 0.333,
+    }
+    assert event["market_stats"]["outrights"] == {
+        "picks": 3,
+        "wins": 1,
+        "losses": 1,
+        "pushes": 1,
+        "profit": 3.0,
+        "hit_rate": 0.333,
+    }
+    assert body["summary"]["combined"] == {
+        "picks": 6,
+        "wins": 2,
+        "losses": 2,
+        "pushes": 2,
+        "profit": 2.95,
+        "hit_rate": 0.333,
+    }
+
+    lab_response = client.get("/api/grading/history?pick_source=lab")
+    assert lab_response.status_code == 200
+    assert lab_response.json()["summary"]["combined"] == {
+        "picks": 1,
+        "wins": 1,
+        "losses": 0,
+        "pushes": 0,
+        "profit": 1.0,
+        "hit_rate": 1.0,
+    }
+
+
 def test_grading_history_coalesces_event_id_from_rounds_when_tournament_null(monkeypatch, tmp_path):
     """Past-tab fallback uses event_id; legacy rows with NULL t.event_id still resolve from rounds."""
     import app as app_module
@@ -557,18 +670,24 @@ def test_track_record_endpoint_returns_pick_details_with_edge_and_lane(monkeypat
         "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
         (2, "RBC Heritage", "Harbour Town", 2026, "512"),
     )
-    conn.execute(
+    conn.executemany(
         """INSERT INTO picks
            (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
-            opponent_key, opponent_display, market_odds, model_prob, ev)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (2, 2, "baseline", "ui_display", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-105", 0.51, 0.117),
+            opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [
+            (2, 2, "baseline", "ui_display", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-125", "Book A", 0.51, 0.117),
+            (3, 2, "baseline", "ui_display", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-105", "Book B", 0.51, 0.117),
+        ],
     )
-    conn.execute(
+    conn.executemany(
         """INSERT INTO pick_outcomes
            (pick_id, hit, actual_finish, odds_decimal, stake, profit, entered_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (2, 0, "T36 vs T18", 1.95, 1.0, -1.0, "2026-04-20 18:45:00"),
+        [
+            (2, 0, "T36 vs T18", 1.80, 1.0, -1.0, "2026-04-20 18:45:00"),
+            (3, 0, "T36 vs T18", 1.95, 1.0, -1.0, "2026-04-20 18:46:00"),
+        ],
     )
     conn.commit()
     conn.close()
@@ -578,8 +697,10 @@ def test_track_record_endpoint_returns_pick_details_with_edge_and_lane(monkeypat
     assert response.status_code == 200
     body = response.json()
     assert len(body["events"]) == 1
+    assert body["events"][0]["graded_pick_count"] == 1
     pick = body["events"][0]["picks"][0]
     assert pick["model_variant"] == "baseline"
+    assert pick["market_book"] == "Book B"
     assert pick["model_prob"] == 0.51
     assert pick["ev"] == 0.117
     assert pick["outcome"] == "loss"
