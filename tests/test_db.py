@@ -197,6 +197,49 @@ def test_completed_market_rows_use_latest_lab_preteeoff_snapshot():
     assert result[0]["section"] == "lab_upcoming"
 
 
+def test_completed_market_rows_keep_best_line_per_unique_matchup():
+    rows = [
+        _market_row(
+            "latest-dedupe",
+            "upcoming",
+            "482",
+            "Cameron Young",
+            "cameron_young",
+            generated_at="2026-05-07T11:55:00+00:00",
+            book="book-a",
+            odds="-125",
+        ),
+        _market_row(
+            "latest-dedupe",
+            "upcoming",
+            "482",
+            "Cameron Young",
+            "cameron_young",
+            generated_at="2026-05-07T11:55:00+00:00",
+            book="book-b",
+            odds="-105",
+        ),
+        _market_row(
+            "latest-dedupe",
+            "upcoming",
+            "482",
+            "Rory McIlroy",
+            "rory_mcilroy",
+            generated_at="2026-05-07T11:55:00+00:00",
+            book="book-c",
+            odds="+120",
+        ),
+    ]
+    db.store_market_prediction_rows(rows)
+
+    result = db.get_completed_market_prediction_rows_for_event("482", source="dashboard")
+
+    assert [(row["player_display"], row["book"], row["odds"]) for row in result] == [
+        ("Cameron Young", "book-b", "-105"),
+        ("Rory McIlroy", "book-c", "+120"),
+    ]
+
+
 def _market_row(
     snapshot_id: str,
     section: str,
@@ -205,6 +248,8 @@ def _market_row(
     player_key: str,
     *,
     generated_at: str,
+    book: str = "fanduel",
+    odds: str = "-110",
 ) -> dict:
     return {
         "snapshot_id": snapshot_id,
@@ -219,8 +264,8 @@ def _market_row(
         "player_display": player_display,
         "opponent_key": "opponent",
         "opponent_display": "Opponent",
-        "book": "fanduel",
-        "odds": "-110",
+        "book": book,
+        "odds": odds,
         "model_prob": 0.56,
         "implied_prob": 0.52,
         "ev": 0.08,
