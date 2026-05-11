@@ -69,7 +69,8 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
     resolved = 0
     total_profit = 0.0
 
-    for pick in picks:
+    for raw_pick in picks:
+        pick = dict(raw_pick)
         pk = pick["player_key"]
         bt = pick["bet_type"]
         r = result_map.get(pk)
