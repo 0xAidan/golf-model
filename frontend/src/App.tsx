@@ -560,6 +560,7 @@ function App() {
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets,
       powerRankingsSubtitle: dashboardPowerRankingsSubtitle,
+      pastReplaySource: "dashboard",
     }),
     [
       liveSnapshot,
@@ -629,6 +630,7 @@ function App() {
       richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
       secondaryBets: labSecondaryBets,
       powerRankingsSubtitle: labPowerRankingsSubtitle,
+      pastReplaySource: "lab",
     }),
     [
       labDisplaySnapshot,

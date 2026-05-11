@@ -23,3 +23,25 @@ describe("api player profile paths", () => {
     )
   })
 })
+
+describe("api past market row paths", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("requests completed dashboard/lab market rows for Past replay", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue({ ok: true, json: async () => ({ ok: true, rows: [] }) } as Response)
+
+    await api.getLiveRefreshPastMarketRows("480", {
+      section: "completed",
+      source: "lab",
+      limit: 5000,
+    })
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "/api/live-refresh/past-market-rows?event_id=480&section=completed&source=lab&limit=5000",
+    )
+  })
+})

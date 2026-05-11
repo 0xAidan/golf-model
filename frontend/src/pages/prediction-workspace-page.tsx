@@ -120,6 +120,16 @@ function EmptyState({ message }: { message: string }) {
 
 const DEFAULT_COCKPIT_MIN_EDGE = 0.02
 
+type PastReplaySource = "dashboard" | "lab"
+type PastReplayLane = "completed" | "live" | "upcoming"
+type PastHistoryLane = "live" | "upcoming" | "lab_live" | "lab_upcoming"
+
+function resolvePastHistoryLane(lane: PastReplayLane, source: PastReplaySource): PastHistoryLane | null {
+  if (lane === "completed") return null
+  if (source === "lab") return lane === "live" ? "lab_live" : "lab_upcoming"
+  return lane
+}
+
 function TopPicksPipelineHint({
   diagnostics,
   predictionTab,
@@ -264,6 +274,8 @@ export type PredictionWorkspacePageProps = {
   secondaryBets: FlattenedSecondaryBet[]
   /** When set, shown under power rankings count (e.g. lab model lane). */
   powerRankingsSubtitle?: string | null
+  /** Keeps Dashboard Past and Lab Past market-row history separated. */
+  pastReplaySource?: PastReplaySource
 }
 
 export function PredictionWorkspacePage({
@@ -292,12 +304,11 @@ export function PredictionWorkspacePage({
   richProfilesEnabled,
   secondaryBets,
   powerRankingsSubtitle,
+  pastReplaySource = "dashboard",
 }: PredictionWorkspacePageProps) {
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
-  const [pastReplaySection, setPastReplaySection] = useState<"completed" | "live" | "upcoming">(
-    "completed",
-  )
+  const [pastReplaySection, setPastReplaySection] = useState<PastReplayLane>("completed")
 
   const pastEventsQuery = useQuery({
     queryKey: ["live-refresh-past-events"],
@@ -341,21 +352,25 @@ export function PredictionWorkspacePage({
   }, [pastEventOptions, selectedPastEventKey])
 
   const pastSnapshotQuery = useQuery({
-    queryKey: ["live-refresh-past-snapshot", selectedPastEvent?.event_id, pastReplaySection],
+    queryKey: ["live-refresh-past-snapshot", selectedPastEvent?.event_id, pastReplaySection, pastReplaySource],
     queryFn: () =>
-      api.getLiveRefreshPastSnapshot(selectedPastEvent?.event_id ?? "", pastReplaySection),
+      api.getLiveRefreshPastSnapshot(
+        selectedPastEvent?.event_id ?? "",
+        resolvePastHistoryLane(pastReplaySection, pastReplaySource) ?? "completed",
+        { source: pastReplaySource },
+      ),
     enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
     staleTime: 30_000,
   })
 
-  const pastReplayHasHistoryLanes =
-    pastReplaySection === "live" || pastReplaySection === "upcoming"
+  const pastReplayHistoryLane = resolvePastHistoryLane(pastReplaySection, pastReplaySource)
+  const pastReplayHasHistoryLanes = pastReplayHistoryLane !== null
 
   const pastTimelineQuery = useQuery({
-    queryKey: ["live-refresh-past-timeline", selectedPastEvent?.event_id, pastReplaySection],
+    queryKey: ["live-refresh-past-timeline", selectedPastEvent?.event_id, pastReplayHistoryLane],
     queryFn: () => {
-      const lane = pastReplaySection
-      if (lane !== "live" && lane !== "upcoming") {
+      const lane = pastReplayHistoryLane
+      if (!lane) {
         throw new Error("Past timeline is only available for live or upcoming lanes.")
       }
       return api.getLiveRefreshPastTimeline(selectedPastEvent?.event_id ?? "", {
@@ -371,21 +386,17 @@ export function PredictionWorkspacePage({
   })
 
   const pastMarketRowsQuery = useQuery({
-    queryKey: ["live-refresh-past-market-rows", selectedPastEvent?.event_id, pastReplaySection],
+    queryKey: ["live-refresh-past-market-rows", selectedPastEvent?.event_id, pastReplaySection, pastReplaySource],
     queryFn: () => {
-      const lane = pastReplaySection
-      if (lane !== "live" && lane !== "upcoming") {
-        throw new Error("Past market rows are only available for live or upcoming lanes.")
-      }
       return api.getLiveRefreshPastMarketRows(selectedPastEvent?.event_id ?? "", {
-        section: lane,
-        limit: 200,
+        section: pastReplayHistoryLane ?? "completed",
+        source: pastReplaySource,
+        limit: 10000,
       })
     },
     enabled:
       predictionTab === "past" &&
-      Boolean(selectedPastEvent?.event_id) &&
-      pastReplayHasHistoryLanes,
+      Boolean(selectedPastEvent?.event_id),
     staleTime: 30_000,
   })
   const pastReplayHasError =
@@ -435,37 +446,26 @@ export function PredictionWorkspacePage({
     return pastMarketRows.filter((row) => row.snapshot_id === activePastReplaySnapshotId)
   }, [activePastReplaySnapshotId, pastMarketRows])
 
-  const selectedBookSet = useMemo(() => new Set(selectedBooks), [selectedBooks])
-
   const pastMatchups = useMemo(() => {
     const sourceRows =
       pastReplayRows.length > 0
         ? buildReplayGeneratedMatchups(pastReplayRows)
         : (pastPredictionRun?.matchup_bets_all_books ?? pastPredictionRun?.matchup_bets ?? [])
     return sourceRows.filter((matchup) => {
-      const matchupBook = normalizeSportsbook(matchup.book)
-      if (NON_BOOK_SOURCES.has(matchupBook)) return false
-      const passesBook =
-        selectedBookSet.size === 0 || (matchupBook ? selectedBookSet.has(matchupBook) : false)
       const passesSearch = matchupSearch
         ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
         : true
-      return passesBook && passesSearch && matchup.ev >= minEdge
+      return passesSearch
     })
-  }, [matchupSearch, minEdge, pastPredictionRun, pastReplayRows, selectedBookSet])
+  }, [matchupSearch, pastPredictionRun, pastReplayRows])
 
   const pastSecondaryBets = useMemo(() => {
     const sourceRows =
       pastReplayRows.length > 0
         ? buildReplayGeneratedSecondaryBets(pastReplayRows)
         : flattenSecondaryBets(pastPredictionRun)
-    return sourceRows.filter((bet) => {
-      const betBook = normalizeSportsbook(bet.book)
-      if (betBook && NON_BOOK_SOURCES.has(betBook)) return false
-      if (selectedBookSet.size === 0) return true
-      return betBook ? selectedBookSet.has(betBook) : false
-    })
-  }, [pastPredictionRun, pastReplayRows, selectedBookSet])
+    return sourceRows
+  }, [pastPredictionRun, pastReplayRows])
 
   const displayPredictionRun = predictionTab === "past" ? pastPredictionRun : predictionRun
   const displayPlayers = useMemo(
@@ -542,13 +542,18 @@ export function PredictionWorkspacePage({
   const matchupTableColumnCount = predictionTab === "past" ? 7 : 6
 
   const topPicksEmptyMessage = useMemo(() => {
-    if (predictionTab === "past") return diagnosticsMessage
+    if (predictionTab === "past") {
+      if (rawGeneratedMatchups.length > 0 && topPlays.length === 0 && matchupSearch.trim()) {
+        return `${rawGeneratedMatchups.length} recovered matchup line(s) are available; none match your search.`
+      }
+      return diagnosticsMessage
+    }
     const rawLen = rawGeneratedMatchups.length
     if (rawLen > 0 && topPlays.length === 0) {
       return `${diagnosticsMessage} ${rawLen} matchup line(s) from the model did not pass your filters or min edge — try more books or a lower edge threshold.`
     }
     return diagnosticsMessage
-  }, [diagnosticsMessage, predictionTab, rawGeneratedMatchups.length, topPlays.length])
+  }, [diagnosticsMessage, matchupSearch, predictionTab, rawGeneratedMatchups.length, topPlays.length])
 
   // Team-format events (Zurich Classic) intentionally short-circuit the
   // pipeline in the backend (see src/event_format.py). Mirror the skip on
@@ -771,8 +776,8 @@ export function PredictionWorkspacePage({
                             void pastSnapshotQuery.refetch()
                             if (pastReplayHasHistoryLanes) {
                               void pastTimelineQuery.refetch()
-                              void pastMarketRowsQuery.refetch()
                             }
+                            void pastMarketRowsQuery.refetch()
                           }}
                         >
                           Retry replay fetch

@@ -213,14 +213,34 @@ def grade_tournament(
     else:
         print("  No matchup outcomes available (normal for some events)")
 
-    # 5. Score picks
+    # 5. Backfill durable displayed rows before scoring
+    print("  Backfilling completed market rows into gradeable picks...")
+    from src.market_row_backfill import backfill_completed_market_rows_into_picks
+
+    dashboard_backfilled = backfill_completed_market_rows_into_picks(
+        event_id,
+        tournament_id,
+        source="dashboard",
+    )
+    lab_backfilled = backfill_completed_market_rows_into_picks(
+        event_id,
+        tournament_id,
+        source="lab",
+    )
+    report["steps"]["market_row_pick_backfill"] = {
+        "dashboard_inserted": dashboard_backfilled,
+        "lab_inserted": lab_backfilled,
+    }
+    print(f"  Backfilled picks: dashboard={dashboard_backfilled}, lab={lab_backfilled}")
+
+    # 6. Score picks
     print("  Scoring picks...")
     from src.learning import score_picks_for_tournament
     score_result = score_picks_for_tournament(tournament_id)
     report["steps"]["scoring"] = score_result
     print(f"  Scoring: {score_result.get('status', 'done')}")
 
-    # 6. Run full post-tournament learning
+    # 7. Run full post-tournament learning
     print("  Running post-tournament learning pipeline...")
     from src.learning import post_tournament_learn
     learn_result = post_tournament_learn(

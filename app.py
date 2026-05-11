@@ -41,6 +41,7 @@ from src.db import (
     build_completed_snapshot_section,
     get_latest_snapshot_section,
     get_market_prediction_rows_for_event,
+    get_completed_market_prediction_rows_for_event,
     list_snapshot_timeline_points,
 )
 from src.models.composite import compute_composite
@@ -2031,10 +2032,20 @@ def _normalize_replay_section(section: str | None, *, allow_none: bool = False) 
     return section_value
 
 
+def _normalize_past_row_source(source: str | None) -> str | None:
+    value = str(source or "dashboard").strip().lower()
+    if value in {"dashboard", "cockpit"}:
+        return "dashboard"
+    if value == "lab":
+        return "lab"
+    return None
+
+
 @app.get("/api/live-refresh/past-snapshot")
 async def get_live_refresh_past_snapshot(
     event_id: str = Query(..., min_length=1),
     section: str = Query(default="completed"),
+    source: str = Query(default="dashboard"),
 ):
     """Return snapshot for a past event: completed (default), live, or upcoming section."""
     from src.db import ensure_initialized
@@ -2042,7 +2053,13 @@ async def get_live_refresh_past_snapshot(
     ensure_initialized()
     raw_section = (section or "").strip().lower() or "completed"
     if raw_section == "completed":
-        merged = build_completed_snapshot_section(event_id)
+        source_value = _normalize_past_row_source(source)
+        if source_value is None:
+            return JSONResponse(
+                {"ok": False, "error": "source must be 'dashboard' or 'lab'"},
+                status_code=400,
+            )
+        merged = build_completed_snapshot_section(event_id, source=source_value)
         if not merged:
             return JSONResponse(
                 {"ok": False, "error": "No completed snapshot available for this event."},
@@ -2052,6 +2069,7 @@ async def get_live_refresh_past_snapshot(
             "ok": True,
             "event_id": event_id,
             "section": "completed",
+            "source": source_value,
             "snapshot": merged,
         }
     section_value = _normalize_replay_section(raw_section)
@@ -2110,12 +2128,45 @@ async def get_live_refresh_past_market_rows(
     event_id: str = Query(..., min_length=1),
     market_family: str | None = Query(default=None),
     section: str | None = Query(default="live"),
+    source: str = Query(default="dashboard"),
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
     """Return persisted matchup/placement rows for post-event analysis."""
     from src.db import ensure_initialized
 
     ensure_initialized()
+    raw_section = (section or "").strip().lower()
+    source_value = _normalize_past_row_source(source)
+    if source_value is None:
+        return JSONResponse(
+            {"ok": False, "error": "source must be 'dashboard' or 'lab'"},
+            status_code=400,
+        )
+    if raw_section == "completed":
+        rows = get_completed_market_prediction_rows_for_event(
+            event_id=event_id,
+            source=source_value,
+            market_family=market_family,
+            limit=limit,
+        )
+        normalized_rows = []
+        for row in rows:
+            normalized_rows.append(
+                {
+                    **row,
+                    "is_value": row.get("is_value"),
+                    "is_value_bool": bool(row.get("is_value")),
+                }
+            )
+        return {
+            "ok": True,
+            "event_id": event_id,
+            "market_family": market_family,
+            "section": "completed",
+            "source": source_value,
+            "row_count": len(normalized_rows),
+            "rows": normalized_rows,
+        }
     section_value = _normalize_replay_section(section)
     if section_value is None:
         return _invalid_replay_section_response()
@@ -2139,6 +2190,7 @@ async def get_live_refresh_past_market_rows(
         "event_id": event_id,
         "market_family": market_family,
         "section": section_value,
+        "source": source_value,
         "row_count": len(normalized_rows),
         "rows": normalized_rows,
     }

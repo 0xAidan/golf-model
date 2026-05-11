@@ -2211,14 +2211,19 @@ def get_pre_teeoff_frozen_payload(event_id: str) -> dict | None:
         return None
 
 
-def build_completed_snapshot_section(event_id: str) -> dict | None:
+def build_completed_snapshot_section(event_id: str, *, source: str = "dashboard") -> dict | None:
     """
     Merge frozen pre-teeoff upcoming board with latest live snapshot leaderboard for Completed replay.
     """
     normalized = str(event_id or "").strip()
     if not normalized:
         return None
-    frozen = get_pre_teeoff_frozen_payload(normalized)
+    normalized_source = str(source or "dashboard").strip().lower()
+    frozen = get_pre_teeoff_frozen_payload(normalized) if normalized_source != "lab" else None
+    if not frozen:
+        pre_teeoff_section = "lab_upcoming" if normalized_source == "lab" else "upcoming"
+        latest_pre_teeoff = get_latest_snapshot_section(normalized, section=pre_teeoff_section)
+        frozen = (latest_pre_teeoff or {}).get("snapshot") or None
     latest_live = get_latest_snapshot_section(normalized, section="live")
     live_snap = (latest_live or {}).get("snapshot") or {}
     if not frozen and not live_snap:
@@ -2232,7 +2237,9 @@ def build_completed_snapshot_section(event_id: str) -> dict | None:
     out["diagnostics"]["state"] = "completed_replay"
     if frozen:
         out["frozen_pre_teeoff_rankings"] = frozen.get("rankings") or frozen.get("live_rankings")
-        out["ranking_source"] = frozen.get("ranking_source") or "frozen_pre_teeoff_upcoming"
+        out["ranking_source"] = frozen.get("ranking_source") or (
+            "frozen_pre_teeoff_lab_upcoming" if normalized_source == "lab" else "frozen_pre_teeoff_upcoming"
+        )
     return out
 
 
@@ -2421,6 +2428,79 @@ def get_market_prediction_rows_for_event(
         params,
     ).fetchall()
     conn.close()
+    result = [dict(row) for row in rows]
+    for row in result:
+        raw_payload = row.get("payload_json")
+        try:
+            row["payload"] = json.loads(raw_payload) if raw_payload else {}
+        except json.JSONDecodeError:
+            row["payload"] = {}
+    return result
+
+
+def get_completed_market_prediction_rows_for_event(
+    event_id: str,
+    *,
+    source: str = "dashboard",
+    market_family: str | None = None,
+    limit: int = 10000,
+) -> list[dict]:
+    """
+    Fetch the final pre-teeoff market-row inventory for a completed event.
+
+    Dashboard Past replays the main ``upcoming`` lane. Lab Past replays the
+    independent ``lab_upcoming`` lane so research picks do not mix with the
+    operator dashboard picks.
+    """
+    normalized_event_id = str(event_id or "").strip()
+    if not normalized_event_id:
+        return []
+    normalized_source = str(source or "dashboard").strip().lower()
+    section = "lab_upcoming" if normalized_source == "lab" else "upcoming"
+
+    clauses = ["event_id = ?", "section = ?"]
+    params: list[Any] = [normalized_event_id, section]
+    if market_family:
+        clauses.append("market_family = ?")
+        params.append(str(market_family))
+
+    conn = get_conn()
+    latest = conn.execute(
+        f"""
+        SELECT snapshot_id, generated_at
+        FROM market_prediction_rows
+        WHERE {' AND '.join(clauses)}
+        ORDER BY generated_at DESC, id DESC
+        LIMIT 1
+        """,
+        params,
+    ).fetchone()
+    if not latest:
+        conn.close()
+        return []
+
+    latest_clauses = list(clauses)
+    latest_params = list(params)
+    if latest["snapshot_id"]:
+        latest_clauses.append("snapshot_id = ?")
+        latest_params.append(latest["snapshot_id"])
+    else:
+        latest_clauses.append("generated_at = ?")
+        latest_params.append(latest["generated_at"])
+    latest_params.append(int(limit))
+
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM market_prediction_rows
+        WHERE {' AND '.join(latest_clauses)}
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        latest_params,
+    ).fetchall()
+    conn.close()
+
     result = [dict(row) for row in rows]
     for row in result:
         raw_payload = row.get("payload_json")

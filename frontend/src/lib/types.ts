@@ -324,6 +324,7 @@ export type PastSnapshotResponse = {
   generated_at?: string | null
   tour?: string | null
   section?: string
+  source?: "dashboard" | "lab" | string
   snapshot?: LiveTournamentSnapshot | null
   error?: string
 }
@@ -384,6 +385,7 @@ export type PastMarketRowsResponse = {
   event_id: string
   market_family?: string | null
   section?: string | null
+  source?: "dashboard" | "lab" | string
   row_count: number
   rows: PastMarketPredictionRow[]
   error?: string
