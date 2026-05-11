@@ -29,7 +29,7 @@ import {
 } from "@/lib/cockpit-picks"
 import { resolvePastMatchupGrade } from "@/lib/matchup-pick-grade"
 import { formatNumber, formatUnits } from "@/lib/format"
-import { buildGradingRecordSummary } from "@/lib/record-summary"
+import { buildGradingRecordSummary, buildPastReplayRecordSummary } from "@/lib/record-summary"
 import {
   EV_BADGE_TOOLTIP,
   GRADING_TABLE_TOOLTIPS,
@@ -320,7 +320,7 @@ export function PredictionWorkspacePage({
     staleTime: 60_000,
   })
 
-  const recordSummary = useMemo(
+  const durableRecordSummary = useMemo(
     () => buildGradingRecordSummary(gradingHistory, gradingRecordSummary),
     [gradingHistory, gradingRecordSummary],
   )
@@ -512,6 +512,14 @@ export function PredictionWorkspacePage({
           : getRawGeneratedSecondaryBets(displayPredictionRun)
         : getRawGeneratedSecondaryBets(displayPredictionRun),
     [displayPredictionRun, pastReplayRows, predictionTab],
+  )
+
+  const recordSummary = useMemo(
+    () =>
+      predictionTab === "past" && rawGeneratedMatchups.length > 0
+        ? buildPastReplayRecordSummary(rawGeneratedMatchups, pastLeaderboardForGrades)
+        : durableRecordSummary,
+    [durableRecordSummary, pastLeaderboardForGrades, predictionTab, rawGeneratedMatchups],
   )
 
   const activeSection =
