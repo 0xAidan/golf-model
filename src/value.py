@@ -3,6 +3,17 @@ Value Calculator
 
 Compare model-implied probabilities to market odds to find mispriced bets.
 
+EV / probability semantics (canonical):
+- Market side uses **vig-inclusive** implied probability from American odds via
+  ``src.odds_utils.american_to_implied_prob`` (same as ``american_to_decimal``).
+- **Display** ``model_prob`` is the headline calibrated/on-card probability.
+- **EV** uses ``prob_for_ev`` (may differ): calibration plus placement dead-heat
+  discount where applicable — see ``find_value_bets`` / row fields ``ev_prob``
+  vs ``model_prob``. Edge is ``compute_ev(prob_for_ev, american)`` =
+  ``(p_ev * decimal) - 1`` (decimal edge; ``ev_pct`` strings are percent).
+- Matchup markets use separate EV definitions (ratio or v5 tie-push); see
+  ``src.matchup_value`` and ``ev_kind`` on matchup rows.
+
 Expected Value (EV) = (model_prob * decimal_odds) - 1
   Positive EV = the bet is underpriced by the market
   Negative EV = overpriced
@@ -39,11 +50,10 @@ PLACEMENT_MARKETS = {"outright", "top5", "top10", "top15", "top20", "make_cut", 
 
 def compute_ev(model_prob: float, american_odds: int) -> float:
     """
-    Compute expected value of a bet.
-
-    model_prob: our model's probability (0-1)
-    american_odds: e.g. +4000, -150
-    Returns: EV as a proportion (0.15 = 15% edge)
+    Expected value for an **outright / placement** style line: ``(p * d) - 1``
+    with decimal ``d`` from American odds. Pass the same probability used for EV
+    on the row (``ev_prob`` / ``prob_for_ev``), not necessarily the displayed
+    ``model_prob``. Implied side of the line is vig-inclusive (no devig).
     """
     decimal = american_to_decimal(american_odds)
     return (model_prob * decimal) - 1.0

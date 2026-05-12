@@ -2566,17 +2566,36 @@ async def refresh_live_refresh_snapshot():
     from src.db import ensure_initialized
     ensure_initialized()
     from src.autoresearch_settings import get_settings
-    from backtester.dashboard_runtime import generate_snapshot_once, get_live_refresh_status, start_live_refresh
+    from backtester.dashboard_runtime import (
+        LiveRefreshRecomputeBusy,
+        generate_snapshot_once,
+        get_live_refresh_status,
+        start_live_refresh,
+    )
 
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
     if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
         start_live_refresh(tour=tour)
+    timeout_s = float(os.environ.get("LIVE_REFRESH_MANUAL_TIMEOUT_S", "90") or "90")
     try:
         snapshot = await asyncio.wait_for(
             asyncio.to_thread(generate_snapshot_once, tour=tour),
-            timeout=90.0,
+            timeout=timeout_s,
+        )
+    except LiveRefreshRecomputeBusy:
+        merged = _with_live_refresh_worker_status(get_live_refresh_status())
+        return JSONResponse(
+            status_code=409,
+            content={
+                "ok": False,
+                "busy": True,
+                "snapshot": None,
+                "stale_reason": "Another snapshot recompute is already running.",
+                "fallback_reason": None,
+                "status": merged,
+            },
         )
     except asyncio.TimeoutError:
         _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
@@ -2609,6 +2628,7 @@ async def refresh_live_refresh_snapshot():
         "age_seconds": age_seconds,
         "stale_reason": None,
         "fallback_reason": None,
+        "status": _with_live_refresh_worker_status(get_live_refresh_status()),
     }
 
 

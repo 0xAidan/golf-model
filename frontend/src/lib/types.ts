@@ -281,14 +281,31 @@ export type LiveRefreshSnapshot = {
   }
 }
 
+export type LiveRefreshProgressPayload = {
+  refresh_state?: string
+  phase?: string | null
+  phase_detail?: string | null
+  progress_updated_at?: string | null
+  progress_started_at?: string | null
+  percent?: number | null
+  last_error?: string | null
+}
+
+export type LiveRefreshRuntimeStatus = {
+  running?: boolean
+  cadence_mode?: string
+  run_count?: number
+  snapshot_age_seconds?: number | null
+  last_error?: string | null
+  refresh_state?: string
+  progress?: LiveRefreshProgressPayload
+  worker_pidfile?: string
+  worker_running?: boolean
+  runtime_owner?: string
+}
+
 export type LiveRefreshStatusResponse = {
-  status?: {
-    running?: boolean
-    cadence_mode?: string
-    run_count?: number
-    snapshot_age_seconds?: number | null
-    last_error?: string | null
-  }
+  status?: LiveRefreshRuntimeStatus
   settings?: {
     enabled?: boolean
     autostart?: boolean
@@ -298,12 +315,16 @@ export type LiveRefreshStatusResponse = {
 
 export type LiveRefreshSnapshotResponse = {
   ok: boolean
+  /** True when server returns 409 — another recompute holds the lock. */
+  busy?: boolean
   snapshot: LiveRefreshSnapshot | null
   generated_at?: string | null
   age_seconds?: number | null
   stale_after_seconds?: number | null
   stale_reason?: string | null
   fallback_reason?: string | null
+  /** Present on 409 busy responses — merged live-refresh status snapshot. */
+  status?: LiveRefreshRuntimeStatus
 }
 
 export type PastSnapshotEvent = {
@@ -540,6 +561,11 @@ export type MatchupBet = {
   adaptation_state?: string
   stake_multiplier?: number
   tier?: string
+  /** Backend tier gate explanation (EV vs composite gap). */
+  tier_rationale?: string
+  tier_drivers?: Record<string, unknown>
+  /** ``matchup_ratio`` vs ``matchup_v5_tie_aware`` — do not mix with outright ``value_decimal`` EV. */
+  ev_kind?: string
   pick_momentum?: number
   opp_momentum?: number
   momentum_aligned?: boolean

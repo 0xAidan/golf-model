@@ -40,6 +40,7 @@ def _example(name: str, american: int, model_p: float, *, ev_prob: float | None 
 
 def build_report() -> dict:
     masters = [
+        _example("Golden: 0.539 model EV-prob vs +100 (implied 0.5, EV 7.8%)", 100, 0.539, ev_prob=0.539),
         _example("Kitayama outright +17500 @ 0.69% model", 17500, 0.0069),
         _example("McNealy top5 +1300 @ 8.17% blend (EV uses dead-heat on calibrated)", 1300, 0.0817, ev_prob=0.0817 * (1.0 - config.DEAD_HEAT_DISCOUNT_TOP5)),
         _example("Min Woo Lee -130 @ 62.8% model", -130, 0.628),

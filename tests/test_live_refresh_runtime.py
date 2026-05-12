@@ -40,6 +40,19 @@ def test_live_refresh_lab_profile_env_overrides_persisted(monkeypatch):
     monkeypatch.delenv("LIVE_REFRESH_LAB_PROFILE_ENABLED", raising=False)
 
 
+def test_live_refresh_policy_defaults_hourly_recompute_and_ingest_cap() -> None:
+    from src.live_refresh_policy import default_live_refresh_settings, normalize_live_refresh_settings
+
+    d = default_live_refresh_settings()
+    for mode in ("off_window", "upcoming_window", "live_window", "settlement_window"):
+        assert d[mode]["recompute_seconds"] >= 3600
+        assert d[mode]["ingest_seconds"] >= 30
+        assert d[mode]["ingest_seconds"] <= 3600
+    n = normalize_live_refresh_settings({"live_window": {"ingest_seconds": 30, "recompute_seconds": 120}})
+    assert n["live_window"]["ingest_seconds"] == 30
+    assert n["live_window"]["recompute_seconds"] == 3600
+
+
 def test_live_refresh_status_endpoint(monkeypatch):
     import app as app_module
 
@@ -173,6 +186,26 @@ def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):
     body = response.json()
     assert body["ok"] is True
     assert body["snapshot"]["live_tournament"]["event_name"] == "Force Refresh Open"
+    assert body.get("status") is None or isinstance(body.get("status"), dict)
+
+
+def test_live_refresh_refresh_busy_returns_409(monkeypatch):
+    import app as app_module
+    from backtester.dashboard_runtime import LiveRefreshRecomputeBusy
+
+    def _boom(*_a, **_k):
+        raise LiveRefreshRecomputeBusy("busy")
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", _boom)
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/live-refresh/refresh")
+    assert response.status_code == 409
+    body = response.json()
+    assert body["ok"] is False
+    assert body["busy"] is True
 
 
 def test_live_refresh_start_and_stop_endpoints(monkeypatch):

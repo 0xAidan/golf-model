@@ -25,6 +25,8 @@ import sys
 import sqlite3
 import tempfile
 
+import pytest
+
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -120,3 +122,46 @@ def test_create_backup_uses_live_db_path(tmp_db) -> None:
             assert tables, "backup does not contain expected 'runs' table"
     finally:
         backup.BACKUP_DIR = original_backup_dir
+
+
+def test_create_backup_compress_writes_gzip(tmp_db) -> None:
+    import src.backup as backup
+
+    with tmp_db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO runs (status, result_json) VALUES (?, ?)",
+            ("ok", '{"test": true}'),
+        )
+        conn.commit()
+
+    original_backup_dir = backup.BACKUP_DIR
+    try:
+        backup.BACKUP_DIR = tempfile.mkdtemp(prefix="golf_backup_gz_")
+        result = backup.create_backup(keep=3, compress=True)
+        assert result is not None
+        assert result.endswith(".gz")
+        with open(result, "rb") as fh:
+            assert fh.read(2) == b"\x1f\x8b"
+    finally:
+        backup.BACKUP_DIR = original_backup_dir
+
+
+def test_create_backup_disk_hard_refuses(monkeypatch, tmp_db) -> None:
+    import src.backup as backup
+
+    with tmp_db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO runs (status, result_json) VALUES (?, ?)",
+            ("ok", '{"test": true}'),
+        )
+        conn.commit()
+
+    monkeypatch.setenv("DISK_FREE_MB_HARD", "999999999")
+    original_backup_dir = backup.BACKUP_DIR
+    try:
+        backup.BACKUP_DIR = tempfile.mkdtemp(prefix="golf_backup_hard_")
+        with pytest.raises(RuntimeError, match="Refusing backup"):
+            backup.create_backup(keep=1)
+    finally:
+        backup.BACKUP_DIR = original_backup_dir
+        monkeypatch.delenv("DISK_FREE_MB_HARD", raising=False)
