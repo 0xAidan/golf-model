@@ -2472,8 +2472,28 @@ async def get_live_refresh_snapshot():
         refreshed = {}
         # Avoid request-path stalls when the live refresh runtime is already running.
         # In that case, background recompute remains the source of truth.
-        if not status.get("running"):
-            refreshed = await _attempt_fresh_snapshot()
+        #
+        # If the snapshot is *extremely* stale while the worker still reports healthy,
+        # the dedicated process may be hung inside recompute, wedged on I/O, or stuck
+        # without advancing `generated_at`. Allow a bounded on-demand cycle from this
+        # API process so the dashboard can self-heal without operator SSH.
+        runtime_claims_healthy = bool(status.get("running"))
+        extreme_stale_floor = max(int(stale_after_seconds) * 3, 45 * 60)
+        force_bypass_runtime_wait = (
+            runtime_claims_healthy
+            and age_seconds is not None
+            and age_seconds >= extreme_stale_floor
+        )
+        if not runtime_claims_healthy or force_bypass_runtime_wait:
+            attempt_timeout = 90.0 if force_bypass_runtime_wait else 8.0
+            refreshed = await _attempt_fresh_snapshot(timeout_seconds=attempt_timeout)
+            if force_bypass_runtime_wait and refreshed:
+                _logger.warning(
+                    "Live snapshot was extremely stale (age=%ss, floor=%ss) while runtime "
+                    "reported healthy; completed bounded on-demand recompute.",
+                    age_seconds,
+                    extreme_stale_floor,
+                )
         if refreshed:
             snapshot = refreshed
             generated_at = snapshot.get("generated_at")

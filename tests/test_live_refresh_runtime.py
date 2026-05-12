@@ -98,6 +98,63 @@ def test_live_refresh_snapshot_endpoint_generates_snapshot_on_demand(monkeypatch
     assert body["snapshot"]["live_tournament"]["event_name"] == "Future Open"
 
 
+def test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runtime_running(monkeypatch):
+    """Hung worker + pidfile healthy used to skip all on-demand recomputes forever (Q10 regression)."""
+    import app as app_module
+
+    calls = {"generate": 0}
+    stale_snapshot = {
+        "generated_at": "2000-01-01T00:00:00+00:00",
+        "live_tournament": {
+            "active": True,
+            "diagnostics": {"state": "edges_available"},
+        },
+        "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
+    }
+    fresh_snapshot = {
+        "generated_at": "2099-06-01T12:00:00+00:00",
+        "live_tournament": {
+            "active": True,
+            "event_name": "Recovered Open",
+            "diagnostics": {"state": "edges_available"},
+        },
+        "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
+    }
+
+    def fake_generate(*, tour: str = "pga"):
+        calls["generate"] += 1
+        return fresh_snapshot
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "src.autoresearch_settings.get_settings",
+        lambda: {
+            "live_refresh": {
+                "enabled": True,
+                "tour": "pga",
+                "autostart": True,
+                "mode_override": "live_window",
+            }
+        },
+    )
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": False})
+    monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: stale_snapshot)
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", fake_generate)
+    monkeypatch.setattr(
+        app_module,
+        "_with_live_refresh_worker_status",
+        lambda raw: {**raw, "running": True, "worker_running": True, "runtime_owner": "worker"},
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/snapshot")
+    assert response.status_code == 200
+    body = response.json()
+    assert calls["generate"] == 1
+    assert body["ok"] is True
+    assert body["snapshot"]["live_tournament"]["event_name"] == "Recovered Open"
+
+
 def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):
     import app as app_module
 
