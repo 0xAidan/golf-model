@@ -7,6 +7,7 @@ Keeps the last N backups and auto-rotates.
 Usage:
     python -m src.backup                     # Create a backup now
     python -m src.backup --keep 10           # Keep last 10 backups
+    python -m src.backup --compress          # gzip new backup to .db.gz (explicit opt-in)
     python -m src.backup --print-path        # Print authoritative DB path (for shell scripts)
     python -m src.backup --print-backup-dir  # Print backup directory path
 """
@@ -14,10 +15,12 @@ Usage:
 import os
 import shutil
 import glob
+import gzip
 import sqlite3
 from datetime import datetime
 
 from src import db
+from src.disk_guard import warn_if_low_disk
 
 
 def _current_db_path() -> str:
@@ -36,12 +39,49 @@ DB_PATH = _current_db_path()
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
 
 
-def create_backup(keep: int = 7) -> str | None:
+def _backup_globs() -> tuple[str, str]:
+    """Patterns for timestamped backup artifacts (plain DB and optional gzip)."""
+    return (
+        os.path.join(BACKUP_DIR, "golf_model_*.db"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db.gz"),
+    )
+
+
+def _enforce_disk_hard_floor(path: str) -> None:
+    """Abort backup when free space is below ``DISK_FREE_MB_HARD`` (env, MB) if set."""
+    raw = (os.environ.get("DISK_FREE_MB_HARD") or "").strip()
+    if not raw:
+        return
+    try:
+        hard_mb = int(raw)
+    except ValueError:
+        return
+    if hard_mb <= 0:
+        return
+    usage = shutil.disk_usage(path)
+    free_mb = int(usage.free // (1024 * 1024))
+    if free_mb < hard_mb:
+        raise RuntimeError(
+            f"Refusing backup: only {free_mb} MiB free (DISK_FREE_MB_HARD={hard_mb} MiB)."
+        )
+
+
+def _sorted_backup_paths() -> list[str]:
+    """Oldest first (mtime) for rotation."""
+    paths: list[str] = []
+    for pattern in _backup_globs():
+        paths.extend(glob.glob(pattern))
+    paths = list(set(paths))
+    return sorted(paths, key=lambda p: os.path.getmtime(p))
+
+
+def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     """
     Create a timestamped backup of the database.
 
     Args:
         keep: Number of recent backups to keep (older ones deleted).
+        compress: When True, gzip the new backup to ``*.db.gz`` (explicit opt-in).
 
     Returns:
         Path to the new backup file, or None if DB doesn't exist.
@@ -50,12 +90,21 @@ def create_backup(keep: int = 7) -> str | None:
     if not os.path.exists(db_path):
         return None
 
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _enforce_disk_hard_floor(repo_root)
+    warn_info = warn_if_low_disk(repo_root, context="backup_create")
+    if warn_info and warn_info.get("warned"):
+        print(
+            f"  Warning: low disk ({warn_info.get('free_mb')} MiB free; "
+            f"warn below {warn_info.get('threshold_mb')} MiB)."
+        )
+
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
     # Prune *before* creating a new file so peak disk use stays at ~`keep` full
     # copies (not `keep` + 1). Small VPS volumes often fail sqlite backup with
     # "database or disk is full" when rotation ran only after the new backup.
-    backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")))
+    backups = _sorted_backup_paths()
     while len(backups) >= int(keep):
         oldest = backups.pop(0)
         try:
@@ -82,16 +131,25 @@ def create_backup(keep: int = 7) -> str | None:
         backup_conn.close()
         source_conn.close()
 
+    final_path = backup_path
+    if compress:
+        gz_path = backup_path + ".gz"
+        with open(backup_path, "rb") as raw, gzip.open(gz_path, "wb", compresslevel=6) as gz:
+            shutil.copyfileobj(raw, gz)
+        os.remove(backup_path)
+        final_path = gz_path
+
     # Rotate old backups (safety if keep changed or races added files)
-    backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")))
+    backups = _sorted_backup_paths()
     while len(backups) > int(keep):
         os.remove(backups.pop(0))
 
-    size_mb = os.path.getsize(backup_path) / (1024 * 1024)
-    print(f"  Backup created: {backup_path} ({size_mb:.1f} MB)")
-    print(f"  Backups retained: {len(backups)}")
+    size_mb = os.path.getsize(final_path) / (1024 * 1024)
+    retained = len(_sorted_backup_paths())
+    print(f"  Backup created: {final_path} ({size_mb:.1f} MB)")
+    print(f"  Backups retained: {retained}")
 
-    return backup_path
+    return final_path
 
 
 def restore_backup(backup_path: str) -> bool:
@@ -108,12 +166,17 @@ def restore_backup(backup_path: str) -> bool:
         print(f"  Backup not found: {backup_path}")
         return False
 
-    # Create a backup of current DB before restoring
     db_path = _current_db_path()
     if os.path.exists(db_path):
         pre_restore = db_path + ".pre_restore"
         shutil.copy2(db_path, pre_restore)
         print(f"  Current DB saved to: {pre_restore}")
+
+    if backup_path.endswith(".gz"):
+        with gzip.open(backup_path, "rb") as gz, open(db_path, "wb") as out:
+            shutil.copyfileobj(gz, out)
+        print(f"  Restored from gzip: {backup_path}")
+        return True
 
     shutil.copy2(backup_path, db_path)
     print(f"  Restored from: {backup_path}")
@@ -125,7 +188,11 @@ def list_backups() -> list[dict]:
     if not os.path.exists(BACKUP_DIR):
         return []
 
-    backups = sorted(glob.glob(os.path.join(BACKUP_DIR, "golf_model_*.db")), reverse=True)
+    paths: list[str] = []
+    for pattern in _backup_globs():
+        paths.extend(glob.glob(pattern))
+    paths = list(set(paths))
+    backups = sorted(paths, key=lambda p: os.path.getmtime(p), reverse=True)
     results = []
     for path in backups:
         size_mb = os.path.getsize(path) / (1024 * 1024)
@@ -141,8 +208,22 @@ def list_backups() -> list[dict]:
 
 if __name__ == "__main__":
     import argparse
+
+    _env_keep_raw = (os.environ.get("DEPLOY_BACKUP_KEEP") or "").strip()
+    try:
+        _default_keep = int(_env_keep_raw) if _env_keep_raw else 7
+    except ValueError:
+        _default_keep = 7
+    if _default_keep < 1:
+        _default_keep = 7
+
     parser = argparse.ArgumentParser(description="Database backup utility")
-    parser.add_argument("--keep", type=int, default=7, help="Number of backups to keep")
+    parser.add_argument("--keep", type=int, default=_default_keep, help="Number of backups to keep")
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="Gzip the new backup to .db.gz (off by default; explicit opt-in).",
+    )
     parser.add_argument("--list", action="store_true", help="List available backups")
     parser.add_argument("--restore", type=str, help="Restore from a backup file")
     parser.add_argument(
@@ -171,4 +252,4 @@ if __name__ == "__main__":
     elif args.restore:
         restore_backup(args.restore)
     else:
-        create_backup(keep=args.keep)
+        create_backup(keep=args.keep, compress=args.compress)

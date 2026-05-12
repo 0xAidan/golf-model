@@ -6,6 +6,8 @@ set -euo pipefail
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/golf-model}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 # Disk budget: typical golf.db ~6GB; 14 retained copies can exceed a small VPS root volume.
+# Aligns with ``golf-backup.service`` on the server: set ``DEPLOY_BACKUP_KEEP`` in ``.env``;
+# the oneshot unit runs ``bash -lc`` that sources ``.env`` then ``python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-4}"``.
 DEPLOY_BACKUP_KEEP="${DEPLOY_BACKUP_KEEP:-4}"
 
 cd "$DEPLOY_PATH"

@@ -4,11 +4,22 @@ Matchup Value Calculator
 Takes real sportsbook matchup odds from DataGolf, scores both players
 using composite model data, and finds matchup edges with positive EV.
 Only shows matchups that are actually bettable.
+
+EV semantics (distinct from ``src.value.compute_ev`` on outrights):
+- Default path: edge ``(model_win_prob / implied_prob) - 1`` with vig-inclusive
+  ``implied_prob`` from American odds (ratio-style EV).
+- v5 tie-aware path: ``_v5_matchup_ev_void_tie`` when ``V5_LAB_TIE_AWARE_MATCHUP_EV``
+  is on — tie pushes refund stake. JSON rows expose ``ev_kind`` accordingly.
+
+Tiering (``STRONG`` / ``GOOD`` / ``LEAN``): requires **both** ``ev_pct`` bands and
+``composite_gap`` vs ``config.MATCHUP_TIER_*_GAP`` — high EV with a small model
+structure gap stays ``LEAN`` by design; see ``tier_rationale`` / ``tier_drivers``.
 """
 
 import logging
 import math
 import time
+from typing import Any
 
 from src.player_normalizer import normalize_name
 from src import config, db
@@ -17,6 +28,60 @@ from src.odds_utils import american_to_decimal
 from src.marketing_safety import assess_matchup_marketing
 
 logger = logging.getLogger("matchup_value")
+
+
+def matchup_tier_and_rationale(ev_pct: float, gap: float) -> tuple[str, dict[str, Any], str]:
+    """STRONG/GOOD/LEAN from ``MATCHUP_TIER_*`` in config (EV% and composite gap both gate tiers)."""
+    strong_ev = ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT and gap > config.MATCHUP_TIER_STRONG_GAP
+    good_ev = ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT and gap > config.MATCHUP_TIER_GOOD_GAP
+    ev_strong_band = ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT
+    ev_good_band = ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT
+    gap_strong_ok = gap > config.MATCHUP_TIER_STRONG_GAP
+    gap_good_ok = gap > config.MATCHUP_TIER_GOOD_GAP
+
+    if strong_ev:
+        tier = "STRONG"
+        rationale = (
+            f"STRONG: EV≥{config.MATCHUP_TIER_STRONG_EV_PCT}% and composite gap>"
+            f"{config.MATCHUP_TIER_STRONG_GAP}."
+        )
+    elif good_ev:
+        tier = "GOOD"
+        rationale = (
+            f"GOOD: EV≥{config.MATCHUP_TIER_GOOD_EV_PCT}% and composite gap>"
+            f"{config.MATCHUP_TIER_GOOD_GAP}."
+        )
+    else:
+        tier = "LEAN"
+        if ev_good_band and not gap_good_ok:
+            rationale = (
+                f"LEAN: EV meets GOOD threshold (≥{config.MATCHUP_TIER_GOOD_EV_PCT}%) but "
+                f"composite gap≤{config.MATCHUP_TIER_GOOD_GAP} (structure gate)."
+            )
+        elif ev_strong_band and not gap_strong_ok:
+            rationale = (
+                f"LEAN: EV meets STRONG band (≥{config.MATCHUP_TIER_STRONG_EV_PCT}%) but "
+                f"composite gap≤{config.MATCHUP_TIER_STRONG_GAP}."
+            )
+        elif not ev_good_band:
+            rationale = (
+                f"LEAN: EV below GOOD threshold (<{config.MATCHUP_TIER_GOOD_EV_PCT}%) "
+                "or higher-tier gap gates not met."
+            )
+        else:
+            rationale = "LEAN: EV/gap combination below GOOD tier bar."
+
+    drivers: dict[str, Any] = {
+        "ev_pct": round(ev_pct, 2),
+        "composite_gap": round(gap, 2),
+        "ev_good_band_met": ev_good_band,
+        "ev_strong_band_met": ev_strong_band,
+        "gap_good_met": gap_good_ok,
+        "gap_strong_met": gap_strong_ok,
+        "good_tier_ev_and_gap_met": good_ev,
+        "strong_tier_ev_and_gap_met": strong_ev,
+    }
+    return tier, drivers, rationale
 
 
 def _estimate_matchup_tie_probability(gap: float, uncertainty: float | None) -> float:
@@ -520,10 +585,13 @@ def _find_matchup_value_bets_core(
                 continue
 
             dec_pick = american_to_decimal(int(pick_odds))
-            if model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True):
+            use_v5_tie = model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True)
+            if use_v5_tie:
                 ev = _v5_matchup_ev_void_tie(model_win_prob, dec_pick, tie_prob)
+                ev_kind = "matchup_v5_tie_aware"
             else:
                 ev = (model_win_prob / implied_prob) - 1.0
+                ev_kind = "matchup_ratio"
             if ev < ev_threshold:
                 diagnostics["reason_codes"]["below_ev_threshold"] += 1
                 if len(failed_candidates) < FAILED_CANDIDATE_LIMIT:
@@ -548,12 +616,7 @@ def _find_matchup_value_bets_core(
                 _book_stats(normalized_book)["qualifying_edges"] += 1
 
             ev_pct = ev * 100
-            if ev_pct >= config.MATCHUP_TIER_STRONG_EV_PCT and gap > config.MATCHUP_TIER_STRONG_GAP:
-                tier = "STRONG"
-            elif ev_pct >= config.MATCHUP_TIER_GOOD_EV_PCT and gap > config.MATCHUP_TIER_GOOD_GAP:
-                tier = "GOOD"
-            else:
-                tier = "LEAN"
+            tier, tier_drivers, tier_rationale = matchup_tier_and_rationale(ev_pct, gap)
 
             m_row = {
                 "pick": pick_data["player_display"],
@@ -570,6 +633,7 @@ def _find_matchup_value_bets_core(
                 "market_implied_prob_raw": round(implied_prob, 6),
                 "ev": round(ev, 4),
                 "ev_pct": f"{ev * 100:.1f}%",
+                "ev_kind": ev_kind,
                 "composite_gap": round(gap, 1),
                 "form_gap": round(form_gap, 1),
                 "course_fit_gap": round(course_fit_gap, 1),
@@ -579,6 +643,8 @@ def _find_matchup_value_bets_core(
                 "blend_dg_used": getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0),
                 "blend_model_used": getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 0.0),
                 "tier": tier,
+                "tier_drivers": tier_drivers,
+                "tier_rationale": tier_rationale,
                 "pick_momentum": round(pick_momentum, 1),
                 "opp_momentum": round(opp_momentum, 1),
                 "momentum_aligned": momentum_aligned,

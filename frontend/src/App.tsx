@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
@@ -99,6 +99,9 @@ function App() {
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
   const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
+  const [manualRefreshPending, setManualRefreshPending] = useState(false)
+  const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null)
+  const [refreshTick, setRefreshTick] = useState(0)
 
   const location = useLocation()
   const isLegacyLabBoardPath =
@@ -118,11 +121,15 @@ function App() {
     queryFn: () => api.getGradingHistory({ pickSource: gradingHistoryPickSource }),
   })
   const liveRefreshStatusQuery = useQuery({
-    queryKey: ["live-refresh-status"],
+    queryKey: ["live-refresh-status", manualRefreshPending],
     queryFn: api.getLiveRefreshStatus,
     refetchInterval: (query) => {
       const data = query.state.data
-      return data?.status?.running ? 5_000 : 15_000
+      const pr = data?.status?.progress?.refresh_state
+      if (manualRefreshPending || data?.status?.running || pr === "busy") {
+        return 2_500
+      }
+      return 15_000
     },
   })
   const liveSnapshotQuery = useQuery({
@@ -299,10 +306,20 @@ function App() {
 
   const refreshSnapshotMutation = useMutation({
     mutationFn: () => api.refreshLiveSnapshot(),
+    onMutate: () => {
+      setManualRefreshPending(true)
+      setRefreshStartedAt(Date.now())
+    },
+    onSettled: () => {
+      setManualRefreshPending(false)
+      setRefreshStartedAt(null)
+    },
     onSuccess: (payload) => {
       if (payload.ok) {
         const generated = payload.generated_at ? formatDateTime(payload.generated_at) : "just now"
         setUiAlert(`Snapshot refreshed (${generated}).`)
+      } else if (payload.busy) {
+        setUiAlert(payload.stale_reason ?? "A snapshot refresh is already running.")
       } else {
         setUiAlert(payload.stale_reason ?? "Manual refresh did not return a snapshot.")
       }
@@ -313,6 +330,21 @@ function App() {
       setUiAlert("Manual refresh failed. Check runtime logs and try again.")
     },
   })
+
+  const liveProgress = liveRefreshStatusQuery.data?.status?.progress
+  const lrRefreshState = liveProgress?.refresh_state ?? liveRefreshStatusQuery.data?.status?.refresh_state
+  const refreshButtonDisabled =
+    refreshSnapshotMutation.isPending || lrRefreshState === "running" || lrRefreshState === "busy"
+  useEffect(() => {
+    if (!refreshButtonDisabled) return
+    const id = window.setInterval(() => setRefreshTick((n) => n + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [refreshButtonDisabled])
+  const refreshElapsedSec = useMemo(() => {
+    void refreshTick
+    if (!refreshStartedAt || !refreshSnapshotMutation.isPending) return null
+    return Math.max(0, Math.floor((Date.now() - refreshStartedAt) / 1000))
+  }, [refreshSnapshotMutation.isPending, refreshStartedAt, refreshTick])
 
   const players = predictionTab === "past" ? [] : (effectivePredictionRun?.composite_results ?? [])
 
@@ -705,19 +737,27 @@ function App() {
           <button
             className="btn btn-primary"
             onClick={() => refreshSnapshotMutation.mutate()}
-            disabled={refreshSnapshotMutation.isPending}
+            disabled={refreshButtonDisabled}
             data-testid="btn-refresh"
+            aria-busy={refreshButtonDisabled}
+            title={
+              liveProgress?.last_error
+                ? `Last error: ${liveProgress.last_error}`
+                : liveProgress?.phase_detail
+                  ? `${liveProgress.phase ?? ""}: ${liveProgress.phase_detail}`
+                  : undefined
+            }
           >
             <RefreshCw
               size={13}
               style={
-                refreshSnapshotMutation.isPending
-                  ? { animation: "spin 1s linear infinite" }
-                  : undefined
+                refreshButtonDisabled ? { animation: "spin 1s linear infinite" } : undefined
               }
             />
             {refreshSnapshotMutation.isPending
-              ? "Refreshing…"
+              ? `Refreshing${refreshElapsedSec != null ? ` (${refreshElapsedSec}s)` : ""}…`
+              : lrRefreshState === "busy" || lrRefreshState === "running"
+              ? "Updating…"
               : liveRuntimeRunning
               ? "Refresh"
               : "Start + refresh"}

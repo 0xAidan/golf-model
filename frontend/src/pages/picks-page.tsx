@@ -159,10 +159,12 @@ function EV({ ev, evPct }: { ev: number; evPct?: string }) {
   )
 }
 
-function TierBadge({ tier }: { tier?: string }) {
+function TierBadge({ tier, tierRationale, evKind }: { tier?: string; tierRationale?: string; evKind?: string }) {
   const t = (tier ?? "LEAN").toUpperCase()
+  const bits = [evKind, tierRationale].filter(Boolean)
+  const title = bits.length > 0 ? bits.join(" — ") : TIER_BADGE_TOOLTIP
   return (
-    <span className={`tier-badge ${t}`} title={TIER_BADGE_TOOLTIP} style={{ cursor: "help" }}>
+    <span className={`tier-badge ${t}`} title={title} style={{ cursor: "help" }}>
       {t}
     </span>
   )
@@ -657,7 +659,11 @@ function MatchupsBoard({
                           {matchup.odds}
                         </td>
                         <td className="center">
-                          <TierBadge tier={matchup.tier} />
+                          <TierBadge
+                            tier={matchup.tier}
+                            tierRationale={matchup.tier_rationale}
+                            evKind={matchup.ev_kind}
+                          />
                         </td>
                         <td className="right">
                           <EV ev={matchup.ev} evPct={matchup.ev_pct} />

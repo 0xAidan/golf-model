@@ -149,12 +149,39 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(body),
     }),
-  refreshLiveSnapshot: () =>
-    request<LiveRefreshSnapshotResponse>("/api/live-refresh/refresh", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({}),
-    }, LIVE_REFRESH_REFRESH_TIMEOUT_MS),
+  refreshLiveSnapshot: async (): Promise<LiveRefreshSnapshotResponse> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), LIVE_REFRESH_REFRESH_TIMEOUT_MS)
+    try {
+      const response = await fetch("/api/live-refresh/refresh", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        signal: controller.signal,
+        body: JSON.stringify({}),
+      })
+      const text = await response.text()
+      let body: LiveRefreshSnapshotResponse
+      try {
+        body = JSON.parse(text || "{}") as LiveRefreshSnapshotResponse
+      } catch {
+        throw new Error(text || `Request failed: ${response.status}`)
+      }
+      if (response.status === 409) {
+        return { ...body, ok: false, busy: true }
+      }
+      if (!response.ok) {
+        throw new Error(text || `Request failed: ${response.status}`)
+      }
+      return body
+    } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        throw new Error(`Request timed out after ${LIVE_REFRESH_REFRESH_TIMEOUT_MS / 1000}s`)
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  },
   startLiveRefresh: (payload?: { tour?: string; live_refresh?: Record<string, unknown> }) =>
     request<Record<string, unknown>>("/api/live-refresh/start", {
       method: "POST",

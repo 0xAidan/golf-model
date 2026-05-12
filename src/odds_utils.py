@@ -4,6 +4,14 @@ Shared odds utility functions.
 Canonical implementations of odds conversion and validation.
 All other modules (odds.py, value.py, matchup_value.py, etc.) should
 import from here or from odds.py (which re-exports these).
+
+Math notes (vig-inclusive implied; no devig here):
+- ``american_to_implied_prob`` is the book's vig-inclusive win probability for
+  that side from American odds (no multiplicative devig; CLV devig lives in
+  ``src/clv.py`` and is not used for card / matchup EV).
+- Pair with ``american_to_decimal`` for EV as ``(p * decimal) - 1`` in
+  ``src.value.compute_ev`` (value markets). Matchup EV may use ratio or
+  tie-aware formulas in ``src.matchup_value`` — see that module.
 """
 
 from src import config as _config
@@ -22,7 +30,7 @@ def american_to_decimal(price: int) -> float:
 
 
 def american_to_implied_prob(price: int) -> float:
-    """Convert American odds to implied probability. Returns 0 for invalid price."""
+    """Vig-inclusive implied win probability from American odds (no devig). Returns 0 for invalid price."""
     if price > 0:
         return 100.0 / (price + 100.0)
     elif price < 0:

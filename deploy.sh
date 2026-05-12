@@ -218,7 +218,7 @@ RestartSec=10
 WantedBy=multi-user.target
 SVC
 
-        # Nightly backup timer
+        # Nightly backup timer (keep count from DEPLOY_BACKUP_KEEP in .env, default 4)
         cat > /etc/systemd/system/golf-backup.service << 'SVC'
 [Unit]
 Description=Golf Model Database Backup
@@ -227,8 +227,7 @@ Description=Golf Model Database Backup
 Type=oneshot
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
-EnvironmentFile=-/opt/golf-model/.env
-ExecStart=/opt/golf-model/venv/bin/python -m src.backup --keep 4
+ExecStart=/bin/bash -lc 'set -a; [ -f /opt/golf-model/.env ] && . /opt/golf-model/.env; set +a; exec /opt/golf-model/venv/bin/python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-4}"'
 SVC
 
         cat > /etc/systemd/system/golf-backup.timer << 'SVC'

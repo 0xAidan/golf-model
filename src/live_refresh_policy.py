@@ -1,5 +1,11 @@
 """
 Tournament-aware cadence policy for always-on dashboard refresh.
+
+Cadence defaults favor **at most hourly model recomputes** (``recompute_seconds >= 3600``)
+across all windows so small VPS hosts are not hammered by overlapping snapshot passes.
+``ingest_seconds`` is capped at **3600** in normalization so operators cannot configure
+multi-hour *recompute* gaps with sub-minute ingests that still churn CPU/network; live
+weekends therefore poll the schedule at hourly granularity at most (minimal churn approach).
 """
 
 from __future__ import annotations
@@ -40,20 +46,20 @@ def default_live_refresh_settings() -> dict:
         "lab_profile_name": "lab_sandbox",
         "mode_override": None,
         "off_window": {
-            "ingest_seconds": 1800,
+            "ingest_seconds": 3600,
             "recompute_seconds": 3600,
         },
         "upcoming_window": {
-            "ingest_seconds": 300,
-            "recompute_seconds": 900,
+            "ingest_seconds": 3600,
+            "recompute_seconds": 3600,
         },
         "live_window": {
-            "ingest_seconds": 90,
-            "recompute_seconds": 300,
+            "ingest_seconds": 3600,
+            "recompute_seconds": 3600,
         },
         "settlement_window": {
-            "ingest_seconds": 600,
-            "recompute_seconds": 1200,
+            "ingest_seconds": 3600,
+            "recompute_seconds": 3600,
         },
     }
 
@@ -86,8 +92,8 @@ def normalize_live_refresh_settings(raw: dict | None) -> dict:
     for mode in VALID_MODES:
         mode_payload = payload.get(mode) if isinstance(payload.get(mode), dict) else {}
         default_mode = defaults[mode]
-        ingest = _bounded_int(mode_payload.get("ingest_seconds"), default_mode["ingest_seconds"], 30, 21600)
-        recompute = _bounded_int(mode_payload.get("recompute_seconds"), default_mode["recompute_seconds"], 60, 43200)
+        ingest = _bounded_int(mode_payload.get("ingest_seconds"), default_mode["ingest_seconds"], 30, 3600)
+        recompute = _bounded_int(mode_payload.get("recompute_seconds"), default_mode["recompute_seconds"], 3600, 43200)
         out[mode] = {
             "ingest_seconds": ingest,
             "recompute_seconds": recompute,

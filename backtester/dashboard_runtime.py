@@ -19,12 +19,14 @@ from src import config, db
 from src.atomic_io import atomic_write_json
 from src.autoresearch_settings import get_settings
 from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
+from src.disk_guard import warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
 from src.live_refresh_policy import resolve_cadence
 from src.services.live_snapshot_service import run_snapshot_analysis
 
 _logger = logging.getLogger("dashboard.runtime")
 _state_lock = threading.Lock()
+_recompute_lock = threading.Lock()
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
 
@@ -38,7 +40,7 @@ def _default_state() -> dict[str, Any]:
         "running": False,
         "tour": "pga",
         "cadence_mode": "off_window",
-        "ingest_seconds": 1800,
+        "ingest_seconds": 3600,
         "recompute_seconds": 3600,
         "run_count": 0,
         "last_started_at": None,
@@ -50,6 +52,12 @@ def _default_state() -> dict[str, Any]:
         "last_snapshot_generated_at": None,
         "last_auto_grade_at": None,
         "last_auto_grade_status": None,
+        "refresh_state": "idle",
+        "phase": None,
+        "phase_detail": None,
+        "progress_updated_at": None,
+        "progress_started_at": None,
+        "recompute_percent": None,
     }
 
 
@@ -62,6 +70,49 @@ def _utc_now() -> datetime:
 
 def _iso_now() -> str:
     return _utc_now().isoformat()
+
+
+class LiveRefreshRecomputeBusy(RuntimeError):
+    """Non-blocking recompute could not start because another thread holds the recompute lock."""
+
+
+def _touch_progress(
+    *,
+    refresh_state: str | None = None,
+    phase: str | None = None,
+    phase_detail: str | None = None,
+    recompute_percent: float | None = None,
+    last_error: str | None = None,
+    idle: bool = False,
+) -> None:
+    """Update coarse-grained progress fields for the live-refresh status API."""
+    with _state_lock:
+        if idle:
+            if last_error is not None:
+                _state["last_error"] = last_error
+                _state["refresh_state"] = "error"
+            else:
+                _state["refresh_state"] = "idle"
+                _state["last_error"] = None
+            _state["phase"] = None
+            _state["phase_detail"] = None
+            _state["recompute_percent"] = None
+            _state["progress_started_at"] = None
+            _state["progress_updated_at"] = _iso_now()
+            return
+        if refresh_state is not None:
+            _state["refresh_state"] = refresh_state
+            if refresh_state == "running":
+                _state["progress_started_at"] = _iso_now()
+        if phase is not None:
+            _state["phase"] = phase
+        if phase_detail is not None:
+            _state["phase_detail"] = phase_detail
+        if recompute_percent is not None:
+            _state["recompute_percent"] = recompute_percent
+        if last_error is not None:
+            _state["last_error"] = last_error
+        _state["progress_updated_at"] = _iso_now()
 
 
 _DATA_SOURCE_VALUES = {"live", "replay", "fixture"}
@@ -1048,6 +1099,7 @@ def _classify_matchup_state(
 
 
 def _run_ingest(tour: str) -> dict[str, Any]:
+    warn_if_low_disk(str(_SNAPSHOT_PATH.parent), context="live_refresh_ingest_start")
     from src.datagolf import (
         fetch_matchup_odds_with_diagnostics,
         fetch_schedule,
@@ -2370,6 +2422,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         except Exception as exc:
             _logger.warning("pre-teeoff freeze failed: %s", exc)
     try:
+        _touch_progress(phase="persist", phase_detail="sqlite history + market rows")
         history_count = db.store_live_snapshot_sections(
             snapshot_id,
             generated_at=generated_at,
@@ -2434,6 +2487,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0
         snapshot.setdefault("diagnostics", {})["market_rows_write_error"] = str(exc)
     try:
+        _touch_progress(phase="shadow_mc", phase_detail="shadow monte carlo batch")
         shadow_n = _run_shadow_monte_carlo_v1(
             snapshot_id=snapshot_id,
             generated_at=generated_at,
@@ -2450,22 +2504,37 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
 
 def generate_snapshot_once(*, tour: str = "pga") -> dict[str, Any]:
     """Run one ingest+recompute cycle synchronously and return the snapshot."""
-    settings = get_settings().get("live_refresh", {})
-    cadence = resolve_cadence(settings)
-    ingest_summary = _run_ingest(tour)
-    snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
-    with _state_lock:
-        _state["tour"] = tour
-        _state["cadence_mode"] = cadence.mode
-        _state["ingest_seconds"] = cadence.ingest_seconds
-        _state["recompute_seconds"] = cadence.recompute_seconds
-        _state["run_count"] += 1
-        _state["last_started_at"] = _iso_now()
-        _state["last_finished_at"] = _iso_now()
-        _state["last_error"] = None
-        _state["last_ingest_summary"] = ingest_summary
-        _state["last_snapshot_generated_at"] = snapshot.get("generated_at")
-    return snapshot
+    warn_if_low_disk(str(_SNAPSHOT_PATH.parent), context="live_refresh_manual_cycle")
+    if not _recompute_lock.acquire(blocking=False):
+        raise LiveRefreshRecomputeBusy("Live refresh recompute is already in progress")
+    err: BaseException | None = None
+    try:
+        _touch_progress(refresh_state="running", phase="ingest", phase_detail="ingest: schedule + markets")
+        settings = get_settings().get("live_refresh", {})
+        cadence = resolve_cadence(settings)
+        ingest_summary = _run_ingest(tour)
+        _touch_progress(refresh_state="running", phase="recompute", phase_detail="snapshot pipeline")
+        snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
+        with _state_lock:
+            _state["tour"] = tour
+            _state["cadence_mode"] = cadence.mode
+            _state["ingest_seconds"] = cadence.ingest_seconds
+            _state["recompute_seconds"] = cadence.recompute_seconds
+            _state["run_count"] += 1
+            _state["last_started_at"] = _iso_now()
+            _state["last_finished_at"] = _iso_now()
+            _state["last_error"] = None
+            _state["last_ingest_summary"] = ingest_summary
+            _state["last_snapshot_generated_at"] = snapshot.get("generated_at")
+        return snapshot
+    except BaseException as exc:
+        err = exc
+        _touch_progress(idle=True, last_error=str(exc))
+        raise
+    finally:
+        _recompute_lock.release()
+        if err is None:
+            _touch_progress(idle=True)
 
 
 def _run_loop(tour: str) -> None:
@@ -2501,11 +2570,30 @@ def _run_loop(tour: str) -> None:
                 with _state_lock:
                     _state["last_started_at"] = started_at
                     _state["last_error"] = None
-                if not _ingest_has_event_context(ingest_summary):
-                    ingest_summary = _run_ingest(tour)
-                    with _state_lock:
-                        _state["last_ingest_summary"] = ingest_summary
-                snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
+                if not _recompute_lock.acquire(blocking=False):
+                    next_recompute = now_epoch + 15.0
+                    continue
+                slot_err: BaseException | None = None
+                try:
+                    _touch_progress(
+                        refresh_state="running",
+                        phase="recompute",
+                        phase_detail="scheduled snapshot pipeline",
+                    )
+                    if not _ingest_has_event_context(ingest_summary):
+                        _touch_progress(phase="ingest", phase_detail="catch-up ingest before recompute")
+                        ingest_summary = _run_ingest(tour)
+                        with _state_lock:
+                            _state["last_ingest_summary"] = ingest_summary
+                    snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
+                except BaseException as exc:
+                    slot_err = exc
+                    _touch_progress(idle=True, last_error=str(exc))
+                    raise
+                finally:
+                    _recompute_lock.release()
+                    if slot_err is None:
+                        _touch_progress(idle=True)
                 finished_at = _iso_now()
                 with _state_lock:
                     _state["run_count"] += 1
@@ -2577,5 +2665,14 @@ def get_live_refresh_status() -> dict[str, Any]:
             age_seconds = None
     status["snapshot_age_seconds"] = age_seconds
     status["snapshot_available"] = bool(snapshot)
+    status["progress"] = {
+        "refresh_state": status.get("refresh_state") or "idle",
+        "phase": status.get("phase"),
+        "phase_detail": status.get("phase_detail"),
+        "progress_updated_at": status.get("progress_updated_at"),
+        "progress_started_at": status.get("progress_started_at"),
+        "percent": status.get("recompute_percent"),
+        "last_error": status.get("last_error"),
+    }
     return status
 

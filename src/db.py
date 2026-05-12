@@ -28,7 +28,7 @@ import sqlite3
 import json
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src import config
@@ -2341,6 +2341,66 @@ def list_completed_snapshot_events(
     return out[: int(limit)]
 
 
+def prune_live_snapshot_history(retain_days: int) -> int:
+    """Delete ``live_snapshot_history`` rows older than ``retain_days`` (by ``generated_at``).
+
+    Returns the number of rows deleted. When ``retain_days`` is 0 or negative, performs
+    no work and returns 0 (callers should treat non-positive retention as disabled).
+    """
+    days = int(retain_days)
+    if days <= 0:
+        return 0
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            DELETE FROM live_snapshot_history
+            WHERE generated_at IS NOT NULL
+              AND generated_at < ?
+            """,
+            (cutoff,),
+        )
+        conn.commit()
+        return int(cur.rowcount or 0)
+    finally:
+        conn.close()
+
+
+def prune_market_prediction_rows(retain_days: int) -> int:
+    """Delete ``market_prediction_rows`` older than ``retain_days`` (by ``generated_at``)."""
+    days = int(retain_days)
+    if days <= 0:
+        return 0
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            DELETE FROM market_prediction_rows
+            WHERE generated_at IS NOT NULL
+              AND generated_at < ?
+            """,
+            (cutoff,),
+        )
+        conn.commit()
+        return int(cur.rowcount or 0)
+    finally:
+        conn.close()
+
+
+def prune_snapshot_history_tables(retain_days: int) -> dict[str, int]:
+    """Prune both snapshot history tables; returns per-table deleted counts."""
+    return {
+        "live_snapshot_history": prune_live_snapshot_history(retain_days),
+        "market_prediction_rows": prune_market_prediction_rows(retain_days),
+    }
+
+
 def store_market_prediction_rows(rows: list[dict]) -> int:
     """Persist matchup/placement rows shown in snapshot surfaces."""
     if not rows:
@@ -2667,6 +2727,67 @@ def get_weights_for_course(course_num: int = None) -> dict:
         else:
             blended[key] = global_weights[key]
     return blended
+
+
+def prune_snapshot_history_tables(*, retain_days: int | None = None) -> dict[str, Any]:
+    """Delete rows older than ``retain_days`` from append-heavy live-refresh tables.
+
+    Intended for explicit operator/cron use only — not called from HTTP handlers.
+
+    When ``retain_days`` is None, reads ``SNAPSHOT_HISTORY_RETAIN_DAYS``; if unset,
+    returns a skipped result without deleting (default no-op until configured).
+    """
+    days = retain_days
+    if days is None:
+        raw = (os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS") or "").strip()
+        if not raw:
+            return {
+                "skipped": True,
+                "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set; refusing delete.",
+                "live_snapshot_history_deleted": 0,
+                "market_prediction_rows_deleted": 0,
+            }
+        try:
+            days = int(raw)
+        except ValueError:
+            return {
+                "skipped": True,
+                "reason": "invalid SNAPSHOT_HISTORY_RETAIN_DAYS",
+                "live_snapshot_history_deleted": 0,
+                "market_prediction_rows_deleted": 0,
+            }
+    if int(days) <= 0:
+        return {
+            "skipped": True,
+            "reason": "retain_days must be positive",
+            "live_snapshot_history_deleted": 0,
+            "market_prediction_rows_deleted": 0,
+        }
+
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=int(days))
+    cutoff = cutoff_dt.isoformat()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM live_snapshot_history WHERE generated_at IS NOT NULL AND generated_at < ?",
+            (cutoff,),
+        )
+        n1 = conn.execute("SELECT changes()").fetchone()[0]
+        conn.execute(
+            "DELETE FROM market_prediction_rows WHERE generated_at IS NOT NULL AND generated_at < ?",
+            (cutoff,),
+        )
+        n2 = conn.execute("SELECT changes()").fetchone()[0]
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "skipped": False,
+        "retain_days": int(days),
+        "cutoff_utc": cutoff,
+        "live_snapshot_history_deleted": int(n1),
+        "market_prediction_rows_deleted": int(n2),
+    }
 
 
 def ensure_initialized():
