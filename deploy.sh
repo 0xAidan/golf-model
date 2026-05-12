@@ -281,6 +281,9 @@ update_server() {
 # Use this when you are already logged into the VPS under ``$DEPLOY_PATH``.
 update_server_local() {
     log "Updating in place at $DEPLOY_PATH (no SSH)..."
+    if [ ! -d "$DEPLOY_PATH" ]; then
+        error "Directory $DEPLOY_PATH does not exist on this machine. --update-local is only for the VPS shell. From your laptop run: DEPLOY_HOST=user@server ./deploy.sh --update"
+    fi
     if [ ! -f "$UPDATE_STEPS" ]; then
         error "Missing $UPDATE_STEPS (run from repo root?)"
     fi
