@@ -99,4 +99,15 @@ describe("matchup-pick-grade", () => {
     expect(g.kind).toBe("letter")
     if (g.kind === "letter") expect(g.letter).toBe("W")
   })
+
+  it("resolves grades when stored keys differ from leaderboard ids but names match", () => {
+    const board = [lb("dg_patrick", "Patrick Rodgers", "T10"), lb("dg_sung", "Sungjae Im", "T22")]
+    const m = baseMatchup({
+      pick_key: "wrong_pick_key",
+      opponent_key: "wrong_opp_key",
+      pick: "Patrick Rodgers",
+      opponent: "Sungjae Im",
+    })
+    expect(gradeTournamentMatchupFromLeaderboard(m, board)).toBe("win")
+  })
 })

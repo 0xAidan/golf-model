@@ -9,7 +9,7 @@ export type ResolvedPickGrade =
 
 const CUT_LIKE = new Set(["CUT", "MC", "WD", "W/D", "DQ", "DFS", "MDF", "DNS"])
 
-function normalizePlayerKey(raw: string | undefined | null): string {
+export function normalizePlayerKey(raw: string | undefined | null): string {
   return String(raw ?? "")
     .trim()
     .toLowerCase()
@@ -25,7 +25,7 @@ export function readStoredMatchupOutcome(payload: Record<string, unknown> | unde
   return null
 }
 
-function parseFinishRank(raw: string | undefined | null): number | null {
+export function parseFinishRank(raw: string | undefined | null): number | null {
   if (!raw) return null
   const fin = String(raw).trim().toUpperCase()
   if (!fin || CUT_LIKE.has(fin)) return null
@@ -34,7 +34,7 @@ function parseFinishRank(raw: string | undefined | null): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function finishTextFromRow(row: LiveLeaderboardRow): string | null {
+export function finishTextFromRow(row: LiveLeaderboardRow): string | null {
   const fs = row.finish_state != null && String(row.finish_state).trim() !== "" ? String(row.finish_state).trim() : null
   if (fs) return fs
   const pos = row.position != null && String(row.position).trim() !== "" ? String(row.position).trim() : null
@@ -44,12 +44,35 @@ function finishTextFromRow(row: LiveLeaderboardRow): string | null {
 function buildFinishRankByPlayerKey(leaderboard: LiveLeaderboardRow[]): Map<string, number | null> {
   const map = new Map<string, number | null>()
   for (const row of leaderboard) {
-    const key = normalizePlayerKey(row.player_key ?? row.player)
-    if (!key) continue
     const text = finishTextFromRow(row)
-    map.set(key, parseFinishRank(text))
+    const rank = parseFinishRank(text)
+    const keyFromId = normalizePlayerKey(row.player_key ?? "")
+    const keyFromName = normalizePlayerKey(row.player)
+    if (keyFromId) {
+      map.set(keyFromId, rank)
+    }
+    if (keyFromName) {
+      map.set(keyFromName, rank)
+    }
   }
   return map
+}
+
+/** Resolve finish rank using stored key first, then display name (replay rows often mismatch DG keys). */
+function lookupFinishRankForSide(
+  ranks: Map<string, number | null>,
+  key: string,
+  display: string,
+): number | null | undefined {
+  const pk = normalizePlayerKey(key)
+  if (pk && ranks.has(pk)) {
+    return ranks.get(pk) ?? null
+  }
+  const pd = normalizePlayerKey(display)
+  if (pd && ranks.has(pd)) {
+    return ranks.get(pd) ?? null
+  }
+  return undefined
 }
 
 /**
@@ -58,7 +81,7 @@ function buildFinishRankByPlayerKey(leaderboard: LiveLeaderboardRow[]): Map<stri
  * for integer ranks; both missing cut → push.
  */
 export function gradeTournamentMatchupFromLeaderboard(
-  matchup: Pick<MatchupBet, "pick_key" | "opponent_key" | "market_type">,
+  matchup: Pick<MatchupBet, "pick_key" | "opponent_key" | "market_type" | "pick" | "opponent">,
   leaderboard: LiveLeaderboardRow[] | undefined | null,
 ): "win" | "loss" | "push" | null {
   if (!leaderboard || leaderboard.length === 0) return null
@@ -66,15 +89,11 @@ export function gradeTournamentMatchupFromLeaderboard(
   const market = String(matchup.market_type ?? "tournament_matchups")
   if (market === "round_matchups") return null
 
-  const pickKey = normalizePlayerKey(matchup.pick_key)
-  const oppKey = normalizePlayerKey(matchup.opponent_key)
-  if (!pickKey || !oppKey) return null
-
   const ranks = buildFinishRankByPlayerKey(leaderboard)
-  const pickRank = ranks.get(pickKey)
-  const oppRank = ranks.get(oppKey)
-  const missingPick = !ranks.has(pickKey)
-  const missingOpp = !ranks.has(oppKey)
+  const pickRank = lookupFinishRankForSide(ranks, matchup.pick_key, matchup.pick)
+  const oppRank = lookupFinishRankForSide(ranks, matchup.opponent_key, matchup.opponent)
+  const missingPick = pickRank === undefined
+  const missingOpp = oppRank === undefined
   if (missingPick || missingOpp) return null
 
   if (pickRank == null && oppRank == null) return "push"

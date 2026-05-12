@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import { buildGradingRecordSummary, buildPastReplayRecordSummary } from "@/lib/record-summary"
-import type { GradedTournamentSummary, LiveLeaderboardRow, MatchupBet } from "@/lib/types"
+import type {
+  FlattenedSecondaryBet,
+  GradedTournamentSummary,
+  LiveLeaderboardRow,
+  MatchupBet,
+} from "@/lib/types"
 
 describe("buildGradingRecordSummary", () => {
   it("prefers API-provided 1u market summaries when available", () => {
@@ -61,11 +66,40 @@ describe("buildPastReplayRecordSummary", () => {
       leaderboardRow("Rickie Fowler", "rickie_fowler", "T12", 12),
     ]
 
-    const summary = buildPastReplayRecordSummary(matchups, leaderboard)
+    const summary = buildPastReplayRecordSummary(matchups, [], leaderboard)
 
     expect(summary.combined).toMatchObject({ picks: 2, wins: 1, losses: 1, pushes: 0, profit: 0.03 })
     expect(summary.matchups.recordLabel).toBe("1-1-0")
     expect(summary.outrights.recordLabel).toBe("0-0-0")
+  })
+
+  it("counts outright markets separately and sums combined", () => {
+    const outrights: FlattenedSecondaryBet[] = [
+      {
+        market: "top20",
+        player: "Winner Guy",
+        player_key: "winner_guy",
+        odds: "+2500",
+        ev: 0.08,
+      },
+    ]
+    const leaderboard: LiveLeaderboardRow[] = [
+      {
+        rank: 1,
+        player_key: "winner_guy",
+        player: "Winner Guy",
+        position: "12",
+        finish_state: "12",
+      },
+    ]
+
+    const summary = buildPastReplayRecordSummary([], outrights, leaderboard)
+
+    expect(summary.outrights.picks).toBe(1)
+    expect(summary.matchups.picks).toBe(0)
+    expect(summary.combined.picks).toBe(1)
+    expect(summary.combined.profit).toBe(summary.outrights.profit)
+    expect(summary.matchups.profit).toBe(0)
   })
 })
 
