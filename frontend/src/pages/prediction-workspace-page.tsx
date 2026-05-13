@@ -28,6 +28,7 @@ import {
   getRawGeneratedSecondaryBets,
 } from "@/lib/cockpit-picks"
 import { resolvePastMatchupGrade } from "@/lib/matchup-pick-grade"
+import { gradeSecondaryBetFromLeaderboard } from "@/lib/outright-replay-grade"
 import { formatNumber, formatUnits } from "@/lib/format"
 import { buildGradingRecordSummary, buildPastReplayRecordSummary } from "@/lib/record-summary"
 import {
@@ -109,6 +110,46 @@ function PastPickGradeCell({
   }
   return (
     <span className="num" style={{ color: "var(--text-faint)" }} title={g.title} aria-label={g.title}>
+      —
+    </span>
+  )
+}
+
+function PastSecondaryGradeCell({
+  bet,
+  leaderboard,
+}: {
+  bet: FlattenedSecondaryBet
+  leaderboard: LiveLeaderboardRow[] | undefined
+}) {
+  if (!leaderboard || leaderboard.length === 0) {
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }} title="Waiting for final leaderboard">
+        Pending
+      </span>
+    )
+  }
+  const graded = gradeSecondaryBetFromLeaderboard(bet, leaderboard)
+  if (graded) {
+    const letter = graded.outcome === "win" ? "W" : "L"
+    const cls = graded.outcome === "win" ? "win" : "loss"
+    let title = graded.outcome === "win" ? "Win" : "Loss"
+    if (graded.outcome === "win" && graded.fraction > 0 && graded.fraction < 1) {
+      title = `Dead heat: ${(graded.fraction * 100).toFixed(1)}% of stake wins`
+    }
+    return (
+      <span className={`pick-result-badge ${cls}`} title={title} aria-label={title}>
+        {letter}
+      </span>
+    )
+  }
+  return (
+    <span
+      className="num"
+      style={{ color: "var(--text-faint)" }}
+      title="Not graded — unsupported market (e.g. FRL) or player missing from leaderboard"
+      aria-label="Not graded"
+    >
       —
     </span>
   )
@@ -1326,6 +1367,11 @@ export function PredictionWorkspacePage({
                       <tr>
                         <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
                         <th title={MATCHUP_TABLE_TOOLTIPS.market}>Market</th>
+                        {predictionTab === "past" ? (
+                          <th className="center" title={MATCHUP_TABLE_TOOLTIPS.result}>
+                            Res.
+                          </th>
+                        ) : null}
                         <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
                         <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
                           EV
@@ -1362,6 +1408,11 @@ export function PredictionWorkspacePage({
                                 </span>
                               </div>
                             </td>
+                            {predictionTab === "past" ? (
+                              <td className="center" data-testid={`secondary-grade-${bet.market}-${bet.player}`}>
+                                <PastSecondaryGradeCell bet={bet} leaderboard={pastLeaderboardForGrades} />
+                              </td>
+                            ) : null}
                             <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
                               {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
                             </td>
