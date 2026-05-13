@@ -8,6 +8,8 @@ type CockpitResizableStackProps = {
   leaderboard?: ReactNode
   /** Live / past: show leaderboard panel. Upcoming: omit fourth panel. */
   showLeaderboard: boolean
+  /** Narrow viewports: vertical scroll stack instead of draggable panes. */
+  layout?: "panels" | "stack"
 }
 
 /* Vertical split panes for dashboard center column — sizes persist in localStorage per layout mode. */
@@ -17,10 +19,24 @@ export function CockpitResizableStack({
   secondary,
   leaderboard,
   showLeaderboard,
+  layout = "panels",
 }: CockpitResizableStackProps) {
   const persistKey = showLeaderboard
     ? "golf-model-cockpit-center-with-lb"
     : "golf-model-cockpit-center-upcoming"
+
+  if (layout === "stack") {
+    return (
+      <div className="cockpit-vertical-stack-mobile">
+        <div className="cockpit-vertical-stack-mobile-chunk">{rankings}</div>
+        <div className="cockpit-vertical-stack-mobile-chunk">{topPicks}</div>
+        <div className="cockpit-vertical-stack-mobile-chunk">{secondary}</div>
+        {showLeaderboard && leaderboard != null ? (
+          <div className="cockpit-vertical-stack-mobile-chunk">{leaderboard}</div>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <PanelGroup
