@@ -6,17 +6,38 @@ import { cn } from "@/lib/utils"
 /* ── Three-column dashboard workspace — fills viewport height; columns resize via drag handles.
     Sizes persist in localStorage (autoSaveId). Center uses CockpitResizableStack for
     vertical splits; left rail may nest a vertical PanelGroup from the page. */
+export type CockpitWorkspaceLayout = "columns" | "stack"
+
 export function CockpitWorkspace({
   leftRail,
   center,
   rightRail,
   className,
+  layout = "columns",
 }: {
   leftRail: ReactNode
   center: ReactNode
   rightRail: ReactNode
   className?: string
+  /** `stack`: single vertical scroll column (narrow viewports). */
+  layout?: CockpitWorkspaceLayout
 }) {
+  if (layout === "stack") {
+    return (
+      <div className={cn("cockpit-stacked-workspace", className)}>
+        <section className="cockpit-stacked-zone" aria-label="Event context and filters">
+          {leftRail}
+        </section>
+        <section className="cockpit-stacked-zone" aria-label="Rankings and picks">
+          {center}
+        </section>
+        <section className="cockpit-stacked-zone" aria-label="Player spotlight">
+          {rightRail}
+        </section>
+      </div>
+    )
+  }
+
   return (
     <PanelGroup
       direction="horizontal"

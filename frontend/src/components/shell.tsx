@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom"
+import { useCallback, useEffect, useState } from "react"
+import { NavLink, useLocation } from "react-router-dom"
 import {
   Activity,
   Beaker,
@@ -6,11 +7,14 @@ import {
   GraduationCap,
   History,
   LayoutDashboard,
+  Menu,
   Swords,
   Trophy,
   Users,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import type { WorkspaceId } from "@/lib/types"
 
 type NavItem = {
@@ -72,10 +76,50 @@ export function SuiteShell({
   frameStatus?: React.ReactNode
   actions?: React.ReactNode
 }) {
+  const isNarrow = useIsNarrowViewport()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const location = useLocation()
+
+  const handleCloseMobileNav = useCallback(() => {
+    setMobileNavOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!isNarrow) setMobileNavOpen(false)
+  }, [isNarrow])
+
+  useEffect(() => {
+    handleCloseMobileNav()
+  }, [location.pathname, handleCloseMobileNav])
+
+  useEffect(() => {
+    if (!mobileNavOpen || !isNarrow) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleCloseMobileNav()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [mobileNavOpen, isNarrow, handleCloseMobileNav])
+
   return (
-    <div className="app-layout">
+    <div className={cn("app-layout", isNarrow && "app-layout--narrow")}>
+      {isNarrow && mobileNavOpen ? (
+        <button
+          type="button"
+          className="mobile-nav-backdrop"
+          aria-label="Close navigation menu"
+          onClick={handleCloseMobileNav}
+        />
+      ) : null}
+
       {/* ── Sidebar */}
-      <aside className="sidebar">
+      <aside
+        className={cn(
+          "sidebar",
+          isNarrow && "sidebar--mobile-drawer",
+          isNarrow && mobileNavOpen && "sidebar--mobile-drawer-open",
+        )}
+      >
         {/* Logo */}
         <div className="sidebar-logo">
           <LogoMark size={32} />
@@ -86,7 +130,28 @@ export function SuiteShell({
         </div>
 
         {/* Navigation */}
-        <nav className="sidebar-nav" aria-label="Main navigation">
+        <div className="sidebar-mobile-header">
+          <span className="sidebar-mobile-header-title">Menu</span>
+          <button
+            type="button"
+            className="sidebar-mobile-close"
+            onClick={handleCloseMobileNav}
+            aria-label="Close menu"
+          >
+            <X size={18} aria-hidden />
+          </button>
+        </div>
+
+        <nav
+          id="suite-sidebar-nav"
+          className="sidebar-nav"
+          aria-label="Main navigation"
+          onClick={(e) => {
+            if (!isNarrow) return
+            const target = e.target as HTMLElement
+            if (target.closest("a[href]")) handleCloseMobileNav()
+          }}
+        >
           <div className="sidebar-section-label">Workspace</div>
           {NAV_ITEMS.slice(0, 1).map(({ href, icon: Icon, label, id }) => (
             <NavLink
@@ -180,6 +245,20 @@ export function SuiteShell({
       <div className="main-area">
         {/* Top header */}
         <header className="top-header">
+          {isNarrow ? (
+            <button
+              type="button"
+              className="mobile-menu-trigger"
+              onClick={() => setMobileNavOpen(true)}
+              aria-expanded={mobileNavOpen}
+              aria-controls="suite-sidebar-nav"
+              data-testid="mobile-menu-open"
+            >
+              <Menu size={18} aria-hidden />
+              <span className="mobile-menu-trigger-label">Menu</span>
+            </button>
+          ) : null}
+
           <div className="header-event">
             <div className="header-event-label">Active event</div>
             <div className="header-event-name" data-testid="header-event-name">
@@ -188,7 +267,7 @@ export function SuiteShell({
           </div>
 
           {modeSwitcher && (
-            <div style={{ flexShrink: 0 }}>{modeSwitcher}</div>
+            <div className="header-mode-switcher">{modeSwitcher}</div>
           )}
 
           {actions && (

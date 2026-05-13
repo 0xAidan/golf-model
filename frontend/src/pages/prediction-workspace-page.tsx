@@ -14,6 +14,7 @@ import { isTeamEvent } from "@/lib/event-format"
 import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-stack"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
+import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
 import {
@@ -353,6 +354,7 @@ export function PredictionWorkspacePage({
   powerRankingsSubtitle,
   pastReplaySource = "dashboard",
 }: PredictionWorkspacePageProps) {
+  const isNarrow = useIsNarrowViewport()
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
   const [pastReplaySection, setPastReplaySection] = useState<PastReplayLane>("completed")
@@ -677,7 +679,17 @@ export function PredictionWorkspacePage({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+    <div
+      className={isNarrow ? "prediction-workspace prediction-workspace--narrow" : "prediction-workspace"}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        overflowX: "hidden",
+        overflowY: isNarrow ? "auto" : "hidden",
+      }}
+    >
       {/* ── Notice bar ──────────────────────────── */}
       {snapshotNotice && (
         <div className="alert-banner" role="status" aria-live="polite">
@@ -730,11 +742,12 @@ export function PredictionWorkspacePage({
       {/* ── Three-column dashboard workspace ─────────────────── */}
       <CockpitWorkspace
         className="cockpit-fill"
+        layout={isNarrow ? "stack" : "columns"}
         leftRail={
           <PanelGroup
             direction="vertical"
             autoSaveId="golf-model-cockpit-left-rail"
-            className="cockpit-vertical-panels cockpit-left-rail-panels"
+            className={isNarrow ? "cockpit-vertical-panels cockpit-left-rail-panels cockpit-left-rail-panels--stacked" : "cockpit-vertical-panels cockpit-left-rail-panels"}
           >
             <Panel defaultSize={42} minSize={14} className="cockpit-panel-shell">
               <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
@@ -1051,6 +1064,7 @@ export function PredictionWorkspacePage({
                 }}
               >
                 <CockpitResizableStack
+                  layout={isNarrow ? "stack" : "panels"}
                   showLeaderboard={predictionTab !== "upcoming"}
                   rankings={
             <div className="card cockpit-stack-card">
