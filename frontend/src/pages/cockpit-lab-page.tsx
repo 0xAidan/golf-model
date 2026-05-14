@@ -2,6 +2,7 @@ import { useCallback, useState } from "react"
 import { Link } from "react-router-dom"
 
 import { LabResearchInstrumentationPanel } from "@/components/cockpit/lab-research-instrumentation-panel"
+import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import {
   persistLabResearchInstrumentationExpanded,
   readLabResearchInstrumentationExpanded,
@@ -22,6 +23,7 @@ export function CockpitLabPage({
   labLanePartialSections?: boolean
 }) {
   const [researchExpanded, setResearchExpanded] = useState(readLabResearchInstrumentationExpanded)
+  const isNarrow = useIsNarrowViewport()
 
   const handleResearchExpandedChange = useCallback((open: boolean) => {
     setResearchExpanded(open)
@@ -39,21 +41,38 @@ export function CockpitLabPage({
     >
       <div style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ flexShrink: 0 }} data-testid="lab-board-banner-wrap">
-          <div
-            className="term-notice"
-            style={{
-              margin: "8px 12px 0",
-              fontSize: 12,
-              lineHeight: 1.45,
-            }}
-            data-testid="lab-board-banner"
-          >
-            <strong>Lab</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
-            <strong>lab_upcoming_tournament</strong> when the server has{" "}
-            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on.{" "}
-            <Link to="/">Dashboard</Link> and <Link to="/matchups">Picks</Link> stay on the main snapshot only.
-            Lab-only picks logging: <Link to="/lab/picks">Lab picks</Link>.
-          </div>
+          {isNarrow ? (
+            <div
+              className="term-notice lab-board-banner-compact"
+              style={{
+                margin: "6px 10px 0",
+                fontSize: 11,
+                lineHeight: 1.4,
+              }}
+              data-testid="lab-board-banner"
+            >
+              <strong>Lab</strong> — parallel <code style={{ fontSize: 10 }}>lab_*</code> boards (v5).{" "}
+              <Link to="/">Dashboard</Link> / <Link to="/matchups">Picks</Link> use production.{" "}
+              <Link to="/lab/picks">Lab picks</Link>. Server:{" "}
+              <code style={{ fontSize: 10 }}>live_refresh.lab_profile_enabled</code>.
+            </div>
+          ) : (
+            <div
+              className="term-notice"
+              style={{
+                margin: "8px 12px 0",
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+              data-testid="lab-board-banner"
+            >
+              <strong>Lab</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
+              <strong>lab_upcoming_tournament</strong> when the server has{" "}
+              <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on.{" "}
+              <Link to="/">Dashboard</Link> and <Link to="/matchups">Picks</Link> stay on the main snapshot only.
+              Lab-only picks logging: <Link to="/lab/picks">Lab picks</Link>.
+            </div>
+          )}
           {usingProdSnapshotFallback ? (
             <div
               className="term-notice amber"

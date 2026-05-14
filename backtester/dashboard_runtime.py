@@ -172,6 +172,59 @@ def _has_started_schedule_event(event_row: dict[str, Any], *, today: date) -> bo
     return start_date <= today
 
 
+def _parse_schedule_row_year(event_row: dict[str, Any], *, fallback_year: int) -> int:
+    raw = event_row.get("year")
+    if raw is None or str(raw).strip() == "":
+        return fallback_year
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return fallback_year
+
+
+def _has_posted_round_scores(*, event_id: str, year: int) -> bool:
+    """True when SQLite already has at least one posted hole/round score for the event."""
+    eid = str(event_id or "").strip()
+    if not eid:
+        return False
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1 AS ok
+            FROM rounds
+            WHERE event_id = ? AND year = ? AND score IS NOT NULL
+            LIMIT 1
+            """,
+            (eid, int(year)),
+        ).fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
+def _in_play_has_leaderboard_rows(tour: str) -> bool:
+    try:
+        raw = fetch_in_play_predictions(tour=tour)
+        rows, _, _ = parse_in_play_leaderboard(raw)
+        return len(rows) > 0
+    except Exception:
+        return False
+
+
+def _schedule_row_has_competition_started(*, tour: str, row: dict[str, Any], today: date) -> bool:
+    """
+    Calendar windows from Data Golf often begin before the first competitive round
+    (e.g. Monday of tournament week). The cockpit ``active`` flag should track
+    real scoring / in-play availability, not only schedule dates.
+    """
+    event_id = str(row.get("event_id") or "").strip()
+    year = _parse_schedule_row_year(row, fallback_year=today.year)
+    if _has_posted_round_scores(event_id=event_id, year=year):
+        return True
+    return _in_play_has_leaderboard_rows(tour)
+
+
 def _load_finish_state_map(event_id: str | None, *, year: int | None = None) -> dict[str, str]:
     if not event_id:
         return {}
@@ -1111,11 +1164,20 @@ def _run_ingest(tour: str) -> dict[str, Any]:
     tournament_matchups, tournament_diag = fetch_matchup_odds_with_diagnostics(market="tournament_matchups", tour=tour)
     three_ball, three_ball_diag = fetch_matchup_odds_with_diagnostics(market="3_balls", tour=tour)
     now_date = _utc_now().date()
-    live_row = next((row for row in full_schedule if _is_live_schedule_event(row, today=now_date)), None)
-    if not live_row:
-        live_row = next((row for row in upcoming_schedule if _has_started_schedule_event(row, today=now_date)), None)
+    calendar_live_row = next(
+        (row for row in full_schedule if _is_live_schedule_event(row, today=now_date)),
+        None,
+    )
+    if not calendar_live_row:
+        calendar_live_row = next(
+            (row for row in upcoming_schedule if _has_started_schedule_event(row, today=now_date)),
+            None,
+        )
+    live_row = calendar_live_row
+    if live_row and not _schedule_row_has_competition_started(tour=tour, row=live_row, today=now_date):
+        live_row = None
     live_event_active = bool(live_row)
-    current_row = live_row if live_row else (upcoming_schedule[0] if upcoming_schedule else {})
+    current_row = calendar_live_row if calendar_live_row else (upcoming_schedule[0] if upcoming_schedule else {})
 
     def _is_future_event(row: dict[str, Any]) -> bool:
         start = _parse_iso_date(row.get("start_date"))
@@ -1142,9 +1204,12 @@ def _run_ingest(tour: str) -> dict[str, Any]:
                 None,
             )
     else:
-        upcoming_row = next((row for row in upcoming_schedule if _is_future_event(row)), None)
-        if upcoming_row is None:
-            upcoming_row = upcoming_schedule[0] if upcoming_schedule else None
+        if calendar_live_row:
+            upcoming_row = calendar_live_row
+        else:
+            upcoming_row = next((row for row in upcoming_schedule if _is_future_event(row)), None)
+            if upcoming_row is None:
+                upcoming_row = upcoming_schedule[0] if upcoming_schedule else None
 
     latest_completed = get_latest_completed_event_info(tour=tour, as_of=now_date) or {}
     latest_completed_name = str(latest_completed.get("event_name") or "").strip()

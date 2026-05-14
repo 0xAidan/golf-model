@@ -28,8 +28,8 @@ export function CockpitResizableStack({
   if (layout === "stack") {
     return (
       <div className="cockpit-vertical-stack-mobile">
-        <div className="cockpit-vertical-stack-mobile-chunk">{rankings}</div>
         <div className="cockpit-vertical-stack-mobile-chunk">{topPicks}</div>
+        <div className="cockpit-vertical-stack-mobile-chunk">{rankings}</div>
         <div className="cockpit-vertical-stack-mobile-chunk">{secondary}</div>
         {showLeaderboard && leaderboard != null ? (
           <div className="cockpit-vertical-stack-mobile-chunk">{leaderboard}</div>

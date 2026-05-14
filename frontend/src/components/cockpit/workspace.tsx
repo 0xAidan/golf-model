@@ -14,6 +14,7 @@ export function CockpitWorkspace({
   rightRail,
   className,
   layout = "columns",
+  stackMainFirst = false,
 }: {
   leftRail: ReactNode
   center: ReactNode
@@ -21,16 +22,36 @@ export function CockpitWorkspace({
   className?: string
   /** `stack`: single vertical scroll column (narrow viewports). */
   layout?: CockpitWorkspaceLayout
+  /**
+   * When `layout` is `stack`, render the center column (rankings + picks) before
+   * the left rail so mobile users see actionable boards without scrolling past filters.
+   */
+  stackMainFirst?: boolean
 }) {
   if (layout === "stack") {
+    const mainZone = (
+      <section className="cockpit-stacked-zone" aria-label="Rankings and picks">
+        {center}
+      </section>
+    )
+    const contextZone = (
+      <section className="cockpit-stacked-zone" aria-label="Event context and filters">
+        {leftRail}
+      </section>
+    )
     return (
       <div className={cn("cockpit-stacked-workspace", className)}>
-        <section className="cockpit-stacked-zone" aria-label="Event context and filters">
-          {leftRail}
-        </section>
-        <section className="cockpit-stacked-zone" aria-label="Rankings and picks">
-          {center}
-        </section>
+        {stackMainFirst ? (
+          <>
+            {mainZone}
+            {contextZone}
+          </>
+        ) : (
+          <>
+            {contextZone}
+            {mainZone}
+          </>
+        )}
         <section className="cockpit-stacked-zone" aria-label="Player spotlight">
           {rightRail}
         </section>

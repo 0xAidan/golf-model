@@ -182,14 +182,17 @@ function TopPicksPipelineHint({
   minEdge,
   selectedBooksLength,
   matchupSearchTrimmed,
+  isNarrow,
 }: {
   diagnostics?: LiveTournamentSnapshot["diagnostics"]
   predictionTab: PredictionTab
   minEdge: number
   selectedBooksLength: number
   matchupSearchTrimmed: string
+  isNarrow: boolean
 }) {
   if (predictionTab === "past") return null
+  if (isNarrow) return null
   const filterActive =
     selectedBooksLength > 0 ||
     matchupSearchTrimmed.length > 0 ||
@@ -743,6 +746,7 @@ export function PredictionWorkspacePage({
       <CockpitWorkspace
         className="cockpit-fill"
         layout={isNarrow ? "stack" : "columns"}
+        stackMainFirst={isNarrow && predictionTab !== "past"}
         leftRail={
           <PanelGroup
             direction="vertical"
@@ -1194,6 +1198,7 @@ export function PredictionWorkspacePage({
                 minEdge={minEdge}
                 selectedBooksLength={selectedBooks.length}
                 matchupSearchTrimmed={matchupSearch.trim()}
+                isNarrow={isNarrow}
               />
 
               <div className="table-scroll">

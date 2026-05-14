@@ -79,4 +79,21 @@ describe("CockpitWorkspace", () => {
     expect(screen.getByText("Select a player from the dashboard to load the spotlight.")).toBeInTheDocument()
     expect(screen.getByText("Diagnostics / grading context")).toBeInTheDocument()
   })
+
+  it("stack layout can surface center modules before the left rail when stackMainFirst is set", () => {
+    const { container } = render(
+      <CockpitWorkspace
+        layout="stack"
+        stackMainFirst
+        leftRail={<div data-testid="rail-left">Left rail</div>}
+        center={<div data-testid="rail-center">Center rail</div>}
+        rightRail={<div data-testid="rail-right">Right rail</div>}
+      />,
+    )
+    const zones = container.querySelectorAll(".cockpit-stacked-zone")
+    expect(zones.length).toBe(3)
+    expect(zones[0].querySelector("[data-testid='rail-center']")).toBeTruthy()
+    expect(zones[1].querySelector("[data-testid='rail-left']")).toBeTruthy()
+    expect(zones[2].querySelector("[data-testid='rail-right']")).toBeTruthy()
+  })
 })
