@@ -304,6 +304,7 @@ When matchups appear empty, inspect `GET /api/live-refresh/snapshot` and read `s
 - `market_available_no_edges` → rows exist, but model/EV filters rejected all.
 - `pipeline_error` → ingestion/model step failed; inspect `diagnostics.errors` and reason-code counters.
 - `edges_available` → rows exist; empty UI is likely user-side filtering (`book/search/min-edge`) or source selection.
+- **`live_tournament.active` stays false during tournament week before round 1:** `_run_ingest` sets **`live_event_active`** only when SQLite has a posted **`rounds.score`** for that **`event_id`** **or** **`preds/in-play`** returns a non-empty parsed leaderboard. Calendar start/end dates alone no longer mark the cockpit as live (avoids “Monday of tournament week” vs first competitive round skew).
 
 Use these fields to separate causes:
 - `diagnostics.market_counts.tournament_matchups.raw_rows` (raw posted rows)

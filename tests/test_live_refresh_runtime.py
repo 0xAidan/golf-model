@@ -271,6 +271,11 @@ def test_run_ingest_prefers_started_current_event_when_schedule_lacks_live_end_d
         lambda market, tour="pga": ([], {"reason_code": "invalid_match_list_type"}),
     )
     monkeypatch.setattr("src.datagolf.get_latest_completed_event_info", lambda tour="pga", as_of=None: {})
+    monkeypatch.setattr(
+        runtime,
+        "_schedule_row_has_competition_started",
+        lambda **kwargs: True,
+    )
 
     summary = runtime._run_ingest("pga")
 
@@ -279,6 +284,47 @@ def test_run_ingest_prefers_started_current_event_when_schedule_lacks_live_end_d
     assert summary["event_name"] == "RBC Heritage"
     assert summary["current_event_row"]["event_name"] == "RBC Heritage"
     assert summary["upcoming_event_row"]["event_name"] == "Zurich Classic of New Orleans"
+
+
+def test_run_ingest_does_not_flip_live_without_competition_evidence(monkeypatch):
+    """Schedule week can start before round 1; ``live_event_active`` waits for scores or in-play rows."""
+    from backtester import dashboard_runtime as runtime
+
+    pga_row = {
+        "event_id": "501",
+        "event_name": "PGA Championship",
+        "course": "Aronimink Golf Club",
+        "start_date": "2026-05-14",
+        "end_date": "2026-05-18",
+        "year": 2026,
+    }
+    next_row = {
+        "event_id": "502",
+        "event_name": "Charles Schwab Challenge",
+        "course": "Colonial CC",
+        "start_date": "2026-05-21",
+        "end_date": "2026-05-24",
+        "year": 2026,
+    }
+
+    monkeypatch.setattr(runtime, "_utc_now", lambda: datetime(2026, 5, 14, 14, 0, tzinfo=timezone.utc))
+
+    def fake_fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True):
+        return [pga_row, next_row]
+
+    monkeypatch.setattr("src.datagolf.fetch_schedule", fake_fetch_schedule)
+    monkeypatch.setattr(
+        "src.datagolf.fetch_matchup_odds_with_diagnostics",
+        lambda market, tour="pga": ([], {"reason_code": "invalid_match_list_type"}),
+    )
+    monkeypatch.setattr("src.datagolf.get_latest_completed_event_info", lambda tour="pga", as_of=None: {})
+    monkeypatch.setattr(runtime, "_schedule_row_has_competition_started", lambda **kwargs: False)
+
+    summary = runtime._run_ingest("pga")
+
+    assert summary["live_event_active"] is False
+    assert summary["current_event_row"]["event_name"] == "PGA Championship"
+    assert summary["upcoming_event_row"]["event_name"] == "PGA Championship"
 
 
 def test_extract_matchups_normalizes_pick_schema():
