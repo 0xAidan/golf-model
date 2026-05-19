@@ -13,6 +13,8 @@ type CockpitResizableStackProps = {
   showLeaderboard: boolean
   /** Narrow viewports: vertical scroll stack instead of draggable panes. */
   layout?: "panels" | "stack"
+  /** When set with compact layout, render only one pane (used by mobile dashboard tabs). */
+  compactView?: "picks" | "rankings" | "secondary" | "leaderboard"
 }
 
 /* Vertical split panes for dashboard center column — sizes persist in localStorage per layout mode. */
@@ -23,6 +25,7 @@ export function CockpitResizableStack({
   leaderboard,
   showLeaderboard,
   layout = "panels",
+  compactView,
 }: CockpitResizableStackProps) {
   const tier = useViewportTier()
   const persistKey = showLeaderboard
@@ -39,6 +42,27 @@ export function CockpitResizableStack({
   }
 
   const useCompact = layout === "stack" || tier === "mobile" || tier === "tablet"
+
+  if (useCompact && compactView) {
+    const panel =
+      compactView === "picks"
+        ? topPicks
+        : compactView === "rankings"
+          ? rankings
+          : compactView === "secondary"
+            ? secondary
+            : leaderboard
+    if (compactView === "leaderboard" && (!showLeaderboard || leaderboard == null)) {
+      return (
+        <div className="cockpit-mobile-panel-scroll">
+          <div className="empty-state" style={{ padding: 24 }}>
+            <div className="empty-state-title">Leaderboard appears when the event is live or in replay.</div>
+          </div>
+        </div>
+      )
+    }
+    return <div className="cockpit-mobile-panel-scroll">{panel}</div>
+  }
 
   if (useCompact) {
     return (

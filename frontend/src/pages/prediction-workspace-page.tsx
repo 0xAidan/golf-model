@@ -677,72 +677,7 @@ export function PredictionWorkspacePage({
     URL.revokeObjectURL(url)
   }
 
-  return (
-    <div
-      className={isNarrow ? "prediction-workspace prediction-workspace--narrow" : "prediction-workspace"}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minHeight: 0,
-        overflowX: "hidden",
-        overflowY: isNarrow ? "auto" : "hidden",
-      }}
-    >
-      {/* ── Notice bar ──────────────────────────── */}
-      {snapshotNotice && (
-        <div className="alert-banner" role="status" aria-live="polite">
-          <Radar size={11} style={{ flexShrink: 0 }} />
-          {snapshotNotice}
-        </div>
-      )}
-
-      {/* ── KPI strip — Bloomberg hero numbers, fixed height ── */}
-      <div className="kpi-strip">
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Event</div>
-          <div className="kpi-cell-value" style={{ fontSize: 13, color: "var(--text)" }}>{eventName}</div>
-          {courseName && <div className="kpi-cell-sub">{courseName}</div>}
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Field</div>
-          <div className="kpi-cell-value cyan">{fieldSize ?? "—"}</div>
-          <div className="kpi-cell-sub">players</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Combined</div>
-          <div className={`kpi-cell-value ${recordSummary.combined.profit >= 0 ? "green" : "red"}`}>
-            {formatUnits(recordSummary.combined.profit)}
-          </div>
-          <div className="kpi-cell-sub">
-            {recordSummary.combined.recordLabel} · {recordSummary.combined.hitRateLabel}
-          </div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Matchups</div>
-          <div className={`kpi-cell-value ${recordSummary.matchups.profit >= 0 ? "green" : "red"}`}>
-            {formatUnits(recordSummary.matchups.profit)}
-          </div>
-          <div className="kpi-cell-sub">
-            {recordSummary.matchups.recordLabel} · {recordSummary.matchups.hitRateLabel}
-          </div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-cell-label">Outrights</div>
-          <div className={`kpi-cell-value ${recordSummary.outrights.profit >= 0 ? "green" : "red"}`}>
-            {formatUnits(recordSummary.outrights.profit)}
-          </div>
-          <div className="kpi-cell-sub">
-            {recordSummary.outrights.recordLabel} · {recordSummary.outrights.hitRateLabel}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Three-column dashboard workspace ─────────────────── */}
-      <CockpitWorkspace
-        className="cockpit-fill"
-        layout={isNarrow ? "stack" : "columns"}
-        leftRail={
+  const leftRailMobile = (
           <CockpitVerticalSections
             autoSaveId="golf-model-cockpit-left-rail"
             defaultActiveId="context"
@@ -1045,30 +980,38 @@ export function PredictionWorkspacePage({
               },
             ]}
           />
-        }
-        center={
+  )
+
+  const rightRailMobile = (
           <>
-            {showTeamEventNotice && (
-              <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                <TeamEventNotice
-                  eventName={eventName}
-                  courseName={courseName}
-                  mode={predictionTab === "live" ? "live" : "upcoming"}
-                />
-              </div>
-            )}
-            {!showTeamEventNotice && (
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                }}
-              >
+            {/* ── Player spotlight ─────────────────── */}
+            <CockpitModule
+              flex={3}
+              title="Player spotlight"
+              tone="accent"
+              emptyState={
+                selectedPlayerKey ? undefined : "Click any player to open spotlight."
+              }
+            >
+              <PlayerSpotlightPanel
+                spotlight={spotlight}
+                player={selectedPlayer}
+                profile={effectiveSpotlightProfile}
+                profileState={playerProfileState}
+                profileErrorMessage={playerProfileErrorMessage}
+                onRetryProfile={onPlayerProfileRetry}
+                richProfilesEnabled={richProfilesEnabled}
+              />
+            </CockpitModule>
+          </>
+  )
+
+  const renderCenterBoard = (
+    compactView?: "picks" | "rankings" | "secondary" | "leaderboard",
+  ) => (
                 <CockpitResizableStack
-                  layout={isNarrow ? "stack" : "panels"}
+                  layout={compactView != null ? "stack" : isNarrow ? "stack" : "panels"}
+                  compactView={compactView}
                   showLeaderboard={predictionTab !== "upcoming"}
                   rankings={
             <div className="card cockpit-stack-card">
@@ -1490,33 +1433,162 @@ export function PredictionWorkspacePage({
               ) : undefined
                   }
                 />
+  )
+
+  return (
+    <div
+      className={isNarrow ? "prediction-workspace prediction-workspace--narrow" : "prediction-workspace"}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        overflowX: "hidden",
+        overflowY: "hidden",
+      }}
+    >
+      {/* ── Notice bar ──────────────────────────── */}
+      {snapshotNotice && (
+        <div className="alert-banner" role="status" aria-live="polite">
+          <Radar size={11} style={{ flexShrink: 0 }} />
+          {snapshotNotice}
+        </div>
+      )}
+
+      {/* ── KPI strip — Bloomberg hero numbers, fixed height ── */}
+      <div className="kpi-strip">
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Event</div>
+          <div className="kpi-cell-value" style={{ fontSize: 13, color: "var(--text)" }}>{eventName}</div>
+          {courseName && <div className="kpi-cell-sub">{courseName}</div>}
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Field</div>
+          <div className="kpi-cell-value cyan">{fieldSize ?? "—"}</div>
+          <div className="kpi-cell-sub">players</div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Combined</div>
+          <div className={`kpi-cell-value ${recordSummary.combined.profit >= 0 ? "green" : "red"}`}>
+            {formatUnits(recordSummary.combined.profit)}
+          </div>
+          <div className="kpi-cell-sub">
+            {recordSummary.combined.recordLabel} · {recordSummary.combined.hitRateLabel}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Matchups</div>
+          <div className={`kpi-cell-value ${recordSummary.matchups.profit >= 0 ? "green" : "red"}`}>
+            {formatUnits(recordSummary.matchups.profit)}
+          </div>
+          <div className="kpi-cell-sub">
+            {recordSummary.matchups.recordLabel} · {recordSummary.matchups.hitRateLabel}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-cell-label">Outrights</div>
+          <div className={`kpi-cell-value ${recordSummary.outrights.profit >= 0 ? "green" : "red"}`}>
+            {formatUnits(recordSummary.outrights.profit)}
+          </div>
+          <div className="kpi-cell-sub">
+            {recordSummary.outrights.recordLabel} · {recordSummary.outrights.hitRateLabel}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Three-column dashboard workspace ─────────────────── */}
+      <CockpitWorkspace
+        className="cockpit-fill"
+        layout={isNarrow ? "stack" : "columns"}
+        mobilePanels={
+          isNarrow
+            ? [
+                {
+                  id: "picks",
+                  label: "Picks",
+                  badge: topPlays.length,
+                  content: (
+                    <>
+                      <Link to="/matchups" className="cockpit-mobile-cta">
+                        Full picks page →
+                      </Link>
+                      {renderCenterBoard("picks")}
+                    </>
+                  ),
+                },
+                {
+                  id: "rankings",
+                  label: "Rankings",
+                  content: renderCenterBoard("rankings"),
+                },
+                {
+                  id: "markets",
+                  label: "Markets",
+                  badge: displaySecondaryBets.length || undefined,
+                  content: renderCenterBoard("secondary"),
+                },
+                ...(predictionTab !== "upcoming"
+                  ? [
+                      {
+                        id: "board",
+                        label: "Board",
+                        content: renderCenterBoard("leaderboard"),
+                      },
+                    ]
+                  : []),
+                {
+                  id: "intel",
+                  label: "Intel",
+                  content: leftRailMobile,
+                },
+                {
+                  id: "player",
+                  label: "Player",
+                  content: rightRailMobile,
+                },
+              ]
+            : undefined
+        }
+        leftRail={isNarrow ? null : leftRailMobile}
+        center={
+          isNarrow ? (
+            showTeamEventNotice ? (
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                <TeamEventNotice
+                  eventName={eventName}
+                  courseName={courseName}
+                  mode={predictionTab === "live" ? "live" : "upcoming"}
+                />
               </div>
-            )}
-          </>
+            ) : null
+          ) : (
+            <>
+              {showTeamEventNotice && (
+                <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                  <TeamEventNotice
+                    eventName={eventName}
+                    courseName={courseName}
+                    mode={predictionTab === "live" ? "live" : "upcoming"}
+                  />
+                </div>
+              )}
+              {!showTeamEventNotice && (
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  {renderCenterBoard()}
+                </div>
+              )}
+            </>
+          )
         }
-        rightRail={
-          <>
-            {/* ── Player spotlight ─────────────────── */}
-            <CockpitModule
-              flex={3}
-              title="Player spotlight"
-              tone="accent"
-              emptyState={
-                selectedPlayerKey ? undefined : "Click any player to open spotlight."
-              }
-            >
-              <PlayerSpotlightPanel
-                spotlight={spotlight}
-                player={selectedPlayer}
-                profile={effectiveSpotlightProfile}
-                profileState={playerProfileState}
-                profileErrorMessage={playerProfileErrorMessage}
-                onRetryProfile={onPlayerProfileRetry}
-                richProfilesEnabled={richProfilesEnabled}
-              />
-            </CockpitModule>
-          </>
-        }
+        rightRail={isNarrow ? null : rightRailMobile}
       />
     </div>
   )

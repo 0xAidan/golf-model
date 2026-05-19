@@ -16,6 +16,7 @@ export function CockpitWorkspace({
   rightRail,
   className,
   layout = "columns",
+  mobilePanels,
 }: {
   leftRail: ReactNode
   center: ReactNode
@@ -23,9 +24,24 @@ export function CockpitWorkspace({
   className?: string
   /** `stack`: single vertical scroll column (narrow viewports). */
   layout?: CockpitWorkspaceLayout
+  /** Flat mobile tabs (Picks / Rankings / …) — avoids burying picks under filters. */
+  mobilePanels?: CockpitTabOption[]
 }) {
   const tier = useViewportTier()
   const useMobileTabs = layout === "stack" || tier === "mobile"
+
+  if (useMobileTabs && mobilePanels && mobilePanels.length > 0) {
+    return (
+      <div className={cn("cockpit-mobile-workspace", className)} data-testid="cockpit-mobile-workspace">
+        <CockpitTabbedStack
+          tabs={mobilePanels}
+          defaultTabId="picks"
+          ariaLabel="Dashboard boards"
+          className="cockpit-mobile-dashboard-tabs"
+        />
+      </div>
+    )
+  }
 
   if (useMobileTabs) {
     const tabs: CockpitTabOption[] = [
