@@ -1,6 +1,9 @@
 import type { ReactNode } from "react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 
+import { CockpitTabbedStack, type CockpitTabOption } from "@/components/cockpit/responsive-panels"
+import { useViewportTier } from "@/hooks/use-viewport"
+
 type CockpitResizableStackProps = {
   rankings: ReactNode
   topPicks: ReactNode
@@ -21,20 +24,30 @@ export function CockpitResizableStack({
   showLeaderboard,
   layout = "panels",
 }: CockpitResizableStackProps) {
+  const tier = useViewportTier()
   const persistKey = showLeaderboard
     ? "golf-model-cockpit-center-with-lb"
     : "golf-model-cockpit-center-upcoming"
 
-  if (layout === "stack") {
+  const tabs: CockpitTabOption[] = [
+    { id: "picks", label: "Top picks", content: topPicks },
+    { id: "rankings", label: "Rankings", content: rankings },
+    { id: "markets", label: "Markets", content: secondary },
+  ]
+  if (showLeaderboard && leaderboard != null) {
+    tabs.push({ id: "board", label: "Leaderboard", content: leaderboard })
+  }
+
+  const useCompact = layout === "stack" || tier === "mobile" || tier === "tablet"
+
+  if (useCompact) {
     return (
-      <div className="cockpit-vertical-stack-mobile">
-        <div className="cockpit-vertical-stack-mobile-chunk">{rankings}</div>
-        <div className="cockpit-vertical-stack-mobile-chunk">{topPicks}</div>
-        <div className="cockpit-vertical-stack-mobile-chunk">{secondary}</div>
-        {showLeaderboard && leaderboard != null ? (
-          <div className="cockpit-vertical-stack-mobile-chunk">{leaderboard}</div>
-        ) : null}
-      </div>
+      <CockpitTabbedStack
+        className="cockpit-center-tabbed-stack"
+        tabs={tabs}
+        defaultTabId="picks"
+        ariaLabel="Dashboard boards"
+      />
     )
   }
 

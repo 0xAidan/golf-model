@@ -24,7 +24,7 @@ describe("SuiteShell", () => {
     expect(screen.getByText("Live / Upcoming / Past")).toBeInTheDocument()
     expect(screen.getByTestId("nav-prediction")).toBeInTheDocument()
     expect(screen.getByTestId("nav-lab-board")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /players/i })).toBeInTheDocument()
+    expect(screen.getByTestId("nav-players")).toBeInTheDocument()
     expect(screen.getByTestId("nav-matchups")).toBeInTheDocument()
     expect(screen.getByText("Runtime active · 12s old")).toBeInTheDocument()
     expect(screen.getByText("Dashboard body")).toBeInTheDocument()

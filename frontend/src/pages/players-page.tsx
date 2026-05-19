@@ -206,18 +206,7 @@ function PlayerSearchSidebar({
   }, [activeByKey, filteredActive, searchResults, showSearch])
 
   return (
-    <div
-      style={{
-        width: 220,
-        flexShrink: 0,
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background: VAR.bg1,
-        borderRight: `1px solid ${VAR.border}`,
-        overflow: "hidden",
-      }}
-    >
+    <div className="players-layout-sidebar">
       {/* Search input */}
       <div style={{ padding: "8px 8px 6px", borderBottom: `1px solid ${VAR.border}`, flexShrink: 0 }}>
         <div style={{ position: "relative" }}>
@@ -904,8 +893,7 @@ export function PlayersPage({
   }, [effectiveKey])
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Sidebar */}
+    <div className="players-layout">
       <PlayerSearchSidebar
         activePlayers={players}
         selectedKey={effectiveKey}
@@ -913,8 +901,7 @@ export function PlayersPage({
         trajectoryBounds={trajectoryBounds}
       />
 
-      {/* Main profile view */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, minHeight: 0 }}>
+      <div className="players-layout-main">
         {effectiveKey ? (
           <PlayerProfileView
             key={effectiveKey}

@@ -991,17 +991,10 @@ export function PicksPage({
       : `${secondarySource.length} tracked secondary lines across top-finish, make-cut & outright markets`
 
   return (
-    <div
-      style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "10px 12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-    >
-      <PageHeader title="Picks" description={description} />
+    <div className="page-shell">
+      <div className="picks-page-header">
+        <PageHeader title="Picks" description={description} />
+      </div>
 
       <PicksTabSwitcher
         value={tab}

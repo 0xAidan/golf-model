@@ -7,6 +7,7 @@ import {
   GraduationCap,
   History,
   LayoutDashboard,
+  ListChecks,
   Menu,
   Swords,
   Trophy,
@@ -18,25 +19,94 @@ import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import type { WorkspaceId } from "@/lib/types"
 
 type NavItem = {
-  id: WorkspaceId
+  id: WorkspaceId | "lab-picks"
   label: string
   href: string
   icon: React.ElementType
+  /** Primary routes get bottom nav on mobile. */
+  primary?: boolean
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { id: "prediction",   label: "Dashboard",    href: "/",            icon: LayoutDashboard },
-  { id: "players",      label: "Players",      href: "/players",     icon: Users },
-  { id: "matchups",     label: "Picks",        href: "/matchups",    icon: Swords },
-  { id: "grading",      label: "Grading",      href: "/grading",     icon: GraduationCap },
-  { id: "track-record", label: "Track Record", href: "/track-record",icon: Trophy },
+/** Lab board + Lab picks nav on unless build sets `VITE_COCKPIT_LAB=0` (legacy env name). */
+const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
+
+const PRIMARY_NAV: NavItem[] = [
+  { id: "prediction", label: "Dashboard", href: "/", icon: LayoutDashboard, primary: true },
+  { id: "matchups", label: "Picks", href: "/matchups", icon: Swords, primary: true },
+  ...(COCKPIT_LAB_ENABLED
+    ? ([
+        { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, primary: true },
+        { id: "lab-picks", label: "Lab picks", href: "/lab/picks", icon: ListChecks, primary: true },
+      ] as NavItem[])
+    : []),
+  { id: "players", label: "Players", href: "/players", icon: Users, primary: true },
+]
+
+const RECORDS_NAV: NavItem[] = [
+  { id: "grading", label: "Grading", href: "/grading", icon: GraduationCap },
+  { id: "track-record", label: "Track Record", href: "/track-record", icon: Trophy },
+]
+
+const RESEARCH_NAV: NavItem[] = [
   { id: "legacy-model", label: "Legacy Model", href: "/research/legacy-model", icon: History },
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
   { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
 ]
 
-/** Lab board + Lab picks nav on unless build sets `VITE_COCKPIT_LAB=0` (legacy env name). */
-const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
+function NavItemLink({ href, icon: Icon, label, id }: NavItem) {
+  return (
+    <NavLink
+      to={href}
+      end={href === "/"}
+      className={({ isActive }) => cn("nav-item", isActive && "active")}
+      data-testid={
+        id === "lab-board"
+          ? "nav-lab-board"
+          : id === "lab-picks"
+            ? "nav-lab-picks"
+            : `nav-${id}`
+      }
+    >
+      <Icon size={15} />
+      <span>{label}</span>
+    </NavLink>
+  )
+}
+
+function MobileBottomNav() {
+  const location = useLocation()
+  const primary = PRIMARY_NAV
+
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Primary navigation">
+      {primary.map(({ href, icon: Icon, label, id }) => {
+        const active =
+          href === "/"
+            ? location.pathname === "/"
+            : location.pathname === href || location.pathname.startsWith(`${href}/`)
+        return (
+          <NavLink
+            key={href}
+            to={href}
+            end={href === "/"}
+            className={cn("mobile-bottom-nav-item", active && "active")}
+            data-testid={
+              id === "lab-board"
+                ? "nav-lab-board-mobile"
+                : id === "lab-picks"
+                  ? "nav-lab-picks-mobile"
+                  : `nav-${id}-mobile`
+            }
+            aria-current={active ? "page" : undefined}
+          >
+            <Icon size={18} aria-hidden="true" />
+            <span>{label}</span>
+          </NavLink>
+        )
+      })}
+    </nav>
+  )
+}
 
 /* ── Logo SVG mark ────────────────────────────── */
 function LogoMark({ size = 32 }: { size?: number }) {
@@ -49,13 +119,9 @@ function LogoMark({ size = 32 }: { size?: number }) {
       fill="none"
       aria-label="Golf Model"
     >
-      {/* Flag pole */}
       <line x1="11" y1="6" x2="11" y2="26" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" />
-      {/* Flag */}
       <path d="M11 6 L24 11 L11 16 Z" fill="#22C55E" opacity="0.9" />
-      {/* Ground arc */}
       <path d="M5 26 Q16 22 27 26" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
-      {/* Ball — reads as a white golf ball on dark chrome (not “warning” orange). */}
       <circle cx="20" cy="25" r="2.5" fill="#E8ECEF" stroke="#4A5660" strokeWidth="0.4" />
     </svg>
   )
@@ -153,97 +219,29 @@ export function SuiteShell({
           }}
         >
           <div className="sidebar-section-label">Workspace</div>
-          {NAV_ITEMS.slice(0, 1).map(({ href, icon: Icon, label, id }) => (
-            <NavLink
-              key={href}
-              to={href}
-              end={href === "/"}
-              className={({ isActive }) => cn("nav-item", isActive && "active")}
-              data-testid={`nav-${id}`}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
-          {COCKPIT_LAB_ENABLED ? (
-            <>
-              <NavLink
-                to="/lab"
-                className={({ isActive }) => cn("nav-item", isActive && "active")}
-                data-testid="nav-lab-board"
-                style={{ opacity: 0.92 }}
-                aria-label="Lab — sandbox boards"
-              >
-                <Beaker size={15} />
-                <span>Lab</span>
-              </NavLink>
-              <NavLink
-                to="/lab/picks"
-                className={({ isActive }) => cn("nav-item", isActive && "active")}
-                data-testid="nav-lab-picks"
-                style={{ opacity: 0.92 }}
-                aria-label="Lab picks"
-              >
-                <Beaker size={15} />
-                <span>Lab picks</span>
-              </NavLink>
-            </>
-          ) : null}
-          {NAV_ITEMS.slice(1, 3).map(({ href, icon: Icon, label, id }) => (
-            <NavLink
-              key={href}
-              to={href}
-              end={href === "/"}
-              className={({ isActive }) => cn("nav-item", isActive && "active")}
-              data-testid={`nav-${id}`}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-            </NavLink>
+          {PRIMARY_NAV.map((item) => (
+            <NavItemLink key={item.href} {...item} />
           ))}
 
-          <div className="sidebar-section-label" style={{ marginTop: 8 }}>Records</div>
-          {NAV_ITEMS.slice(3, 5).map(({ href, icon: Icon, label, id }) => (
-            <NavLink
-              key={href}
-              to={href}
-              end={href === "/"}
-              className={({ isActive }) =>
-                cn("nav-item", isActive && "active")
-              }
-              data-testid={`nav-${id}`}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-            </NavLink>
+          <div className="sidebar-section-label" style={{ marginTop: 8 }}>
+            Records
+          </div>
+          {RECORDS_NAV.map((item) => (
+            <NavItemLink key={item.href} {...item} />
           ))}
 
-          <div className="sidebar-section-label" style={{ marginTop: 8 }}>Research</div>
-          {NAV_ITEMS.slice(5).map(({ href, icon: Icon, label, id }) => (
-            <NavLink
-              key={href}
-              to={href}
-              end={href === "/"}
-              className={({ isActive }) =>
-                cn("nav-item", isActive && "active")
-              }
-              data-testid={`nav-${id}`}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-            </NavLink>
+          <div className="sidebar-section-label" style={{ marginTop: 8 }}>
+            Research
+          </div>
+          {RESEARCH_NAV.map((item) => (
+            <NavItemLink key={item.href} {...item} />
           ))}
         </nav>
 
-        {/* Bottom status */}
-        <div className="sidebar-bottom">
-          {frameStatus}
-        </div>
+        <div className="sidebar-bottom">{frameStatus}</div>
       </aside>
 
-      {/* ── Main area */}
       <div className="main-area">
-        {/* Top header */}
         <header className="top-header">
           {isNarrow ? (
             <button
@@ -270,16 +268,13 @@ export function SuiteShell({
             <div className="header-mode-switcher">{modeSwitcher}</div>
           )}
 
-          {actions && (
-            <div className="header-actions">{actions}</div>
-          )}
+          {actions && <div className="header-actions">{actions}</div>}
         </header>
 
-        {/* Content area — fills remaining height, children control scroll */}
-        <main className="content-scroll" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-          {children}
-        </main>
+        <main className="content-scroll">{children}</main>
       </div>
+
+      <MobileBottomNav />
     </div>
   )
 }
@@ -328,7 +323,6 @@ export function MetricTile({
   value: string
   detail?: string
   tone?: "default" | "positive" | "warning"
-  /** Hover explanation (native tooltip). */
   title?: string
 }) {
   const colorClass =
@@ -353,15 +347,19 @@ export function SectionTitle({
   title,
   description,
   action,
+  titleId,
 }: {
   title: string
   description?: string
   action?: React.ReactNode
+  titleId?: string
 }) {
   return (
     <div className="section-header">
       <div>
-        <div className="section-title">{title}</div>
+        <div className="section-title" id={titleId}>
+          {title}
+        </div>
         {description && <div className="section-desc">{description}</div>}
       </div>
       {action}
@@ -403,7 +401,17 @@ export function SidebarStatus({
         <span className={`sidebar-offline-dot ${dotColor}`} />
         {runtimeStatus.label}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-faint)", letterSpacing: "0.06em" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          color: "var(--text-faint)",
+          letterSpacing: "0.06em",
+        }}
+      >
         <Activity size={9} />
         {freshnessLabel}
       </div>
