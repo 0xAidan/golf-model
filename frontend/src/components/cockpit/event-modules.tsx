@@ -84,7 +84,7 @@ export function LeaderboardPanel({
                   <SelectableInlinePlayer playerKey={row.playerKey} label={row.playerLabel} onPlayerSelect={onPlayerSelect} />
                   {row.detail ? <div style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{row.detail}</div> : null}
                 </td>
-                <td style={{ textAlign: "right", color: "var(--cyan)", fontFamily: "var(--font-mono)" }}>{row.toParLabel}</td>
+                <td style={{ textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{row.toParLabel}</td>
                 <td style={{ textAlign: "right" }}>{row.roundLabel}</td>
                 <td style={{ textAlign: "right" }}>{row.scoreLabel}</td>
               </tr>
@@ -126,7 +126,7 @@ export function MarketIntelPanel({
                 {row.detail ? <span className="term-row-det">{row.detail}</span> : null}
               </div>
               <div className="term-row-split-right">
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", fontWeight: 700, color: "var(--cyan)" }}>{row.edgeLabel}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>{row.edgeLabel}</div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{row.priceLabel}</div>
               </div>
             </div>
@@ -194,7 +194,7 @@ export function DiagnosticsGradingPanel({
       {reasonCodes.length > 0 ? (
         <>
           <div className="term-section-head" style={{ marginTop: "8px" }}>
-            <ShieldAlert style={{ width: 9, height: 9, color: "var(--cyan)" }} />
+            <ShieldAlert style={{ width: 9, height: 9, color: "var(--text-secondary)" }} />
             Top Exclusion Reasons
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "6px 10px" }}>

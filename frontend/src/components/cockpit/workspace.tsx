@@ -16,6 +16,7 @@ export function CockpitWorkspace({
   rightRail,
   className,
   layout = "columns",
+  mobilePanels,
 }: {
   leftRail: ReactNode
   center: ReactNode
@@ -23,9 +24,24 @@ export function CockpitWorkspace({
   className?: string
   /** `stack`: single vertical scroll column (narrow viewports). */
   layout?: CockpitWorkspaceLayout
+  /** Flat mobile tabs (Picks / Rankings / …) — avoids burying picks under filters. */
+  mobilePanels?: CockpitTabOption[]
 }) {
   const tier = useViewportTier()
   const useMobileTabs = layout === "stack" || tier === "mobile"
+
+  if (useMobileTabs && mobilePanels && mobilePanels.length > 0) {
+    return (
+      <div className={cn("cockpit-mobile-workspace", className)} data-testid="cockpit-mobile-workspace">
+        <CockpitTabbedStack
+          tabs={mobilePanels}
+          defaultTabId="picks"
+          ariaLabel="Dashboard boards"
+          className="cockpit-mobile-dashboard-tabs"
+        />
+      </div>
+    )
+  }
 
   if (useMobileTabs) {
     const tabs: CockpitTabOption[] = [
@@ -70,21 +86,21 @@ export function CockpitWorkspace({
       autoSaveId="golf-model-cockpit-columns"
       className={cn("cockpit-horizontal-panels", className)}
     >
-      <Panel defaultSize={17} minSize={12} maxSize={42} className="cockpit-column-panel">
+      <Panel defaultSize={14} minSize={12} maxSize={40} className="cockpit-column-panel">
         <div className="cockpit-column-stack">{leftRail}</div>
       </Panel>
       <PanelResizeHandle
         className="cockpit-resize-handle cockpit-resize-handle-col"
         aria-label="Resize left and center columns"
       />
-      <Panel defaultSize={56} minSize={32} className="cockpit-column-panel">
+      <Panel defaultSize={62} minSize={36} className="cockpit-column-panel">
         <div className="cockpit-column-fill">{center}</div>
       </Panel>
       <PanelResizeHandle
         className="cockpit-resize-handle cockpit-resize-handle-col"
         aria-label="Resize center and right columns"
       />
-      <Panel defaultSize={27} minSize={15} maxSize={52} className="cockpit-column-panel">
+      <Panel defaultSize={24} minSize={15} maxSize={48} className="cockpit-column-panel">
         <div className="cockpit-column-scroll">{rightRail}</div>
       </Panel>
     </PanelGroup>
@@ -113,44 +129,20 @@ export function CockpitModule({
 }) {
   return (
     <div
-      className={cn("cockpit-module", className)}
-      style={{
-        flex: flex ?? 1,
-        minHeight: 0,
-        ...(tone === "accent"
-          ? { borderColor: "rgba(34,197,94,0.2)" }
-          : tone === "muted"
-            ? { borderColor: "var(--border)" }
-            : undefined),
-      }}
+      className={cn(
+        "cockpit-module",
+        tone === "accent" && "cockpit-module--accent",
+        tone === "muted" && "cockpit-module--muted",
+        className,
+      )}
+      style={{ flex: flex ?? 1, minHeight: 0 }}
     >
       <div className="cockpit-module-header">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            flexWrap: "wrap",
-            columnGap: 8,
-            rowGap: 2,
-            minWidth: 0,
-            flex: 1,
-          }}
-        >
+        <div className="cockpit-module-header-main">
           <span className="cockpit-module-title">{title}</span>
-          {description && (
-            <span
-              style={{
-                fontSize: 9,
-                color: "var(--text-faint)",
-                fontFamily: "var(--font-mono)",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {description}
-            </span>
-          )}
+          {description ? <span className="cockpit-module-desc">{description}</span> : null}
         </div>
-        {action && <div style={{ flexShrink: 0 }}>{action}</div>}
+        {action ? <div className="cockpit-module-header-action">{action}</div> : null}
       </div>
       <div className="cockpit-module-body">
         {children ??
