@@ -110,7 +110,7 @@ export function CockpitVerticalSections({
     )
   }
 
-  const sizes = sections.length === 3 ? [42, 38, 20] : sections.map(() => 100 / sections.length)
+  const sizes = sections.length === 3 ? [22, 52, 18] : sections.map(() => 100 / sections.length)
   return (
     <PanelGroup
       direction="vertical"

@@ -13,6 +13,7 @@ import { isTeamEvent } from "@/lib/event-format"
 import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-stack"
 import { CockpitVerticalSections } from "@/components/cockpit/responsive-panels"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
 import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
@@ -271,11 +272,11 @@ function ScoreBar({
 }: {
   value: number
   max?: number
-  color?: "green" | "gold" | "cyan"
+  color?: "green" | "gold" | "composite"
 }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
   const heatFill =
-    color === "green" && max > 0 && Number.isFinite(value)
+    (color === "green" || color === "composite") && max > 0 && Number.isFinite(value)
       ? heatSpectrumGradientAlongUnit(Math.min(1, Math.max(0, value / max)), "ltr")
       : undefined
   return (
@@ -813,13 +814,18 @@ export function PredictionWorkspacePage({
               </div>
             )}
 
-            {/* Course + weather context */}
-            <CockpitModule title="Course & weather" description="Feed for the active event context.">
+            {/* Course + weather — collapsed by default on desktop to keep filters dominant */}
+            <CollapsibleSection
+              title="Course & weather"
+              description="Secondary context"
+              defaultOpen={isNarrow}
+              testId="intel-course-weather"
+            >
               <CourseWeatherFeedPanel
                 metrics={courseFeedModel.metrics}
                 feedItems={courseFeedModel.feedItems}
               />
-            </CockpitModule>
+            </CollapsibleSection>
                   </>
                 ),
               },
@@ -916,20 +922,23 @@ export function PredictionWorkspacePage({
                 label: "Results",
                 content: (
                   <>
-            {/* Recent grading */}
-            <div className="card">
-              <div className="card-header">
-                <div className="card-title">Recent results</div>
+            <CollapsibleSection
+              title="Recent results"
+              description="Graded events"
+              defaultOpen={isNarrow}
+              testId="intel-recent-results"
+            >
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px 0" }}>
                 <Link
                   to="/grading"
-                  style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none" }}
+                  style={{ fontSize: 11, color: "var(--accent-link)", textDecoration: "none" }}
                 >
-                  All →
+                  All grading →
                 </Link>
               </div>
-              <div className="table-scroll">
+              <div className="table-scroll-region">
                 {gradingHistory.length > 0 ? (
-                  <table className="data-table">
+                  <table className="data-table terminal-table">
                     <thead>
                       <tr>
                         <th title={GRADING_TABLE_TOOLTIPS.event}>Event</th>
@@ -969,12 +978,12 @@ export function PredictionWorkspacePage({
                     </tbody>
                   </table>
                 ) : (
-                  <div className="card-body">
+                  <div style={{ padding: "12px 10px" }}>
                     <EmptyState message="No graded events yet." />
                   </div>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
                   </>
                 ),
               },
@@ -1081,7 +1090,7 @@ export function PredictionWorkspacePage({
                               </button>
                             </td>
                             <td title={POWER_RANKINGS_HELP.composite}>
-                              <ScoreBar value={player.composite} max={100} color="cyan" />
+                              <ScoreBar value={player.composite} max={100} color="composite" />
                             </td>
                             <td title={POWER_RANKINGS_HELP.form}>
                               <ScoreBar value={player.form} max={100} color="green" />

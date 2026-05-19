@@ -161,7 +161,7 @@ export const LabPicksPage = ({
   }, [tournamentId, matchups.length])
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div className="lane-lab" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div
         className="term-notice"
         style={{ margin: "8px 12px 0", fontSize: 12, lineHeight: 1.45 }}
@@ -190,6 +190,7 @@ export const LabPicksPage = ({
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <PicksPage
+          lane="lab"
           matchups={matchups}
           matchupsEmptyMessage={matchupsEmptyMessage}
           matchupDiagnostics={matchupDiagnostics}

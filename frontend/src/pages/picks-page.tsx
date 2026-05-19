@@ -24,6 +24,7 @@ import {
   MATCHUP_TABLE_TOOLTIPS,
   TIER_BADGE_TOOLTIP,
 } from "@/lib/metric-tooltips"
+import { PicksTableScroll } from "@/components/ui/picks-table-scroll"
 import { cn } from "@/lib/utils"
 import type {
   FailedMatchupCandidate,
@@ -51,6 +52,8 @@ type PicksPageProps = {
   marketRows?: PastMarketPredictionRow[]
   marketRowsLoading?: boolean
   marketRowsError?: string
+  /** When set to lab, shows research-lane chip in header. */
+  lane?: "production" | "lab"
 }
 
 type AvailabilityFilter = "all" | "available" | "unavailable"
@@ -486,8 +489,8 @@ function FailedCandidatesTable({ candidates }: { candidates: FailedMatchupCandid
         <div className="card-title">All candidates considered</div>
         <div className="card-desc">{candidates.length} rows · ranked by EV (closest to clearing first)</div>
       </div>
-      <div style={{ overflow: "auto" }}>
-        <table className="data-table">
+      <PicksTableScroll>
+        <table className="data-table terminal-table">
           <thead>
             <tr>
               <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
@@ -553,7 +556,7 @@ function FailedCandidatesTable({ candidates }: { candidates: FailedMatchupCandid
             })}
           </tbody>
         </table>
-      </div>
+          </PicksTableScroll>
     </div>
   )
 }
@@ -611,8 +614,8 @@ function MatchupsBoard({
       )}
       <div className="card">
         {matchups.length > 0 ? (
-          <div style={{ overflow: "auto" }}>
-            <table className="data-table">
+          <PicksTableScroll>
+            <table className="data-table terminal-table">
               <thead>
                 <tr>
                   <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
@@ -777,7 +780,7 @@ function MatchupsBoard({
                 })}
               </tbody>
             </table>
-          </div>
+          </PicksTableScroll>
         ) : (
           <div className="card-body">
             <EmptyState message={emptyMessage}>
@@ -862,8 +865,8 @@ function SecondaryBoard({
             <div className="card-title">{secondaryBadgeLabel(market)}</div>
             <div className="card-desc">{marketBets.length} edges</div>
           </div>
-          <div style={{ overflow: "auto" }}>
-            <table className="data-table">
+          <PicksTableScroll>
+            <table className="data-table terminal-table">
               <thead>
                 <tr>
                   <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
@@ -903,7 +906,7 @@ function SecondaryBoard({
                 })}
               </tbody>
             </table>
-          </div>
+          </PicksTableScroll>
         </div>
       ))}
     </div>
@@ -922,6 +925,7 @@ export function PicksPage({
   marketRows = [],
   marketRowsLoading = false,
   marketRowsError,
+  lane = "production",
 }: PicksPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab: PicksTab = searchParams.get("tab") === "secondary" ? "secondary" : "matchups"
@@ -991,9 +995,12 @@ export function PicksPage({
       : `${secondarySource.length} tracked secondary lines across top-finish, make-cut & outright markets`
 
   return (
-    <div className="page-shell">
+    <div className="page-shell picks-page-shell">
       <div className="picks-page-header">
-        <PageHeader title="Picks" description={description} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <PageHeader title="Picks" description={description} />
+          {lane === "lab" ? <span className="lane-chip">Lab lane</span> : null}
+        </div>
       </div>
 
       <PicksTabSwitcher

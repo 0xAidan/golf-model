@@ -35,6 +35,8 @@ const T = {
   red: "var(--red)",
   redBg: "var(--red-bg)",
   redDim: "rgba(239, 68, 68, 0.22)",
+  focus: "var(--accent-focus)",
+  link: "var(--accent-link)",
   mono: "var(--font-mono)",
 }
 
@@ -194,7 +196,7 @@ export function PentagonRadar({
   }
 
   return (
-    <div style={{ minHeight: height, fontFamily: T.mono }}>
+    <div role="region" aria-label={`Strokes gained radar for ${playerName}`} style={{ minHeight: height, fontFamily: T.mono }}>
       <svg
         width="100%"
         height={svgPx}
@@ -461,7 +463,12 @@ export function BeeswarmStrip({
   const toXAxis = (v: number) => chartLeft + ((v - range[0]) / (range[1] - range[0])) * CHART_W
 
   return (
-    <div ref={wrapRef} style={{ width: "100%", minHeight: Math.min(height, totalH), overflowX: "auto" }}>
+    <div
+      ref={wrapRef}
+      role="region"
+      aria-label="Beeswarm chart comparing the player to the field by stat category."
+      style={{ width: "100%", minHeight: Math.min(height, totalH), overflowX: "auto" }}
+    >
       <svg
         viewBox={`0 0 ${W} ${totalH}`}
         style={{ width: "100%", display: "block", fontFamily: T.mono }}
@@ -689,7 +696,7 @@ export function RollingBarLine({
   const legendBarSwatch = barColors.find((c) => c !== "transparent") ?? heatSpectrumHexFromUnit(0.5)
 
   return (
-    <div>
+    <div role="region" aria-label="Rolling strokes gained chart with event and round views.">
       <div style={{ display: "flex", gap: 4, marginBottom: 8, paddingLeft: 2, alignItems: "center", flexWrap: "wrap" }}>
         {(["events", "rounds"] as const).map((rollingView) => (
           <button
@@ -952,7 +959,7 @@ export function ApproachArcGauges({
   if (!buckets.length) return <ChartEmpty height={120} msg="No approach data" />
 
   return (
-    <div>
+    <div role="region" aria-label="Approach strokes gained by distance bucket, fairway versus rough.">
       {/* FW / Rough toggle */}
       <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
         {(["fw", "rgh"] as const).map(l => (
@@ -1091,7 +1098,7 @@ export function HistoryTable({
   if (!events.length) return <ChartEmpty height={80} msg="No tournament history" />
 
   return (
-    <div>
+    <div role="region" aria-label="Tournament finish history with strokes gained summary.">
       <div style={{ overflow: "auto" }}>
         <table style={{
           width: "100%", borderCollapse: "collapse",
