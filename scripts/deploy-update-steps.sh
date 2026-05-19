@@ -45,6 +45,28 @@ if [ -f "frontend/package.json" ]; then
     npm ci
     npm run build
     cd "$DEPLOY_PATH"
+    # Fail fast if index.html references missing bundles (prevents white-screen deploys).
+    venv/bin/python - <<'PY' || { echo "[deploy] ERROR: frontend build verification failed" >&2; exit 1; }
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+dist = Path("frontend/dist")
+index = dist / "index.html"
+if not index.is_file():
+    print("[deploy] missing frontend/dist/index.html", file=sys.stderr)
+    sys.exit(1)
+
+html = index.read_text(encoding="utf-8")
+refs = re.findall(r'(?:src|href)="\./assets/([^"]+)"', html)
+missing = [name for name in refs if not (dist / "assets" / name).is_file()]
+if missing:
+    print("[deploy] index.html references missing assets:", ", ".join(missing), file=sys.stderr)
+    sys.exit(1)
+print(f"[deploy] frontend build OK ({len(refs)} assets referenced by index.html)")
+PY
 fi
 
 python -c "from src.db import init_db; init_db()"

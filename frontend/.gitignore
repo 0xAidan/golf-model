@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist/ is committed at repo root for VPS deploy (see root .gitignore !frontend/dist/)
 dist-ssr
 *.local
 
