@@ -30,7 +30,7 @@ export function CockpitLabPage({
 
   return (
     <div
-      className="cockpit-lab-root"
+      className="cockpit-lab-root lane-lab"
       style={{
         flex: 1,
         minHeight: 0,
@@ -51,8 +51,18 @@ export function CockpitLabPage({
             <strong>Lab</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
             <strong>lab_upcoming_tournament</strong> when the server has{" "}
             <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on.{" "}
-            <Link to="/">Dashboard</Link> and <Link to="/matchups">Picks</Link> stay on the main snapshot only.
-            Lab-only picks logging: <Link to="/lab/picks">Lab picks</Link>.
+            <Link to="/" aria-label="Leave Lab: open main dashboard">
+              Dashboard
+            </Link>{" "}
+            and{" "}
+            <Link to="/matchups" aria-label="Leave Lab: open main picks (matchups)">
+              Picks
+            </Link>{" "}
+            stay on the main snapshot only.
+            Lab-only picks logging:{" "}
+            <Link to="/lab/picks" aria-label="Open Lab picks within this workspace">
+              Lab picks
+            </Link>
           </div>
           {usingProdSnapshotFallback ? (
             <div

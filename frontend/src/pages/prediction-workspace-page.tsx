@@ -1111,7 +1111,7 @@ export function PredictionWorkspacePage({
             </div>
                   }
                   topPicks={
-            <div className="card cockpit-stack-card">
+            <div className="card cockpit-stack-card cockpit-stack-card--picks">
               <div className="card-header">
                 <div>
                   <div className="card-title">
@@ -1171,7 +1171,7 @@ export function PredictionWorkspacePage({
                         Switch to{" "}
                         <button
                           type="button"
-                          style={{ color: "var(--cyan)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: "inherit" }}
+                          style={{ color: "var(--accent-link)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: "inherit" }}
                           onClick={() => onPredictionTabChange("upcoming")}
                         >
                           Upcoming
@@ -1333,7 +1333,7 @@ export function PredictionWorkspacePage({
                     {displaySecondaryBets.length} picks
                     <Link
                       to="/matchups?tab=secondary"
-                      style={{ marginLeft: 8, color: "var(--cyan)", fontSize: 10, textDecoration: "none" }}
+                      style={{ marginLeft: 8, color: "var(--accent-link)", fontSize: 10, textDecoration: "none" }}
                     >
                       All →
                     </Link>
@@ -1456,15 +1456,15 @@ export function PredictionWorkspacePage({
       )}
 
       {/* ── KPI strip — Bloomberg hero numbers, fixed height ── */}
-      <div className="kpi-strip">
-        <div className="kpi-cell">
+      <div className={isNarrow ? "kpi-strip kpi-strip--compact" : "kpi-strip"}>
+        <div className="kpi-cell kpi-cell--event">
           <div className="kpi-cell-label">Event</div>
-          <div className="kpi-cell-value" style={{ fontSize: 13, color: "var(--text)" }}>{eventName}</div>
-          {courseName && <div className="kpi-cell-sub">{courseName}</div>}
+          <div className="kpi-cell-value muted">{eventName}</div>
+          {courseName && !isNarrow ? <div className="kpi-cell-sub">{courseName}</div> : null}
         </div>
         <div className="kpi-cell">
           <div className="kpi-cell-label">Field</div>
-          <div className="kpi-cell-value cyan">{fieldSize ?? "—"}</div>
+          <div className="kpi-cell-value muted">{fieldSize ?? "—"}</div>
           <div className="kpi-cell-sub">players</div>
         </div>
         <div className="kpi-cell">
@@ -1485,7 +1485,7 @@ export function PredictionWorkspacePage({
             {recordSummary.matchups.recordLabel} · {recordSummary.matchups.hitRateLabel}
           </div>
         </div>
-        <div className="kpi-cell">
+        <div className="kpi-cell kpi-cell--outrights">
           <div className="kpi-cell-label">Outrights</div>
           <div className={`kpi-cell-value ${recordSummary.outrights.profit >= 0 ? "green" : "red"}`}>
             {formatUnits(recordSummary.outrights.profit)}

@@ -1,9 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
 
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
+import { RouteErrorBoundary } from "@/components/route-error-boundary"
 import { SuiteShell, SidebarStatus } from "@/components/shell"
 import { SnapshotChip } from "@/components/snapshot-chip"
 import { useLiveRefreshRuntime } from "@/hooks/use-live-refresh-runtime"
@@ -104,6 +105,18 @@ function App() {
   const [refreshTick, setRefreshTick] = useState(0)
 
   const location = useLocation()
+
+  const tabPollingSuspended = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof document === "undefined") return () => {}
+      const onVis = () => onStoreChange()
+      document.addEventListener("visibilitychange", onVis)
+      return () => document.removeEventListener("visibilitychange", onVis)
+    },
+    () => (typeof document !== "undefined" ? document.visibilityState === "hidden" : false),
+    () => false,
+  )
+
   const isLegacyLabBoardPath =
     location.pathname === "/cockpit-lab" || location.pathname.startsWith("/cockpit-lab/")
   const isLabBoardRoute = location.pathname === "/lab" || isLegacyLabBoardPath
@@ -113,7 +126,7 @@ function App() {
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
     queryFn: api.getDashboardState,
-    refetchInterval: 30_000,
+    refetchInterval: tabPollingSuspended ? false : 30_000,
   })
   const gradingHistoryPickSource = labRouteActive ? "lab" : "cockpit"
   const gradingHistoryQuery = useQuery({
@@ -124,6 +137,7 @@ function App() {
     queryKey: ["live-refresh-status", manualRefreshPending],
     queryFn: api.getLiveRefreshStatus,
     refetchInterval: (query) => {
+      if (tabPollingSuspended) return false
       const data = query.state.data
       const pr = data?.status?.progress?.refresh_state
       if (manualRefreshPending || data?.status?.running || pr === "busy") {
@@ -135,7 +149,7 @@ function App() {
   const liveSnapshotQuery = useQuery({
     queryKey: ["live-refresh-snapshot"],
     queryFn: api.getLiveRefreshSnapshot,
-    refetchInterval: 10_000,
+    refetchInterval: tabPollingSuspended ? false : 10_000,
   })
 
   const liveSnapshotEnvelope = liveSnapshotQuery.data
@@ -503,7 +517,6 @@ function App() {
     queryFn: () =>
       api.getLiveRefreshPastMarketRows(labPicksMarketEventId, {
         section: (labPicksMarketSection ?? "live") as "live" | "upcoming" | "lab_live" | "lab_upcoming",
-        limit: 5000,
       }),
     enabled: Boolean(isLabPicksRoute && labPicksMarketSection && labPicksMarketEventId),
     staleTime: 30_000,
@@ -534,7 +547,6 @@ function App() {
     queryFn: () =>
       api.getLiveRefreshPastMarketRows(picksEventId, {
         section: picksSection ?? "live",
-        limit: 5000,
       }),
     enabled: Boolean(picksSection && picksEventId),
     staleTime: 30_000,
@@ -703,9 +715,39 @@ function App() {
       ? labWorkspaceHydrated.event_name
       : effectivePredictionRun?.event_name ?? "No event loaded"
 
+  const shellEventMeta = (() => {
+    const run =
+      labRouteActive && labWorkspaceHydrated ? labWorkspaceHydrated : effectivePredictionRun
+    const course = run?.course_name?.trim()
+    if (!course) return undefined
+    const field = run?.field_size
+    return field != null ? `${course} · ${field} players` : course
+  })()
+
+  useEffect(() => {
+    const suffix = "Golf Model"
+    const path = location.pathname
+    const routePrimary: Record<string, string> = {
+      "/": shellEventName,
+      "/lab": "Lab",
+      "/lab/picks": "Lab picks",
+      "/players": "Players",
+      "/matchups": "Picks",
+      "/grading": "Grading",
+      "/track-record": "Track record",
+      "/research/legacy-model": "Legacy model",
+      "/research/champion-challenger": "Champion / Challenger",
+      "/research/diagnostics": "Diagnostics",
+    }
+    const primary =
+      routePrimary[path] ?? (path.startsWith("/cockpit-lab") ? "Lab" : suffix)
+    document.title = primary === suffix ? suffix : `${primary} · ${suffix}`
+  }, [location.pathname, shellEventName])
+
   return (
     <SuiteShell
       headline={shellEventName}
+      subheadline={shellEventMeta}
       modeSwitcher={
         <CockpitModeSwitch
           value={predictionTab}
@@ -765,7 +807,8 @@ function App() {
         </>
       }
     >
-      <Routes>
+      <RouteErrorBoundary>
+        <Routes>
         <Route
           path="/"
           element={<PredictionWorkspacePage {...cockpitWorkspaceProps} />}
@@ -899,6 +942,7 @@ function App() {
           }
         />
       </Routes>
+      </RouteErrorBoundary>
     </SuiteShell>
   )
 }

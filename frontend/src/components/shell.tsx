@@ -14,6 +14,7 @@ import {
   Users,
   X,
 } from "lucide-react"
+import { StatusDot } from "@/components/ui/status-dot"
 import { cn } from "@/lib/utils"
 import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import type { WorkspaceId } from "@/lib/types"
@@ -131,6 +132,7 @@ function LogoMark({ size = 32 }: { size?: number }) {
 export function SuiteShell({
   children,
   headline,
+  subheadline,
   modeSwitcher,
   frameStatus,
   actions,
@@ -258,10 +260,14 @@ export function SuiteShell({
           ) : null}
 
           <div className="header-event">
-            <div className="header-event-label">Active event</div>
             <div className="header-event-name" data-testid="header-event-name">
               {headline || "No event loaded"}
             </div>
+            {subheadline ? (
+              <span className="header-event-meta" data-testid="header-event-meta">
+                {subheadline}
+              </span>
+            ) : null}
           </div>
 
           {modeSwitcher && (
@@ -393,12 +399,12 @@ export function SidebarStatus({
   runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
   freshnessLabel: string
 }) {
-  const dotColor =
+  const dotTone =
     runtimeStatus.tone === "good" ? "good" : runtimeStatus.tone === "warn" ? "warn" : "bad"
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div className="sidebar-offline">
-        <span className={`sidebar-offline-dot ${dotColor}`} />
+        <StatusDot tone={dotTone} />
         {runtimeStatus.label}
       </div>
       <div

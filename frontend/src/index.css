@@ -36,8 +36,9 @@
   --gold-bg:    rgba(245,180,24,0.08);
   --gold-dim:   rgba(245,180,24,0.12);
 
-  --cyan:       #22c55e;   /* aliased to green — no blue in the system */
-  --cyan-bg:    rgba(34,197,94,0.08);
+  /* Legacy alias — use --accent-link / --text-secondary for UI chrome links */
+  --cyan:       #8b9aa6;
+  --cyan-bg:    rgba(139, 154, 166, 0.08);
 
   --red:        #ef4444;   /* loss / danger / negative */
   --red-bg:     rgba(239,68,68,0.10);
@@ -53,14 +54,32 @@
   --warning:    #f59e0b;
   --warning-bg: rgba(245,158,11,0.10);
 
-  /* ── Typography — terminal-grade */
-  --font-display: 'Cabinet Grotesk', 'Inter', system-ui, sans-serif;
+  /* ── Refined scale (prefer these in new UI) */
+  --bg-base:           var(--bg);
+  --bg-raised:         var(--bg-1);
+  --bg-overlay:        var(--bg-2);
+  --text-primary:      var(--text);
+  --text-secondary:    var(--text-muted);
+  --text-tertiary:     var(--text-faint);
+  --accent-positive:   var(--green);
+  --accent-warning:    var(--amber);
+  --accent-danger:     var(--red);
+  --accent-focus:      #5c6b78;
+  --accent-link:       var(--text-secondary);
+
+  /* ── Typography — one sans for chrome, mono for numbers */
+  --font-display: 'Satoshi', 'Inter', system-ui, sans-serif;
   --font-body:    'Satoshi', 'Inter', system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 
+  --text-label:  10px;
+  --text-body:   12px;
+  --text-table:  13px;
+  --text-title:  15px;
+
   /* ── Layout */
   --sidebar-w:  200px;
-  --header-h:   42px;
+  --header-h:   48px;
 
   /* ── Radius — near-square, terminal feel */
   --r:    3px;
@@ -69,7 +88,130 @@
   --r-lg: 5px;
 
   /* ── Transitions */
-  --ease: 140ms ease;
+  --ease: 160ms ease;
+}
+
+/* ── Terminal utilities ─────────────────────────────── */
+.terminal-table,
+.data-table.terminal-table {
+  font-size: var(--text-table);
+}
+
+.terminal-table thead tr {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.metric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.metric--positive { color: var(--accent-positive); }
+.metric--negative { color: var(--accent-danger); }
+.metric--warning  { color: var(--accent-warning); }
+.metric--neutral  { color: var(--text-secondary); }
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+  background: var(--text-tertiary);
+}
+
+.status-dot--good { background: var(--accent-positive); }
+.status-dot--warn { background: var(--accent-warning); }
+.status-dot--bad  { background: var(--accent-danger); }
+.status-dot--muted { background: var(--text-tertiary); }
+.status-dot--live {
+  background: var(--accent-positive);
+  animation: pulse-glow 1.8s ease-in-out infinite;
+}
+
+.status-dot--pulse {
+  animation: pulse-glow 1.8s ease-in-out infinite;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-mid);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.chip--active {
+  color: var(--accent-positive);
+  border-color: rgba(34, 197, 94, 0.25);
+  background: var(--green-bg);
+}
+
+.lane-lab {
+  box-shadow: inset 0 3px 0 0 rgba(245, 180, 24, 0.35);
+}
+
+.lane-lab .term-notice {
+  border-left: 2px solid rgba(245, 180, 24, 0.45);
+}
+
+.cockpit-stack-card--picks {
+  border-color: rgba(34, 197, 94, 0.22);
+}
+
+.cockpit-stack-card--picks > .card-header {
+  background: var(--bg-overlay);
+  border-bottom-color: rgba(34, 197, 94, 0.15);
+}
+
+.cockpit-stack-card--picks .card-title {
+  color: var(--text-primary);
+  font-size: var(--text-label);
+}
+
+.cockpit-module--accent {
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.cockpit-module--accent .cockpit-module-header {
+  background: var(--bg-overlay);
+}
+
+.cockpit-module--muted {
+  border-color: var(--border);
+  opacity: 0.92;
+}
+
+.cockpit-module-desc {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.header-event-meta {
+  font-size: var(--text-body);
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(42vw, 280px);
+}
+
+.kpi-strip--compact .kpi-cell--hide-narrow {
+  display: none;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -234,6 +376,9 @@ body {
   order: 2;
   flex: 1 1 200px;
   min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
 }
 
 .app-layout--narrow .mobile-menu-trigger {
@@ -375,10 +520,20 @@ body {
 .app-layout--narrow .rankings-table th:nth-child(2),
 .app-layout--narrow .rankings-table td:nth-child(2) {
   width: auto;
+  min-width: 132px;
 }
 
 .app-layout--narrow .rankings-player-name button {
-  max-width: 100%;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.prediction-workspace--narrow .kpi-strip--compact .kpi-cell--event {
+  display: none;
+}
+
+.prediction-workspace--narrow .kpi-strip--compact .kpi-cell--outrights {
+  display: none;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -473,9 +628,10 @@ body {
 }
 
 .nav-item.active {
-  color: var(--green);
-  background: var(--green-bg);
-  border-color: rgba(34,197,94,0.15);
+  color: var(--text-primary);
+  background: var(--surface);
+  border-color: var(--border-hi);
+  box-shadow: inset 3px 0 0 0 var(--accent-positive);
 }
 
 .sidebar-bottom {
@@ -1452,6 +1608,20 @@ body {
   gap: 8px;
 }
 
+.cockpit-module-header-main {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cockpit-module-header-action {
+  flex-shrink: 0;
+}
+
 .cockpit-module-title {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -2056,9 +2226,10 @@ body {
 }
 
 .cockpit-segment-tab.active {
-  color: var(--green);
-  background: var(--green-bg);
-  border-color: rgba(34, 197, 94, 0.2);
+  color: var(--text-primary);
+  background: var(--surface);
+  border-color: var(--border-hi);
+  box-shadow: inset 0 -2px 0 0 var(--accent-positive);
 }
 
 .cockpit-segment-tab-badge {
@@ -2241,16 +2412,27 @@ body {
 
   .cockpit-mobile-cta {
     display: block;
-    margin: 6px 8px 0;
-    padding: 8px 12px;
-    border-radius: var(--r-sm);
-    border: 1px solid var(--border-hi);
-    background: var(--surface-2);
-    color: var(--cyan);
-    font-size: 12px;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 7px 12px;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
     font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     text-align: center;
     text-decoration: none;
+    transition: color var(--ease), background var(--ease);
+  }
+
+  .cockpit-mobile-cta:hover {
+    color: var(--text-primary);
+    background: var(--surface);
   }
 
   .cockpit-mobile-dashboard-tabs .rankings-table,
@@ -2293,8 +2475,9 @@ body {
   }
 
   .mobile-bottom-nav-item.active {
-    color: var(--green);
-    background: var(--green-bg);
+    color: var(--text-primary);
+    background: var(--surface);
+    box-shadow: inset 0 2px 0 0 var(--accent-positive);
   }
 
   .mobile-bottom-nav-item span {
