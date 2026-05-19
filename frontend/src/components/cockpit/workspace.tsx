@@ -1,6 +1,8 @@
 import type { ReactNode } from "react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 
+import { CockpitTabbedStack, type CockpitTabOption } from "@/components/cockpit/responsive-panels"
+import { useViewportTier } from "@/hooks/use-viewport"
 import { cn } from "@/lib/utils"
 
 /* ── Three-column dashboard workspace — fills viewport height; columns resize via drag handles.
@@ -17,6 +19,45 @@ export function CockpitWorkspace({
   rightRail: ReactNode
   className?: string
 }) {
+  const tier = useViewportTier()
+
+  if (tier === "mobile") {
+    const tabs: CockpitTabOption[] = [
+      { id: "picks", label: "Picks", content: center },
+      { id: "intel", label: "Intel", content: leftRail },
+      { id: "player", label: "Player", content: rightRail },
+    ]
+    return (
+      <div className={cn("cockpit-mobile-workspace", className)} data-testid="cockpit-mobile-workspace">
+        <CockpitTabbedStack tabs={tabs} defaultTabId="picks" ariaLabel="Dashboard sections" />
+      </div>
+    )
+  }
+
+  if (tier === "tablet") {
+    return (
+      <div className={cn("cockpit-tablet-workspace", className)} data-testid="cockpit-tablet-workspace">
+        <div className="cockpit-tablet-rail">{leftRail}</div>
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId="golf-model-cockpit-columns-tablet"
+          className="cockpit-horizontal-panels cockpit-tablet-columns"
+        >
+          <Panel defaultSize={62} minSize={40} className="cockpit-column-panel">
+            <div className="cockpit-column-fill">{center}</div>
+          </Panel>
+          <PanelResizeHandle
+            className="cockpit-resize-handle cockpit-resize-handle-col"
+            aria-label="Resize center and player columns"
+          />
+          <Panel defaultSize={38} minSize={22} maxSize={52} className="cockpit-column-panel">
+            <div className="cockpit-column-scroll">{rightRail}</div>
+          </Panel>
+        </PanelGroup>
+      </div>
+    )
+  }
+
   return (
     <PanelGroup
       direction="horizontal"
@@ -73,15 +114,32 @@ export function CockpitModule({
         ...(tone === "accent"
           ? { borderColor: "rgba(34,197,94,0.2)" }
           : tone === "muted"
-          ? { borderColor: "var(--border)" }
-          : undefined),
+            ? { borderColor: "var(--border)" }
+            : undefined),
       }}
     >
       <div className="cockpit-module-header">
-        <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 8, rowGap: 2, minWidth: 0, flex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            flexWrap: "wrap",
+            columnGap: 8,
+            rowGap: 2,
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
           <span className="cockpit-module-title">{title}</span>
           {description && (
-            <span style={{ fontSize: 9, color: "var(--text-faint)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+            <span
+              style={{
+                fontSize: 9,
+                color: "var(--text-faint)",
+                fontFamily: "var(--font-mono)",
+                overflowWrap: "anywhere",
+              }}
+            >
               {description}
             </span>
           )}
@@ -89,13 +147,12 @@ export function CockpitModule({
         {action && <div style={{ flexShrink: 0 }}>{action}</div>}
       </div>
       <div className="cockpit-module-body">
-        {children ?? (
-          emptyState ? (
+        {children ??
+          (emptyState ? (
             <div className="empty-state">
               <div className="empty-state-title">{emptyState}</div>
             </div>
-          ) : null
-        )}
+          ) : null)}
       </div>
     </div>
   )
@@ -119,7 +176,7 @@ export function CockpitModeSwitch({
 
   return (
     <div className="mode-switcher" role="radiogroup" aria-label="Event mode">
-      {options.map((opt) => {
+      {options.map((opt, idx) => {
         const active = opt.value === value
         const isLive = opt.value === "live"
         return (
@@ -128,6 +185,8 @@ export function CockpitModeSwitch({
             type="button"
             role="radio"
             aria-checked={active}
+            aria-posinset={idx + 1}
+            aria-setsize={options.length}
             onClick={() => onChange(opt.value)}
             className={cn("mode-tab", active && "active")}
             data-testid={`mode-btn-${opt.value}`}

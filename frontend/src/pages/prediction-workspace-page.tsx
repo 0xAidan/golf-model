@@ -1,5 +1,4 @@
 import { Fragment, useMemo, useState } from "react"
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Download, ExternalLink, Radar } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -12,6 +11,7 @@ import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
 import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
 import { isTeamEvent } from "@/lib/event-format"
 import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-stack"
+import { CockpitVerticalSections } from "@/components/cockpit/responsive-panels"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
@@ -441,7 +441,6 @@ export function PredictionWorkspacePage({
       return api.getLiveRefreshPastMarketRows(selectedPastEvent?.event_id ?? "", {
         section: pastReplayHistoryLane ?? "completed",
         source: pastReplaySource,
-        limit: 10000,
       })
     },
     enabled:
@@ -731,13 +730,15 @@ export function PredictionWorkspacePage({
       <CockpitWorkspace
         className="cockpit-fill"
         leftRail={
-          <PanelGroup
-            direction="vertical"
+          <CockpitVerticalSections
             autoSaveId="golf-model-cockpit-left-rail"
-            className="cockpit-vertical-panels cockpit-left-rail-panels"
-          >
-            <Panel defaultSize={42} minSize={14} className="cockpit-panel-shell">
-              <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
+            defaultActiveId="context"
+            sections={[
+              {
+                id: "context",
+                label: "Context",
+                content: (
+                  <>
             {/* Past event selector */}
             {predictionTab === "past" && (
               <div className="card">
@@ -870,14 +871,14 @@ export function PredictionWorkspacePage({
                 feedItems={courseFeedModel.feedItems}
               />
             </CockpitModule>
-              </div>
-            </Panel>
-            <PanelResizeHandle
-              className="cockpit-resize-handle cockpit-resize-handle-row"
-              aria-label="Resize course area and book filters"
-            />
-            <Panel defaultSize={38} minSize={16} className="cockpit-panel-shell">
-              <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
+                  </>
+                ),
+              },
+              {
+                id: "filters",
+                label: "Filters",
+                content: (
+                  <>
             {/* Book filters */}
             <div className="card">
               <div className="card-header">
@@ -958,14 +959,14 @@ export function PredictionWorkspacePage({
                 </div>
               </div>
             </div>
-              </div>
-            </Panel>
-            <PanelResizeHandle
-              className="cockpit-resize-handle cockpit-resize-handle-row"
-              aria-label="Resize filters and recent results"
-            />
-            <Panel defaultSize={20} minSize={12} className="cockpit-panel-shell">
-              <div className="cockpit-panel-fill cockpit-left-rail-section" style={{ gap: 4 }}>
+                  </>
+                ),
+              },
+              {
+                id: "results",
+                label: "Results",
+                content: (
+                  <>
             {/* Recent grading */}
             <div className="card">
               <div className="card-header">
@@ -1025,9 +1026,11 @@ export function PredictionWorkspacePage({
                 )}
               </div>
             </div>
-              </div>
-            </Panel>
-          </PanelGroup>
+                  </>
+                ),
+              },
+            ]}
+          />
         }
         center={
           <>
@@ -1162,12 +1165,30 @@ export function PredictionWorkspacePage({
                       : `${topPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`}
                   </div>
                 </div>
+                {!displayPredictionRun?.card_content ? (
+                  <p
+                    id="cockpit-export-disabled-help"
+                    style={{
+                      margin: 0,
+                      maxWidth: 220,
+                      fontSize: 10,
+                      lineHeight: 1.35,
+                      color: "var(--text-faint)",
+                      alignSelf: "center",
+                    }}
+                  >
+                    Export stays off until the run includes generated card content for this event.
+                  </p>
+                ) : null}
                 <button
                   className="btn btn-ghost"
                   onClick={handleExportMarkdown}
                   disabled={!displayPredictionRun?.card_content}
                   style={{ padding: "5px 10px" }}
                   data-testid="btn-export"
+                  aria-describedby={
+                    !displayPredictionRun?.card_content ? "cockpit-export-disabled-help" : undefined
+                  }
                 >
                   <Download size={12} />
                   Export

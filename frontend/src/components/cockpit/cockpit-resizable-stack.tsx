@@ -1,6 +1,9 @@
 import type { ReactNode } from "react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 
+import { CockpitTabbedStack, type CockpitTabOption } from "@/components/cockpit/responsive-panels"
+import { useViewportTier } from "@/hooks/use-viewport"
+
 type CockpitResizableStackProps = {
   rankings: ReactNode
   topPicks: ReactNode
@@ -18,9 +21,30 @@ export function CockpitResizableStack({
   leaderboard,
   showLeaderboard,
 }: CockpitResizableStackProps) {
+  const tier = useViewportTier()
   const persistKey = showLeaderboard
     ? "golf-model-cockpit-center-with-lb"
     : "golf-model-cockpit-center-upcoming"
+
+  const tabs: CockpitTabOption[] = [
+    { id: "picks", label: "Top picks", content: topPicks },
+    { id: "rankings", label: "Rankings", content: rankings },
+    { id: "markets", label: "Markets", content: secondary },
+  ]
+  if (showLeaderboard && leaderboard != null) {
+    tabs.push({ id: "board", label: "Leaderboard", content: leaderboard })
+  }
+
+  if (tier === "mobile" || tier === "tablet") {
+    return (
+      <CockpitTabbedStack
+        className="cockpit-center-tabbed-stack"
+        tabs={tabs}
+        defaultTabId="picks"
+        ariaLabel="Dashboard boards"
+      />
+    )
+  }
 
   return (
     <PanelGroup
