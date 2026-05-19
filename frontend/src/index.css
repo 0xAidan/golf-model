@@ -112,6 +112,275 @@ body {
   background: var(--bg);
 }
 
+/* ── Narrow viewport: full-width main; sidebar becomes off-canvas drawer ── */
+.mobile-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sidebar--mobile-drawer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(288px, 86vw);
+  max-width: none;
+  z-index: 90;
+  transform: translateX(-102%);
+  transition: transform 180ms ease;
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.45);
+  border-right: 1px solid var(--border-hi);
+}
+
+.sidebar--mobile-drawer.sidebar--mobile-drawer-open {
+  transform: translateX(0);
+}
+
+.sidebar-mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar--mobile-drawer .sidebar-mobile-header {
+  display: flex;
+}
+
+.sidebar-mobile-header-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sidebar-mobile-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--ease), border-color var(--ease);
+}
+
+.sidebar-mobile-close:hover {
+  color: var(--text);
+  border-color: var(--border-hi);
+}
+
+.mobile-menu-trigger {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-menu-trigger:hover {
+  color: var(--text);
+  border-color: var(--border-hi);
+}
+
+.mobile-menu-trigger-label {
+  display: inline;
+}
+
+.app-layout--narrow .mobile-menu-trigger {
+  display: inline-flex;
+}
+
+.header-mode-switcher {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.app-layout--narrow .top-header {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--header-h);
+  row-gap: 6px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.app-layout--narrow .header-event {
+  order: 2;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.app-layout--narrow .mobile-menu-trigger {
+  order: 1;
+}
+
+.app-layout--narrow .header-mode-switcher {
+  order: 3;
+  flex: 1 1 100%;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.app-layout--narrow .header-actions {
+  order: 4;
+  flex: 1 1 100%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.app-layout--narrow .header-actions .btn {
+  font-size: 9px;
+  padding: 4px 8px;
+}
+
+.app-layout--narrow .header-event-label {
+  display: none;
+}
+
+.app-layout--narrow .header-event-name {
+  font-size: 13px;
+  white-space: normal;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.app-layout--narrow .mode-switcher {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.app-layout--narrow .mode-tab {
+  flex: 1;
+  justify-content: center;
+  padding-inline: 6px;
+  font-size: 9px;
+}
+
+.app-layout--narrow .kpi-strip {
+  height: auto;
+  min-height: 48px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.app-layout--narrow .kpi-cell {
+  flex: 0 0 auto;
+  min-width: 112px;
+  border-right: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.app-layout--narrow .kpi-cell:last-child {
+  border-right: none;
+}
+
+.app-layout--narrow .kpi-cell-value {
+  font-size: 15px;
+}
+
+/* Dashboard: vertical stack instead of three squeezed columns */
+.cockpit-stacked-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding: 6px 8px 20px;
+  box-sizing: border-box;
+}
+
+.cockpit-stacked-zone {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cockpit-stacked-zone:last-child {
+  min-height: 260px;
+}
+
+.cockpit-stacked-zone .cockpit-left-rail-panels--stacked {
+  height: auto !important;
+  min-height: 420px;
+}
+
+.cockpit-stacked-zone .cockpit-left-rail-panels--stacked .cockpit-resize-handle-row {
+  flex: 0 0 8px !important;
+  min-height: 8px !important;
+  height: 8px !important;
+}
+
+.cockpit-vertical-stack-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cockpit-vertical-stack-mobile-chunk {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 220px;
+  max-height: min(520px, 70vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cockpit-vertical-stack-mobile-chunk .card,
+.cockpit-vertical-stack-mobile-chunk .cockpit-module {
+  flex: 1;
+  min-height: 0;
+}
+
+.app-layout--narrow .rankings-table th:nth-child(2),
+.app-layout--narrow .rankings-table td:nth-child(2) {
+  width: auto;
+}
+
+.app-layout--narrow .rankings-player-name button {
+  max-width: 100%;
+}
+
 /* ─────────────────────────────────────────────────────
    SIDEBAR
    ───────────────────────────────────────────────────── */
@@ -866,6 +1135,12 @@ body {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .matchup-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .detail-item-label {

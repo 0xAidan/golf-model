@@ -11,6 +11,8 @@ type CockpitResizableStackProps = {
   leaderboard?: ReactNode
   /** Live / past: show leaderboard panel. Upcoming: omit fourth panel. */
   showLeaderboard: boolean
+  /** Narrow viewports: vertical scroll stack instead of draggable panes. */
+  layout?: "panels" | "stack"
 }
 
 /* Vertical split panes for dashboard center column — sizes persist in localStorage per layout mode. */
@@ -20,6 +22,7 @@ export function CockpitResizableStack({
   secondary,
   leaderboard,
   showLeaderboard,
+  layout = "panels",
 }: CockpitResizableStackProps) {
   const tier = useViewportTier()
   const persistKey = showLeaderboard
@@ -35,7 +38,9 @@ export function CockpitResizableStack({
     tabs.push({ id: "board", label: "Leaderboard", content: leaderboard })
   }
 
-  if (tier === "mobile" || tier === "tablet") {
+  const useCompact = layout === "stack" || tier === "mobile" || tier === "tablet"
+
+  if (useCompact) {
     return (
       <CockpitTabbedStack
         className="cockpit-center-tabbed-stack"
