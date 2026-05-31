@@ -18,8 +18,32 @@ if [ -x venv/bin/python ]; then
     source venv/bin/activate
     DB_PATH="$(python -m src.backup --print-path 2>/dev/null || echo "data/golf.db")"
     if [ -f "$DB_PATH" ]; then
-        echo "[deploy] backing up $DB_PATH"
-        python -m src.backup --keep "$DEPLOY_BACKUP_KEEP" || true
+        # Full SQLite copies can require ~= DB size in additional free space.
+        # If disk is too tight, skip pre-update backup instead of failing noisy.
+        if venv/bin/python - "$DB_PATH" <<'PY'
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+
+db_path = sys.argv[1]
+db_size = os.path.getsize(db_path)
+free = shutil.disk_usage(os.path.dirname(db_path)).free
+
+# Require 1.25x DB size free before attempting another full copy.
+required = int(db_size * 1.25)
+if free < required:
+    print(
+        f"[deploy] skipping pre-update backup (free={free // (1024*1024)} MiB, "
+        f"required={required // (1024*1024)} MiB, db={db_size // (1024*1024)} MiB)"
+    )
+    raise SystemExit(1)
+print(f"[deploy] backing up {db_path}")
+PY
+        then
+            python -m src.backup --keep "$DEPLOY_BACKUP_KEEP" || true
+        fi
     else
         echo "[deploy] no DB at $DB_PATH yet; skipping pre-update backup"
     fi
@@ -69,6 +93,17 @@ print(f"[deploy] frontend build OK ({len(refs)} assets referenced by index.html)
 PY
 fi
 
+SERVICES_STOPPED=0
+restart_services() {
+    if [ "$SERVICES_STOPPED" -eq 1 ]; then
+        systemctl restart golf-dashboard golf-agent golf-live-refresh || true
+        SERVICES_STOPPED=0
+    fi
+}
+trap restart_services EXIT
+
+systemctl stop golf-live-refresh golf-agent golf-dashboard || true
+SERVICES_STOPPED=1
 python -c "from src.db import init_db; init_db()"
 
 # Lab board (/lab): ensure parallel lab lane is on for the live-refresh worker + API unless
@@ -93,6 +128,7 @@ else:
     print("[deploy] appended LIVE_REFRESH_LAB_PROFILE_ENABLED=1 to .env")
 PY
 
-systemctl restart golf-dashboard golf-agent golf-live-refresh
+restart_services
+trap - EXIT
 
 echo "Update complete."
