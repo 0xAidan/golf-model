@@ -31,7 +31,7 @@ def main() -> int:
     from src import db
 
     db.ensure_initialized()
-    counts = db.prune_snapshot_history_tables(days)
+    counts = db.prune_snapshot_history_tables(retain_days=days)
     print(f"Pruned snapshot tables (retain_days={days}): {counts}")
     return 0
 
