@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom"
 
+import { DataHealthPanel } from "@/components/data-health-panel"
 import { DiagnosticsGradingPanel } from "@/components/cockpit/event-modules"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { buildDiagnosticsModel } from "@/lib/cockpit-event-models"
@@ -69,6 +70,7 @@ export function DiagnosticsPage({
         <p style={{ margin: "0 0 12px", fontSize: 11, color: "var(--text-muted)", maxWidth: 720 }}>
           Runtime health and pipeline state for the cockpit snapshot.
         </p>
+        <DataHealthPanel />
         <div className="card">
           <div className="card-header">
             <div>

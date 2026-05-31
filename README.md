@@ -126,6 +126,31 @@ golf-model/
 └── docs/
 ```
 
+## Data health and storage
+
+Read-only audit of `golf.db` coverage (2026 picks, storage breakdown, gaps):
+
+```bash
+python3 scripts/audit_data_coverage.py --year 2026 --output output/data_health_2026.json
+```
+
+On the production VPS, point at the live DB:
+
+```bash
+python3 scripts/audit_data_coverage.py --year 2026 \
+  --db-path /opt/golf-model/data/golf.db \
+  --output output/data_health_2026.json
+```
+
+Prune old live-refresh ticks and reclaim disk (maintenance window):
+
+```bash
+SNAPSHOT_HISTORY_RETAIN_DAYS=210 python3 scripts/prune_snapshot_history.py --vacuum
+```
+
+Dashboard: **Research → Diagnostics → Data health** (`GET /api/data-health`).  
+See [docs/data-contracts.md](docs/data-contracts.md) and [docs/storage-retention.md](docs/storage-retention.md).
+
 ## Quality Status
 
 - Test suite: `174 passed` (latest full run)

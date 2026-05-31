@@ -44,6 +44,27 @@ def validate_autoresearch_data_health(
         pit_rows = conn.execute("SELECT COUNT(*) AS c FROM pit_rolling_stats").fetchone()["c"]
         odds_rows = conn.execute("SELECT COUNT(*) AS c FROM historical_odds").fetchone()["c"]
         matchup_rows = conn.execute("SELECT COUNT(*) AS c FROM historical_matchup_odds").fetchone()["c"]
+
+    live_picks_tournaments = 0
+    tournaments_in_years = 0
+    if years:
+        ph = ",".join("?" * len(years))
+        live_picks_tournaments = conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT p.tournament_id) AS c FROM picks p
+            JOIN tournaments t ON t.id = p.tournament_id
+            WHERE t.year IN ({ph})
+            """,
+            years,
+        ).fetchone()["c"]
+        tournaments_in_years = conn.execute(
+            f"SELECT COUNT(*) AS c FROM tournaments WHERE year IN ({ph})",
+            years,
+        ).fetchone()["c"]
+    else:
+        live_picks_tournaments = conn.execute(
+            "SELECT COUNT(DISTINCT tournament_id) AS c FROM picks"
+        ).fetchone()["c"]
     conn.close()
 
     warnings: list[str] = []
@@ -64,6 +85,12 @@ def validate_autoresearch_data_health(
             f"Few historical_matchup_odds rows ({matchup_rows}) — matchup replay may be empty."
         )
 
+    if tournaments_in_years and live_picks_tournaments < max(1, tournaments_in_years // 2):
+        warnings.append(
+            f"Live picks sparse: {live_picks_tournaments}/{tournaments_in_years} "
+            "tournaments have picks rows (expected for track record / calibration)."
+        )
+
     ok = event_count >= 3 and pit_rows >= 50 and (odds_rows >= 20 or matchup_rows >= 10)
 
     return {
@@ -72,6 +99,8 @@ def validate_autoresearch_data_health(
         "pit_rolling_stats_rows": pit_rows,
         "historical_odds_rows": odds_rows,
         "historical_matchup_odds_rows": matchup_rows,
+        "live_picks_tournaments": live_picks_tournaments,
+        "tournaments_in_years": tournaments_in_years,
         "min_bets_guardrail": min_bets_required,
         "years": list(years) if years else None,
         "warnings": warnings,

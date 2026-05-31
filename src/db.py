@@ -885,6 +885,13 @@ def init_db():
     # ── Migrations for existing databases ──
     _run_migrations(conn)
 
+    try:
+        from src.data_views import ensure_analytics_views
+
+        ensure_analytics_views(conn)
+    except Exception as exc:
+        _logger.warning("Analytics views setup failed: %s", exc)
+
     conn.close()
 
 
@@ -2399,6 +2406,29 @@ def prune_snapshot_history_tables(retain_days: int) -> dict[str, int]:
         "live_snapshot_history": prune_live_snapshot_history(retain_days),
         "market_prediction_rows": prune_market_prediction_rows(retain_days),
     }
+
+
+def vacuum_database(*, wal_checkpoint: bool = True) -> dict[str, Any]:
+    """Reclaim disk after large DELETEs. Use only during maintenance windows."""
+    conn = get_conn()
+    try:
+        if wal_checkpoint:
+            try:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.OperationalError as exc:
+                _logger.warning("wal_checkpoint failed: %s", exc)
+        before = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+        conn.execute("VACUUM")
+        conn.commit()
+        after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+        return {
+            "ok": True,
+            "bytes_before": before,
+            "bytes_after": after,
+            "bytes_reclaimed": max(0, before - after),
+        }
+    finally:
+        conn.close()
 
 
 def store_market_prediction_rows(rows: list[dict]) -> int:

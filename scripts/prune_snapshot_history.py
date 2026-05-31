@@ -16,6 +16,16 @@ if ROOT not in sys.path:
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Prune old snapshot history rows.")
+    parser.add_argument(
+        "--vacuum",
+        action="store_true",
+        help="Run WAL checkpoint + VACUUM after prune (maintenance window only).",
+    )
+    args = parser.parse_args()
+
     raw = os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "").strip()
     if not raw:
         print("SNAPSHOT_HISTORY_RETAIN_DAYS not set or empty; skipping prune (no DELETE).")
@@ -33,6 +43,9 @@ def main() -> int:
     db.ensure_initialized()
     counts = db.prune_snapshot_history_tables(retain_days=days)
     print(f"Pruned snapshot tables (retain_days={days}): {counts}")
+    if args.vacuum:
+        result = db.vacuum_database()
+        print(f"VACUUM: {result}")
     return 0
 
 

@@ -52,6 +52,8 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): 
 export const api = {
   getChampionChallengerSummary: () =>
     request<ChampionChallengerSummary>("/api/champion-challenger/summary"),
+  getDataHealth: (year = 2026) =>
+    request<Record<string, unknown>>(`/api/data-health?year=${year}`),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
   getLatestCompletedEvent: () => request<EventSummary>("/api/events/latest-completed"),
   getGradingHistory: (options?: { limit?: number; pickSource?: "all" | "cockpit" | "lab" }) => {
