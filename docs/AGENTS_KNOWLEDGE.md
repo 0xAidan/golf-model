@@ -366,6 +366,10 @@ Before treating the Lab board as broken or “same as production”, verify on t
 | `PREFERRED_BOOK` | No | `bet365` | Optional preferred-book metadata shown alongside best-line pricing (no filtering) |
 | `PREFERRED_BOOK_ONLY` | No | `false` | Deprecated legacy toggle (not used by current pipelines) |
 | `LIVE_REFRESH_LAB_PROFILE_ENABLED` | No | *(unset)* | When set, forces parallel lab snapshot lane on/off for `get_settings()` / worker (overrides `data/autoresearch_settings.json`). Deploy appends `=1` if missing. Use `0`/`false` on tiny VPS to save CPU. |
+| `SNAPSHOT_HISTORY_RETAIN_DAYS` | No | `210` | Retention window for append-heavy live-refresh history tables (`live_snapshot_history`, `market_prediction_rows`). Worker now prunes automatically at this cadence floor (>= 6 months by default). |
+| `SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS` | No | `21600` | Minimum interval between automatic retention prune runs in live-refresh runtime (default every 6 hours). |
+| `SNAPSHOT_MATCHUPS_ALL_BOOKS_MAX_ROWS` | No | `600` | Caps `matchup_bets_all_books` rows stored in in-memory/API snapshot sections to prevent oversized payloads. |
+| `SNAPSHOT_FAILED_CANDIDATES_MAX_ROWS` | No | `300` | Caps `diagnostics.failed_candidates` rows stored in in-memory/API snapshot sections to prevent oversized payloads. |
 | `COCKPIT_SNAPSHOT_MODEL_VARIANT` | No | `baseline` | **`live_tournament` / `upcoming_tournament`** model variant in live-refresh (`backtester/dashboard_runtime.py`). Default **baseline** = Masters-era operator Dashboard; set **`v5`** to put research stack back on `/`. |
 | `TELEGRAM_BOT_TOKEN` | No | — | Bot token from [@BotFather](https://t.me/BotFather); enables personal matchup EV Telegram alerts (`src/telegram_alerts.py`). |
 | `TELEGRAM_CHAT_ID` | No | — | Destination chat or group id for alerts (same bot must be allowed to message it). |

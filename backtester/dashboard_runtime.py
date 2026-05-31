@@ -29,6 +29,7 @@ _state_lock = threading.Lock()
 _recompute_lock = threading.Lock()
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
+_last_snapshot_prune_at: float = 0.0
 
 _SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "live_refresh_snapshot.json"
 _OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
@@ -137,6 +138,57 @@ def _resolve_data_source() -> str:
 
 def _write_snapshot(payload: dict[str, Any]) -> None:
     atomic_write_json(_SNAPSHOT_PATH, payload)
+
+
+def _cap_list_rows(rows: Any, *, max_rows: int) -> list[Any]:
+    if not isinstance(rows, list):
+        return []
+    if max_rows <= 0:
+        return []
+    if len(rows) <= max_rows:
+        return rows
+    return rows[:max_rows]
+
+
+def _trim_snapshot_section_for_memory(section: dict[str, Any]) -> dict[str, Any]:
+    """Bound large arrays in a section to prevent runaway snapshot memory size."""
+    if not isinstance(section, dict):
+        return section
+    trimmed = dict(section)
+    trimmed["matchup_bets_all_books"] = _cap_list_rows(
+        section.get("matchup_bets_all_books") or section.get("matchup_bets") or [],
+        max_rows=max(0, int(config.SNAPSHOT_MATCHUPS_ALL_BOOKS_MAX_ROWS)),
+    )
+    diagnostics = trimmed.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        diag_copy = dict(diagnostics)
+        diag_copy["failed_candidates"] = _cap_list_rows(
+            diagnostics.get("failed_candidates") or [],
+            max_rows=max(0, int(config.SNAPSHOT_FAILED_CANDIDATES_MAX_ROWS)),
+        )
+        trimmed["diagnostics"] = diag_copy
+    return trimmed
+
+
+def _maybe_prune_snapshot_history_tables(snapshot: dict[str, Any]) -> None:
+    """Prune append-heavy history tables periodically to enforce retention."""
+    global _last_snapshot_prune_at
+    interval_seconds = max(60, int(config.SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS))
+    now_ts = time.time()
+    if _last_snapshot_prune_at and (now_ts - _last_snapshot_prune_at) < interval_seconds:
+        return
+
+    retain_days = max(1, int(config.SNAPSHOT_HISTORY_RETAIN_DAYS))
+    try:
+        prune_result = db.prune_snapshot_history_tables(retain_days=retain_days)
+        _last_snapshot_prune_at = now_ts
+        snapshot.setdefault("diagnostics", {})["history_prune"] = prune_result
+    except Exception as exc:
+        snapshot.setdefault("diagnostics", {})["history_prune"] = {
+            "skipped": True,
+            "reason": f"prune_failed: {exc}",
+        }
+        _logger.warning("Snapshot history prune failed: %s", exc)
 
 
 def read_snapshot() -> dict[str, Any]:
@@ -1591,6 +1643,11 @@ def _build_lab_tournament_sections(
             "source": "lab_upcoming_event_model",
         }
         lab_up_sec = dict(snapshot["lab_upcoming_tournament"])
+        lab_up_sec["matchup_bets_all_books"] = (
+            lab_upcoming_result.get("matchup_bets_all_books")
+            or lab_upcoming_result.get("matchup_bets")
+            or []
+        )
         lab_up_sec["all_value_bets"] = lab_upcoming_result.get("value_bets") or {}
         lab_up_sec["all_failed_candidates"] = (
             (lab_upcoming_result.get("matchup_diagnostics") or {}).get("failed_candidates") or []
@@ -1758,6 +1815,9 @@ def _build_lab_tournament_sections(
     }
 
     lab_live_sec = dict(snapshot["lab_live_tournament"])
+    lab_live_sec["matchup_bets_all_books"] = (
+        lab_live_result.get("matchup_bets_all_books") or lab_live_result.get("matchup_bets") or []
+    )
     lab_live_sec["all_value_bets"] = lab_live_result.get("value_bets") or {}
     lab_live_sec["all_failed_candidates"] = lab_diag.get("failed_candidates") or []
     rows_extra.extend(
@@ -2398,6 +2458,17 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             snapshot["lab_live_tournament"] = None
             lab_rows_extra = []
 
+    for section_key in (
+        "live_tournament",
+        "upcoming_tournament",
+        "legacy_tournament",
+        "lab_live_tournament",
+        "lab_upcoming_tournament",
+    ):
+        section_payload = snapshot.get(section_key)
+        if isinstance(section_payload, dict):
+            snapshot[section_key] = _trim_snapshot_section_for_memory(section_payload)
+
     try:
         upcoming_payload = snapshot.get("upcoming_tournament") or {}
         upcoming_eid = str(upcoming_payload.get("source_event_id") or "").strip()
@@ -2439,14 +2510,27 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     try:
         market_rows = []
         live_market_section = dict(snapshot.get("live_tournament") or {})
+        live_market_section["matchup_bets_all_books"] = (
+            live_result.get("matchup_bets_all_books") or live_result.get("matchup_bets") or []
+        )
         live_market_section["all_value_bets"] = live_result.get("value_bets") or {}
         live_market_section["all_failed_candidates"] = (live_diag or {}).get("failed_candidates") or []
         upcoming_market_section = dict(snapshot.get("upcoming_tournament") or {})
+        upcoming_market_section["matchup_bets_all_books"] = (
+            (upcoming_result or {}).get("matchup_bets_all_books")
+            or (upcoming_result or {}).get("matchup_bets")
+            or []
+        )
         upcoming_market_section["all_value_bets"] = (upcoming_result or {}).get("value_bets") or {}
         upcoming_market_section["all_failed_candidates"] = (
             ((upcoming_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
         )
         legacy_market_section = dict(snapshot.get("legacy_tournament") or {})
+        legacy_market_section["matchup_bets_all_books"] = (
+            (legacy_result or {}).get("matchup_bets_all_books")
+            or (legacy_result or {}).get("matchup_bets")
+            or []
+        )
         legacy_market_section["all_value_bets"] = (legacy_result or {}).get("value_bets") or {}
         legacy_market_section["all_failed_candidates"] = (
             ((legacy_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
@@ -2486,6 +2570,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         _logger.warning("Failed to persist market prediction rows: %s", exc)
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0
         snapshot.setdefault("diagnostics", {})["market_rows_write_error"] = str(exc)
+    _maybe_prune_snapshot_history_tables(snapshot)
     try:
         _touch_progress(phase="shadow_mc", phase_detail="shadow monte carlo batch")
         shadow_n = _run_shadow_monte_carlo_v1(

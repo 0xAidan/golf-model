@@ -439,6 +439,19 @@ API_SLEEP_SECONDS = 2.0
 PIPELINE_LOCK_STALE_SECONDS = 7200
 PLATT_CACHE_TTL = 300
 
+# Live-refresh memory/retention guardrails.
+# Keep at least 6 months of data online by default while preventing unbounded growth.
+SNAPSHOT_HISTORY_RETAIN_DAYS = int(os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "210"))
+SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS = int(
+    os.environ.get("SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS", "21600")
+)
+SNAPSHOT_MATCHUPS_ALL_BOOKS_MAX_ROWS = int(
+    os.environ.get("SNAPSHOT_MATCHUPS_ALL_BOOKS_MAX_ROWS", "600")
+)
+SNAPSHOT_FAILED_CANDIDATES_MAX_ROWS = int(
+    os.environ.get("SNAPSHOT_FAILED_CANDIDATES_MAX_ROWS", "300")
+)
+
 # Supported sportsbooks for odds comparison
 SUPPORTED_BOOKS = [
     "draftkings", "fanduel", "betmgm", "caesars", "bet365",
