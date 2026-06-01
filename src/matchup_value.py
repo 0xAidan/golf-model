@@ -324,6 +324,8 @@ def evaluate_matchup_pair(
     book: str | None = None,
     require_positive_ev: bool = False,
     platt_params: tuple[float, float] | None = None,
+    blend_weights: tuple[float, float] | None = None,
+    win_prob_cap: float | None = None,
 ) -> tuple[dict | None, str | None, dict[str, Any]]:
     """Evaluate one matchup pair with shared live/replay probability + EV math."""
     if ev_threshold is None:
@@ -366,11 +368,21 @@ def evaluate_matchup_pair(
     if model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True):
         tie_prob = _estimate_matchup_tie_probability(gap, v5_uncertainty)
 
+    if blend_weights is None:
+        dg_blend_weight = float(getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0))
+        model_blend_weight = float(getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 1.0))
+    else:
+        dg_blend_weight = float(blend_weights[0])
+        model_blend_weight = float(blend_weights[1])
+    blend_total = max(1e-9, dg_blend_weight + model_blend_weight)
+    dg_blend_weight /= blend_total
+    model_blend_weight /= blend_total
+
     model_win_prob = platt_win_prob
     if dg_prob is not None:
         model_win_prob = (
-            float(getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0)) * float(dg_prob)
-            + float(getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 1.0)) * float(platt_win_prob)
+            dg_blend_weight * float(dg_prob)
+            + model_blend_weight * float(platt_win_prob)
         )
         if getattr(config, "REQUIRE_DG_MODEL_AGREEMENT", True):
             if (dg_prob > 0.5) != (platt_win_prob > 0.5):
@@ -382,6 +394,10 @@ def evaluate_matchup_pair(
                     "platt_win_prob": round(platt_win_prob, 4),
                     "dg_win_prob": round(dg_prob, 4),
                 }
+    if win_prob_cap is None:
+        win_prob_cap = float(getattr(config, "MATCHUP_MAX_WIN_PROB_CAP", 0.99))
+    if 0.5 < win_prob_cap < 1.0:
+        model_win_prob = min(model_win_prob, win_prob_cap)
 
     implied_prob = american_to_implied_prob(pick_odds)
     if not implied_prob or implied_prob <= 0:
@@ -484,8 +500,8 @@ def evaluate_matchup_pair(
         "form_gap": round(form_gap, 1),
         "course_fit_gap": round(course_fit_gap, 1),
         "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
-        "blend_dg_used": getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0),
-        "blend_model_used": getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 0.0),
+        "blend_dg_used": dg_blend_weight,
+        "blend_model_used": model_blend_weight,
         "tier": tier,
         "tier_drivers": tier_drivers,
         "tier_rationale": tier_rationale,

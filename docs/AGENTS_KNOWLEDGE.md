@@ -153,6 +153,7 @@ golf-model/
 │   ├── audit_ev_math.py     # Read-only EV/implied audit → output/audits/*.json|*.md
 │   ├── value_bet_audit_6mo.py  # 6-month +EV matchup audit, grading checks, markdown/json report
 │   ├── matchup_walkforward_benchmark.py # Frozen E0 baseline JSON (hit/ROI/Brier/n by event)
+│   ├── run_matchup_lab_research.py # Phase 2/3 lab matrix (E0-E8 + H1-H13) with holdout report artifacts
 │   ├── run_autoresearch_eval.py
 │   ├── run_autoresearch_loop.py
 │   └── run_autoresearch_holdout.py

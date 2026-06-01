@@ -87,6 +87,8 @@ class StrategyConfig:
     max_win_prob_cap: float = 0.85
     matchup_market_types: list = field(default_factory=lambda: ["72-hole Match", "R1 Match-Up"])
     model_variant: str = "baseline"
+    dg_matchup_blend_weight: float = 0.80
+    model_matchup_blend_weight: float = 0.20
 
     # AI adjustment cap
     ai_adj_cap: float = 5.0
@@ -619,16 +621,21 @@ def _replay_matchups_for_event(
             p2_data=p2_data,
             p1_odds=p1_odds,
             p2_odds=p2_odds,
-            ev_threshold=float(getattr(config, "MATCHUP_EV_THRESHOLD", strategy.matchup_ev_threshold)),
+            ev_threshold=float(strategy.matchup_ev_threshold),
             dg_prob=None,
             model_variant=model_variant,
             market_type=market_type,
             book="bet365",
             require_positive_ev=True,
             platt_params=(
-                float(getattr(config, "MATCHUP_PLATT_A", strategy.platt_a)),
-                float(getattr(config, "MATCHUP_PLATT_B", strategy.platt_b)),
+                float(strategy.platt_a),
+                float(strategy.platt_b),
             ),
+            blend_weights=(
+                float(getattr(strategy, "dg_matchup_blend_weight", 0.8)),
+                float(getattr(strategy, "model_matchup_blend_weight", 0.2)),
+            ),
+            win_prob_cap=float(getattr(strategy, "max_win_prob_cap", 0.99)),
         )
         if eval_reason or not eval_row:
             continue
@@ -685,6 +692,12 @@ def _replay_matchups_for_event(
             "clv": round(model_prob - implied_prob, 4),
             "finish": pick_outcome,
             "tier": eval_row.get("tier"),
+            "marketing_safe": bool(eval_row.get("marketing_safe", False)),
+            "momentum_aligned": bool(eval_row.get("momentum_aligned", False)),
+            "conviction": eval_row.get("conviction"),
+            "form_gap": eval_row.get("form_gap"),
+            "course_fit_gap": eval_row.get("course_fit_gap"),
+            "odds_quality": eval_row.get("odds_quality"),
             "ev_kind": eval_row.get("ev_kind"),
             "model_variant": eval_row.get("model_variant"),
         })
