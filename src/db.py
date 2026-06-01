@@ -312,6 +312,8 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_live_snapshot_history_event
             ON live_snapshot_history(source_event_id, generated_at DESC, section);
+        CREATE INDEX IF NOT EXISTS idx_live_snapshot_history_event_section
+            ON live_snapshot_history(source_event_id, section, generated_at DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_live_snapshot_history_snapshot
             ON live_snapshot_history(snapshot_id, section);
 
@@ -341,6 +343,8 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_event
             ON market_prediction_rows(event_id, generated_at DESC, market_family);
+        CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_event_section
+            ON market_prediction_rows(event_id, section, generated_at DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_snapshot
             ON market_prediction_rows(snapshot_id, section, market_family);
 
@@ -1237,6 +1241,10 @@ def _ensure_hot_path_indexes(conn: sqlite3.Connection) -> None:
         "ON metrics(tournament_id, player_key, metric_category)",
         "CREATE INDEX IF NOT EXISTS idx_historical_odds_event_book_ts "
         "ON historical_odds(event_id, book, year)",
+        "CREATE INDEX IF NOT EXISTS idx_live_snapshot_history_event_section "
+        "ON live_snapshot_history(source_event_id, section, generated_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_market_prediction_rows_event_section "
+        "ON market_prediction_rows(event_id, section, generated_at DESC, id DESC)",
     )
     for stmt in statements:
         try:

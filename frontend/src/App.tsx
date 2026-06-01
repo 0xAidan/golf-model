@@ -103,6 +103,9 @@ function App() {
   const [manualRefreshPending, setManualRefreshPending] = useState(false)
   const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [pastReplayHeadline, setPastReplayHeadline] = useState<{ eventName: string; courseName?: string } | null>(
+    null,
+  )
 
   const location = useLocation()
 
@@ -579,6 +582,13 @@ function App() {
     return `Dashboard — snapshot model "${String(mv)}" (default baseline operator path). Compare with Lab (research v5).`
   }, [liveSnapshot, predictionTab])
 
+  const handlePastEventContextChange = useCallback(
+    (context: { eventName: string; courseName?: string } | null) => {
+      setPastReplayHeadline(context)
+    },
+    [],
+  )
+
   const cockpitWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
     () => ({
       liveSnapshot,
@@ -609,6 +619,7 @@ function App() {
       secondaryBets,
       powerRankingsSubtitle: dashboardPowerRankingsSubtitle,
       pastReplaySource: "dashboard",
+      onPastEventContextChange: handlePastEventContextChange,
     }),
     [
       liveSnapshot,
@@ -637,6 +648,7 @@ function App() {
       handlePlayerProfileRetry,
       secondaryBets,
       dashboardPowerRankingsSubtitle,
+      handlePastEventContextChange,
     ],
   )
 
@@ -711,11 +723,16 @@ function App() {
   )
 
   const shellEventName =
-    labRouteActive && labWorkspaceHydrated?.event_name
-      ? labWorkspaceHydrated.event_name
-      : effectivePredictionRun?.event_name ?? "No event loaded"
+    predictionTab === "past" && pastReplayHeadline?.eventName
+      ? pastReplayHeadline.eventName
+      : labRouteActive && labWorkspaceHydrated?.event_name
+        ? labWorkspaceHydrated.event_name
+        : effectivePredictionRun?.event_name ?? "No event loaded"
 
   const shellEventMeta = (() => {
+    if (predictionTab === "past" && pastReplayHeadline?.courseName) {
+      return pastReplayHeadline.courseName
+    }
     const run =
       labRouteActive && labWorkspaceHydrated ? labWorkspaceHydrated : effectivePredictionRun
     const course = run?.course_name?.trim()

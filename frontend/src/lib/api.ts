@@ -28,6 +28,7 @@ const LIVE_REFRESH_STATUS_TIMEOUT_MS = 30_000
 const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 35_000
 const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 95_000
 const LIVE_REFRESH_START_TIMEOUT_MS = 30_000
+const PAST_REPLAY_TIMEOUT_MS = 45_000
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): Promise<T> {
   const controller = new AbortController()
@@ -95,7 +96,8 @@ export const api = {
       undefined,
       LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS,
     ),
-  getLiveRefreshPastEvents: () => request<PastSnapshotEventsResponse>("/api/live-refresh/past-events"),
+  getLiveRefreshPastEvents: () =>
+    request<PastSnapshotEventsResponse>("/api/live-refresh/past-events", undefined, PAST_REPLAY_TIMEOUT_MS),
   getLiveRefreshPastSnapshot: (
     eventId: string,
     section: "live" | "upcoming" | "lab_live" | "lab_upcoming" | "completed" = "completed",
@@ -105,6 +107,8 @@ export const api = {
       `/api/live-refresh/past-snapshot?event_id=${encodeURIComponent(eventId)}&section=${encodeURIComponent(section)}${
         options?.source ? `&source=${encodeURIComponent(options.source)}` : ""
       }`,
+      undefined,
+      PAST_REPLAY_TIMEOUT_MS,
     ),
   getLiveRefreshPastTimeline: (
     eventId: string,
@@ -117,7 +121,7 @@ export const api = {
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit))
     }
-    return request<PastTimelineResponse>(`/api/live-refresh/past-timeline?${params.toString()}`)
+    return request<PastTimelineResponse>(`/api/live-refresh/past-timeline?${params.toString()}`, undefined, PAST_REPLAY_TIMEOUT_MS)
   },
   getLiveRefreshPastMarketRows: (
     eventId: string,
@@ -143,7 +147,7 @@ export const api = {
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit))
     }
-    return request<PastMarketRowsResponse>(`/api/live-refresh/past-market-rows?${params.toString()}`)
+    return request<PastMarketRowsResponse>(`/api/live-refresh/past-market-rows?${params.toString()}`, undefined, PAST_REPLAY_TIMEOUT_MS)
   },
   postLabLogDisplayedPicks: (body: Record<string, unknown>) =>
     request<{ ok: boolean; rows_written?: number; error?: string }>("/api/lab/log-displayed-picks", {

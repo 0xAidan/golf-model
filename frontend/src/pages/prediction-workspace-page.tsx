@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Download, ExternalLink, Radar } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -324,6 +324,8 @@ export type PredictionWorkspacePageProps = {
   powerRankingsSubtitle?: string | null
   /** Keeps Dashboard Past and Lab Past market-row history separated. */
   pastReplaySource?: PastReplaySource
+  /** Updates shell headline / document title while Past replay is active. */
+  onPastEventContextChange?: (context: { eventName: string; courseName?: string } | null) => void
 }
 
 export function PredictionWorkspacePage({
@@ -354,6 +356,7 @@ export function PredictionWorkspacePage({
   secondaryBets,
   powerRankingsSubtitle,
   pastReplaySource = "dashboard",
+  onPastEventContextChange,
 }: PredictionWorkspacePageProps) {
   const isNarrow = useIsNarrowViewport()
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
@@ -495,8 +498,42 @@ export function PredictionWorkspacePage({
     : null
   const pastReplayRows = useMemo(() => {
     if (!activePastReplaySnapshotId) return pastMarketRows
-    return pastMarketRows.filter((row) => row.snapshot_id === activePastReplaySnapshotId)
+    const filtered = pastMarketRows.filter((row) => row.snapshot_id === activePastReplaySnapshotId)
+    return filtered.length > 0 ? filtered : pastMarketRows
   }, [activePastReplaySnapshotId, pastMarketRows])
+
+  const pastReplayLoading =
+    predictionTab === "past" &&
+    Boolean(selectedPastEvent?.event_id) &&
+    (pastSnapshotQuery.isLoading ||
+      pastMarketRowsQuery.isLoading ||
+      pastSnapshotQuery.isFetching ||
+      pastMarketRowsQuery.isFetching)
+
+  const pastRecentResults = useMemo(() => {
+    if (predictionTab !== "past") {
+      return gradingHistory.slice(0, 5).map((event) => ({ kind: "graded" as const, event }))
+    }
+    const gradedByEventId = new Map(
+      gradingHistory
+        .filter((event) => Boolean(event.event_id))
+        .map((event) => [String(event.event_id), event]),
+    )
+    return pastEventOptions.slice(0, 8).map((event) => {
+      const graded = gradedByEventId.get(event.event_id)
+      if (graded) return { kind: "graded" as const, event: graded }
+      return {
+        kind: "replay" as const,
+        event: {
+          event_id: event.event_id,
+          name: event.event_name,
+          total_profit: null,
+          hits: null,
+          graded_pick_count: null,
+        },
+      }
+    })
+  }, [gradingHistory, pastEventOptions, predictionTab])
 
   const pastMatchups = useMemo(() => {
     const sourceRows =
@@ -599,6 +636,29 @@ export function PredictionWorkspacePage({
     predictionTab === "past"
       ? (pastPredictionRun?.field_size ?? null)
       : (activeSection?.field_size ?? displayPredictionRun?.field_size ?? null)
+
+  const pastReplayHasData =
+    predictionTab === "past" &&
+    (displayPlayers.length > 0 ||
+      pastReplayRows.length > 0 ||
+      (pastSnapshotSection?.leaderboard?.length ?? 0) > 0)
+
+  useEffect(() => {
+    if (!onPastEventContextChange) return
+    if (predictionTab !== "past") {
+      onPastEventContextChange(null)
+      return
+    }
+    onPastEventContextChange({
+      eventName: selectedPastEvent?.event_name ?? "Past event",
+      courseName: courseName || undefined,
+    })
+  }, [
+    courseName,
+    onPastEventContextChange,
+    predictionTab,
+    selectedPastEvent?.event_name,
+  ])
 
   const diagnosticsMessage =
     predictionTab === "past"
@@ -923,9 +983,9 @@ export function PredictionWorkspacePage({
                 content: (
                   <>
             <CollapsibleSection
-              title="Recent results"
-              description="Graded events"
-              defaultOpen={isNarrow}
+              title={predictionTab === "past" ? "Past events" : "Recent results"}
+              description={predictionTab === "past" ? "Replay history" : "Graded events"}
+              defaultOpen={isNarrow || predictionTab === "past"}
               testId="intel-recent-results"
             >
               <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px 0" }}>
@@ -937,7 +997,7 @@ export function PredictionWorkspacePage({
                 </Link>
               </div>
               <div className="table-scroll-region">
-                {gradingHistory.length > 0 ? (
+                {pastRecentResults.length > 0 ? (
                   <table className="data-table terminal-table">
                     <thead>
                       <tr>
@@ -951,23 +1011,34 @@ export function PredictionWorkspacePage({
                       </tr>
                     </thead>
                     <tbody>
-                      {gradingHistory.slice(0, 5).map((event) => {
-                        const profit = Number(event.total_profit ?? 0)
+                      {pastRecentResults.map(({ kind, event }) => {
+                        const profit = event.total_profit == null ? null : Number(event.total_profit ?? 0)
                         const picks = event.graded_pick_count ?? 0
                         const hits = event.hits ?? 0
                         const hr = picks > 0 ? ((hits / picks) * 100).toFixed(0) : "—"
                         return (
-                          <tr key={`${event.event_id}-${event.year}`}>
-                            <td className="player-name" title={event.name}>{event.name}</td>
+                          <tr key={`${event.event_id}-${event.name}`}>
+                            <td className="player-name" title={event.name}>
+                              {event.name}
+                              {kind === "replay" ? (
+                                <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-faint)" }}>
+                                  replay
+                                </span>
+                              ) : null}
+                            </td>
                             <td
                               className="right num"
                               style={{
                                 color:
-                                  profit >= 0 ? "var(--positive)" : "var(--danger)",
-                                fontWeight: 600,
+                                  profit == null
+                                    ? "var(--text-muted)"
+                                    : profit >= 0
+                                      ? "var(--positive)"
+                                      : "var(--danger)",
+                                fontWeight: profit == null ? 400 : 600,
                               }}
                             >
-                              {formatUnits(profit)}
+                              {profit == null ? "—" : formatUnits(profit)}
                             </td>
                             <td className="right num" style={{ color: "var(--text-muted)" }}>
                               {typeof hr === "string" ? hr : `${hr}%`}
@@ -979,7 +1050,13 @@ export function PredictionWorkspacePage({
                   </table>
                 ) : (
                   <div style={{ padding: "12px 10px" }}>
-                    <EmptyState message="No graded events yet." />
+                    <EmptyState
+                      message={
+                        predictionTab === "past"
+                          ? "No past events available yet. Run live-refresh through a completed tournament week first."
+                          : "No graded events yet."
+                      }
+                    />
                   </div>
                 )}
               </div>
@@ -1461,6 +1538,18 @@ export function PredictionWorkspacePage({
         <div className="alert-banner" role="status" aria-live="polite">
           <Radar size={11} style={{ flexShrink: 0 }} />
           {snapshotNotice}
+        </div>
+      )}
+
+      {predictionTab === "past" && pastReplayLoading && !pastReplayHasData && (
+        <div className="alert-banner" role="status" aria-live="polite" data-testid="past-replay-loading">
+          Loading past tournament replay for {selectedPastEvent?.event_name ?? "selected event"}…
+        </div>
+      )}
+
+      {predictionTab === "past" && pastReplayHasError && !pastReplayLoading && !pastReplayHasData && (
+        <div className="alert-banner" role="alert" data-testid="past-replay-error">
+          Past replay failed: {pastReplayErrorMessage}. Try another event or use the Completed lane.
         </div>
       )}
 

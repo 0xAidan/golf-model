@@ -166,6 +166,24 @@ def test_store_picks_dedupes_within_lane_but_allows_cross_lane():
     assert counts.get("v5") == 1
 
 
+def test_hot_path_indexes_include_past_replay():
+    """Past replay queries must have section-aware indexes on large snapshot tables."""
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name IN (?, ?)",
+            (
+                "idx_market_prediction_rows_event_section",
+                "idx_live_snapshot_history_event_section",
+            ),
+        ).fetchall()
+    finally:
+        conn.close()
+    names = {row["name"] for row in rows}
+    assert "idx_market_prediction_rows_event_section" in names
+    assert "idx_live_snapshot_history_event_section" in names
+
+
 def test_completed_market_rows_use_latest_dashboard_preteeoff_snapshot():
     rows = [
         _market_row("old", "upcoming", "480", "Old Pick", "old_pick", generated_at="2026-05-07T10:00:00+00:00"),
