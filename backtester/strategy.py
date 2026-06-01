@@ -18,10 +18,11 @@ import json
 import logging
 import math
 from dataclasses import dataclass, field, asdict
-from typing import Optional
+from typing import Any, Optional
 
-from src import db
+from src import config, db
 from src.datagolf import _safe_float
+from src.matchup_value import evaluate_matchup_pair
 from src.player_normalizer import normalize_name
 from src.scoring import determine_outcome_from_text, compute_profit, american_to_decimal
 from backtester.pit_models import compute_pit_composite
@@ -69,6 +70,8 @@ class StrategyConfig:
 
     # Kelly fraction (fraction of full Kelly to bet)
     kelly_fraction: float = 0.25
+    stake_mode: str = "flat"
+    flat_stake: float = 0.02
 
     # Markets to bet (includes "matchup" for matchup replay)
     markets: list = field(default_factory=lambda: ["win", "top_5", "top_10", "top_20", "matchup"])
@@ -83,6 +86,7 @@ class StrategyConfig:
     matchup_ev_threshold: float = 0.05
     max_win_prob_cap: float = 0.85
     matchup_market_types: list = field(default_factory=lambda: ["72-hole Match", "R1 Match-Up"])
+    model_variant: str = "baseline"
 
     # AI adjustment cap
     ai_adj_cap: float = 5.0
@@ -530,11 +534,8 @@ def _replay_matchups_for_event(
     """
     Replay historical matchup bets for a single event using stored matchup odds.
 
-    Uses Platt sigmoid to convert composite gap to win probability,
-    then applies EV filter and determines outcomes from stored results.
+    Uses shared live matchup evaluator for replay/live parity.
     """
-    import math
-
     conn = db.get_conn()
     matchup_rows = conn.execute("""
         SELECT bet_type, p1_dg_id, p1_name, p2_dg_id, p2_name,
@@ -548,6 +549,38 @@ def _replay_matchups_for_event(
     if not matchup_rows:
         return []
 
+    def _build_normalized_lookup(raw_map: dict) -> dict[str, Any]:
+        normalized: dict[str, Any] = {}
+        for raw_key, value in (raw_map or {}).items():
+            key = str(raw_key or "").strip().lower()
+            if key:
+                normalized[key] = value
+            key_from_name = normalize_name(str(raw_key or ""))
+            if key_from_name and key_from_name not in normalized:
+                normalized[key_from_name] = value
+        return normalized
+
+    pit_lookup = _build_normalized_lookup(pit_composites)
+
+    def _resolve_wager(model_prob: float, implied_prob: float) -> float:
+        if str(strategy.stake_mode or "flat").strip().lower() == "kelly":
+            odds_decimal_net = (1.0 / implied_prob) - 1.0 if implied_prob < 1 else 0
+            if odds_decimal_net <= 0:
+                return 0.01
+            kelly_full = (odds_decimal_net * model_prob - (1 - model_prob)) / odds_decimal_net
+            kelly = max(0.0, kelly_full)
+            return max(0.01, min(0.05, kelly * strategy.kelly_fraction))
+        return max(0.01, float(strategy.flat_stake))
+
+    def _ensure_matchup_player_payload(player_key: str, player_name: str, data: dict) -> dict:
+        row = dict(data or {})
+        row.setdefault("player_key", str(player_key or "").strip().lower() or normalize_name(player_name))
+        row.setdefault("player_display", str(player_name or "").strip() or row["player_key"])
+        row.setdefault("form", 50.0)
+        row.setdefault("course_fit", 50.0)
+        row.setdefault("momentum", 50.0)
+        return row
+
     bets = []
     for row in matchup_rows:
         bet_type = row[0]
@@ -557,14 +590,12 @@ def _replay_matchups_for_event(
         p1_name, p2_name = row[2], row[4]
         p1_key = normalize_name(p1_name)
         p2_key = normalize_name(p2_name)
-
-        p1_data = pit_composites.get(p1_key)
-        p2_data = pit_composites.get(p2_key)
+        p1_data = pit_lookup.get(p1_key)
+        p2_data = pit_lookup.get(p2_key)
         if not p1_data or not p2_data:
             continue
-
-        p1_comp = p1_data.get("composite", 50)
-        p2_comp = p2_data.get("composite", 50)
+        p1_data = _ensure_matchup_player_payload(p1_key, p1_name, p1_data)
+        p2_data = _ensure_matchup_player_payload(p2_key, p2_name, p2_data)
 
         if odds_source == "open":
             p1_odds_str = row[5]
@@ -573,70 +604,90 @@ def _replay_matchups_for_event(
             p1_odds_str = row[7] if row[7] else row[5]
             p2_odds_str = row[8] if row[8] else row[6]
 
-        p1_outcome_text = row[11]
-        p2_outcome_text = row[12]
+        if not p1_odds_str or not p2_odds_str:
+            continue
+        try:
+            p1_odds = int(float(p1_odds_str))
+            p2_odds = int(float(p2_odds_str))
+        except (TypeError, ValueError):
+            continue
 
-        for pick_key, pick_comp, opp_key, opp_comp, pick_odds_str, opp_odds_str, pick_outcome in [
-            (p1_key, p1_comp, p2_key, p2_comp, p1_odds_str, p2_odds_str, p1_outcome_text),
-            (p2_key, p2_comp, p1_key, p1_comp, p2_odds_str, p1_odds_str, p2_outcome_text),
-        ]:
-            gap = pick_comp - opp_comp
-            if gap < strategy.min_composite_gap:
-                continue
+        market_type = "tournament_matchups" if str(bet_type).strip().lower() == "72-hole match" else "round_matchups"
+        model_variant = str(getattr(strategy, "model_variant", "baseline") or "baseline").strip().lower()
+        eval_row, eval_reason, _ = evaluate_matchup_pair(
+            p1_data=p1_data,
+            p2_data=p2_data,
+            p1_odds=p1_odds,
+            p2_odds=p2_odds,
+            ev_threshold=float(getattr(config, "MATCHUP_EV_THRESHOLD", strategy.matchup_ev_threshold)),
+            dg_prob=None,
+            model_variant=model_variant,
+            market_type=market_type,
+            book="bet365",
+            require_positive_ev=True,
+            platt_params=(
+                float(getattr(config, "MATCHUP_PLATT_A", strategy.platt_a)),
+                float(getattr(config, "MATCHUP_PLATT_B", strategy.platt_b)),
+            ),
+        )
+        if eval_reason or not eval_row:
+            continue
 
-            model_win_prob = 1.0 / (1.0 + math.exp(strategy.platt_a * gap + strategy.platt_b))
-            model_win_prob = min(model_win_prob, strategy.max_win_prob_cap)
+        if float(eval_row.get("composite_gap", 0.0)) < float(strategy.min_composite_gap):
+            continue
 
-            if not pick_odds_str:
-                continue
-            try:
-                pick_odds = int(float(pick_odds_str))
-            except (ValueError, TypeError):
-                continue
+        pick_key = str(eval_row.get("pick_key") or "")
+        opp_key = str(eval_row.get("opponent_key") or "")
+        if not pick_key or not opp_key:
+            continue
 
-            implied_prob = _american_to_implied(pick_odds)
-            if implied_prob <= 0:
-                continue
+        pick_outcome = ""
+        if pick_key == p1_key:
+            pick_outcome = row[11] or ""
+        elif pick_key == p2_key:
+            pick_outcome = row[12] or ""
 
-            ev = (model_win_prob / implied_prob) - 1.0
-            if ev < strategy.matchup_ev_threshold:
-                continue
+        won = pick_outcome == "win"
+        is_push = pick_outcome == "push"
+        odds = int(eval_row["odds"])
+        implied_prob = float(eval_row["implied_prob"])
+        model_prob = float(eval_row["model_win_prob"])
+        wager = _resolve_wager(model_prob, implied_prob)
 
-            won = (pick_outcome == "win") if pick_outcome else False
-            is_push = (pick_outcome == "push") if pick_outcome else False
+        odds_dec = american_to_decimal(odds)
+        if won:
+            profit = wager * (odds_dec - 1.0) if odds_dec else 0.0
+            payout = wager + profit
+        elif is_push:
+            profit = 0.0
+            payout = wager
+        else:
+            profit = -wager
+            payout = 0.0
 
-            odds_dec = american_to_decimal(pick_odds)
-            wager = 0.02
-            if won:
-                profit = wager * (odds_dec - 1.0) if odds_dec else 0
-                payout = wager + profit
-            elif is_push:
-                profit = 0.0
-                payout = wager
-            else:
-                profit = -wager
-                payout = 0.0
-
-            bets.append({
-                "event_id": event_id,
-                "year": year,
-                "player_key": pick_key,
-                "market": "matchup",
-                "matchup_type": bet_type,
-                "opponent_key": opp_key,
-                "model_prob": round(model_win_prob, 4),
-                "implied_prob": round(implied_prob, 4),
-                "ev": round(ev, 4),
-                "prob_edge": round(model_win_prob - implied_prob, 4),
-                "odds": pick_odds,
-                "wager": round(wager, 4),
-                "won": won,
-                "fraction": 1.0 if won else 0.0,
-                "is_push": is_push,
-                "payout": round(max(0, payout), 4),
-                "clv": round(model_win_prob - implied_prob, 4),
-                "finish": pick_outcome or "",
-            })
+        bets.append({
+            "event_id": event_id,
+            "year": year,
+            "player_key": pick_key,
+            "market": "matchup",
+            "matchup_type": bet_type,
+            "opponent_key": opp_key,
+            "model_prob": round(model_prob, 4),
+            "implied_prob": round(implied_prob, 4),
+            "ev": round(float(eval_row["ev"]), 4),
+            "prob_edge": round(model_prob - implied_prob, 4),
+            "odds": odds,
+            "wager": round(wager, 4),
+            "won": won,
+            "fraction": 1.0 if won else 0.0,
+            "is_push": is_push,
+            "payout": round(max(0.0, payout), 4),
+            "clv": round(model_prob - implied_prob, 4),
+            "finish": pick_outcome,
+            "tier": eval_row.get("tier"),
+            "ev_kind": eval_row.get("ev_kind"),
+            "model_variant": eval_row.get("model_variant"),
+        })
 
     return bets
 

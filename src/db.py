@@ -1629,10 +1629,16 @@ def store_results(tournament_id: int, results_list: list[dict]):
         return
     conn = get_conn()
     conn.executemany(
-        """INSERT OR IGNORE INTO results
+        """INSERT INTO results
            (tournament_id, player_key, player_display, finish_position,
             finish_text, made_cut)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(tournament_id, player_key) DO UPDATE SET
+               player_display = excluded.player_display,
+               finish_position = excluded.finish_position,
+               finish_text = excluded.finish_text,
+               made_cut = excluded.made_cut,
+               entered_at = datetime('now')""",
         [
             (tournament_id, r["player_key"], r["player_display"],
              r.get("finish_position"), r.get("finish_text"), r.get("made_cut"))

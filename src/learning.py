@@ -30,6 +30,70 @@ logger = logging.getLogger("learning")
 #  Auto-Results & Pick Scoring
 # ═══════════════════════════════════════════════════════════════════
 
+
+def _parse_finish_text(fin_text: str | None) -> tuple[int | None, str, int]:
+    """Normalize finish text to (finish_position, finish_text, made_cut)."""
+    if fin_text is None:
+        return None, "", 0
+    txt = str(fin_text).strip().upper()
+    if txt in ("CUT", "MC", "WD", "W/D", "DQ"):
+        normalized = "W/D" if txt in ("WD", "W/D") else txt
+        return None, normalized, 0
+    try:
+        return int(txt.replace("T", "")), txt, 1
+    except ValueError:
+        return None, txt, 0
+
+
+def _load_results_for_tournament(conn, tournament_id: int) -> tuple[list[dict], str]:
+    """Load stored results or derive them from latest rounds as fallback."""
+    rows = conn.execute(
+        "SELECT * FROM results WHERE tournament_id = ?", (tournament_id,)
+    ).fetchall()
+    if rows:
+        return [dict(r) for r in rows], "results"
+
+    tournament = conn.execute(
+        "SELECT name, year FROM tournaments WHERE id = ?", (tournament_id,)
+    ).fetchone()
+    if not tournament:
+        return [], "none"
+
+    round_rows = conn.execute(
+        """
+        SELECT player_key, player_name, fin_text
+        FROM (
+            SELECT player_key, player_name, fin_text, round_num,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY player_key
+                       ORDER BY round_num DESC
+                   ) AS rn
+            FROM rounds
+            WHERE event_name = ? AND year = ? AND fin_text IS NOT NULL
+        ) latest
+        WHERE rn = 1
+        """,
+        (tournament["name"], tournament["year"]),
+    ).fetchall()
+    if not round_rows:
+        return [], "none"
+
+    fallback_results: list[dict] = []
+    for row in round_rows:
+        finish_position, finish_text, made_cut = _parse_finish_text(row["fin_text"])
+        fallback_results.append(
+            {
+                "player_key": row["player_key"],
+                "player_display": display_name(row["player_name"] or row["player_key"]),
+                "finish_position": finish_position,
+                "finish_text": finish_text,
+                "made_cut": made_cut,
+            }
+        )
+
+    db.store_results(tournament_id, fallback_results)
+    return fallback_results, "rounds"
+
 def score_picks_for_tournament(tournament_id: int) -> dict:
     """
     Score all picks against results. Returns summary.
@@ -42,9 +106,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         "SELECT * FROM picks WHERE tournament_id = ?", (tournament_id,)
     ).fetchall()
 
-    results = conn.execute(
-        "SELECT * FROM results WHERE tournament_id = ?", (tournament_id,)
-    ).fetchall()
+    results, result_source = _load_results_for_tournament(conn, tournament_id)
 
     if not picks:
         conn.close()
@@ -148,6 +210,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
 
     return {
         "status": "ok",
+        "result_source": result_source,
         "scored": scored,
         "hits": model_hits,
         "misses": resolved - model_hits,
@@ -174,9 +237,7 @@ def log_predictions_for_tournament(tournament_id: int,
     """
     # Get results for outcome
     conn = db.get_conn()
-    results = conn.execute(
-        "SELECT * FROM results WHERE tournament_id = ?", (tournament_id,)
-    ).fetchall()
+    results, _ = _load_results_for_tournament(conn, tournament_id)
     conn.close()
 
     result_map = {r["player_key"]: dict(r) for r in results}
@@ -507,9 +568,7 @@ def update_prediction_outcomes(tournament_id: int) -> int:
     """
     conn = db.get_conn()
 
-    results = conn.execute(
-        "SELECT * FROM results WHERE tournament_id = ?", (tournament_id,)
-    ).fetchall()
+    results, _ = _load_results_for_tournament(conn, tournament_id)
     if not results:
         conn.close()
         return 0
@@ -527,6 +586,7 @@ def update_prediction_outcomes(tournament_id: int) -> int:
         pk = pred["player_key"]
         bt = pred["bet_type"]
 
+        resolved = False
         actual = 0
         fraction = 0.0
         is_push = False
@@ -535,6 +595,8 @@ def update_prediction_outcomes(tournament_id: int) -> int:
             pick_key, opponent_key = pk.split("|", 1)
             r_pick = result_map.get(pick_key)
             r_opp = result_map.get(opponent_key)
+            if not r_pick or not r_opp:
+                continue
             pick_pos = r_pick.get("finish_position") if r_pick else None
             pick_text = r_pick.get("finish_text") if r_pick else None
             pick_made_cut = r_pick.get("made_cut", 0) if r_pick else 0
@@ -550,19 +612,25 @@ def update_prediction_outcomes(tournament_id: int) -> int:
             actual = outcome["hit"]
             fraction = outcome["fraction"]
             is_push = outcome["is_push"]
+            resolved = True
         else:
             r = result_map.get(pk)
-            if r:
-                outcome = determine_outcome(
-                    bt,
-                    r.get("finish_position"),
-                    r.get("finish_text"),
-                    r.get("made_cut", 0),
-                    all_results_list,
-                )
-                actual = outcome["hit"]
-                fraction = outcome["fraction"]
-                is_push = outcome["is_push"]
+            if not r:
+                continue
+            outcome = determine_outcome(
+                bt,
+                r.get("finish_position"),
+                r.get("finish_text"),
+                r.get("made_cut", 0),
+                all_results_list,
+            )
+            actual = outcome["hit"]
+            fraction = outcome["fraction"]
+            is_push = outcome["is_push"]
+            resolved = True
+
+        if not resolved:
+            continue
 
         odds_dec = pred["odds_decimal"]
         profit = None

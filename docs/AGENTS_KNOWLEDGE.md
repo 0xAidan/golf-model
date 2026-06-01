@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-05-04. Run `pytest` for current test count. app.py: ~2940 lines. Frontend: React + Vite + TypeScript.
+**Last verified:** 2026-06-01. `pytest tests/ -v --tb=short` passes (465 collected tests). app.py: ~2940 lines. Frontend: React + Vite + TypeScript.
 
 **Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
@@ -151,6 +151,8 @@ golf-model/
 │   ├── generate_backtest_report.py
 │   ├── compute_historical_clv.py
 │   ├── audit_ev_math.py     # Read-only EV/implied audit → output/audits/*.json|*.md
+│   ├── value_bet_audit_6mo.py  # 6-month +EV matchup audit, grading checks, markdown/json report
+│   ├── matchup_walkforward_benchmark.py # Frozen E0 baseline JSON (hit/ROI/Brier/n by event)
 │   ├── run_autoresearch_eval.py
 │   ├── run_autoresearch_loop.py
 │   └── run_autoresearch_holdout.py
@@ -278,7 +280,7 @@ golf-model/
 | Performance dashboard | `python dashboard.py` | View cumulative performance. `--retune` suggests new weights; `--dry` for preview. |
 | Course profile extraction | `python course.py --screenshots data/course_images/ --course "Name"` | AI vision extraction from screenshots. Needs `ANTHROPIC_API_KEY`. |
 | Results grading | `python results.py` | Score/grade tournament results. |
-| Run tests | `pytest` or `python -m pytest` | 138 tests across 35 test files. Key fixtures in `tests/conftest.py`: `tmp_db`, `sample_tournament`, `sample_metrics`. |
+| Run tests | `pytest` or `python -m pytest` | 465 tests (as of 2026-06-01). Key fixtures in `tests/conftest.py`: `tmp_db`, `sample_tournament`, `sample_metrics`. |
 
 ### Pipeline Flow (High Level)
 
@@ -425,6 +427,11 @@ Major sections and key values:
 1. `learning.post_tournament_learn()` → score picks, update calibration curve, nudge weights, AI post-review.
 2. `adaptation.get_adaptation_state()` → rolling ROI from `market_performance` → state: normal/caution/cold/frozen → adjusts EV thresholds + stake multipliers.
 3. AI learnings stored in `ai_memory` table for retrieval in future tournaments.
+
+**Grading reliability note (v5 lab foundation):**
+- `src/learning.py` now loads tournament results with a fallback to `rounds` when `results` rows are missing, then persists back to `results`.
+- `src/db.py::store_results` uses upsert semantics on `(tournament_id, player_key)` so re-runs refresh stale result rows.
+- `update_prediction_outcomes()` now leaves unresolved rows untouched instead of forcing incorrect losses.
 
 ### Database Tables (all defined in `src/db.py`)
 
