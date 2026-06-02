@@ -326,6 +326,7 @@ def evaluate_matchup_pair(
     platt_params: tuple[float, float] | None = None,
     blend_weights: tuple[float, float] | None = None,
     win_prob_cap: float | None = None,
+    force_pick_side: str | None = None,
 ) -> tuple[dict | None, str | None, dict[str, Any]]:
     """Evaluate one matchup pair with shared live/replay probability + EV math."""
     if ev_threshold is None:
@@ -335,13 +336,17 @@ def evaluate_matchup_pair(
     if composite_gap == 0:
         return None, "equal_composite_gap", {}
 
-    if composite_gap > 0:
+    favored_side = "p1" if composite_gap > 0 else "p2"
+    if force_pick_side in {"p1", "p2"}:
+        pick_side = force_pick_side
+    else:
+        pick_side = favored_side
+
+    if pick_side == "p1":
         pick_data, opp_data = p1_data, p2_data
-        pick_side = "p1"
         pick_odds = int(p1_odds)
     else:
         pick_data, opp_data = p2_data, p1_data
-        pick_side = "p2"
         pick_odds = int(p2_odds)
 
     gap = abs(composite_gap)
@@ -353,15 +358,19 @@ def evaluate_matchup_pair(
     if model_variant == "v5":
         from src.models.v5_probabilities import v5_matchup_win_probability
 
-        platt_win_prob, v5_uncertainty = v5_matchup_win_probability(
+        favored_pick_data = p1_data if favored_side == "p1" else p2_data
+        favored_opp_data = p2_data if favored_side == "p1" else p1_data
+        favored_prob, v5_uncertainty = v5_matchup_win_probability(
             composite_gap=composite_gap,
-            pick_data=pick_data,
-            opp_data=opp_data,
+            pick_data=favored_pick_data,
+            opp_data=favored_opp_data,
             platt_a=A,
             platt_b=B,
         )
+        platt_win_prob = favored_prob if pick_side == favored_side else (1.0 - favored_prob)
     else:
-        platt_win_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+        favored_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+        platt_win_prob = favored_prob if pick_side == favored_side else (1.0 - favored_prob)
         v5_uncertainty = None
 
     tie_prob = 0.0

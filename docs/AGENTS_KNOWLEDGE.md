@@ -153,7 +153,7 @@ golf-model/
 │   ├── audit_ev_math.py     # Read-only EV/implied audit → output/audits/*.json|*.md
 │   ├── value_bet_audit_6mo.py  # 6-month +EV matchup audit, grading checks, markdown/json report
 │   ├── matchup_walkforward_benchmark.py # Frozen E0 baseline JSON (hit/ROI/Brier/n by event)
-│   ├── run_matchup_lab_research.py # Phase 2/3 lab matrix (E0-E8 + H1-H13) with holdout report artifacts
+│   ├── run_matchup_lab_research.py # Phase 2/3 lab matrix (E0-E8 + H1-H13) + persistent max-ROI Optuna search; emits tuning + PIT audit + full-slate coverage + checkpoint artifacts under output/research/
 │   ├── run_autoresearch_eval.py
 │   ├── run_autoresearch_loop.py
 │   └── run_autoresearch_holdout.py
@@ -447,6 +447,8 @@ Major sections and key values:
 **Hole-level:** `hole_scores`, `hole_difficulty`, `player_hole_history`.
 
 **Backtester / PIT:** `pit_rolling_stats`, `pit_course_stats`, `historical_predictions`, `historical_odds`, `historical_matchup_odds`, `historical_event_info`, `tournament_weather`, `tournament_weather_summary`, `backfill_progress`.
+
+**Replay full-slate switch:** `backtester.strategy.StrategyConfig.matchup_include_all_books` (default `False`) controls whether replay uses only `bet365` rows (legacy parity) or all available books from `historical_matchup_odds` for research coverage runs.
 
 **Experiments / research:** `experiments`, `active_strategy`, `research_proposals`, `proposal_reviews`, `research_model_registry`, `live_model_registry`, `outlier_investigations`, `challenger_predictions` (champion-challenger shadow rows).
 

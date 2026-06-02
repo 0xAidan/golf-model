@@ -17,6 +17,7 @@ The replay engine works by:
 import json
 import logging
 import math
+import sqlite3
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 
@@ -89,6 +90,9 @@ class StrategyConfig:
     model_variant: str = "baseline"
     dg_matchup_blend_weight: float = 0.80
     model_matchup_blend_weight: float = 0.20
+    matchup_require_positive_ev: bool = True
+    matchup_include_all_sides: bool = False
+    matchup_include_all_books: bool = False
 
     # AI adjustment cap
     ai_adj_cap: float = 5.0
@@ -345,20 +349,23 @@ def replay_event(
         """, (str(event_id), year, strategy.stat_window)).fetchall()
 
         if not pit_rows:
-            return []
-
-        players = []
-        scores = []
-        for row in pit_rows:
-            pkey = row[0]
-            pit = {
-                "sg_total": row[1], "sg_ott": row[2], "sg_app": row[3],
-                "sg_arg": row[4], "sg_putt": row[5], "sg_t2g": row[6],
-                "rounds_used": row[7],
-            }
-            cs = _compute_composite_legacy(pit, weights)
-            players.append({"player_key": pkey, "pit": pit, "composite": cs})
-            scores.append(cs)
+            if "matchup" not in strategy.markets:
+                return []
+            players = []
+            scores = []
+        else:
+            players = []
+            scores = []
+            for row in pit_rows:
+                pkey = row[0]
+                pit = {
+                    "sg_total": row[1], "sg_ott": row[2], "sg_app": row[3],
+                    "sg_arg": row[4], "sg_putt": row[5], "sg_t2g": row[6],
+                    "rounds_used": row[7],
+                }
+                cs = _compute_composite_legacy(pit, weights)
+                players.append({"player_key": pkey, "pit": pit, "composite": cs})
+                scores.append(cs)
     else:
         players = []
         scores = []
@@ -515,6 +522,7 @@ def replay_event(
     # 6. Matchup replay (if "matchup" in strategy.markets)
     if "matchup" in strategy.markets:
         matchup_bets = _replay_matchups_for_event(
+            conn,
             event_id, year, strategy,
             pit_composites if pit_composites else {p["player_key"]: p for p in players},
             finish_by_key, all_finish_texts, odds_source,
@@ -525,6 +533,7 @@ def replay_event(
 
 
 def _replay_matchups_for_event(
+    conn: sqlite3.Connection,
     event_id: str,
     year: int,
     strategy: StrategyConfig,
@@ -538,18 +547,61 @@ def _replay_matchups_for_event(
 
     Uses shared live matchup evaluator for replay/live parity.
     """
-    conn = db.get_conn()
-    matchup_rows = conn.execute("""
-        SELECT bet_type, p1_dg_id, p1_name, p2_dg_id, p2_name,
-               p1_open, p1_close, p2_open, p2_close,
-               p1_outcome, p2_outcome, p1_outcome_text, p2_outcome_text, tie_rule
-        FROM historical_matchup_odds
-        WHERE event_id = ? AND year = ? AND book = 'bet365'
-    """, (str(event_id), year)).fetchall()
-    conn.close()
-
+    include_all_books = bool(getattr(strategy, "matchup_include_all_books", False))
+    if include_all_books:
+        matchup_rows = conn.execute(
+            """
+            SELECT book, bet_type, p1_dg_id, p1_name, p2_dg_id, p2_name,
+                   p1_open, p1_close, p2_open, p2_close,
+                   p1_outcome, p2_outcome, p1_outcome_text, p2_outcome_text, tie_rule
+            FROM historical_matchup_odds
+            WHERE event_id = ? AND year = ?
+            """,
+            (str(event_id), year),
+        ).fetchall()
+    else:
+        matchup_rows = conn.execute(
+            """
+            SELECT book, bet_type, p1_dg_id, p1_name, p2_dg_id, p2_name,
+                   p1_open, p1_close, p2_open, p2_close,
+                   p1_outcome, p2_outcome, p1_outcome_text, p2_outcome_text, tie_rule
+            FROM historical_matchup_odds
+            WHERE event_id = ? AND year = ? AND book = 'bet365'
+            """,
+            (str(event_id), year),
+        ).fetchall()
     if not matchup_rows:
         return []
+
+    allowed_market_types = set(str(m or "").strip().lower() for m in (strategy.matchup_market_types or []))
+    allowed_market_types_canonical = {
+        str(m or "").strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+        for m in (strategy.matchup_market_types or [])
+    }
+
+    def _canonical_market_label(label: str) -> str:
+        return (
+            str(label or "")
+            .strip()
+            .lower()
+            .replace("-", "")
+            .replace("_", "")
+            .replace(" ", "")
+        )
+
+    def _supports_market_label(label: str) -> bool:
+        raw = str(label or "").strip().lower()
+        canon = _canonical_market_label(label)
+        if raw in allowed_market_types:
+            return True
+        if canon in allowed_market_types_canonical:
+            return True
+        # Coverage mode: include common historical aliases and 3-ball heads-up rows.
+        return ("3ball" in canon) or ("match" in canon)
+
+    def _resolve_market_type(label: str) -> str:
+        canon = _canonical_market_label(label)
+        return "tournament_matchups" if "72hole" in canon or "tournament" in canon else "round_matchups"
 
     def _build_normalized_lookup(raw_map: dict) -> dict[str, Any]:
         normalized: dict[str, Any] = {}
@@ -574,6 +626,25 @@ def _replay_matchups_for_event(
             return max(0.01, min(0.05, kelly * strategy.kelly_fraction))
         return max(0.01, float(strategy.flat_stake))
 
+    def _parse_american_like(value: Any) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return None
+        txt = str(value).strip().lower()
+        if not txt:
+            return None
+        txt = txt.replace("+", "")
+        if txt in {"even", "ev", "pk", "pick", "pickem", "pick'em"}:
+            return 100
+        try:
+            return int(float(txt))
+        except (TypeError, ValueError):
+            return None
+
     def _ensure_matchup_player_payload(player_key: str, player_name: str, data: dict) -> dict:
         row = dict(data or {})
         row.setdefault("player_key", str(player_key or "").strip().lower() or normalize_name(player_name))
@@ -583,124 +654,155 @@ def _replay_matchups_for_event(
         row.setdefault("momentum", 50.0)
         return row
 
+    def _fallback_player_payload(player_key: str, player_name: str, implied_prob: float) -> dict:
+        # Coverage fallback for sparse PIT players in historical rows.
+        # Convert market implied probability into a bounded pseudo-composite so both sides can be evaluated.
+        p = max(1e-4, min(1.0 - 1e-4, float(implied_prob)))
+        base_score = math.log(p / (1.0 - p)) * 10.0
+        # Deterministic micro-jitter avoids equal-gap dropouts on symmetric odds rows.
+        key = str(player_key or player_name or "")
+        jitter = (sum(ord(ch) for ch in key) % 1000) / 1_000_000.0
+        pseudo_composite = round(base_score + jitter, 6)
+        return {
+            "player_key": str(player_key or "").strip().lower() or normalize_name(player_name),
+            "player_display": str(player_name or "").strip() or str(player_key or "").strip().lower(),
+            "composite": pseudo_composite,
+            "form": 50.0,
+            "course_fit": 50.0,
+            "momentum": 50.0,
+        }
+
     bets = []
     for row in matchup_rows:
-        bet_type = row[0]
-        if bet_type not in strategy.matchup_market_types:
+        book = str(row[0] or "")
+        bet_type = row[1]
+        if not _supports_market_label(str(bet_type or "")):
             continue
 
-        p1_name, p2_name = row[2], row[4]
+        p1_name, p2_name = row[3], row[5]
         p1_key = normalize_name(p1_name)
         p2_key = normalize_name(p2_name)
-        p1_data = pit_lookup.get(p1_key)
-        p2_data = pit_lookup.get(p2_key)
-        if not p1_data or not p2_data:
-            continue
-        p1_data = _ensure_matchup_player_payload(p1_key, p1_name, p1_data)
-        p2_data = _ensure_matchup_player_payload(p2_key, p2_name, p2_data)
 
         if odds_source == "open":
-            p1_odds_str = row[5]
-            p2_odds_str = row[6]
+            p1_odds_str = row[6]
+            p2_odds_str = row[8]
         else:
-            p1_odds_str = row[7] if row[7] else row[5]
-            p2_odds_str = row[8] if row[8] else row[6]
+            p1_odds_str = row[7] if row[7] else row[6]
+            p2_odds_str = row[9] if row[9] else row[8]
 
         if not p1_odds_str or not p2_odds_str:
             continue
-        try:
-            p1_odds = int(float(p1_odds_str))
-            p2_odds = int(float(p2_odds_str))
-        except (TypeError, ValueError):
+        p1_odds = _parse_american_like(p1_odds_str)
+        p2_odds = _parse_american_like(p2_odds_str)
+        if p1_odds is None or p2_odds is None:
             continue
 
-        market_type = "tournament_matchups" if str(bet_type).strip().lower() == "72-hole match" else "round_matchups"
-        model_variant = str(getattr(strategy, "model_variant", "baseline") or "baseline").strip().lower()
-        eval_row, eval_reason, _ = evaluate_matchup_pair(
-            p1_data=p1_data,
-            p2_data=p2_data,
-            p1_odds=p1_odds,
-            p2_odds=p2_odds,
-            ev_threshold=float(strategy.matchup_ev_threshold),
-            dg_prob=None,
-            model_variant=model_variant,
-            market_type=market_type,
-            book="bet365",
-            require_positive_ev=True,
-            platt_params=(
-                float(strategy.platt_a),
-                float(strategy.platt_b),
-            ),
-            blend_weights=(
-                float(getattr(strategy, "dg_matchup_blend_weight", 0.8)),
-                float(getattr(strategy, "model_matchup_blend_weight", 0.2)),
-            ),
-            win_prob_cap=float(getattr(strategy, "max_win_prob_cap", 0.99)),
-        )
-        if eval_reason or not eval_row:
-            continue
-
-        if float(eval_row.get("composite_gap", 0.0)) < float(strategy.min_composite_gap):
-            continue
-
-        pick_key = str(eval_row.get("pick_key") or "")
-        opp_key = str(eval_row.get("opponent_key") or "")
-        if not pick_key or not opp_key:
-            continue
-
-        pick_outcome = ""
-        if pick_key == p1_key:
-            pick_outcome = row[11] or ""
-        elif pick_key == p2_key:
-            pick_outcome = row[12] or ""
-
-        won = pick_outcome == "win"
-        is_push = pick_outcome == "push"
-        odds = int(eval_row["odds"])
-        implied_prob = float(eval_row["implied_prob"])
-        model_prob = float(eval_row["model_win_prob"])
-        wager = _resolve_wager(model_prob, implied_prob)
-
-        odds_dec = american_to_decimal(odds)
-        if won:
-            profit = wager * (odds_dec - 1.0) if odds_dec else 0.0
-            payout = wager + profit
-        elif is_push:
-            profit = 0.0
-            payout = wager
+        p1_data = pit_lookup.get(p1_key)
+        p2_data = pit_lookup.get(p2_key)
+        p1_implied = _american_to_implied(p1_odds)
+        p2_implied = _american_to_implied(p2_odds)
+        if p1_data:
+            p1_data = _ensure_matchup_player_payload(p1_key, p1_name, p1_data)
         else:
-            profit = -wager
-            payout = 0.0
+            p1_data = _fallback_player_payload(p1_key, p1_name, p1_implied)
+            p1_data["missing_pit_fallback"] = True
+        if p2_data:
+            p2_data = _ensure_matchup_player_payload(p2_key, p2_name, p2_data)
+        else:
+            p2_data = _fallback_player_payload(p2_key, p2_name, p2_implied)
+            p2_data["missing_pit_fallback"] = True
 
-        bets.append({
-            "event_id": event_id,
-            "year": year,
-            "player_key": pick_key,
-            "market": "matchup",
-            "matchup_type": bet_type,
-            "opponent_key": opp_key,
-            "model_prob": round(model_prob, 4),
-            "implied_prob": round(implied_prob, 4),
-            "ev": round(float(eval_row["ev"]), 4),
-            "prob_edge": round(model_prob - implied_prob, 4),
-            "odds": odds,
-            "wager": round(wager, 4),
-            "won": won,
-            "fraction": 1.0 if won else 0.0,
-            "is_push": is_push,
-            "payout": round(max(0.0, payout), 4),
-            "clv": round(model_prob - implied_prob, 4),
-            "finish": pick_outcome,
-            "tier": eval_row.get("tier"),
-            "marketing_safe": bool(eval_row.get("marketing_safe", False)),
-            "momentum_aligned": bool(eval_row.get("momentum_aligned", False)),
-            "conviction": eval_row.get("conviction"),
-            "form_gap": eval_row.get("form_gap"),
-            "course_fit_gap": eval_row.get("course_fit_gap"),
-            "odds_quality": eval_row.get("odds_quality"),
-            "ev_kind": eval_row.get("ev_kind"),
-            "model_variant": eval_row.get("model_variant"),
-        })
+        market_type = _resolve_market_type(str(bet_type or ""))
+        model_variant = str(getattr(strategy, "model_variant", "baseline") or "baseline").strip().lower()
+        sides = ["p1", "p2"] if bool(getattr(strategy, "matchup_include_all_sides", False)) else [None]
+        for force_side in sides:
+            eval_row, eval_reason, _ = evaluate_matchup_pair(
+                p1_data=p1_data,
+                p2_data=p2_data,
+                p1_odds=p1_odds,
+                p2_odds=p2_odds,
+                ev_threshold=float(strategy.matchup_ev_threshold),
+                dg_prob=None,
+                model_variant=model_variant,
+                market_type=market_type,
+                book=book or "unknown",
+                require_positive_ev=bool(getattr(strategy, "matchup_require_positive_ev", True)),
+                platt_params=(
+                    float(strategy.platt_a),
+                    float(strategy.platt_b),
+                ),
+                blend_weights=(
+                    float(getattr(strategy, "dg_matchup_blend_weight", 0.8)),
+                    float(getattr(strategy, "model_matchup_blend_weight", 0.2)),
+                ),
+                win_prob_cap=float(getattr(strategy, "max_win_prob_cap", 0.99)),
+                force_pick_side=force_side,
+            )
+            if eval_reason or not eval_row:
+                continue
+
+            if float(eval_row.get("composite_gap", 0.0)) < float(strategy.min_composite_gap):
+                continue
+
+            pick_key = str(eval_row.get("pick_key") or "")
+            opp_key = str(eval_row.get("opponent_key") or "")
+            if not pick_key or not opp_key:
+                continue
+
+            pick_outcome = ""
+            if pick_key == p1_key:
+                pick_outcome = row[12] or ""
+            elif pick_key == p2_key:
+                pick_outcome = row[13] or ""
+
+            won = pick_outcome == "win"
+            is_push = pick_outcome == "push"
+            odds = int(eval_row["odds"])
+            implied_prob = float(eval_row["implied_prob"])
+            model_prob = float(eval_row["model_win_prob"])
+            wager = _resolve_wager(model_prob, implied_prob)
+
+            odds_dec = american_to_decimal(odds)
+            if won:
+                profit = wager * (odds_dec - 1.0) if odds_dec else 0.0
+                payout = wager + profit
+            elif is_push:
+                profit = 0.0
+                payout = wager
+            else:
+                profit = -wager
+                payout = 0.0
+
+            bets.append({
+                "event_id": event_id,
+                "year": year,
+                "player_key": pick_key,
+                "market": "matchup",
+                "matchup_type": bet_type,
+                "opponent_key": opp_key,
+                "model_prob": round(model_prob, 4),
+                "implied_prob": round(implied_prob, 4),
+                "ev": round(float(eval_row["ev"]), 4),
+                "prob_edge": round(model_prob - implied_prob, 4),
+                "odds": odds,
+                "book": book,
+                "wager": round(wager, 4),
+                "won": won,
+                "fraction": 1.0 if won else 0.0,
+                "is_push": is_push,
+                "payout": round(max(0.0, payout), 4),
+                "clv": round(model_prob - implied_prob, 4),
+                "finish": pick_outcome,
+                "tier": eval_row.get("tier"),
+                "marketing_safe": bool(eval_row.get("marketing_safe", False)),
+                "momentum_aligned": bool(eval_row.get("momentum_aligned", False)),
+                "conviction": eval_row.get("conviction"),
+                "form_gap": eval_row.get("form_gap"),
+                "course_fit_gap": eval_row.get("course_fit_gap"),
+                "odds_quality": eval_row.get("odds_quality"),
+                "ev_kind": eval_row.get("ev_kind"),
+                "model_variant": eval_row.get("model_variant"),
+            })
 
     return bets
 
