@@ -145,20 +145,17 @@ export function SuiteShell({
   actions?: React.ReactNode
 }) {
   const isNarrow = useIsNarrowViewport()
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [mobileNavPath, setMobileNavPath] = useState<string | null>(null)
   const location = useLocation()
+  const mobileNavOpen = isNarrow && mobileNavPath === location.pathname
 
   const handleCloseMobileNav = useCallback(() => {
-    setMobileNavOpen(false)
+    setMobileNavPath(null)
   }, [])
 
-  useEffect(() => {
-    if (!isNarrow) setMobileNavOpen(false)
-  }, [isNarrow])
-
-  useEffect(() => {
-    handleCloseMobileNav()
-  }, [location.pathname, handleCloseMobileNav])
+  const handleOpenMobileNav = useCallback(() => {
+    setMobileNavPath(location.pathname)
+  }, [location.pathname])
 
   useEffect(() => {
     if (!mobileNavOpen || !isNarrow) return
@@ -249,7 +246,7 @@ export function SuiteShell({
             <button
               type="button"
               className="mobile-menu-trigger"
-              onClick={() => setMobileNavOpen(true)}
+              onClick={handleOpenMobileNav}
               aria-expanded={mobileNavOpen}
               aria-controls="suite-sidebar-nav"
               data-testid="mobile-menu-open"

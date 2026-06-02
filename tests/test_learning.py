@@ -77,3 +77,186 @@ def test_score_picks_for_tournament_scores_sqlite_row_matchup(tmp_db):
     assert row["model_hit"] == 1
     assert row["actual_finish"] == "1 vs T7"
     assert row["profit"] == pytest.approx(0.9090909090909091)
+
+
+def test_score_picks_falls_back_to_rounds_when_results_missing(tmp_db):
+    """Scoring should derive final results from rounds when results table is empty."""
+    from src.learning import score_picks_for_tournament
+
+    tid = tmp_db.get_or_create_tournament(
+        "Charles Schwab Challenge",
+        year=2026,
+        event_id="502",
+    )
+    tmp_db.store_picks(
+        [
+            {
+                "tournament_id": tid,
+                "model_variant": "baseline",
+                "source": "cockpit",
+                "bet_type": "top10",
+                "player_key": "scottie_scheffler",
+                "player_display": "Scottie Scheffler",
+                "opponent_key": None,
+                "opponent_display": None,
+                "composite_score": None,
+                "course_fit_score": None,
+                "form_score": None,
+                "momentum_score": None,
+                "model_prob": 0.31,
+                "market_odds": "+110",
+                "market_book": "bet365",
+                "market_implied_prob": 0.4762,
+                "ev": 0.11,
+                "confidence": "medium",
+                "reasoning": "test rounds fallback",
+            }
+        ]
+    )
+
+    conn = tmp_db.get_conn()
+    conn.execute(
+        """
+        INSERT INTO rounds (
+            dg_id, player_name, player_key, tour, season, year, event_id, event_name,
+            event_completed, round_num, fin_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            999001,
+            "Scottie Scheffler",
+            "scottie_scheffler",
+            "pga",
+            2026,
+            2026,
+            "502",
+            "Charles Schwab Challenge",
+            "2026-05-31",
+            4,
+            "T7",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = score_picks_for_tournament(tid)
+    assert result["status"] == "ok"
+    assert result["result_source"] == "rounds"
+    assert result["scored"] == 1
+    assert result["bet_hits"] == 1
+
+    conn = tmp_db.get_conn()
+    stored = conn.execute(
+        "SELECT COUNT(*) AS c FROM results WHERE tournament_id = ?",
+        (tid,),
+    ).fetchone()
+    conn.close()
+    assert stored["c"] == 1
+
+
+def test_store_results_upserts_existing_rows(tmp_db):
+    """Final grading should overwrite stale result rows for completed events."""
+    tid = tmp_db.get_or_create_tournament(
+        "Travelers Championship",
+        year=2025,
+        event_id="492",
+    )
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "tom_kim",
+                "player_display": "Tom Kim",
+                "finish_position": 35,
+                "finish_text": "T35",
+                "made_cut": 1,
+            }
+        ],
+    )
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "tom_kim",
+                "player_display": "Tom Kim",
+                "finish_position": 8,
+                "finish_text": "T8",
+                "made_cut": 1,
+            }
+        ],
+    )
+
+    conn = tmp_db.get_conn()
+    row = conn.execute(
+        "SELECT finish_position, finish_text FROM results WHERE tournament_id = ? AND player_key = ?",
+        (tid, "tom_kim"),
+    ).fetchone()
+    conn.close()
+
+    assert row["finish_position"] == 8
+    assert row["finish_text"] == "T8"
+
+
+def test_update_prediction_outcomes_skips_unresolved_players(tmp_db):
+    """Do not stamp missing-result predictions as forced losses."""
+    from src.learning import update_prediction_outcomes
+
+    tid = tmp_db.get_or_create_tournament(
+        "Valspar Championship",
+        year=2025,
+        event_id="500",
+    )
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "ludvig_aberg",
+                "player_display": "Ludvig Aberg",
+                "finish_position": 2,
+                "finish_text": "2",
+                "made_cut": 1,
+            }
+        ],
+    )
+    tmp_db.log_predictions(
+        [
+            {
+                "tournament_id": tid,
+                "player_key": "ludvig_aberg",
+                "bet_type": "top10",
+                "model_prob": 0.25,
+                "dg_prob": 0.22,
+                "market_implied_prob": 0.2,
+                "actual_outcome": None,
+                "odds_decimal": 3.0,
+                "profit": None,
+                "odds_timing": "pre_tournament",
+            },
+            {
+                "tournament_id": tid,
+                "player_key": "ghost_player",
+                "bet_type": "top10",
+                "model_prob": 0.1,
+                "dg_prob": 0.08,
+                "market_implied_prob": 0.07,
+                "actual_outcome": None,
+                "odds_decimal": 5.0,
+                "profit": None,
+                "odds_timing": "pre_tournament",
+            },
+        ]
+    )
+
+    updated = update_prediction_outcomes(tid)
+    assert updated == 1
+
+    conn = tmp_db.get_conn()
+    rows = conn.execute(
+        "SELECT player_key, actual_outcome FROM prediction_log WHERE tournament_id = ? ORDER BY player_key",
+        (tid,),
+    ).fetchall()
+    conn.close()
+    by_key = {row["player_key"]: row["actual_outcome"] for row in rows}
+
+    assert by_key["ghost_player"] is None
+    assert by_key["ludvig_aberg"] == 1

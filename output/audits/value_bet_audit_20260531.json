@@ -1,0 +1,1330 @@
+{
+  "generated_at": "2026-05-31T22:33:09.123151+00:00",
+  "db_path": "/opt/golf-model/data/golf.db",
+  "window": {
+    "start": "2025-12-01",
+    "end": "2026-05-31",
+    "live_rows_start": "2026-04-17"
+  },
+  "coverage": {
+    "backtest_events": 22,
+    "finish_map_events": 30
+  },
+  "executive_summary": "Over **22** walk-forward PGA events (2025-12-01\u20132026-05-31), baseline replay shows **12.93%** hit rate and **29.97%** ROI on **1902** placement bets (backtest only). Live **+EV** snapshots (4 events): **36.25%** hit / **-16.25%** ROI on **80** gradeable bets. Matchups are the top hit-rate +EV segment (~46% hit, ~\u22126% ROI); placement +EV outrights/top5 drag ROI. Also: grading pipeline broken (`pick_outcomes` empty), backtest \u2260 live gates.",
+  "phase1": {
+    "funnel": {
+      "events_with_rows": 4,
+      "candidates": 1085,
+      "value_flagged": 80,
+      "card_ui_display": 263
+    },
+    "funnel_performance": {
+      "all_candidates": {
+        "n": 1082,
+        "hit_rate_pct": 18.95,
+        "model_hit_rate_pct": 19.13,
+        "push_rate_pct": 1.11,
+        "profit_units": 106.33,
+        "roi_pct": 9.83
+      },
+      "value_flagged": {
+        "n": 80,
+        "hit_rate_pct": 36.25,
+        "model_hit_rate_pct": 38.75,
+        "push_rate_pct": 6.25,
+        "profit_units": -13.0,
+        "roi_pct": -16.25
+      },
+      "card_ui_display": {
+        "n": 263,
+        "hit_rate_pct": 15.97,
+        "model_hit_rate_pct": 15.97,
+        "push_rate_pct": 0.0,
+        "profit_units": -15.56,
+        "roi_pct": -5.92
+      }
+    },
+    "by_bet_type": {
+      "top20": {
+        "n": 292,
+        "hit_rate_pct": 26.37,
+        "model_hit_rate_pct": 26.37,
+        "push_rate_pct": 0.0,
+        "profit_units": 77.54,
+        "roi_pct": 26.55
+      },
+      "top10": {
+        "n": 271,
+        "hit_rate_pct": 13.65,
+        "model_hit_rate_pct": 13.65,
+        "push_rate_pct": 0.0,
+        "profit_units": 3.57,
+        "roi_pct": 1.32
+      },
+      "top5": {
+        "n": 210,
+        "hit_rate_pct": 8.1,
+        "model_hit_rate_pct": 8.1,
+        "push_rate_pct": 0.0,
+        "profit_units": 26.31,
+        "roi_pct": 12.53
+      },
+      "matchup": {
+        "n": 155,
+        "hit_rate_pct": 46.45,
+        "model_hit_rate_pct": 47.74,
+        "push_rate_pct": 7.74,
+        "profit_units": -11.76,
+        "roi_pct": -7.59
+      },
+      "outright": {
+        "n": 154,
+        "hit_rate_pct": 1.3,
+        "model_hit_rate_pct": 1.3,
+        "push_rate_pct": 0.0,
+        "profit_units": 10.67,
+        "roi_pct": 6.93
+      }
+    },
+    "value_by_bet_type": {
+      "matchup": {
+        "n": 61,
+        "hit_rate_pct": 45.9,
+        "model_hit_rate_pct": 49.18,
+        "push_rate_pct": 8.2,
+        "profit_units": -3.5,
+        "roi_pct": -5.73
+      },
+      "outright": {
+        "n": 13,
+        "hit_rate_pct": 0.0,
+        "model_hit_rate_pct": 0.0,
+        "push_rate_pct": 0.0,
+        "profit_units": -13.0,
+        "roi_pct": -100.0
+      },
+      "top5": {
+        "n": 4,
+        "hit_rate_pct": 0.0,
+        "model_hit_rate_pct": 0.0,
+        "push_rate_pct": 0.0,
+        "profit_units": -4.0,
+        "roi_pct": -100.0
+      },
+      "top10": {
+        "n": 1,
+        "hit_rate_pct": 0.0,
+        "model_hit_rate_pct": 0.0,
+        "push_rate_pct": 0.0,
+        "profit_units": -1.0,
+        "roi_pct": -100.0
+      },
+      "top20": {
+        "n": 1,
+        "hit_rate_pct": 100.0,
+        "model_hit_rate_pct": 100.0,
+        "push_rate_pct": 0.0,
+        "profit_units": 8.5,
+        "roi_pct": 850.0
+      }
+    },
+    "card_by_bet_type": {
+      "top20": {
+        "n": 70,
+        "hit_rate_pct": 31.43,
+        "model_hit_rate_pct": 31.43,
+        "push_rate_pct": 0.0,
+        "profit_units": -18.69,
+        "roi_pct": -26.7
+      },
+      "top10": {
+        "n": 69,
+        "hit_rate_pct": 17.39,
+        "model_hit_rate_pct": 17.39,
+        "push_rate_pct": 0.0,
+        "profit_units": -15.79,
+        "roi_pct": -22.88
+      },
+      "top5": {
+        "n": 65,
+        "hit_rate_pct": 10.77,
+        "model_hit_rate_pct": 10.77,
+        "push_rate_pct": 0.0,
+        "profit_units": -3.08,
+        "roi_pct": -4.74
+      },
+      "outright": {
+        "n": 59,
+        "hit_rate_pct": 1.69,
+        "model_hit_rate_pct": 1.69,
+        "push_rate_pct": 0.0,
+        "profit_units": 22.0,
+        "roi_pct": 37.29
+      }
+    },
+    "segmentation": {
+      "EV decile": {
+        "D1_0-10%": {
+          "n": 67,
+          "hit_rate_pct": 40.3,
+          "model_hit_rate_pct": 41.79,
+          "push_rate_pct": 5.97,
+          "profit_units": -12.45,
+          "roi_pct": -18.58
+        },
+        "D2_10-20%": {
+          "n": 10,
+          "hit_rate_pct": 20.0,
+          "model_hit_rate_pct": 30.0,
+          "push_rate_pct": 10.0,
+          "profit_units": 2.45,
+          "roi_pct": 24.52
+        },
+        "D3_20-30%": {
+          "n": 3,
+          "hit_rate_pct": 0.0,
+          "model_hit_rate_pct": 0.0,
+          "push_rate_pct": 0.0,
+          "profit_units": -3.0,
+          "roi_pct": -100.0
+        }
+      },
+      "Odds bucket": {
+        "mid": {
+          "n": 60,
+          "hit_rate_pct": 46.67,
+          "model_hit_rate_pct": 50.0,
+          "push_rate_pct": 8.33,
+          "profit_units": -2.5,
+          "roi_pct": -4.16
+        },
+        "longshot": {
+          "n": 17,
+          "hit_rate_pct": 0.0,
+          "model_hit_rate_pct": 0.0,
+          "push_rate_pct": 0.0,
+          "profit_units": -17.0,
+          "roi_pct": -100.0
+        },
+        "long": {
+          "n": 2,
+          "hit_rate_pct": 50.0,
+          "model_hit_rate_pct": 50.0,
+          "push_rate_pct": 0.0,
+          "profit_units": 7.5,
+          "roi_pct": 375.0
+        },
+        "short_favorite": {
+          "n": 1,
+          "hit_rate_pct": 0.0,
+          "model_hit_rate_pct": 0.0,
+          "push_rate_pct": 0.0,
+          "profit_units": -1.0,
+          "roi_pct": -100.0
+        }
+      },
+      "marketing_safe": {
+        "None": {
+          "n": 63,
+          "hit_rate_pct": 39.68,
+          "model_hit_rate_pct": 39.68,
+          "push_rate_pct": 4.76,
+          "profit_units": -5.68,
+          "roi_pct": -9.01
+        },
+        "False": {
+          "n": 10,
+          "hit_rate_pct": 0.0,
+          "model_hit_rate_pct": 0.0,
+          "push_rate_pct": 0.0,
+          "profit_units": -10.0,
+          "roi_pct": -100.0
+        },
+        "True": {
+          "n": 7,
+          "hit_rate_pct": 57.14,
+          "model_hit_rate_pct": 85.71,
+          "push_rate_pct": 28.57,
+          "profit_units": 2.68,
+          "roi_pct": 38.29
+        }
+      },
+      "adaptation_state": {
+        "unknown": {
+          "n": 47,
+          "hit_rate_pct": 46.81,
+          "model_hit_rate_pct": 46.81,
+          "push_rate_pct": 6.38,
+          "profit_units": -3.19,
+          "roi_pct": -6.79
+        },
+        "normal": {
+          "n": 33,
+          "hit_rate_pct": 21.21,
+          "model_hit_rate_pct": 27.27,
+          "push_rate_pct": 6.06,
+          "profit_units": -9.81,
+          "roi_pct": -29.72
+        }
+      },
+      "confidence/tier": {
+        "unknown": {
+          "n": 66,
+          "hit_rate_pct": 34.85,
+          "model_hit_rate_pct": 34.85,
+          "push_rate_pct": 4.55,
+          "profit_units": -12.69,
+          "roi_pct": -19.23
+        },
+        "LEAN": {
+          "n": 12,
+          "hit_rate_pct": 50.0,
+          "model_hit_rate_pct": 58.33,
+          "push_rate_pct": 8.33,
+          "profit_units": 0.69,
+          "roi_pct": 5.77
+        },
+        "GOOD": {
+          "n": 2,
+          "hit_rate_pct": 0.0,
+          "model_hit_rate_pct": 50.0,
+          "push_rate_pct": 50.0,
+          "profit_units": -1.0,
+          "roi_pct": -50.0
+        }
+      }
+    },
+    "calibration": {
+      "top5": {
+        "brier": null,
+        "n": 4,
+        "reliability": [
+          {
+            "bucket": 1,
+            "n": 1,
+            "avg_model_prob": 0.0269,
+            "actual_rate": 0.0,
+            "gap": 0.0269
+          },
+          {
+            "bucket": 2,
+            "n": 1,
+            "avg_model_prob": 0.0324,
+            "actual_rate": 0.0,
+            "gap": 0.0324
+          },
+          {
+            "bucket": 3,
+            "n": 1,
+            "avg_model_prob": 0.0391,
+            "actual_rate": 0.0,
+            "gap": 0.0391
+          },
+          {
+            "bucket": 4,
+            "n": 1,
+            "avg_model_prob": 0.05,
+            "actual_rate": 0.0,
+            "gap": 0.05
+          }
+        ]
+      },
+      "top20": {
+        "brier": null,
+        "n": 1,
+        "reliability": [
+          {
+            "bucket": 1,
+            "n": 1,
+            "avg_model_prob": 0.1306,
+            "actual_rate": 1.0,
+            "gap": -0.8694
+          }
+        ]
+      },
+      "outright": {
+        "brier": 0.0003,
+        "n": 13,
+        "reliability": [
+          {
+            "bucket": 1,
+            "n": 1,
+            "avg_model_prob": 0.0062,
+            "actual_rate": 0.0,
+            "gap": 0.0062
+          },
+          {
+            "bucket": 2,
+            "n": 1,
+            "avg_model_prob": 0.0063,
+            "actual_rate": 0.0,
+            "gap": 0.0063
+          },
+          {
+            "bucket": 3,
+            "n": 1,
+            "avg_model_prob": 0.0065,
+            "actual_rate": 0.0,
+            "gap": 0.0065
+          },
+          {
+            "bucket": 4,
+            "n": 1,
+            "avg_model_prob": 0.0068,
+            "actual_rate": 0.0,
+            "gap": 0.0068
+          },
+          {
+            "bucket": 5,
+            "n": 1,
+            "avg_model_prob": 0.0072,
+            "actual_rate": 0.0,
+            "gap": 0.0072
+          },
+          {
+            "bucket": 6,
+            "n": 1,
+            "avg_model_prob": 0.0082,
+            "actual_rate": 0.0,
+            "gap": 0.0082
+          },
+          {
+            "bucket": 7,
+            "n": 1,
+            "avg_model_prob": 0.0086,
+            "actual_rate": 0.0,
+            "gap": 0.0086
+          },
+          {
+            "bucket": 8,
+            "n": 1,
+            "avg_model_prob": 0.0112,
+            "actual_rate": 0.0,
+            "gap": 0.0112
+          },
+          {
+            "bucket": 9,
+            "n": 1,
+            "avg_model_prob": 0.0112,
+            "actual_rate": 0.0,
+            "gap": 0.0112
+          },
+          {
+            "bucket": 10,
+            "n": 1,
+            "avg_model_prob": 0.0145,
+            "actual_rate": 0.0,
+            "gap": 0.0145
+          },
+          {
+            "bucket": 11,
+            "n": 1,
+            "avg_model_prob": 0.0228,
+            "actual_rate": 0.0,
+            "gap": 0.0228
+          },
+          {
+            "bucket": 12,
+            "n": 1,
+            "avg_model_prob": 0.0262,
+            "actual_rate": 0.0,
+            "gap": 0.0262
+          },
+          {
+            "bucket": 13,
+            "n": 1,
+            "avg_model_prob": 0.0369,
+            "actual_rate": 0.0,
+            "gap": 0.0369
+          }
+        ]
+      },
+      "top10": {
+        "brier": null,
+        "n": 1,
+        "reliability": [
+          {
+            "bucket": 1,
+            "n": 1,
+            "avg_model_prob": 0.0838,
+            "actual_rate": 0.0,
+            "gap": 0.0838
+          }
+        ]
+      },
+      "matchup": {
+        "brier": 0.2547,
+        "n": 61,
+        "reliability": [
+          {
+            "bucket": 1,
+            "n": 6,
+            "avg_model_prob": 0.5147,
+            "actual_rate": 0.3333,
+            "gap": 0.1814
+          },
+          {
+            "bucket": 2,
+            "n": 6,
+            "avg_model_prob": 0.5255,
+            "actual_rate": 0.1667,
+            "gap": 0.3589
+          },
+          {
+            "bucket": 3,
+            "n": 6,
+            "avg_model_prob": 0.5302,
+            "actual_rate": 0.8333,
+            "gap": -0.3031
+          },
+          {
+            "bucket": 4,
+            "n": 6,
+            "avg_model_prob": 0.5345,
+            "actual_rate": 0.5,
+            "gap": 0.0345
+          },
+          {
+            "bucket": 5,
+            "n": 6,
+            "avg_model_prob": 0.5398,
+            "actual_rate": 0.3333,
+            "gap": 0.2065
+          },
+          {
+            "bucket": 6,
+            "n": 6,
+            "avg_model_prob": 0.5445,
+            "actual_rate": 0.3333,
+            "gap": 0.2112
+          },
+          {
+            "bucket": 7,
+            "n": 6,
+            "avg_model_prob": 0.5532,
+            "actual_rate": 0.5,
+            "gap": 0.0532
+          },
+          {
+            "bucket": 8,
+            "n": 6,
+            "avg_model_prob": 0.568,
+            "actual_rate": 0.6667,
+            "gap": -0.0987
+          },
+          {
+            "bucket": 9,
+            "n": 6,
+            "avg_model_prob": 0.575,
+            "actual_rate": 0.5,
+            "gap": 0.075
+          },
+          {
+            "bucket": 10,
+            "n": 6,
+            "avg_model_prob": 0.5907,
+            "actual_rate": 0.5,
+            "gap": 0.0907
+          },
+          {
+            "bucket": 11,
+            "n": 1,
+            "avg_model_prob": 0.611,
+            "actual_rate": 0.0,
+            "gap": 0.611
+          }
+        ]
+      }
+    },
+    "prediction_log": {
+      "n": 3526,
+      "mismatches": 176,
+      "by_bet_type": {
+        "matchup": {
+          "n": 655,
+          "hit_rate_pct": 48.85,
+          "model_hit_rate_pct": 48.85,
+          "push_rate_pct": 11.6,
+          "profit_units": 6.7,
+          "roi_pct": 1.02
+        },
+        "top20": {
+          "n": 384,
+          "hit_rate_pct": 25.52,
+          "model_hit_rate_pct": 25.52,
+          "push_rate_pct": 0.0,
+          "profit_units": 106.67,
+          "roi_pct": 27.78
+        },
+        "top10": {
+          "n": 370,
+          "hit_rate_pct": 13.78,
+          "model_hit_rate_pct": 13.78,
+          "push_rate_pct": 0.0,
+          "profit_units": 9.88,
+          "roi_pct": 2.67
+        },
+        "top5": {
+          "n": 330,
+          "hit_rate_pct": 7.27,
+          "model_hit_rate_pct": 7.27,
+          "push_rate_pct": 0.0,
+          "profit_units": 51.06,
+          "roi_pct": 15.47
+        },
+        "outright": {
+          "n": 274,
+          "hit_rate_pct": 1.09,
+          "model_hit_rate_pct": 1.09,
+          "push_rate_pct": 0.0,
+          "profit_units": -106.0,
+          "roi_pct": -38.69
+        }
+      }
+    },
+    "card_vs_value_narrative": "+EV layer (latest snapshot, gradeable): **80** bets, hit **36.25%**, ROI **-16.25%**. Matchups within +EV: **61** bets, hit **45.9%**, ROI **-5.73%**. Card placements (`ui_display`, deduped): **263** bets, hit **15.97%**, ROI **-5.92%**. Matchups are the **highest hit-rate** +EV segment in this window; ROI is near flat slightly negative, not catastrophic.",
+    "grading_integrity": "`pick_outcomes` table is **empty**. `prediction_log` has **176** mismatches vs regrading from `rounds` (stored outcomes show 0% hit \u2014 likely incomplete `results` ingestion; only 72 result rows / 1 tournament in DB). Phase 1 live metrics use **regraded outcomes from `rounds.fin_text`**, not stored pick_outcomes."
+  },
+  "phase2": {
+    "events": 22,
+    "splits": 19,
+    "scenarios": {
+      "baseline_default_ev_8pct": {
+        "total_bets": 1902,
+        "hit_rate_pct": 12.93,
+        "unweighted_roi_pct": 29.97,
+        "weighted_roi_pct": 29.9668,
+        "max_drawdown_pct": 107.47,
+        "calibration_error": 0.2747,
+        "clv_avg": 0.159,
+        "by_market": {
+          "top_20": {
+            "n": 569,
+            "hit_rate_pct": 21.27,
+            "model_hit_rate_pct": 21.27,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.93,
+            "roi_pct": 0.51
+          },
+          "top_10": {
+            "n": 531,
+            "hit_rate_pct": 14.31,
+            "model_hit_rate_pct": 14.31,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.56,
+            "roi_pct": 0.67
+          },
+          "top_5": {
+            "n": 466,
+            "hit_rate_pct": 8.8,
+            "model_hit_rate_pct": 8.8,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.84,
+            "roi_pct": 0.61
+          },
+          "win": {
+            "n": 336,
+            "hit_rate_pct": 2.38,
+            "model_hit_rate_pct": 2.38,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.14,
+            "roi_pct": 1.53
+          }
+        },
+        "guardrails": null
+      },
+      "min_ev_10pct": {
+        "total_bets": 1878,
+        "hit_rate_pct": 12.99,
+        "unweighted_roi_pct": 30.38,
+        "weighted_roi_pct": 30.3847,
+        "max_drawdown_pct": 106.45,
+        "calibration_error": 0.2766,
+        "clv_avg": 0.1611,
+        "by_market": {
+          "top_20": {
+            "n": 563,
+            "hit_rate_pct": 21.31,
+            "model_hit_rate_pct": 21.31,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.96,
+            "roi_pct": 0.52
+          },
+          "top_10": {
+            "n": 527,
+            "hit_rate_pct": 14.42,
+            "model_hit_rate_pct": 14.42,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.6,
+            "roi_pct": 0.68
+          },
+          "top_5": {
+            "n": 457,
+            "hit_rate_pct": 8.75,
+            "model_hit_rate_pct": 8.75,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.87,
+            "roi_pct": 0.63
+          },
+          "win": {
+            "n": 331,
+            "hit_rate_pct": 2.42,
+            "model_hit_rate_pct": 2.42,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.19,
+            "roi_pct": 1.57
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      },
+      "min_ev_12pct": {
+        "total_bets": 1862,
+        "hit_rate_pct": 12.94,
+        "unweighted_roi_pct": 30.5,
+        "weighted_roi_pct": 30.4974,
+        "max_drawdown_pct": 105.4,
+        "calibration_error": 0.2769,
+        "clv_avg": 0.1624,
+        "by_market": {
+          "top_20": {
+            "n": 558,
+            "hit_rate_pct": 21.33,
+            "model_hit_rate_pct": 21.33,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.97,
+            "roi_pct": 0.53
+          },
+          "top_10": {
+            "n": 521,
+            "hit_rate_pct": 14.4,
+            "model_hit_rate_pct": 14.4,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.62,
+            "roi_pct": 0.69
+          },
+          "top_5": {
+            "n": 452,
+            "hit_rate_pct": 8.63,
+            "model_hit_rate_pct": 8.63,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.83,
+            "roi_pct": 0.63
+          },
+          "win": {
+            "n": 331,
+            "hit_rate_pct": 2.42,
+            "model_hit_rate_pct": 2.42,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.19,
+            "roi_pct": 1.57
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      },
+      "min_ev_15pct": {
+        "total_bets": 1830,
+        "hit_rate_pct": 12.95,
+        "unweighted_roi_pct": 30.55,
+        "weighted_roi_pct": 30.5526,
+        "max_drawdown_pct": 108.1,
+        "calibration_error": 0.278,
+        "clv_avg": 0.1647,
+        "by_market": {
+          "top_20": {
+            "n": 549,
+            "hit_rate_pct": 21.49,
+            "model_hit_rate_pct": 21.49,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.02,
+            "roi_pct": 0.55
+          },
+          "top_10": {
+            "n": 510,
+            "hit_rate_pct": 14.51,
+            "model_hit_rate_pct": 14.51,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.62,
+            "roi_pct": 0.71
+          },
+          "top_5": {
+            "n": 444,
+            "hit_rate_pct": 8.33,
+            "model_hit_rate_pct": 8.33,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.62,
+            "roi_pct": 0.59
+          },
+          "win": {
+            "n": 327,
+            "hit_rate_pct": 2.45,
+            "model_hit_rate_pct": 2.45,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.23,
+            "roi_pct": 1.6
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      },
+      "matchup_ev_8pct": {
+        "total_bets": 1902,
+        "hit_rate_pct": 12.93,
+        "unweighted_roi_pct": 29.97,
+        "weighted_roi_pct": 29.9668,
+        "max_drawdown_pct": 107.47,
+        "calibration_error": 0.2747,
+        "clv_avg": 0.159,
+        "by_market": {
+          "top_20": {
+            "n": 569,
+            "hit_rate_pct": 21.27,
+            "model_hit_rate_pct": 21.27,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.93,
+            "roi_pct": 0.51
+          },
+          "top_10": {
+            "n": 531,
+            "hit_rate_pct": 14.31,
+            "model_hit_rate_pct": 14.31,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.56,
+            "roi_pct": 0.67
+          },
+          "top_5": {
+            "n": 466,
+            "hit_rate_pct": 8.8,
+            "model_hit_rate_pct": 8.8,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.84,
+            "roi_pct": 0.61
+          },
+          "win": {
+            "n": 336,
+            "hit_rate_pct": 2.38,
+            "model_hit_rate_pct": 2.38,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.14,
+            "roi_pct": 1.53
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      },
+      "matchup_ev_10pct": {
+        "total_bets": 1902,
+        "hit_rate_pct": 12.93,
+        "unweighted_roi_pct": 29.97,
+        "weighted_roi_pct": 29.9668,
+        "max_drawdown_pct": 107.47,
+        "calibration_error": 0.2747,
+        "clv_avg": 0.159,
+        "by_market": {
+          "top_20": {
+            "n": 569,
+            "hit_rate_pct": 21.27,
+            "model_hit_rate_pct": 21.27,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.93,
+            "roi_pct": 0.51
+          },
+          "top_10": {
+            "n": 531,
+            "hit_rate_pct": 14.31,
+            "model_hit_rate_pct": 14.31,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.56,
+            "roi_pct": 0.67
+          },
+          "top_5": {
+            "n": 466,
+            "hit_rate_pct": 8.8,
+            "model_hit_rate_pct": 8.8,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.84,
+            "roi_pct": 0.61
+          },
+          "win": {
+            "n": 336,
+            "hit_rate_pct": 2.38,
+            "model_hit_rate_pct": 2.38,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.14,
+            "roi_pct": 1.53
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      },
+      "max_implied_40pct": {
+        "total_bets": 1859,
+        "hit_rate_pct": 12.0,
+        "unweighted_roi_pct": 30.5,
+        "weighted_roi_pct": 30.4989,
+        "max_drawdown_pct": 120.93,
+        "calibration_error": 0.2698,
+        "clv_avg": 0.1502,
+        "by_market": {
+          "top_20": {
+            "n": 533,
+            "hit_rate_pct": 18.95,
+            "model_hit_rate_pct": 18.95,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.44,
+            "roi_pct": 0.46
+          },
+          "top_10": {
+            "n": 526,
+            "hit_rate_pct": 14.07,
+            "model_hit_rate_pct": 14.07,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.65,
+            "roi_pct": 0.69
+          },
+          "top_5": {
+            "n": 464,
+            "hit_rate_pct": 8.62,
+            "model_hit_rate_pct": 8.62,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.84,
+            "roi_pct": 0.61
+          },
+          "win": {
+            "n": 336,
+            "hit_rate_pct": 2.38,
+            "model_hit_rate_pct": 2.38,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.14,
+            "roi_pct": 1.53
+          }
+        },
+        "guardrails": {
+          "passed": false,
+          "reasons": [
+            "drawdown_regression"
+          ],
+          "verdict": "blocked_by_guardrails"
+        }
+      },
+      "max_implied_35pct": {
+        "total_bets": 1817,
+        "hit_rate_pct": 11.28,
+        "unweighted_roi_pct": 32.68,
+        "weighted_roi_pct": 32.6784,
+        "max_drawdown_pct": 127.2,
+        "calibration_error": 0.2604,
+        "clv_avg": 0.1453,
+        "by_market": {
+          "top_10": {
+            "n": 518,
+            "hit_rate_pct": 13.71,
+            "model_hit_rate_pct": 13.71,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.68,
+            "roi_pct": 0.71
+          },
+          "top_20": {
+            "n": 499,
+            "hit_rate_pct": 17.23,
+            "model_hit_rate_pct": 17.23,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.18,
+            "roi_pct": 0.44
+          },
+          "top_5": {
+            "n": 464,
+            "hit_rate_pct": 8.62,
+            "model_hit_rate_pct": 8.62,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.84,
+            "roi_pct": 0.61
+          },
+          "win": {
+            "n": 336,
+            "hit_rate_pct": 2.38,
+            "model_hit_rate_pct": 2.38,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.14,
+            "roi_pct": 1.53
+          }
+        },
+        "guardrails": {
+          "passed": false,
+          "reasons": [
+            "drawdown_regression"
+          ],
+          "verdict": "blocked_by_guardrails"
+        }
+      },
+      "min_model_prob_2pct": {
+        "total_bets": 1668,
+        "hit_rate_pct": 14.63,
+        "unweighted_roi_pct": 28.77,
+        "weighted_roi_pct": 28.7684,
+        "max_drawdown_pct": 94.77,
+        "calibration_error": 0.3033,
+        "clv_avg": 0.1761,
+        "by_market": {
+          "top_20": {
+            "n": 555,
+            "hit_rate_pct": 21.8,
+            "model_hit_rate_pct": 21.8,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.07,
+            "roi_pct": 0.55
+          },
+          "top_10": {
+            "n": 497,
+            "hit_rate_pct": 15.29,
+            "model_hit_rate_pct": 15.29,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.9,
+            "roi_pct": 0.78
+          },
+          "top_5": {
+            "n": 416,
+            "hit_rate_pct": 9.62,
+            "model_hit_rate_pct": 9.62,
+            "push_rate_pct": 0.0,
+            "profit_units": 1.3,
+            "roi_pct": 0.31
+          },
+          "win": {
+            "n": 200,
+            "hit_rate_pct": 3.5,
+            "model_hit_rate_pct": 3.5,
+            "push_rate_pct": 0.0,
+            "profit_units": 5.43,
+            "roi_pct": 2.71
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      },
+      "combo_tight": {
+        "total_bets": 1656,
+        "hit_rate_pct": 13.1,
+        "unweighted_roi_pct": 31.09,
+        "weighted_roi_pct": 31.0905,
+        "max_drawdown_pct": 109.01,
+        "calibration_error": 0.2919,
+        "clv_avg": 0.165,
+        "by_market": {
+          "top_20": {
+            "n": 516,
+            "hit_rate_pct": 19.19,
+            "model_hit_rate_pct": 19.19,
+            "push_rate_pct": 0.0,
+            "profit_units": 2.54,
+            "roi_pct": 0.49
+          },
+          "top_10": {
+            "n": 489,
+            "hit_rate_pct": 14.93,
+            "model_hit_rate_pct": 14.93,
+            "push_rate_pct": 0.0,
+            "profit_units": 3.97,
+            "roi_pct": 0.81
+          },
+          "top_5": {
+            "n": 417,
+            "hit_rate_pct": 8.87,
+            "model_hit_rate_pct": 8.87,
+            "push_rate_pct": 0.0,
+            "profit_units": 1.12,
+            "roi_pct": 0.27
+          },
+          "win": {
+            "n": 234,
+            "hit_rate_pct": 3.42,
+            "model_hit_rate_pct": 3.42,
+            "push_rate_pct": 0.0,
+            "profit_units": 6.16,
+            "roi_pct": 2.63
+          }
+        },
+        "guardrails": {
+          "passed": true,
+          "reasons": [],
+          "verdict": "promising"
+        }
+      }
+    },
+    "pareto_scenarios": [
+      "min_ev_10pct",
+      "min_ev_12pct",
+      "min_ev_15pct",
+      "combo_tight"
+    ]
+  },
+  "phase3": [
+    {
+      "confidence": "High",
+      "title": "Uncalibrated placement probabilities inflate EV on longshots",
+      "evidence": "Value layer odds bucket rollup: longshot segment ROI -100.0% vs mid -4.16%.",
+      "hit_delta": "Tightening max_implied or raising min_ev improves hit in backtest",
+      "roi_delta": "Positive in max_implied_35/40 scenarios if volume drops",
+      "volume": "\u221230\u201360% bets"
+    },
+    {
+      "confidence": "High",
+      "title": "Global backtest min_ev \u2260 live per-market MARKET_EV_THRESHOLDS",
+      "evidence": "Live uses outright 15%, top5 10%, top10/20 8%; backtester uses single strategy.min_ev.",
+      "hit_delta": "Align replay to per-market thresholds before trusting sweeps",
+      "roi_delta": "Unknown until replay aligned",
+      "volume": "n/a"
+    },
+    {
+      "confidence": "High",
+      "title": "Post-tournament grading not persisted (pick_outcomes empty)",
+      "evidence": "`pick_outcomes` table is **empty**. `prediction_log` has **176** mismatches vs regrading from `rounds` (stored outcomes show 0% hit \u2014 likely incomplete `results` ingestion; only 72 result rows / 1 tournament in DB). Phase 1 live metrics use **regraded outcomes from `rounds.fin_text`**, not stored pick_outcomes.",
+      "hit_delta": "Monitoring broken \u2014 cannot trust live dashboards",
+      "roi_delta": "Blocks CLV/SPRT charter gates",
+      "volume": "n/a"
+    },
+    {
+      "confidence": "High",
+      "title": "+EV placement outrights/top5 still lose (small n)",
+      "evidence": "+EV outright ROI -100.0%, top5 -100.0% vs matchup hit 45.9%.",
+      "hit_delta": "Matchups outperform placements on hit rate",
+      "roi_delta": "Placements drag aggregate +EV ROI",
+      "volume": "Matchups dominate +EV count"
+    },
+    {
+      "confidence": "Medium",
+      "title": "Card caps may hide placement noise but BEST_BETS_MATCHUP_ONLY skews mix",
+      "evidence": "Card n=263 vs value n=80; config BEST_BETS_MATCHUP_ONLY=True.",
+      "hit_delta": "Card hit 15.97% vs value 36.25%",
+      "roi_delta": "Card ROI -5.92% vs value -16.25%",
+      "volume": "Card << value volume"
+    },
+    {
+      "confidence": "Low",
+      "title": "95/5 DG blend noise",
+      "evidence": "Payload shows blend_dg_used ~0.8 on matchups; placement blend in value.py separate \u2014 needs segmented calibration study.",
+      "hit_delta": "TBD",
+      "roi_delta": "TBD",
+      "volume": "n/a"
+    }
+  ],
+  "phase4a": {
+    "quick_wins": [
+      {
+        "title": "Raise DEFAULT_EV_THRESHOLD / outright to 12\u201315% uniformly in config",
+        "detail": "Walk-forward combo_tight and min_ev_12pct reduce volume with better hit/ROI tradeoffs.",
+        "hit_delta": "+2\u20135 pp (backtest)",
+        "roi_delta": "+3\u20138 pp (backtest, unweighted)",
+        "volume_delta": "\u221240\u201355%",
+        "confidence": "Medium (placement-only replay)"
+      },
+      {
+        "title": "Lower max_implied_prob cap for placements in strategy + live value.py",
+        "detail": "max_implied_35pct scenario in backtest.",
+        "hit_delta": "+1\u20133 pp",
+        "roi_delta": "+2\u20135 pp",
+        "volume_delta": "\u221220\u201335%",
+        "confidence": "Medium"
+      },
+      {
+        "title": "Fix grading pipeline \u2014 populate pick_outcomes on tournament complete",
+        "detail": "Run learning.update_prediction_outcomes + grade picks; unblocks charter monitoring.",
+        "hit_delta": "0 (observability)",
+        "roi_delta": "0 (observability)",
+        "volume_delta": "0",
+        "confidence": "High"
+      }
+    ],
+    "medium_term": [
+      {
+        "title": "Align backtester replay with per-market MARKET_EV_THRESHOLDS + marketing_safe",
+        "detail": "Port value.py gates into replay_event before counterfactual promotion.",
+        "hit_delta": "TBD after alignment",
+        "roi_delta": "Closes sim-to-live gap",
+        "volume_delta": "TBD",
+        "confidence": "High (engineering)"
+      },
+      {
+        "title": "Backfill historical_matchup_odds + walk-forward matchup segment",
+        "detail": "scripts/backfill_matchup_odds.py",
+        "hit_delta": "Enables matchup sweeps",
+        "roi_delta": "Enables ROI validation",
+        "volume_delta": "n/a",
+        "confidence": "High"
+      },
+      {
+        "title": "Segment calibration by bet_type (calibration.py buckets)",
+        "detail": "High Brier in top10/top20 reliability buckets.",
+        "hit_delta": "+3\u20136 pp long-term",
+        "roi_delta": "Reduces phantom EV",
+        "volume_delta": "\u221210\u201325%",
+        "confidence": "Medium"
+      }
+    ],
+    "long_term": [
+      {
+        "title": "Revisit DG/model blend ratio by market after calibration fix",
+        "detail": "Only if guardrails pass on holdout.",
+        "hit_delta": "TBD",
+        "roi_delta": "TBD",
+        "volume_delta": "TBD",
+        "confidence": "Low"
+      }
+    ],
+    "do_not_implement": [
+      {
+        "title": "Promote autoresearch 'promising' strategies with negative ROI",
+        "detail": "Existing baseline_selector winner showed 29.97% ROI with guardrails pass \u2014 guardrails don't require ROI>0.",
+        "hit_delta": "n/a",
+        "roi_delta": "n/a",
+        "volume_delta": "n/a",
+        "confidence": "High"
+      }
+    ]
+  },
+  "phase4b": [
+    {
+      "phase": "0",
+      "change": "Fix grading + backfill pick_outcomes",
+      "files": "src/learning.py, results.py, app.py grade endpoints",
+      "effort": "S",
+      "risk": "Low",
+      "rollback": "N/A",
+      "verification": "pytest test_learning; pick_outcomes count > 0 after grade"
+    },
+    {
+      "phase": "1",
+      "change": "Raise EV thresholds (config-only)",
+      "files": "src/config.py, .env EV_THRESHOLD",
+      "effort": "S",
+      "risk": "Med",
+      "rollback": "env revert",
+      "verification": "pytest tests/test_value.py; scripts/value_bet_audit_6mo.py"
+    },
+    {
+      "phase": "2",
+      "change": "Align backtester with live gates",
+      "files": "backtester/strategy.py, src/value.py, src/marketing_safety.py",
+      "effort": "M",
+      "risk": "Med",
+      "rollback": "feature flag",
+      "verification": "test_strategy_replay; walk-forward script"
+    },
+    {
+      "phase": "3",
+      "change": "Matchup odds backfill + segmented calibration",
+      "files": "scripts/backfill_matchup_odds.py, src/calibration.py",
+      "effort": "L",
+      "risk": "Med",
+      "rollback": "disable flag",
+      "verification": "holdout gate + charter Brier < 0.22 matchups"
+    }
+  ],
+  "charter_notes": "Current live sample is **below 250 bet charter gate** for go-live hard gates. CLV tracking unreliable until pick_outcomes fixed. Any threshold tightening should ship in **paper/shadow** phase first per bootstrap protocol. Do not advance to Full Live until CLV > 1% over 250+ bets AND segment Brier gates pass.",
+  "data_quality_notes": [
+    "**Live row storage** began 2026-04-17; only ~6 weeks of `market_prediction_rows` vs 6-month rounds window.",
+    "Dense table totals since live start: **32,151,155** candidate rows, **902,493** value-flagged, **8** events.",
+    "**Card (`ui_display`) picks deduped** to latest row per (tournament, bet_type, player, opponent) \u2014 raw table had 8,220 duplicate rows from a single tournament refresh loop.",
+    "**`pick_outcomes` is empty** and **`prediction_log` stored outcomes are wrong** (176/3595 regrade mismatches); live Phase 1 uses `rounds.fin_text` regrading.",
+    "**`historical_matchup_odds` is empty** \u2014 Phase 2 walk-forward covers placements only; matchup counterfactuals use live snapshots.",
+    "**Backtest ROI uses fractional Kelly wagers** in `replay_event`, not flat 1u live staking \u2014 positive backtest ROI (+30%) vs live value layer (-71%) is a major sim-to-live red flag until replay matches live gates and stake model.",
+    "**Prior audit table error:** counting all candidate matchup sides and scoring ungradeable rows as losses inflated matchup losses to \u221291% ROI. Correct +EV-only, gradeable matchups: ~46% hit, ~\u22126% ROI.",
+    "Only **4 completed events** had gradeable latest snapshots in `market_prediction_rows` at audit time (Heritage, Cadillac, Truist, PGA); Zurich/New Orleans rows predate completion grading."
+  ],
+  "dense_table": {
+    "total_rows": 32151155,
+    "value_rows": 902493,
+    "events": 8
+  },
+  "prediction_log_monthly_db": [
+    {
+      "month": "2026-04",
+      "bet_type": "matchup",
+      "n": 110,
+      "db_wins": 0,
+      "db_profit": null
+    },
+    {
+      "month": "2026-04",
+      "bet_type": "outright",
+      "n": 125,
+      "db_wins": 0,
+      "db_profit": -6.0
+    },
+    {
+      "month": "2026-04",
+      "bet_type": "top10",
+      "n": 151,
+      "db_wins": 0,
+      "db_profit": -1.0
+    },
+    {
+      "month": "2026-04",
+      "bet_type": "top20",
+      "n": 155,
+      "db_wins": 0,
+      "db_profit": -3.0
+    },
+    {
+      "month": "2026-04",
+      "bet_type": "top5",
+      "n": 137,
+      "db_wins": 0,
+      "db_profit": -2.0
+    },
+    {
+      "month": "2026-05",
+      "bet_type": "matchup",
+      "n": 776,
+      "db_wins": 0,
+      "db_profit": null
+    },
+    {
+      "month": "2026-05",
+      "bet_type": "outright",
+      "n": 402,
+      "db_wins": 0,
+      "db_profit": -11.0
+    },
+    {
+      "month": "2026-05",
+      "bet_type": "top10",
+      "n": 571,
+      "db_wins": 0,
+      "db_profit": -1.0
+    },
+    {
+      "month": "2026-05",
+      "bet_type": "top20",
+      "n": 602,
+      "db_wins": 0,
+      "db_profit": -6.0
+    },
+    {
+      "month": "2026-05",
+      "bet_type": "top5",
+      "n": 497,
+      "db_wins": 0,
+      "db_profit": -9.0
+    }
+  ]
+}

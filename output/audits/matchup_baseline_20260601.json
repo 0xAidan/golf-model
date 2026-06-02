@@ -1,0 +1,618 @@
+{
+  "generated_at": "2026-06-01T17:09:42.841458+00:00",
+  "db_path": "/opt/golf-model/data/golf.db",
+  "years": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
+  "strategy": "{\"ai_adj_cap\": 5.0, \"description\": \"\", \"flat_stake\": 0.02, \"kelly_fraction\": 0.25, \"markets\": [\"matchup\"], \"matchup_ev_threshold\": 0.05, \"matchup_market_types\": [\"72-hole Match\", \"R1 Match-Up\"], \"max_implied_prob\": 0.5, \"max_win_prob_cap\": 0.85, \"min_composite_gap\": 5.0, \"min_ev\": 0.08, \"min_model_prob\": 0.005, \"model_variant\": \"baseline\", \"name\": \"matchup_baseline_e0\", \"platt_a\": -0.05, \"platt_b\": 0.0, \"softmax_temp\": 1.0, \"stake_mode\": \"flat\", \"stat_window\": 24, \"use_weather\": true, \"w_course_fit\": 0.15, \"w_form\": 0.15, \"w_sg_app\": 0.15, \"w_sg_arg\": 0.05, \"w_sg_ott\": 0.1, \"w_sg_putt\": 0.1, \"w_sg_total\": 0.3, \"w_sub_course_fit\": 0.4, \"w_sub_form\": 0.4, \"w_sub_momentum\": 0.2}",
+  "overall": {
+    "n": 2060,
+    "hit_rate_pct": 47.67,
+    "roi_pct": -6.12,
+    "brier": 0.3316
+  },
+  "events_with_matchup_rows": 66,
+  "events": [
+    {
+      "event_id": "6",
+      "event_name": "Sony Open in Hawaii",
+      "year": 2025,
+      "n": 13,
+      "hit_rate_pct": 61.54,
+      "roi_pct": 16.58,
+      "brier": 0.3142
+    },
+    {
+      "event_id": "2",
+      "event_name": "The American Express",
+      "year": 2025,
+      "n": 60,
+      "hit_rate_pct": 51.67,
+      "roi_pct": 3.32,
+      "brier": 0.2858
+    },
+    {
+      "event_id": "4",
+      "event_name": "Farmers Insurance Open",
+      "year": 2025,
+      "n": 16,
+      "hit_rate_pct": 37.5,
+      "roi_pct": -29.16,
+      "brier": 0.3647
+    },
+    {
+      "event_id": "5",
+      "event_name": "AT&T Pebble Beach Pro-Am",
+      "year": 2025,
+      "n": 45,
+      "hit_rate_pct": 42.22,
+      "roi_pct": -12.03,
+      "brier": 0.3766
+    },
+    {
+      "event_id": "3",
+      "event_name": "WM Phoenix Open",
+      "year": 2025,
+      "n": 28,
+      "hit_rate_pct": 57.14,
+      "roi_pct": 14.64,
+      "brier": 0.2933
+    },
+    {
+      "event_id": "7",
+      "event_name": "The Genesis Invitational",
+      "year": 2025,
+      "n": 31,
+      "hit_rate_pct": 38.71,
+      "roi_pct": -26.56,
+      "brier": 0.398
+    },
+    {
+      "event_id": "540",
+      "event_name": "Mexico Open at VidantaWorld",
+      "year": 2025,
+      "n": 21,
+      "hit_rate_pct": 52.38,
+      "roi_pct": -1.71,
+      "brier": 0.3073
+    },
+    {
+      "event_id": "10",
+      "event_name": "Cognizant Classic in The Palm Beaches",
+      "year": 2025,
+      "n": 24,
+      "hit_rate_pct": 62.5,
+      "roi_pct": 19.5,
+      "brier": 0.233
+    },
+    {
+      "event_id": "483",
+      "event_name": "Puerto Rico Open",
+      "year": 2025,
+      "n": 16,
+      "hit_rate_pct": 37.5,
+      "roi_pct": -30.47,
+      "brier": 0.2888
+    },
+    {
+      "event_id": "9",
+      "event_name": "Arnold Palmer Invitational presented by Mastercard",
+      "year": 2025,
+      "n": 56,
+      "hit_rate_pct": 42.86,
+      "roi_pct": -10.59,
+      "brier": 0.3481
+    },
+    {
+      "event_id": "11",
+      "event_name": "THE PLAYERS Championship",
+      "year": 2025,
+      "n": 26,
+      "hit_rate_pct": 57.69,
+      "roi_pct": 13.56,
+      "brier": 0.2469
+    },
+    {
+      "event_id": "475",
+      "event_name": "Valspar Championship",
+      "year": 2025,
+      "n": 20,
+      "hit_rate_pct": 60.0,
+      "roi_pct": 16.85,
+      "brier": 0.2282
+    },
+    {
+      "event_id": "20",
+      "event_name": "Texas Children's Houston Open",
+      "year": 2025,
+      "n": 23,
+      "hit_rate_pct": 17.39,
+      "roi_pct": -66.26,
+      "brier": 0.5059
+    },
+    {
+      "event_id": "41",
+      "event_name": "Valero Texas Open",
+      "year": 2025,
+      "n": 20,
+      "hit_rate_pct": 50.0,
+      "roi_pct": -4.88,
+      "brier": 0.3252
+    },
+    {
+      "event_id": "14",
+      "event_name": "Masters Tournament",
+      "year": 2025,
+      "n": 17,
+      "hit_rate_pct": 47.06,
+      "roi_pct": -10.24,
+      "brier": 0.332
+    },
+    {
+      "event_id": "12",
+      "event_name": "RBC Heritage",
+      "year": 2025,
+      "n": 52,
+      "hit_rate_pct": 57.69,
+      "roi_pct": 20.04,
+      "brier": 0.2832
+    },
+    {
+      "event_id": "522",
+      "event_name": "Corales Puntacana Championship",
+      "year": 2025,
+      "n": 18,
+      "hit_rate_pct": 55.56,
+      "roi_pct": 6.33,
+      "brier": 0.2808
+    },
+    {
+      "event_id": "19",
+      "event_name": "THE CJ CUP Byron Nelson",
+      "year": 2025,
+      "n": 24,
+      "hit_rate_pct": 62.5,
+      "roi_pct": 17.83,
+      "brier": 0.251
+    },
+    {
+      "event_id": "480",
+      "event_name": "Truist Championship",
+      "year": 2025,
+      "n": 24,
+      "hit_rate_pct": 50.0,
+      "roi_pct": 0.35,
+      "brier": 0.346
+    },
+    {
+      "event_id": "553",
+      "event_name": "ONEflight Myrtle Beach Classic",
+      "year": 2025,
+      "n": 20,
+      "hit_rate_pct": 65.0,
+      "roi_pct": 23.92,
+      "brier": 0.2343
+    },
+    {
+      "event_id": "33",
+      "event_name": "PGA Championship",
+      "year": 2025,
+      "n": 27,
+      "hit_rate_pct": 33.33,
+      "roi_pct": -33.33,
+      "brier": 0.3658
+    },
+    {
+      "event_id": "21",
+      "event_name": "Charles Schwab Challenge",
+      "year": 2025,
+      "n": 22,
+      "hit_rate_pct": 45.45,
+      "roi_pct": -12.3,
+      "brier": 0.3764
+    },
+    {
+      "event_id": "23",
+      "event_name": "the Memorial Tournament presented by Workday",
+      "year": 2025,
+      "n": 57,
+      "hit_rate_pct": 49.12,
+      "roi_pct": -1.57,
+      "brier": 0.3639
+    },
+    {
+      "event_id": "32",
+      "event_name": "RBC Canadian Open",
+      "year": 2025,
+      "n": 19,
+      "hit_rate_pct": 52.63,
+      "roi_pct": 2.08,
+      "brier": 0.3232
+    },
+    {
+      "event_id": "26",
+      "event_name": "U.S. Open",
+      "year": 2025,
+      "n": 28,
+      "hit_rate_pct": 53.57,
+      "roi_pct": 3.3,
+      "brier": 0.2958
+    },
+    {
+      "event_id": "34",
+      "event_name": "Travelers Championship",
+      "year": 2025,
+      "n": 54,
+      "hit_rate_pct": 46.3,
+      "roi_pct": -3.53,
+      "brier": 0.3615
+    },
+    {
+      "event_id": "524",
+      "event_name": "Rocket Classic",
+      "year": 2025,
+      "n": 19,
+      "hit_rate_pct": 31.58,
+      "roi_pct": -41.29,
+      "brier": 0.4256
+    },
+    {
+      "event_id": "30",
+      "event_name": "John Deere Classic",
+      "year": 2025,
+      "n": 26,
+      "hit_rate_pct": 53.85,
+      "roi_pct": 3.52,
+      "brier": 0.3242
+    },
+    {
+      "event_id": "518",
+      "event_name": "ISCO Championship",
+      "year": 2025,
+      "n": 15,
+      "hit_rate_pct": 53.33,
+      "roi_pct": 0.63,
+      "brier": 0.2866
+    },
+    {
+      "event_id": "541",
+      "event_name": "Genesis Scottish Open",
+      "year": 2025,
+      "n": 23,
+      "hit_rate_pct": 39.13,
+      "roi_pct": -22.3,
+      "brier": 0.3294
+    },
+    {
+      "event_id": "100",
+      "event_name": "The Open Championship",
+      "year": 2025,
+      "n": 37,
+      "hit_rate_pct": 37.84,
+      "roi_pct": -27.58,
+      "brier": 0.3723
+    },
+    {
+      "event_id": "472",
+      "event_name": "Barracuda Championship",
+      "year": 2025,
+      "n": 24,
+      "hit_rate_pct": 45.83,
+      "roi_pct": -13.56,
+      "brier": 0.3629
+    },
+    {
+      "event_id": "525",
+      "event_name": "3M Open",
+      "year": 2025,
+      "n": 16,
+      "hit_rate_pct": 43.75,
+      "roi_pct": -15.34,
+      "brier": 0.3421
+    },
+    {
+      "event_id": "13",
+      "event_name": "Wyndham Championship",
+      "year": 2025,
+      "n": 25,
+      "hit_rate_pct": 32.0,
+      "roi_pct": -38.04,
+      "brier": 0.4413
+    },
+    {
+      "event_id": "27",
+      "event_name": "FedEx St. Jude Championship",
+      "year": 2025,
+      "n": 57,
+      "hit_rate_pct": 45.61,
+      "roi_pct": -6.32,
+      "brier": 0.3393
+    },
+    {
+      "event_id": "28",
+      "event_name": "BMW Championship",
+      "year": 2025,
+      "n": 53,
+      "hit_rate_pct": 45.28,
+      "roi_pct": -11.42,
+      "brier": 0.3485
+    },
+    {
+      "event_id": "60",
+      "event_name": "TOUR Championship",
+      "year": 2025,
+      "n": 36,
+      "hit_rate_pct": 50.0,
+      "roi_pct": -1.29,
+      "brier": 0.2969
+    },
+    {
+      "event_id": "464",
+      "event_name": "Procore Championship",
+      "year": 2025,
+      "n": 28,
+      "hit_rate_pct": 60.71,
+      "roi_pct": 15.82,
+      "brier": 0.2835
+    },
+    {
+      "event_id": "54",
+      "event_name": "Sanderson Farms Championship",
+      "year": 2025,
+      "n": 27,
+      "hit_rate_pct": 59.26,
+      "roi_pct": 12.91,
+      "brier": 0.2542
+    },
+    {
+      "event_id": "527",
+      "event_name": "Baycurrent Classic",
+      "year": 2025,
+      "n": 24,
+      "hit_rate_pct": 45.83,
+      "roi_pct": -13.75,
+      "brier": 0.381
+    },
+    {
+      "event_id": "554",
+      "event_name": "Bank of Utah Championship",
+      "year": 2025,
+      "n": 27,
+      "hit_rate_pct": 51.85,
+      "roi_pct": -2.57,
+      "brier": 0.3683
+    },
+    {
+      "event_id": "457",
+      "event_name": "World Wide Technology Championship",
+      "year": 2025,
+      "n": 26,
+      "hit_rate_pct": 65.38,
+      "roi_pct": 26.75,
+      "brier": 0.2273
+    },
+    {
+      "event_id": "528",
+      "event_name": "Butterfield Bermuda Championship",
+      "year": 2025,
+      "n": 25,
+      "hit_rate_pct": 52.0,
+      "roi_pct": 0.68,
+      "brier": 0.3225
+    },
+    {
+      "event_id": "493",
+      "event_name": "The RSM Classic",
+      "year": 2025,
+      "n": 24,
+      "hit_rate_pct": 45.83,
+      "roi_pct": -10.92,
+      "brier": 0.315
+    },
+    {
+      "event_id": "478",
+      "event_name": "Hero World Challenge",
+      "year": 2025,
+      "n": 21,
+      "hit_rate_pct": 47.62,
+      "roi_pct": -3.12,
+      "brier": 0.374
+    },
+    {
+      "event_id": "6",
+      "event_name": "Sony Open in Hawaii",
+      "year": 2026,
+      "n": 25,
+      "hit_rate_pct": 36.0,
+      "roi_pct": -32.52,
+      "brier": 0.331
+    },
+    {
+      "event_id": "2",
+      "event_name": "The American Express",
+      "year": 2026,
+      "n": 90,
+      "hit_rate_pct": 60.0,
+      "roi_pct": 23.04,
+      "brier": 0.2663
+    },
+    {
+      "event_id": "4",
+      "event_name": "Farmers Insurance Open",
+      "year": 2026,
+      "n": 29,
+      "hit_rate_pct": 37.93,
+      "roi_pct": -27.97,
+      "brier": 0.3543
+    },
+    {
+      "event_id": "3",
+      "event_name": "WM Phoenix Open",
+      "year": 2026,
+      "n": 23,
+      "hit_rate_pct": 60.87,
+      "roi_pct": 28.09,
+      "brier": 0.2606
+    },
+    {
+      "event_id": "5",
+      "event_name": "AT&T Pebble Beach Pro-Am",
+      "year": 2026,
+      "n": 72,
+      "hit_rate_pct": 45.83,
+      "roi_pct": -6.47,
+      "brier": 0.3391
+    },
+    {
+      "event_id": "7",
+      "event_name": "The Genesis Invitational",
+      "year": 2026,
+      "n": 33,
+      "hit_rate_pct": 45.45,
+      "roi_pct": -12.44,
+      "brier": 0.3626
+    },
+    {
+      "event_id": "10",
+      "event_name": "Cognizant Classic in The Palm Beaches",
+      "year": 2026,
+      "n": 26,
+      "hit_rate_pct": 50.0,
+      "roi_pct": -4.92,
+      "brier": 0.3121
+    },
+    {
+      "event_id": "483",
+      "event_name": "Puerto Rico Open",
+      "year": 2026,
+      "n": 23,
+      "hit_rate_pct": 43.48,
+      "roi_pct": -16.54,
+      "brier": 0.3259
+    },
+    {
+      "event_id": "9",
+      "event_name": "Arnold Palmer Invitational presented by Mastercard",
+      "year": 2026,
+      "n": 59,
+      "hit_rate_pct": 55.93,
+      "roi_pct": 12.31,
+      "brier": 0.2957
+    },
+    {
+      "event_id": "11",
+      "event_name": "THE PLAYERS Championship",
+      "year": 2026,
+      "n": 36,
+      "hit_rate_pct": 41.67,
+      "roi_pct": -22.07,
+      "brier": 0.3867
+    },
+    {
+      "event_id": "475",
+      "event_name": "Valspar Championship",
+      "year": 2026,
+      "n": 21,
+      "hit_rate_pct": 47.62,
+      "roi_pct": -7.31,
+      "brier": 0.2903
+    },
+    {
+      "event_id": "20",
+      "event_name": "Texas Children's Houston Open",
+      "year": 2026,
+      "n": 17,
+      "hit_rate_pct": 41.18,
+      "roi_pct": -20.32,
+      "brier": 0.3264
+    },
+    {
+      "event_id": "41",
+      "event_name": "Valero Texas Open",
+      "year": 2026,
+      "n": 20,
+      "hit_rate_pct": 65.0,
+      "roi_pct": 24.43,
+      "brier": 0.2423
+    },
+    {
+      "event_id": "14",
+      "event_name": "Masters Tournament",
+      "year": 2026,
+      "n": 40,
+      "hit_rate_pct": 32.5,
+      "roi_pct": -38.02,
+      "brier": 0.4265
+    },
+    {
+      "event_id": "12",
+      "event_name": "RBC Heritage",
+      "year": 2026,
+      "n": 53,
+      "hit_rate_pct": 39.62,
+      "roi_pct": -22.41,
+      "brier": 0.342
+    },
+    {
+      "event_id": "556",
+      "event_name": "Cadillac Championship",
+      "year": 2026,
+      "n": 53,
+      "hit_rate_pct": 41.51,
+      "roi_pct": -17.95,
+      "brier": 0.343
+    },
+    {
+      "event_id": "480",
+      "event_name": "Truist Championship",
+      "year": 2026,
+      "n": 54,
+      "hit_rate_pct": 35.19,
+      "roi_pct": -29.52,
+      "brier": 0.4093
+    },
+    {
+      "event_id": "553",
+      "event_name": "ONEflight Myrtle Beach Classic",
+      "year": 2026,
+      "n": 20,
+      "hit_rate_pct": 55.0,
+      "roi_pct": 5.92,
+      "brier": 0.2989
+    },
+    {
+      "event_id": "33",
+      "event_name": "PGA Championship",
+      "year": 2026,
+      "n": 32,
+      "hit_rate_pct": 50.0,
+      "roi_pct": -2.78,
+      "brier": 0.3385
+    },
+    {
+      "event_id": "19",
+      "event_name": "THE CJ CUP Byron Nelson",
+      "year": 2026,
+      "n": 21,
+      "hit_rate_pct": 33.33,
+      "roi_pct": -31.52,
+      "brier": 0.4277
+    },
+    {
+      "event_id": "21",
+      "event_name": "Charles Schwab Challenge",
+      "year": 2026,
+      "n": 19,
+      "hit_rate_pct": 42.11,
+      "roi_pct": -19.05,
+      "brier": 0.3764
+    }
+  ]
+}

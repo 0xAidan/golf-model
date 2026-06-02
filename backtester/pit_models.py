@@ -271,7 +271,7 @@ def compute_pit_course_fit(event_id: str, year: int) -> dict:
     w_sg_app = config.DEFAULT_WEIGHTS.get("course_sg_app", 0.28)
     w_sg_ott = config.DEFAULT_WEIGHTS.get("course_sg_ott", 0.30)
     w_sg_putt = config.DEFAULT_WEIGHTS.get("course_sg_putt", 0.10)
-    w_sg_arg = 0.10  # course has par_eff; PIT uses arg for remainder
+    w_sg_arg = config.DEFAULT_WEIGHTS.get("course_sg_arg", 0.10)
     w_finish = config.DEFAULT_WEIGHTS.get("course_par_eff", 0.10)
 
     results = {}

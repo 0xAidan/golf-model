@@ -47,6 +47,9 @@ This document is the **human-edited contract** for autoresearch in this reposito
 ## Objective alignment (matchup edge)
 
 - Production workflow prioritizes **matchup-first, high-EV** cards (see grading notes in `docs/card_grading_report.md`). Edge search should prefer objectives and dashboards that reflect **that** success, not only abstract blended-score leaderboards.
+- For matchup-lab experiments, use a matchup-weighted scalar when ranking candidates:
+  - `matchup_weighted_score = 0.45 * roi_pct + 0.30 * hit_rate_pct - 0.20 * (100 * brier) - 0.05 * drawdown_pct`
+  - Keep this scalar for ranking only; report dual metrics (`hit_rate`, `roi`, `brier`, `n`) and Pareto tradeoffs in parallel.
 
 ## Related
 

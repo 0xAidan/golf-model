@@ -4,6 +4,7 @@ from src.odds import american_to_implied_prob
 from src.matchup_value import (
     _extract_dg_prob_from_matchup,
     _parse_best_odds,
+    evaluate_matchup_pair,
     find_matchup_value_bets,
     find_matchup_value_bets_with_all_books,
 )
@@ -455,3 +456,105 @@ def test_find_matchup_value_bets_falls_back_to_nested_datagolf_prices(monkeypatc
     assert result[0]["dg_win_prob"] == pytest.approx(0.533, abs=0.01)
     assert result[0]["platt_win_prob"] == pytest.approx(0.668, abs=0.01)
     assert result[0]["model_win_prob"] == pytest.approx(0.566, abs=0.02)
+
+
+def test_evaluate_matchup_pair_matches_live_path_baseline(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    p1 = {
+        "player_key": "player_a",
+        "player_display": "Player A",
+        "composite": 78.0,
+        "form": 75.0,
+        "course_fit": 72.0,
+        "momentum": 60.0,
+    }
+    p2 = {
+        "player_key": "player_b",
+        "player_display": "Player B",
+        "composite": 61.0,
+        "form": 58.0,
+        "course_fit": 57.0,
+        "momentum": 45.0,
+    }
+    matchup = [{
+        "p1_player_name": "Player A",
+        "p2_player_name": "Player B",
+        "odds": {"bet365": {"p1": 112, "p2": -132}},
+    }]
+    live_rows = find_matchup_value_bets(
+        [p1, p2],
+        matchup,
+        ev_threshold=0.01,
+        required_book="bet365",
+        model_variant="baseline",
+    )
+    assert live_rows
+
+    eval_row, reason, _ = evaluate_matchup_pair(
+        p1_data=p1,
+        p2_data=p2,
+        p1_odds=112,
+        p2_odds=-132,
+        ev_threshold=0.01,
+        dg_prob=None,
+        model_variant="baseline",
+        market_type="tournament_matchups",
+        book="bet365",
+    )
+    assert reason is None
+    assert eval_row is not None
+    assert eval_row["model_win_prob"] == pytest.approx(live_rows[0]["model_win_prob"], abs=1e-4)
+    assert eval_row["ev"] == pytest.approx(live_rows[0]["ev"], abs=1e-4)
+    assert eval_row["tier"] == live_rows[0]["tier"]
+
+
+def test_evaluate_matchup_pair_matches_live_path_v5(monkeypatch):
+    monkeypatch.setattr("src.datagolf.fetch_dg_matchup_all_pairings", lambda tour="pga", odds_format="american": {})
+
+    p1 = {
+        "player_key": "player_a",
+        "player_display": "Player A",
+        "composite": 79.0,
+        "form": 76.0,
+        "course_fit": 74.0,
+        "momentum": 61.0,
+    }
+    p2 = {
+        "player_key": "player_b",
+        "player_display": "Player B",
+        "composite": 66.0,
+        "form": 63.0,
+        "course_fit": 62.0,
+        "momentum": 49.0,
+    }
+    matchup = [{
+        "p1_player_name": "Player A",
+        "p2_player_name": "Player B",
+        "odds": {"bet365": {"p1": 105, "p2": -125}},
+    }]
+    live_rows = find_matchup_value_bets(
+        [p1, p2],
+        matchup,
+        ev_threshold=0.01,
+        required_book="bet365",
+        model_variant="v5",
+    )
+    assert live_rows
+
+    eval_row, reason, _ = evaluate_matchup_pair(
+        p1_data=p1,
+        p2_data=p2,
+        p1_odds=105,
+        p2_odds=-125,
+        ev_threshold=0.01,
+        dg_prob=None,
+        model_variant="v5",
+        market_type="tournament_matchups",
+        book="bet365",
+    )
+    assert reason is None
+    assert eval_row is not None
+    assert eval_row["ev_kind"] == live_rows[0]["ev_kind"]
+    assert eval_row["model_win_prob"] == pytest.approx(live_rows[0]["model_win_prob"], abs=1e-4)
+    assert eval_row["ev"] == pytest.approx(live_rows[0]["ev"], abs=1e-4)

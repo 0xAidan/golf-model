@@ -311,6 +311,230 @@ def compute_conviction_score(
     return round(raw * 100)
 
 
+def evaluate_matchup_pair(
+    *,
+    p1_data: dict,
+    p2_data: dict,
+    p1_odds: int,
+    p2_odds: int,
+    ev_threshold: float | None = None,
+    dg_prob: float | None = None,
+    model_variant: str = "baseline",
+    market_type: str = "tournament_matchups",
+    book: str | None = None,
+    require_positive_ev: bool = False,
+    platt_params: tuple[float, float] | None = None,
+    blend_weights: tuple[float, float] | None = None,
+    win_prob_cap: float | None = None,
+    force_pick_side: str | None = None,
+) -> tuple[dict | None, str | None, dict[str, Any]]:
+    """Evaluate one matchup pair with shared live/replay probability + EV math."""
+    if ev_threshold is None:
+        ev_threshold = float(getattr(config, "MATCHUP_EV_THRESHOLD", 0.05))
+
+    composite_gap = float(p1_data.get("composite", 0.0)) - float(p2_data.get("composite", 0.0))
+    if composite_gap == 0:
+        return None, "equal_composite_gap", {}
+
+    favored_side = "p1" if composite_gap > 0 else "p2"
+    if force_pick_side in {"p1", "p2"}:
+        pick_side = force_pick_side
+    else:
+        pick_side = favored_side
+
+    if pick_side == "p1":
+        pick_data, opp_data = p1_data, p2_data
+        pick_odds = int(p1_odds)
+    else:
+        pick_data, opp_data = p2_data, p1_data
+        pick_odds = int(p2_odds)
+
+    gap = abs(composite_gap)
+    if platt_params is None:
+        A, B = _get_platt_params()
+    else:
+        A, B = platt_params
+
+    if model_variant == "v5":
+        from src.models.v5_probabilities import v5_matchup_win_probability
+
+        favored_pick_data = p1_data if favored_side == "p1" else p2_data
+        favored_opp_data = p2_data if favored_side == "p1" else p1_data
+        favored_prob, v5_uncertainty = v5_matchup_win_probability(
+            composite_gap=composite_gap,
+            pick_data=favored_pick_data,
+            opp_data=favored_opp_data,
+            platt_a=A,
+            platt_b=B,
+        )
+        platt_win_prob = favored_prob if pick_side == favored_side else (1.0 - favored_prob)
+    else:
+        favored_prob = 1.0 / (1.0 + math.exp(A * gap + B))
+        platt_win_prob = favored_prob if pick_side == favored_side else (1.0 - favored_prob)
+        v5_uncertainty = None
+
+    tie_prob = 0.0
+    if model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True):
+        tie_prob = _estimate_matchup_tie_probability(gap, v5_uncertainty)
+
+    if blend_weights is None:
+        dg_blend_weight = float(getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0))
+        model_blend_weight = float(getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 1.0))
+    else:
+        dg_blend_weight = float(blend_weights[0])
+        model_blend_weight = float(blend_weights[1])
+    blend_total = max(1e-9, dg_blend_weight + model_blend_weight)
+    dg_blend_weight /= blend_total
+    model_blend_weight /= blend_total
+
+    model_win_prob = platt_win_prob
+    if dg_prob is not None:
+        model_win_prob = (
+            dg_blend_weight * float(dg_prob)
+            + model_blend_weight * float(platt_win_prob)
+        )
+        if getattr(config, "REQUIRE_DG_MODEL_AGREEMENT", True):
+            if (dg_prob > 0.5) != (platt_win_prob > 0.5):
+                return None, "dg_model_disagreement", {
+                    "pick": pick_data.get("player_display"),
+                    "opponent": opp_data.get("player_display"),
+                    "composite_gap": round(gap, 1),
+                    "model_win_prob": round(model_win_prob, 4),
+                    "platt_win_prob": round(platt_win_prob, 4),
+                    "dg_win_prob": round(dg_prob, 4),
+                }
+    if win_prob_cap is None:
+        win_prob_cap = float(getattr(config, "MATCHUP_MAX_WIN_PROB_CAP", 0.99))
+    if 0.5 < win_prob_cap < 1.0:
+        model_win_prob = min(model_win_prob, win_prob_cap)
+
+    implied_prob = american_to_implied_prob(pick_odds)
+    if not implied_prob or implied_prob <= 0:
+        return None, "invalid_implied_prob", {}
+
+    dec_pick = american_to_decimal(pick_odds)
+    use_v5_tie = model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True)
+    if use_v5_tie:
+        ev = _v5_matchup_ev_void_tie(model_win_prob, dec_pick, tie_prob)
+        ev_kind = "matchup_v5_tie_aware"
+    else:
+        ev = (model_win_prob / implied_prob) - 1.0
+        ev_kind = "matchup_ratio"
+
+    if require_positive_ev and ev <= 0.0:
+        return None, "non_positive_ev", {
+            "pick": pick_data.get("player_display"),
+            "opponent": opp_data.get("player_display"),
+            "composite_gap": round(gap, 1),
+            "model_win_prob": round(model_win_prob, 4),
+            "platt_win_prob": round(platt_win_prob, 4),
+            "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
+            "implied_prob": round(implied_prob, 4),
+            "book": str(book or "").strip().lower() or None,
+            "odds": pick_odds,
+            "ev": round(ev, 4),
+            "ev_pct": f"{ev * 100:.1f}%",
+        }
+
+    if ev < ev_threshold:
+        return None, "below_ev_threshold", {
+            "pick": pick_data.get("player_display"),
+            "opponent": opp_data.get("player_display"),
+            "composite_gap": round(gap, 1),
+            "model_win_prob": round(model_win_prob, 4),
+            "platt_win_prob": round(platt_win_prob, 4),
+            "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
+            "implied_prob": round(implied_prob, 4),
+            "book": str(book or "").strip().lower() or None,
+            "odds": pick_odds,
+            "ev": round(ev, 4),
+            "ev_pct": f"{ev * 100:.1f}%",
+        }
+
+    pick_form = float(pick_data.get("form", 50))
+    opp_form = float(opp_data.get("form", 50))
+    pick_cf = float(pick_data.get("course_fit", 50))
+    opp_cf = float(opp_data.get("course_fit", 50))
+    form_gap = pick_form - opp_form
+    course_fit_gap = pick_cf - opp_cf
+    pick_momentum = float(pick_data.get("momentum", 50))
+    opp_momentum = float(opp_data.get("momentum", 50))
+    momentum_aligned = pick_momentum > 55 and opp_momentum < 45
+
+    reasons = []
+    if abs(course_fit_gap) > 5:
+        sign = "+" if course_fit_gap > 0 else ""
+        reasons.append(f"course fit {sign}{course_fit_gap:.0f}")
+    if abs(form_gap) > 5:
+        sign = "+" if form_gap > 0 else ""
+        reasons.append(f"form {sign}{form_gap:.0f}")
+    if momentum_aligned:
+        pick_dir = pick_data.get("momentum_direction", "")
+        opp_dir = opp_data.get("momentum_direction", "")
+        if pick_dir:
+            reasons.append(f"pick {pick_dir}")
+        if opp_dir:
+            reasons.append(f"opp {opp_dir}")
+
+    conviction = compute_conviction_score(
+        form_gap=form_gap,
+        course_fit_gap=course_fit_gap,
+        pick_momentum=pick_momentum,
+        opp_momentum=opp_momentum,
+        model_win_prob=model_win_prob,
+        platt_win_prob=platt_win_prob,
+        dg_prob=dg_prob,
+    )
+    ev_pct = ev * 100
+    tier, tier_drivers, tier_rationale = matchup_tier_and_rationale(ev_pct, gap)
+    normalized_book = str(book or "").strip().lower()
+
+    row = {
+        "pick": pick_data["player_display"],
+        "pick_key": pick_data["player_key"],
+        "opponent": opp_data["player_display"],
+        "opponent_key": opp_data["player_key"],
+        "odds": pick_odds,
+        "book": normalized_book,
+        "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
+        "platt_win_prob": round(platt_win_prob, 4),
+        "model_win_prob": round(model_win_prob, 4),
+        "ev_prob": round(model_win_prob, 6),
+        "implied_prob": round(implied_prob, 4),
+        "market_implied_prob_raw": round(implied_prob, 6),
+        "ev": round(ev, 4),
+        "ev_pct": f"{ev * 100:.1f}%",
+        "ev_kind": ev_kind,
+        "composite_gap": round(gap, 1),
+        "form_gap": round(form_gap, 1),
+        "course_fit_gap": round(course_fit_gap, 1),
+        "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
+        "blend_dg_used": dg_blend_weight,
+        "blend_model_used": model_blend_weight,
+        "tier": tier,
+        "tier_drivers": tier_drivers,
+        "tier_rationale": tier_rationale,
+        "pick_momentum": round(pick_momentum, 1),
+        "opp_momentum": round(opp_momentum, 1),
+        "momentum_aligned": momentum_aligned,
+        "conviction": conviction,
+        "model_variant": model_variant,
+        "uncertainty": v5_uncertainty,
+        "v5_uncertainty": v5_uncertainty,
+        "odds_quality": {
+            "source": "datagolf_matchups",
+            "market_type": market_type,
+            "book": normalized_book,
+            "stale_odds": False,
+        },
+        "pick_side": pick_side,
+    }
+    _ms_m, _mw_m = assess_matchup_marketing(row)
+    row["marketing_safe"] = _ms_m
+    row["marketing_warnings"] = _mw_m
+    return row, None, {}
+
+
 def _find_matchup_value_bets_core(
     composite_results: list[dict],
     matchup_odds: list[dict],
@@ -479,55 +703,6 @@ def _find_matchup_value_bets_core(
                         })
                     continue
 
-        # Gaps from the pick's perspective
-        pick_form = pick_data.get("form", 50)
-        opp_form = opp_data.get("form", 50)
-        pick_cf = pick_data.get("course_fit", 50)
-        opp_cf = opp_data.get("course_fit", 50)
-        form_gap = pick_form - opp_form
-        course_fit_gap = pick_cf - opp_cf
-
-        pick_momentum = pick_data.get("momentum", 50)
-        opp_momentum = opp_data.get("momentum", 50)
-        momentum_aligned = pick_momentum > 55 and opp_momentum < 45
-
-        reasons = []
-        if abs(course_fit_gap) > 5:
-            sign = "+" if course_fit_gap > 0 else ""
-            reasons.append(f"course fit {sign}{course_fit_gap:.0f}")
-        if abs(form_gap) > 5:
-            sign = "+" if form_gap > 0 else ""
-            reasons.append(f"form {sign}{form_gap:.0f}")
-        if momentum_aligned:
-            pick_dir = pick_data.get("momentum_direction", "")
-            opp_dir = opp_data.get("momentum_direction", "")
-            if pick_dir:
-                reasons.append(f"pick {pick_dir}")
-            if opp_dir:
-                reasons.append(f"opp {opp_dir}")
-
-        dg_prob_for_conviction = None
-        if dg_prob is not None:
-            dg_prob_for_conviction = dg_prob
-        elif dg_pairings:
-            dg_pair_check = dg_pairings.get((pick_data["player_key"], opp_data["player_key"]))
-            if not dg_pair_check:
-                dg_pair_rev_check = dg_pairings.get((opp_data["player_key"], pick_data["player_key"]))
-                if dg_pair_rev_check:
-                    dg_prob_for_conviction = dg_pair_rev_check["p2_win_prob"]
-            else:
-                dg_prob_for_conviction = dg_pair_check["p1_win_prob"]
-
-        conviction = compute_conviction_score(
-            form_gap=form_gap,
-            course_fit_gap=course_fit_gap,
-            pick_momentum=pick_momentum,
-            opp_momentum=opp_momentum,
-            model_win_prob=model_win_prob,
-            platt_win_prob=platt_win_prob,
-            dg_prob=dg_prob_for_conviction,
-        )
-
         stake_mult = adaptation["stake_multiplier"] if adaptation else 1.0
 
         if required_book:
@@ -578,90 +753,30 @@ def _find_matchup_value_bets_core(
                 books_seen.add(normalized_book)
                 _book_stats(normalized_book)["lines_seen"] += 1
 
-            pick_odds = p1_odds if pick_side == "p1" else p2_odds
-            implied_prob = american_to_implied_prob(pick_odds)
-            if not implied_prob or implied_prob <= 0:
-                diagnostics["reason_codes"]["invalid_implied_prob"] += 1
-                continue
-
-            dec_pick = american_to_decimal(int(pick_odds))
-            use_v5_tie = model_variant == "v5" and getattr(config, "V5_LAB_TIE_AWARE_MATCHUP_EV", True)
-            if use_v5_tie:
-                ev = _v5_matchup_ev_void_tie(model_win_prob, dec_pick, tie_prob)
-                ev_kind = "matchup_v5_tie_aware"
-            else:
-                ev = (model_win_prob / implied_prob) - 1.0
-                ev_kind = "matchup_ratio"
-            if ev < ev_threshold:
-                diagnostics["reason_codes"]["below_ev_threshold"] += 1
-                if len(failed_candidates) < FAILED_CANDIDATE_LIMIT:
-                    failed_candidates.append({
-                        "pick": pick_data["player_display"],
-                        "opponent": opp_data["player_display"],
-                        "composite_gap": round(gap, 1),
-                        "model_win_prob": round(model_win_prob, 4),
-                        "platt_win_prob": round(platt_win_prob, 4),
-                        "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
-                        "implied_prob": round(implied_prob, 4),
-                        "book": normalized_book or None,
-                        "odds": pick_odds,
-                        "ev": round(ev, 4),
-                        "ev_pct": f"{ev * 100:.1f}%",
-                        "reason_code": "below_ev_threshold",
-                    })
+            m_row, eval_reason, eval_context = evaluate_matchup_pair(
+                p1_data=p1_data,
+                p2_data=p2_data,
+                p1_odds=p1_odds,
+                p2_odds=p2_odds,
+                ev_threshold=ev_threshold,
+                dg_prob=dg_prob,
+                model_variant=model_variant,
+                market_type=market_type,
+                book=book_name,
+            )
+            if eval_reason:
+                if eval_reason in diagnostics["reason_codes"]:
+                    diagnostics["reason_codes"][eval_reason] += 1
+                if eval_reason == "below_ev_threshold" and len(failed_candidates) < FAILED_CANDIDATE_LIMIT:
+                    failed_candidates.append({**eval_context, "reason_code": "below_ev_threshold"})
                 continue
 
             if normalized_book:
                 books_with_qualifying_edges.add(normalized_book)
                 _book_stats(normalized_book)["qualifying_edges"] += 1
 
-            ev_pct = ev * 100
-            tier, tier_drivers, tier_rationale = matchup_tier_and_rationale(ev_pct, gap)
-
-            m_row = {
-                "pick": pick_data["player_display"],
-                "pick_key": pick_data["player_key"],
-                "opponent": opp_data["player_display"],
-                "opponent_key": opp_data["player_key"],
-                "odds": pick_odds,
-                "book": normalized_book,
-                "dg_win_prob": round(dg_prob, 4) if dg_prob is not None else None,
-                "platt_win_prob": round(platt_win_prob, 4),
-                "model_win_prob": round(model_win_prob, 4),
-                "ev_prob": round(model_win_prob, 6),
-                "implied_prob": round(implied_prob, 4),
-                "market_implied_prob_raw": round(implied_prob, 6),
-                "ev": round(ev, 4),
-                "ev_pct": f"{ev * 100:.1f}%",
-                "ev_kind": ev_kind,
-                "composite_gap": round(gap, 1),
-                "form_gap": round(form_gap, 1),
-                "course_fit_gap": round(course_fit_gap, 1),
-                "reason": "; ".join(reasons) if reasons else f"composite +{gap:.0f}",
-                "adaptation_state": adaptation["state"] if adaptation else "normal",
-                "stake_multiplier": stake_mult,
-                "blend_dg_used": getattr(config, "DG_MATCHUP_BLEND_WEIGHT", 0.0),
-                "blend_model_used": getattr(config, "MODEL_MATCHUP_BLEND_WEIGHT", 0.0),
-                "tier": tier,
-                "tier_drivers": tier_drivers,
-                "tier_rationale": tier_rationale,
-                "pick_momentum": round(pick_momentum, 1),
-                "opp_momentum": round(opp_momentum, 1),
-                "momentum_aligned": momentum_aligned,
-                "conviction": conviction,
-                "model_variant": model_variant,
-                "uncertainty": v5_uncertainty,
-                "v5_uncertainty": v5_uncertainty,
-                "odds_quality": {
-                    "source": "datagolf_matchups",
-                    "market_type": market_type,
-                    "book": normalized_book,
-                    "stale_odds": False,
-                },
-            }
-            _ms_m, _mw_m = assess_matchup_marketing(m_row)
-            m_row["marketing_safe"] = _ms_m
-            m_row["marketing_warnings"] = _mw_m
+            m_row["adaptation_state"] = adaptation["state"] if adaptation else "normal"
+            m_row["stake_multiplier"] = stake_mult
             all_qualifying_bets.append(m_row)
 
     all_qualifying_bets.sort(
