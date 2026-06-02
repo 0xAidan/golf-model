@@ -43,6 +43,38 @@ def test_window_contract_is_disjoint():
     assert lab.PRIMARY_DATE_END < lab.HOLDOUT_DATE_START
 
 
+def test_select_max_roi_trial_winners_prefers_robust_gate():
+    class _Trial:
+        def __init__(self, number, primary_n, holdout_n, primary_roi, holdout_roi, value=1.0):
+            self.number = number
+            self.value = value
+            self.params = {}
+            self.user_attrs = {
+                "primary_n": primary_n,
+                "holdout_n": holdout_n,
+                "primary_roi_pct": primary_roi,
+                "holdout_roi_pct": holdout_roi,
+                "primary_hit_rate_pct": 50.0,
+                "holdout_hit_rate_pct": 50.0,
+                "primary_brier": 0.25,
+                "holdout_brier": 0.25,
+                "primary_drawdown_pct": 0.0,
+                "holdout_drawdown_pct": 0.0,
+            }
+
+    complete = [
+        _Trial(1, 81, 67, 58.0, 25.0),
+        _Trial(2, 276, 203, 16.59, 9.05),
+        _Trial(3, 301, 203, 13.8, 9.05),
+        _Trial(4, 250, 199, 20.0, 7.0),
+    ]
+    complete.sort(key=lambda t: float(t.user_attrs["primary_roi_pct"]), reverse=True)
+    winners = lab._select_max_roi_trial_winners(complete)
+    assert winners["best_unconstrained"]["number"] == 1
+    assert winners["best_legacy_constrained"]["number"] == 2
+    assert winners["best_robust_constrained"]["number"] == 3
+
+
 def test_run_pit_audit_reports_event_level_failures(monkeypatch):
     conn = _seed_pit_audit_db()
     monkeypatch.setattr("scripts.run_matchup_lab_research.db.get_conn", lambda: conn)

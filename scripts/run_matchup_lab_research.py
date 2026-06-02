@@ -41,6 +41,8 @@ HOLDOUT_DATE_START = "2026-01-01"
 HOLDOUT_DATE_END = "2026-12-31"
 MIN_CANDIDATE_N = 200
 MIN_WIREUP_N = 250
+ROBUST_MIN_PRIMARY_N = 300
+ROBUST_MIN_HOLDOUT_ROI_PCT = 8.0
 FULL_SLATE_EV_FLOOR = -1000.0
 
 
@@ -399,6 +401,91 @@ def _pareto_candidates(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
             pareto.append(candidate)
     pareto.sort(key=lambda x: (x["roi_pct"], x["hit_rate_pct"], -x["brier"]), reverse=True)
     return pareto
+
+
+def _trial_record_from_optuna(trial: Any) -> dict[str, Any]:
+    return {
+        "number": int(trial.number),
+        "objective_value": float(trial.value) if trial.value is not None else None,
+        "params": dict(trial.params),
+        "primary_n": int(trial.user_attrs.get("primary_n", 0)),
+        "primary_hit_rate_pct": float(trial.user_attrs.get("primary_hit_rate_pct", 0.0)),
+        "primary_roi_pct": float(trial.user_attrs.get("primary_roi_pct", 0.0)),
+        "primary_brier": trial.user_attrs.get("primary_brier"),
+        "primary_drawdown_pct": float(trial.user_attrs.get("primary_drawdown_pct", 0.0)),
+        "primary_clv_bps": trial.user_attrs.get("primary_clv_bps"),
+        "holdout_n": int(trial.user_attrs.get("holdout_n", 0)),
+        "holdout_hit_rate_pct": float(trial.user_attrs.get("holdout_hit_rate_pct", 0.0)),
+        "holdout_roi_pct": float(trial.user_attrs.get("holdout_roi_pct", 0.0)),
+        "holdout_brier": trial.user_attrs.get("holdout_brier"),
+        "holdout_drawdown_pct": float(trial.user_attrs.get("holdout_drawdown_pct", 0.0)),
+        "holdout_clv_bps": trial.user_attrs.get("holdout_clv_bps"),
+        "filters": trial.user_attrs.get("filters", {}),
+        "rolling_platt": bool(trial.user_attrs.get("rolling_platt", False)),
+    }
+
+
+def _credible_row_from_trial_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "scenario_id": f"optuna_trial_{record['number']}",
+        "family": "max_roi_robust",
+        "primary_roi_pct": record["primary_roi_pct"],
+        "primary_hit_rate_pct": record["primary_hit_rate_pct"],
+        "primary_brier": record["primary_brier"],
+        "primary_clv_bps": record.get("primary_clv_bps"),
+        "primary_drawdown_pct": record["primary_drawdown_pct"],
+        "primary_n": record["primary_n"],
+        "holdout_roi_pct": record["holdout_roi_pct"],
+        "holdout_hit_rate_pct": record["holdout_hit_rate_pct"],
+        "holdout_brier": record["holdout_brier"],
+        "holdout_clv_bps": record.get("holdout_clv_bps"),
+        "holdout_drawdown_pct": record["holdout_drawdown_pct"],
+        "holdout_n": record["holdout_n"],
+        "optuna_trial_number": record["number"],
+        "optuna_params": record.get("params", {}),
+    }
+
+
+def _select_max_roi_trial_winners(complete: list[Any]) -> dict[str, Any | None]:
+    """Pick unconstrained max-ROI, legacy constrained (250/200), and robust constrained (300/200/8% holdout)."""
+    all_ranked = [_trial_record_from_optuna(t) for t in complete]
+    best_unconstrained = all_ranked[0] if all_ranked else None
+
+    legacy_eligible = [
+        t
+        for t in complete
+        if int(t.user_attrs.get("primary_n", 0)) >= MIN_WIREUP_N
+        and int(t.user_attrs.get("holdout_n", 0)) >= MIN_CANDIDATE_N
+    ]
+    best_legacy_constrained = (
+        _trial_record_from_optuna(legacy_eligible[0]) if legacy_eligible else None
+    )
+
+    robust_eligible = [
+        t
+        for t in complete
+        if int(t.user_attrs.get("primary_n", 0)) >= ROBUST_MIN_PRIMARY_N
+        and int(t.user_attrs.get("holdout_n", 0)) >= MIN_CANDIDATE_N
+        and float(t.user_attrs.get("holdout_roi_pct", -1e9)) >= ROBUST_MIN_HOLDOUT_ROI_PCT
+    ]
+    robust_eligible.sort(
+        key=lambda t: (
+            float(t.user_attrs.get("primary_roi_pct", -1e9)),
+            int(t.user_attrs.get("primary_n", 0)),
+        ),
+        reverse=True,
+    )
+    best_robust_constrained = (
+        _trial_record_from_optuna(robust_eligible[0]) if robust_eligible else None
+    )
+
+    return {
+        "all_ranked": all_ranked,
+        "best_unconstrained": best_unconstrained,
+        "best_legacy_constrained": best_legacy_constrained,
+        "best_robust_constrained": best_robust_constrained,
+        "pareto_trials": _pareto_trial_records(all_ranked),
+    }
 
 
 def _pareto_trial_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -790,12 +877,19 @@ def _build_markdown(payload: dict[str, Any]) -> str:
             )
         if constrained:
             lines.append(
-                "- Best constrained primary ROI: "
+                "- Best constrained primary ROI (legacy 250/200 gate): "
                 f"`{constrained['primary_roi_pct']}%` (primary n={constrained['primary_n']}, "
                 f"holdout ROI={constrained['holdout_roi_pct']}%, holdout n={constrained['holdout_n']})"
             )
         elif unconstrained:
             lines.append("- No candidate met constrained sample gate in deep search.")
+        robust = max_roi.get("best_primary_roi_constrained_robust")
+        if robust:
+            lines.append(
+                "- Best robust constrained (primary n≥300, holdout n≥200, holdout ROI≥8%): "
+                f"trial `{robust['number']}` — primary ROI `{robust['primary_roi_pct']}%` "
+                f"(n={robust['primary_n']}), holdout ROI `{robust['holdout_roi_pct']}%` (n={robust['holdout_n']})"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -843,8 +937,6 @@ def _optuna_max_roi_search(
 ) -> dict[str, Any]:
     if optuna is None:
         return {"status": "skipped", "reason": "optuna not installed"}
-    if n_trials <= 0:
-        return {"status": "skipped", "reason": "n_trials <= 0"}
 
     storage_file = Path(storage_path)
     storage_file.parent.mkdir(parents=True, exist_ok=True)
@@ -855,6 +947,7 @@ def _optuna_max_roi_search(
         direction="maximize",
         sampler=optuna.samplers.TPESampler(seed=42),
     )
+    trials_before = len([t for t in study.trials if t.state.name == "COMPLETE"])
 
     def objective(trial: optuna.Trial) -> float:
         candidate = StrategyConfig(**asdict(baseline))
@@ -988,58 +1081,51 @@ def _optuna_max_roi_search(
             return -1e9
         # maximize primary ROI, but discourage holdout collapse
         score = float(pm["roi_pct"]) + 0.20 * float(hm["roi_pct"])
-        if primary_n >= 250:
+        if primary_n >= MIN_WIREUP_N:
             score += 0.25
-        if holdout_n >= 200:
+        if holdout_n >= MIN_CANDIDATE_N:
             score += 0.25
+        if primary_n >= ROBUST_MIN_PRIMARY_N:
+            score += 0.75
+        if float(hm["roi_pct"]) >= ROBUST_MIN_HOLDOUT_ROI_PCT:
+            score += 0.50
         return score
 
-    study.optimize(objective, n_trials=n_trials, n_jobs=1, show_progress_bar=False)
+    if n_trials > 0:
+        study.optimize(objective, n_trials=n_trials, n_jobs=1, show_progress_bar=False)
+
     complete = [t for t in study.trials if t.state.name == "COMPLETE" and t.value is not None]
     complete.sort(key=lambda t: float(t.user_attrs.get("primary_roi_pct", -1e9)), reverse=True)
-
-    def _trial_record(t: Any) -> dict[str, Any]:
+    if not complete:
         return {
-            "number": int(t.number),
-            "objective_value": float(t.value),
-            "params": dict(t.params),
-            "primary_n": int(t.user_attrs.get("primary_n", 0)),
-            "primary_hit_rate_pct": float(t.user_attrs.get("primary_hit_rate_pct", 0.0)),
-            "primary_roi_pct": float(t.user_attrs.get("primary_roi_pct", 0.0)),
-            "primary_brier": t.user_attrs.get("primary_brier"),
-            "primary_drawdown_pct": float(t.user_attrs.get("primary_drawdown_pct", 0.0)),
-            "primary_clv_bps": t.user_attrs.get("primary_clv_bps"),
-            "holdout_n": int(t.user_attrs.get("holdout_n", 0)),
-            "holdout_hit_rate_pct": float(t.user_attrs.get("holdout_hit_rate_pct", 0.0)),
-            "holdout_roi_pct": float(t.user_attrs.get("holdout_roi_pct", 0.0)),
-            "holdout_brier": t.user_attrs.get("holdout_brier"),
-            "holdout_drawdown_pct": float(t.user_attrs.get("holdout_drawdown_pct", 0.0)),
-            "holdout_clv_bps": t.user_attrs.get("holdout_clv_bps"),
-            "filters": t.user_attrs.get("filters", {}),
-            "rolling_platt": bool(t.user_attrs.get("rolling_platt", False)),
+            "status": "skipped",
+            "reason": "no completed trials in study",
+            "study_name": study.study_name,
+            "n_trials": 0,
+            "n_trials_total_in_study": 0,
+            "storage_path": str(storage_file),
         }
 
-    all_ranked = [_trial_record(t) for t in complete]
-    best_unconstrained = all_ranked[0] if all_ranked else None
-    constrained = [
-        t
-        for t in complete
-        if int(t.user_attrs.get("primary_n", 0)) >= 250 and int(t.user_attrs.get("holdout_n", 0)) >= 200
-    ]
-    best_constrained = _trial_record(constrained[0]) if constrained else None
-    pareto_trials = _pareto_trial_records(all_ranked)
+    winners = _select_max_roi_trial_winners(complete)
+    trials_after = len(complete)
 
     return {
         "status": "ok",
         "study_name": study.study_name,
-        "n_trials": len(complete),
-        "n_trials_total_in_study": len([t for t in study.trials if t.state.name == "COMPLETE"]),
+        "n_trials": max(0, trials_after - trials_before) if n_trials > 0 else 0,
+        "n_trials_total_in_study": trials_after,
         "storage_path": str(storage_file),
-        "best_primary_roi_unconstrained": best_unconstrained,
-        "best_primary_roi_constrained": best_constrained,
-        "top_primary_roi_trials": all_ranked[:20],
-        "all_primary_roi_ranked_trials": all_ranked,
-        "pareto_frontier_trials": pareto_trials,
+        "best_primary_roi_unconstrained": winners["best_unconstrained"],
+        "best_primary_roi_constrained": winners["best_legacy_constrained"],
+        "best_primary_roi_constrained_robust": winners["best_robust_constrained"],
+        "top_primary_roi_trials": winners["all_ranked"][:20],
+        "all_primary_roi_ranked_trials": winners["all_ranked"],
+        "pareto_frontier_trials": winners["pareto_trials"],
+        "robust_gate": {
+            "min_primary_n": ROBUST_MIN_PRIMARY_N,
+            "min_holdout_n": MIN_CANDIDATE_N,
+            "min_holdout_roi_pct": ROBUST_MIN_HOLDOUT_ROI_PCT,
+        },
     }
 
 
@@ -1119,6 +1205,10 @@ def main() -> int:
         storage_path=args.max_roi_storage_path,
     )
     max_roi_candidate = ranking[0] if ranking else None
+    if args.only_max_roi and credible_winner is None:
+        robust_record = (max_roi_search or {}).get("best_primary_roi_constrained_robust")
+        if robust_record:
+            credible_winner = _credible_row_from_trial_record(robust_record)
     pit_audit = _run_pit_audit(windows)
     coverage_audit = _run_full_slate_coverage_audit(windows)
 
@@ -1134,6 +1224,8 @@ def main() -> int:
         "window_metadata": _window_metadata(windows),
         "minimum_candidate_n": MIN_CANDIDATE_N,
         "minimum_wireup_n": MIN_WIREUP_N,
+        "robust_minimum_primary_n": ROBUST_MIN_PRIMARY_N,
+        "robust_minimum_holdout_roi_pct": ROBUST_MIN_HOLDOUT_ROI_PCT,
         "results": results,
         "pareto_frontier": pareto,
         "ranking": ranking,
@@ -1175,6 +1267,8 @@ def main() -> int:
         "storage_path": (max_roi_search or {}).get("storage_path"),
         "best_primary_roi_unconstrained": (max_roi_search or {}).get("best_primary_roi_unconstrained"),
         "best_primary_roi_constrained": (max_roi_search or {}).get("best_primary_roi_constrained"),
+        "best_primary_roi_constrained_robust": (max_roi_search or {}).get("best_primary_roi_constrained_robust"),
+        "credible_constrained_winner": credible_winner,
     }
     checkpoint_path.write_text(json.dumps(checkpoint_payload, indent=2), encoding="utf-8")
 
@@ -1217,6 +1311,15 @@ def main() -> int:
                 f"{best_constrained['primary_roi_pct']} "
                 f"n={best_constrained['primary_n']} "
                 f"holdout_roi={best_constrained['holdout_roi_pct']}"
+            )
+        best_robust = max_roi_search.get("best_primary_roi_constrained_robust")
+        if best_robust:
+            print(
+                "max_primary_roi_constrained_robust="
+                f"{best_robust['primary_roi_pct']} "
+                f"n={best_robust['primary_n']} "
+                f"holdout_roi={best_robust['holdout_roi_pct']} "
+                f"trial={best_robust['number']}"
             )
     return 0
 
