@@ -102,7 +102,7 @@ function App() {
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
   const [manualRefreshPending, setManualRefreshPending] = useState(false)
   const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null)
-  const [refreshTick, setRefreshTick] = useState(0)
+  const [refreshElapsedSec, setRefreshElapsedSec] = useState<number | null>(null)
   const [pastReplayHeadline, setPastReplayHeadline] = useState<{ eventName: string; courseName?: string } | null>(
     null,
   )
@@ -330,6 +330,7 @@ function App() {
     onSettled: () => {
       setManualRefreshPending(false)
       setRefreshStartedAt(null)
+      setRefreshElapsedSec(null)
     },
     onSuccess: (payload) => {
       if (payload.ok) {
@@ -353,15 +354,15 @@ function App() {
   const refreshButtonDisabled =
     refreshSnapshotMutation.isPending || lrRefreshState === "running" || lrRefreshState === "busy"
   useEffect(() => {
-    if (!refreshButtonDisabled) return
-    const id = window.setInterval(() => setRefreshTick((n) => n + 1), 1000)
+    if (!refreshButtonDisabled || !refreshStartedAt) return
+    const updateElapsed = () => {
+      setRefreshElapsedSec(Math.max(0, Math.floor((Date.now() - refreshStartedAt) / 1000)))
+    }
+    updateElapsed()
+    const id = window.setInterval(updateElapsed, 1000)
     return () => window.clearInterval(id)
-  }, [refreshButtonDisabled])
-  const refreshElapsedSec = useMemo(() => {
-    void refreshTick
-    if (!refreshStartedAt || !refreshSnapshotMutation.isPending) return null
-    return Math.max(0, Math.floor((Date.now() - refreshStartedAt) / 1000))
-  }, [refreshSnapshotMutation.isPending, refreshStartedAt, refreshTick])
+  }, [refreshButtonDisabled, refreshStartedAt])
+  const refreshElapsedSecDisplay = refreshButtonDisabled && refreshStartedAt ? refreshElapsedSec : null
 
   const players = predictionTab === "past" ? [] : (effectivePredictionRun?.composite_results ?? [])
 
@@ -814,7 +815,7 @@ function App() {
               }
             />
             {refreshSnapshotMutation.isPending
-              ? `Refreshing${refreshElapsedSec != null ? ` (${refreshElapsedSec}s)` : ""}…`
+              ? `Refreshing${refreshElapsedSecDisplay != null ? ` (${refreshElapsedSecDisplay}s)` : ""}…`
               : lrRefreshState === "busy" || lrRefreshState === "running"
               ? "Updating…"
               : liveRuntimeRunning

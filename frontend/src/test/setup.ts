@@ -38,7 +38,7 @@ Object.defineProperty(window, "matchMedia", {
     onchange: null,
     addListener() {},
     removeListener() {},
-    addEventListener(_type: string, _listener: EventListener) {},
+    addEventListener() {},
     removeEventListener() {},
     dispatchEvent() {
       return false
