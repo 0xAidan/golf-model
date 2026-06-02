@@ -717,7 +717,7 @@ def _build_markdown(payload: dict[str, Any]) -> str:
         f"- Holdout window: `{payload['window_contract']['holdout']['start_date']}` → "
         f"`{payload['window_contract']['holdout']['end_date']}`"
     )
-    lines.append(f"- Flat stake: `1u`")
+    lines.append("- Flat stake: `1u`")
     lines.append("")
     lines.append("## Winner ranking")
     lines.append("")
