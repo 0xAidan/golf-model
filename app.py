@@ -59,6 +59,7 @@ _logger = logging.getLogger("golf.app")
 
 
 _DEFAULT_LIVE_REFRESH_PIDFILE = "/tmp/golf_live_refresh.pid"
+_snapshot_heal_in_progress = False
 
 
 def _live_refresh_pidfile_path() -> str:
@@ -2487,15 +2488,37 @@ async def get_live_refresh_snapshot():
             and age_seconds >= extreme_stale_floor
         )
         if not runtime_claims_healthy or force_bypass_runtime_wait:
-            attempt_timeout = 90.0 if force_bypass_runtime_wait else 8.0
-            refreshed = await _attempt_fresh_snapshot(timeout_seconds=attempt_timeout)
-            if force_bypass_runtime_wait and refreshed:
-                _logger.warning(
-                    "Live snapshot was extremely stale (age=%ss, floor=%ss) while runtime "
-                    "reported healthy; completed bounded on-demand recompute.",
-                    age_seconds,
-                    extreme_stale_floor,
-                )
+            # Never block the HTTP worker on a full recompute (lab lane doubles CPU time).
+            # Extreme staleness schedules background heal; client keeps last snapshot + stale banner.
+            if force_bypass_runtime_wait:
+                global _snapshot_heal_in_progress
+                if not _snapshot_heal_in_progress:
+
+                    async def _heal_extremely_stale_snapshot() -> None:
+                        global _snapshot_heal_in_progress
+                        _snapshot_heal_in_progress = True
+                        try:
+                            await asyncio.to_thread(generate_snapshot_once, tour=tour)
+                            _logger.warning(
+                                "Background heal finished for extremely stale snapshot "
+                                "(age=%ss, floor=%ss).",
+                                age_seconds,
+                                extreme_stale_floor,
+                            )
+                        except Exception as exc:
+                            _logger.warning("Background snapshot heal failed: %s", exc)
+                        finally:
+                            _snapshot_heal_in_progress = False
+
+                    asyncio.create_task(_heal_extremely_stale_snapshot())
+                    _logger.warning(
+                        "Live snapshot extremely stale (age=%ss); scheduled background recompute "
+                        "(not blocking API).",
+                        age_seconds,
+                    )
+                refreshed = {}
+            else:
+                refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
         if refreshed:
             snapshot = refreshed
             generated_at = snapshot.get("generated_at")

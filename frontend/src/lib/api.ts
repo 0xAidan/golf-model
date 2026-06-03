@@ -29,6 +29,8 @@ const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 35_000
 const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 95_000
 const LIVE_REFRESH_START_TIMEOUT_MS = 30_000
 const PAST_REPLAY_TIMEOUT_MS = 45_000
+/** Lab instrumentation panels; allow headroom when dashboard is busy with live-refresh recompute. */
+const RESEARCH_INSTRUMENTATION_TIMEOUT_MS = 30_000
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): Promise<T> {
   const controller = new AbortController()
@@ -213,13 +215,23 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload ?? {}),
     }),
-  getCalibrationByMarket: () => request<CalibrationByMarketResponse>("/api/calibration/by-market"),
-  getClvSummary: () => request<ClvSummaryResponse>("/api/clv/summary"),
+  getCalibrationByMarket: () =>
+    request<CalibrationByMarketResponse>(
+      "/api/calibration/by-market",
+      undefined,
+      RESEARCH_INSTRUMENTATION_TIMEOUT_MS,
+    ),
+  getClvSummary: () =>
+    request<ClvSummaryResponse>("/api/clv/summary", undefined, RESEARCH_INSTRUMENTATION_TIMEOUT_MS),
   getResearchAbReport: (eventId: string, options?: { persist?: boolean }) => {
     const params = new URLSearchParams({
       event_id: eventId,
       persist: options?.persist === false ? "false" : "true",
     })
-    return request<ResearchAbReportResponse>(`/api/research/ab-report?${params.toString()}`)
+    return request<ResearchAbReportResponse>(
+      `/api/research/ab-report?${params.toString()}`,
+      undefined,
+      RESEARCH_INSTRUMENTATION_TIMEOUT_MS,
+    )
   },
 }
