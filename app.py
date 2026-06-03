@@ -2501,7 +2501,7 @@ async def get_live_refresh_snapshot():
         if not runtime_claims_healthy or force_bypass_runtime_wait:
             # Never block the HTTP worker on a full recompute (lab lane doubles CPU time).
             # Extreme staleness schedules background heal; client keeps last snapshot + stale banner.
-            if force_bypass_runtime_wait:
+            if force_bypass_runtime_wait and _embedded_live_refresh_autostart_allowed():
                 global _snapshot_heal_in_progress
                 if not _snapshot_heal_in_progress:
 
@@ -2527,6 +2527,13 @@ async def get_live_refresh_snapshot():
                         "(not blocking API).",
                         age_seconds,
                     )
+                refreshed = {}
+            elif force_bypass_runtime_wait:
+                _logger.warning(
+                    "Live snapshot extremely stale (age=%ss) but API background heal is disabled; "
+                    "rely on golf-live-refresh worker or set LIVE_REFRESH_EMBEDDED_AUTOSTART=1.",
+                    age_seconds,
+                )
                 refreshed = {}
             else:
                 refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
