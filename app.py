@@ -106,6 +106,12 @@ def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
     return True
 
 
+def _embedded_live_refresh_autostart_allowed() -> bool:
+    """Production uses systemd ``golf-live-refresh``; do not hijack the API worker unless opted in."""
+    flag = os.environ.get("LIVE_REFRESH_EMBEDDED_AUTOSTART", "0").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
 def _with_live_refresh_worker_status(raw_status: dict) -> dict:
     """Merge in external worker health so API status reflects single-owner runtime."""
     status = dict(raw_status or {})
@@ -2417,7 +2423,12 @@ async def get_live_refresh_snapshot():
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
     runtime_autostarted = False
-    if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+    if (
+        _embedded_live_refresh_autostart_allowed()
+        and not status.get("running")
+        and settings.get("enabled", True)
+        and settings.get("autostart", True)
+    ):
         try:
             start_live_refresh(tour=tour)
             runtime_autostarted = True
@@ -2601,7 +2612,12 @@ async def refresh_live_refresh_snapshot():
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
-    if not status.get("running") and settings.get("enabled", True) and settings.get("autostart", True):
+    if (
+        _embedded_live_refresh_autostart_allowed()
+        and not status.get("running")
+        and settings.get("enabled", True)
+        and settings.get("autostart", True)
+    ):
         start_live_refresh(tour=tour)
     timeout_s = float(os.environ.get("LIVE_REFRESH_MANUAL_TIMEOUT_S", "90") or "90")
     try:

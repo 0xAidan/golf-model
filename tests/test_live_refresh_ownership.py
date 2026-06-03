@@ -227,3 +227,26 @@ def test_pid_probe_accepts_live_refresh_worker_process(tmp_path, monkeypatch):
 
     monkeypatch.setattr(app_module.subprocess, "run", _fake_ps)
     assert app_module._live_refresh_worker_is_running(str(pidfile)) is True
+
+
+def test_snapshot_does_not_embed_autostart_when_env_unset(monkeypatch, patched_refresh):
+    """Stopping the systemd worker must not start recompute inside the API process."""
+    _reset_autostart_env(monkeypatch, None)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {"generated_at": "2020-01-01T00:00:00+00:00", "live_tournament": {}, "upcoming_tournament": {}},
+    )
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.get_live_refresh_status",
+        lambda: {"running": False},
+    )
+
+    import app as app_module
+
+    with TestClient(app_module.app) as client:
+        response = client.get("/api/live-refresh/snapshot")
+
+    assert response.status_code == 200
+    assert patched_refresh["start"] == 0, (
+        "Snapshot GET must not embed live refresh when LIVE_REFRESH_EMBEDDED_AUTOSTART is unset"
+    )
