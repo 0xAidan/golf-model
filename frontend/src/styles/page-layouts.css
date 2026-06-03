@@ -1029,3 +1029,70 @@
   color: var(--text-muted);
   line-height: 1.6;
 }
+
+/* Records / grading ProDataGrid helpers */
+.records-picks-grid {
+  margin-top: 10px;
+}
+
+.records-pick-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.records-lane-chip {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.records-source {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+.records-result {
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.records-pl {
+  font-weight: 700;
+}
+
+.records-pl--positive {
+  color: var(--positive);
+}
+
+.records-pl--negative {
+  color: var(--danger);
+}
+
+.records-pl--muted {
+  color: var(--text-muted);
+}
+
+.records-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.records-result-icon--win {
+  color: var(--positive);
+}
+
+.records-result-icon--loss {
+  color: var(--danger);
+}
+
+.records-result-icon--push {
+  color: var(--text-faint);
+}
+
+.records-finish {
+  font-size: 11px;
+  color: var(--text-muted);
+}
