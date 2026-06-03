@@ -161,17 +161,13 @@ export const LabPicksPage = ({
   }, [tournamentId, matchups.length])
 
   return (
-    <div className="lane-lab" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div
-        className="term-notice"
-        style={{ margin: "8px 12px 0", fontSize: 12, lineHeight: 1.45 }}
-        data-testid="lab-picks-banner"
-      >
+    <div className="lane-lab lab-picks-root">
+      <div className="term-notice cockpit-lab-banner" data-testid="lab-picks-banner">
         <strong>Lab picks</strong> — uses the parallel lab snapshot lane. Displayed matchups and value markets sync to
         the database automatically (deduped); <code style={{ fontSize: 11 }}>source=lab_sandbox</code>. Production{" "}
         <strong>/matchups</strong> is unchanged.
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexShrink: 0 }}>
+      <div className="lab-picks-toolbar">
         <button
           type="button"
           className="btn btn-primary"
@@ -184,11 +180,9 @@ export const LabPicksPage = ({
         >
           {logMutation.isPending ? "Logging…" : "Log displayed lab picks now"}
         </button>
-        {logMessage && (
-          <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{logMessage}</span>
-        )}
+        {logMessage && <span className="lab-picks-log-msg">{logMessage}</span>}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div className="lab-picks-body">
         <PicksPage
           lane="lab"
           matchups={matchups}

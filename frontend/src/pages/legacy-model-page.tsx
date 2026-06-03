@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom"
 
+import { DataTable } from "@/components/ui/data-table"
+import { PageHeader } from "@/components/ui/page-header"
 import type { LiveRefreshSnapshot } from "@/lib/types"
 
 export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSnapshot | null }) {
@@ -9,20 +11,20 @@ export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSna
   const diagnosticsErrors = legacy?.diagnostics?.errors ?? []
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "10px 12px" }}>
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <div className="card-title">Legacy Model (Baseline)</div>
-            <div className="card-desc">
-              Read-only fallback lane for last month&apos;s baseline model.
-            </div>
-          </div>
-          <Link to="/" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }}>
+    <div className="research-page">
+      <PageHeader
+        eyebrow="Research"
+        title="Legacy model (baseline)"
+        description="Read-only fallback lane for last month's baseline model."
+        action={
+          <Link to="/" className="btn btn-ghost btn-sm">
             Back to cockpit
           </Link>
-        </div>
-        <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        }
+      />
+
+      <div className="card research-card">
+        <div className="card-body research-card-body">
           {!legacy ? (
             <div className="term-notice">
               Legacy baseline snapshot is not available yet. Refresh the live snapshot and try again.
@@ -30,88 +32,80 @@ export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSna
           ) : (
             <>
               <div className="term-notice">
-                Event: {legacy.event_name ?? "Unknown"} • Variant: {legacy.model_variant ?? "baseline"} • Source:{" "}
-                {legacy.generated_from ?? "legacy_baseline_model"}
+                Event: {legacy.event_name ?? "Unknown"} · Variant: {legacy.model_variant ?? "baseline"} ·
+                Source: {legacy.generated_from ?? "legacy_baseline_model"}
               </div>
               {diagnosticsErrors.length > 0 ? (
-                <div className="term-notice">
+                <div className="term-notice" role="alert">
                   {diagnosticsErrors.join(" ")}
                 </div>
               ) : null}
 
-              <section>
-                <div className="section-title" style={{ marginBottom: 8 }}>
-                  Top Legacy Rankings
-                </div>
+              <section className="research-section">
+                <h2 className="research-section-heading">Top legacy rankings</h2>
                 {rankings.length === 0 ? (
                   <div className="empty-state">
-                    <div className="empty-state-title">No baseline rankings captured in this snapshot.</div>
+                    <div className="empty-state-title">No baseline rankings in this snapshot.</div>
                   </div>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Rank</th>
-                          <th>Player</th>
-                          <th>Composite</th>
-                          <th>Course</th>
-                          <th>Form</th>
-                          <th>Momentum</th>
+                  <DataTable>
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th className="num">Composite</th>
+                        <th className="num">Course</th>
+                        <th className="num">Form</th>
+                        <th className="num">Momentum</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankings.slice(0, 25).map((row) => (
+                        <tr key={`${row.player_key ?? row.player}-${row.rank}`}>
+                          <td>{row.rank}</td>
+                          <td>{row.player}</td>
+                          <td className="num metric">{row.composite.toFixed(1)}</td>
+                          <td className="num metric">{row.course_fit.toFixed(1)}</td>
+                          <td className="num metric">{row.form.toFixed(1)}</td>
+                          <td className="num metric">{row.momentum.toFixed(1)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {rankings.slice(0, 25).map((row) => (
-                          <tr key={`${row.player_key ?? row.player}-${row.rank}`}>
-                            <td>{row.rank}</td>
-                            <td>{row.player}</td>
-                            <td>{row.composite.toFixed(1)}</td>
-                            <td>{row.course_fit.toFixed(1)}</td>
-                            <td>{row.form.toFixed(1)}</td>
-                            <td>{row.momentum.toFixed(1)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </DataTable>
                 )}
               </section>
 
-              <section>
-                <div className="section-title" style={{ marginBottom: 8 }}>
-                  Legacy Matchup Edges
-                </div>
+              <section className="research-section">
+                <h2 className="research-section-heading">Legacy matchup edges</h2>
                 {matchupBets.length === 0 ? (
                   <div className="empty-state">
-                    <div className="empty-state-title">No baseline matchup edges available in this snapshot.</div>
+                    <div className="empty-state-title">No baseline matchup edges in this snapshot.</div>
                   </div>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Pick</th>
-                          <th>Opponent</th>
-                          <th>Book</th>
-                          <th>Odds</th>
-                          <th>Edge</th>
-                          <th>Tier</th>
+                  <DataTable>
+                    <thead>
+                      <tr>
+                        <th>Pick</th>
+                        <th>Opponent</th>
+                        <th>Book</th>
+                        <th className="num">Odds</th>
+                        <th className="num">Edge</th>
+                        <th>Tier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matchupBets.slice(0, 25).map((bet) => (
+                        <tr key={`${bet.pick_key}-${bet.opponent_key}-${bet.book}-${bet.odds}`}>
+                          <td>{bet.pick}</td>
+                          <td>{bet.opponent}</td>
+                          <td>{bet.book ?? "—"}</td>
+                          <td className="num metric">{bet.odds}</td>
+                          <td className="num metric">{bet.ev_pct ?? "—"}</td>
+                          <td>{bet.tier ?? "—"}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {matchupBets.slice(0, 25).map((bet) => (
-                          <tr key={`${bet.pick_key}-${bet.opponent_key}-${bet.book}-${bet.odds}`}>
-                            <td>{bet.pick}</td>
-                            <td>{bet.opponent}</td>
-                            <td>{bet.book ?? "--"}</td>
-                            <td>{bet.odds}</td>
-                            <td>{bet.ev_pct ?? "--"}</td>
-                            <td>{bet.tier ?? "--"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </DataTable>
                 )}
               </section>
             </>

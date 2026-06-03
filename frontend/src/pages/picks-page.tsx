@@ -24,6 +24,8 @@ import {
   MATCHUP_TABLE_TOOLTIPS,
   TIER_BADGE_TOOLTIP,
 } from "@/lib/metric-tooltips"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { PageHeader } from "@/components/ui/page-header"
 import { PicksTableScroll } from "@/components/ui/picks-table-scroll"
 import { cn } from "@/lib/utils"
 import type {
@@ -170,30 +172,6 @@ function TierBadge({ tier, tierRationale, evKind }: { tier?: string; tierRationa
     <span className={`tier-badge ${t}`} title={title} style={{ cursor: "help" }}>
       {t}
     </span>
-  )
-}
-
-function PageHeader({ title, description }: { title: string; description?: string }) {
-  return (
-    <div style={{ marginBottom: 10, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "var(--text-muted)",
-        }}
-      >
-        {title}
-      </div>
-      {description && (
-        <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
-          {description}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -352,26 +330,13 @@ function MatchupDiagnosticsStrip({
   }
 
   return (
-    <div
-      className="card"
-      style={{
-        padding: "10px 12px",
-        marginBottom: 8,
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-      data-testid="matchup-diagnostics-strip"
+    <CollapsibleSection
+      className="matchup-diagnostics-panel"
+      title="Matchup pipeline"
+      description={`${visibleRowCount} showing · min edge ${minEdgePct}%`}
+      testId="matchup-diagnostics-strip"
     >
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 16,
-          fontSize: 11,
-          fontFamily: "var(--font-mono)",
-          color: "var(--text-muted)",
-        }}
-      >
+      <div className="matchup-diagnostics-stats">
         <DiagStat label="State" value={stateLabel[state] ?? state} />
         <DiagStat label="Candidates" value={inputRows.toString()} />
         <DiagStat label="Cleared algo" value={qualifyingRows.toString()} />
@@ -383,62 +348,35 @@ function MatchupDiagnosticsStrip({
       </div>
 
       {reasonEntries.length > 0 && (
-        <div
-          style={{
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: "1px solid var(--divider)",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
-            fontSize: 10,
-            fontFamily: "var(--font-mono)",
-            color: "var(--text-faint)",
-          }}
-        >
-          <span style={{ textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>Filtered:</span>
+        <div className="matchup-diagnostics-reasons">
+          <span className="matchup-diagnostics-reasons-label">Filtered:</span>
           {reasonEntries.map(([code, count]) => (
             <span key={code}>
-              <span style={{ color: "var(--text-muted)" }}>{reasonLabel[code] ?? code}</span>
-              <span style={{ marginLeft: 4, color: "var(--text)" }}>{count}</span>
+              <span className="text-muted-11">{reasonLabel[code] ?? code}</span>
+              <span className="diag-stat-value" style={{ marginLeft: 4 }}>
+                {count}
+              </span>
             </span>
           ))}
         </div>
       )}
 
       {(diagnostics.errors?.length ?? 0) > 0 && (
-        <div
-          style={{
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: "1px solid var(--divider)",
-            fontSize: 11,
-            color: "var(--red)",
-          }}
-        >
+        <div className="matchup-diagnostics-errors">
           {diagnostics.errors?.map((err, i) => (
             <div key={i}>⚠ {err}</div>
           ))}
         </div>
       )}
-    </div>
+    </CollapsibleSection>
   )
 }
 
 function DiagStat({ label, value, tone }: { label: string; value: string; tone?: "warn" }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-faint)" }}>
-        {label}
-      </span>
-      <span
-        style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: tone === "warn" ? "var(--gold)" : "var(--text)",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
+    <div className="diag-stat">
+      <span className="diag-stat-label">{label}</span>
+      <span className={tone === "warn" ? "diag-stat-value diag-stat-value--warn" : "diag-stat-value"}>
         {value}
       </span>
     </div>
@@ -997,10 +935,11 @@ export function PicksPage({
   return (
     <div className="page-shell picks-page-shell">
       <div className="picks-page-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <PageHeader title="Picks" description={description} />
-          {lane === "lab" ? <span className="lane-chip">Lab lane</span> : null}
-        </div>
+        <PageHeader
+          title="Picks"
+          description={description}
+          action={lane === "lab" ? <span className="lane-chip">Lab lane</span> : undefined}
+        />
       </div>
 
       <PicksTabSwitcher

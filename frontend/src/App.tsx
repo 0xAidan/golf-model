@@ -57,18 +57,7 @@ const DiagnosticsPage = lazy(() =>
 
 function RouteFallback() {
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "var(--text-faint)",
-        fontSize: 12,
-        fontFamily: "var(--font-mono)",
-      }}
-      data-testid="route-suspense-fallback"
-    >
+    <div className="route-suspense-fallback" data-testid="route-suspense-fallback">
       Loading…
     </div>
   )
@@ -880,7 +869,7 @@ function App() {
         <Route
           path="/players"
           element={
-            <div style={{flex:1,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div className="route-page-shell">
               <Suspense fallback={<RouteFallback />}>
                 <PlayersPage players={players} />
               </Suspense>
@@ -912,7 +901,7 @@ function App() {
         <Route
           path="/grading"
           element={
-            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+            <div className="route-scroll-page">
               <Suspense fallback={<RouteFallback />}>
                 <GradingPage />
               </Suspense>
@@ -922,7 +911,7 @@ function App() {
         <Route
           path="/track-record"
           element={
-            <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+            <div className="route-scroll-page">
               <Suspense fallback={<RouteFallback />}>
                 <TrackRecordPage />
               </Suspense>

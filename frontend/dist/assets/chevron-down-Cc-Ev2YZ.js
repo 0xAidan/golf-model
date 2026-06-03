@@ -1,0 +1,1 @@
+import{j as e}from"./metric-tooltips-B2DVn8hz.js";var t=e(`chevron-down`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};

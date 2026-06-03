@@ -70,7 +70,7 @@ import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 function EV({ ev, evPct }: { ev: number; evPct?: string }) {
   const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
   return (
-    <span className={`ev-badge ${cls}`} title={EV_BADGE_TOOLTIP} style={{ cursor: "help" }}>
+    <span className={`ev-badge ${cls} help-cursor`} title={EV_BADGE_TOOLTIP}>
       {evPct ?? `${(ev * 100).toFixed(1)}%`}
     </span>
   )
@@ -81,7 +81,7 @@ function TierBadge({ tier, tierRationale, evKind }: { tier?: string; tierRationa
   const bits = [evKind, tierRationale].filter(Boolean)
   const title = bits.length > 0 ? bits.join(" — ") : TIER_BADGE_TOOLTIP
   return (
-    <span className={`tier-badge ${t}`} title={title} style={{ cursor: "help" }}>
+    <span className={`tier-badge ${t} help-cursor`} title={title}>
       {t}
     </span>
   )
@@ -105,13 +105,13 @@ function PastPickGradeCell({
   }
   if (g.kind === "pending") {
     return (
-      <span style={{ fontSize: 11, color: "var(--text-muted)" }} title={g.title}>
+      <span className="text-pending" title={g.title}>
         Pending
       </span>
     )
   }
   return (
-    <span className="num" style={{ color: "var(--text-faint)" }} title={g.title} aria-label={g.title}>
+    <span className="num num-faint" title={g.title} aria-label={g.title}>
       —
     </span>
   )
@@ -203,29 +203,10 @@ function TopPicksPipelineHint({
     .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, 4)
   return (
-    <div
-      style={{
-        padding: "8px 12px 10px",
-        fontSize: 11,
-        color: "var(--text-muted)",
-        lineHeight: 1.45,
-        borderBottom: "1px solid var(--border)",
-      }}
-    >
-      <div
-        style={{
-          fontWeight: 600,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          fontSize: 9,
-          marginBottom: 4,
-          color: "var(--text-faint)",
-        }}
-      >
-        Matchup pipeline
-      </div>
+    <div className="workspace-pipeline-hint">
+      <div className="workspace-pipeline-title">Matchup pipeline</div>
       <div>
-        State: <code style={{ color: "var(--text)" }}>{st ?? "—"}</code>
+        State: <code>{st ?? "—"}</code>
         {sel?.input_rows != null ? (
           <>
             {" "}
@@ -246,7 +227,7 @@ function TopPicksPipelineHint({
         ) : null}
       </div>
       {topReasons.length > 0 ? (
-        <div style={{ marginTop: 4 }}>
+        <div className="workspace-pipeline-exclusions">
           Top exclusions:{" "}
           {topReasons.map(([k, v], i) => (
             <span key={k}>
@@ -256,7 +237,7 @@ function TopPicksPipelineHint({
           ))}
         </div>
       ) : null}
-      <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-faint)" }}>
+      <div className="text-faint-11" style={{ marginTop: 6 }}>
         Top picks uses the same filters as the matchup board (books, search, min edge {(minEdge * 100).toFixed(0)}%; default{" "}
         {(DEFAULT_COCKPIT_MIN_EDGE * 100).toFixed(0)}%). Secondary markets can still show edges when matchups do not.
         {filterActive ? " Filters are active — relax them to see more qualifying rows." : null}
@@ -755,46 +736,27 @@ export function PredictionWorkspacePage({
                 <div className="card-header">
                   <div className="card-title">Replay selector</div>
                 </div>
-                <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className="card-body card-body-stack-8">
                   {pastEventOptions.length === 0 && (
                     <div
                       role="status"
                       data-testid="past-events-empty"
-                      style={{
-                        fontSize: 11,
-                        lineHeight: 1.45,
-                        color: "var(--text-muted)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--r-sm)",
-                        padding: "8px 10px",
-                        background: "var(--surface-2)",
-                      }}
+                      className="workspace-status-banner"
                     >
                       No past events to replay: snapshot history is empty and no graded tournaments with a
-                      DataGolf <code style={{ fontSize: 10 }}>event_id</code> were found (legacy rows may
+                      DataGolf <code>event_id</code> were found (legacy rows may
                       still resolve from round data after deploy). Ensure the live-refresh worker has run
                       for completed events and grading has stored picks linked to the tournament.
                     </div>
                   )}
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 4 }}>
-                      Event
-                    </div>
+                    <div className="field-label field-label--tight">Event</div>
                     <select
                       value={selectedPastEventKey || selectedPastEvent?.event_id || ""}
                       onChange={(e) => setSelectedPastEventKey(e.target.value)}
                       aria-label="Select past event for replay"
                       disabled={pastEventOptions.length === 0}
-                      style={{
-                        width: "100%",
-                        background: "var(--surface-2)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--r-md)",
-                        color: "var(--text)",
-                        fontSize: 12,
-                        padding: "6px 10px",
-                        outline: "none",
-                      }}
+                      className="workspace-select"
                       data-testid="past-event-select"
                     >
                       {pastEventOptions.map((e) => (
@@ -805,30 +767,15 @@ export function PredictionWorkspacePage({
                     </select>
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 4 }}>
-                      Lane
-                    </div>
-                    <div style={{ display: "flex", gap: 4 }}>
+                    <div className="field-label field-label--tight">Lane</div>
+                    <div className="workspace-lane-row">
                       {(["completed", "live", "upcoming"] as const).map((lane) => (
                         <button
                           key={lane}
                           type="button"
                           onClick={() => setPastReplaySection(lane)}
                           aria-pressed={pastReplaySection === lane}
-                          style={{
-                            flex: 1,
-                            padding: "5px 0",
-                            borderRadius: "var(--r-sm)",
-                            fontSize: 11,
-                            fontWeight: 600,
-                            background:
-                              pastReplaySection === lane ? "var(--green-dim)" : "var(--surface-2)",
-                            border: `1px solid ${pastReplaySection === lane ? "rgba(34,197,94,0.25)" : "var(--border)"}`,
-                            color:
-                              pastReplaySection === lane ? "var(--green)" : "var(--text-muted)",
-                            cursor: "pointer",
-                            textTransform: "capitalize",
-                          }}
+                          className="workspace-lane-btn"
                         >
                           {lane}
                         </button>
@@ -836,26 +783,12 @@ export function PredictionWorkspacePage({
                     </div>
                   </div>
                   {pastReplayHasError && (
-                    <div
-                      role="alert"
-                      style={{
-                        border: "1px solid rgba(239,68,68,0.25)",
-                        background: "var(--red-bg)",
-                        color: "var(--red)",
-                        borderRadius: "var(--r-sm)",
-                        padding: "8px 10px",
-                        fontSize: 11,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                      }}
-                    >
+                    <div role="alert" className="workspace-alert-error">
                       <div>Replay request failed: {pastReplayErrorMessage}</div>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div className="flex-wrap-gap-6">
                         <button
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: "3px 8px", fontSize: 10 }}
+                          className="btn btn-ghost btn-compact"
                           onClick={() => {
                             void pastEventsQuery.refetch()
                             void pastSnapshotQuery.refetch()
@@ -900,21 +833,18 @@ export function PredictionWorkspacePage({
                 <div className="card-title">Filters</div>
                 {selectedBooks.length > 0 && (
                   <button
-                    className="btn btn-ghost"
-                    style={{ padding: "3px 8px", fontSize: 11 }}
+                    className="btn btn-ghost btn-compact-md"
                     onClick={() => onSelectedBooksChange([])}
                   >
                     Clear
                   </button>
                 )}
               </div>
-              <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="card-body card-body-stack-10">
                 {/* Book chips */}
                 {displayAvailableBooks.length > 0 && (
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 6 }}>
-                      Sportsbook
-                    </div>
+                    <div className="field-label">Sportsbook</div>
                     <div className="filter-chips">
                       {displayAvailableBooks.map((book) => (
                         <button
@@ -937,11 +867,9 @@ export function PredictionWorkspacePage({
 
                 {/* Search */}
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 6 }}>
-                    Search player
-                  </div>
+                  <div className="field-label">Search player</div>
                   <div className="search-input">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--text-faint)", flexShrink: 0 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="search-icon">
                       <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
                     </svg>
                     <input
@@ -957,8 +885,8 @@ export function PredictionWorkspacePage({
 
                 {/* Min edge */}
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 6 }}>
-                    Min edge: <span style={{ color: "var(--text-muted)" }}>{(minEdge * 100).toFixed(0)}%</span>
+                  <div className="field-label">
+                    Min edge: <span className="text-muted-11">{(minEdge * 100).toFixed(0)}%</span>
                   </div>
                   <input
                     type="range"
@@ -967,7 +895,7 @@ export function PredictionWorkspacePage({
                     step="0.01"
                     value={minEdge}
                     onChange={(e) => onMinEdgeChange(Number(e.target.value))}
-                    style={{ width: "100%", accentColor: "var(--green)" }}
+                    className="workspace-range"
                     aria-label="Minimum edge threshold"
                     data-testid="min-edge-slider"
                   />
@@ -988,11 +916,8 @@ export function PredictionWorkspacePage({
               defaultOpen={isNarrow || predictionTab === "past"}
               testId="intel-recent-results"
             >
-              <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px 0" }}>
-                <Link
-                  to="/grading"
-                  style={{ fontSize: 11, color: "var(--accent-link)", textDecoration: "none" }}
-                >
+              <div className="flex-end-row">
+                <Link to="/grading" className="link-accent-11">
                   All grading →
                 </Link>
               </div>
@@ -1021,26 +946,21 @@ export function PredictionWorkspacePage({
                             <td className="player-name" title={event.name}>
                               {event.name}
                               {kind === "replay" ? (
-                                <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-faint)" }}>
-                                  replay
-                                </span>
+                                <span className="replay-tag">replay</span>
                               ) : null}
                             </td>
                             <td
-                              className="right num"
-                              style={{
-                                color:
-                                  profit == null
-                                    ? "var(--text-muted)"
-                                    : profit >= 0
-                                      ? "var(--positive)"
-                                      : "var(--danger)",
-                                fontWeight: profit == null ? 400 : 600,
-                              }}
+                              className={`right num ${
+                                profit == null
+                                  ? "profit-muted"
+                                  : profit >= 0
+                                    ? "profit-positive"
+                                    : "profit-negative"
+                              }`}
                             >
                               {profit == null ? "—" : formatUnits(profit)}
                             </td>
-                            <td className="right num" style={{ color: "var(--text-muted)" }}>
+                            <td className="right num text-muted-11">
                               {typeof hr === "string" ? hr : `${hr}%`}
                             </td>
                           </tr>
@@ -1111,21 +1031,11 @@ export function PredictionWorkspacePage({
                       ? `${displayPlayers.length} players — last rankings before tee off`
                       : `${displayPlayers.length} players ranked by model`}
                     {powerRankingsSubtitle ? (
-                      <span style={{ display: "block", marginTop: 4, color: "var(--accent)" }}>{powerRankingsSubtitle}</span>
+                      <span className="card-desc-accent">{powerRankingsSubtitle}</span>
                     ) : null}
                   </div>
                 </div>
-                <Link
-                  to="/players"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                    textDecoration: "none",
-                  }}
-                >
+                <Link to="/players" className="card-header-link">
                   All <ExternalLink size={11} />
                 </Link>
               </div>
@@ -1134,7 +1044,7 @@ export function PredictionWorkspacePage({
                   <table className="data-table rankings-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 36 }} title={POWER_RANKINGS_HELP.rank}>
+                        <th className="col-rank-narrow" title={POWER_RANKINGS_HELP.rank}>
                           #
                         </th>
                         <th title={POWER_RANKINGS_HELP.player}>Player</th>
@@ -1210,25 +1120,14 @@ export function PredictionWorkspacePage({
                   </div>
                 </div>
                 {!displayPredictionRun?.card_content ? (
-                  <p
-                    id="cockpit-export-disabled-help"
-                    style={{
-                      margin: 0,
-                      maxWidth: 220,
-                      fontSize: 10,
-                      lineHeight: 1.35,
-                      color: "var(--text-faint)",
-                      alignSelf: "center",
-                    }}
-                  >
+                  <p id="cockpit-export-disabled-help" className="export-help-text">
                     Export stays off until the run includes generated card content for this event.
                   </p>
                 ) : null}
                 <button
-                  className="btn btn-ghost"
+                  className="btn btn-ghost btn-export"
                   onClick={handleExportMarkdown}
                   disabled={!displayPredictionRun?.card_content}
-                  style={{ padding: "5px 10px" }}
                   data-testid="btn-export"
                   aria-describedby={
                     !displayPredictionRun?.card_content ? "cockpit-export-disabled-help" : undefined
@@ -1257,7 +1156,7 @@ export function PredictionWorkspacePage({
                         Switch to{" "}
                         <button
                           type="button"
-                          style={{ color: "var(--accent-link)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: "inherit" }}
+                          className="text-link-btn"
                           onClick={() => onPredictionTabChange("upcoming")}
                         >
                           Upcoming
@@ -1651,7 +1550,7 @@ export function PredictionWorkspacePage({
         center={
           isNarrow ? (
             showTeamEventNotice ? (
-              <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              <div className="workspace-scroll-pane">
                 <TeamEventNotice
                   eventName={eventName}
                   courseName={courseName}
@@ -1662,7 +1561,7 @@ export function PredictionWorkspacePage({
           ) : (
             <>
               {showTeamEventNotice && (
-                <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                <div className="workspace-scroll-pane">
                   <TeamEventNotice
                     eventName={eventName}
                     courseName={courseName}
@@ -1671,15 +1570,7 @@ export function PredictionWorkspacePage({
                 </div>
               )}
               {!showTeamEventNotice && (
-                <div
-                  style={{
-                    flex: 1,
-                    minHeight: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                  }}
-                >
+                <div className="cockpit-center-stack">
                   {renderCenterBoard()}
                 </div>
               )}

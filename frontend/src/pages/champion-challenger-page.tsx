@@ -1,8 +1,13 @@
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
+import type { ColumnDef } from "@tanstack/react-table"
 
+import { DataGrid } from "@/components/ui/data-grid"
+import { PageHeader } from "@/components/ui/page-header"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
 import { CHAMPION_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
-import type { ChampionChallengerSummary, ChampionChallengerModelSummary } from "@/lib/types"
+import type { ChampionChallengerModelSummary, ChampionChallengerSummary } from "@/lib/types"
 
 function formatNumber(value: number | null | undefined, digits = 3): string {
   if (value === null || value === undefined) return "—"
@@ -32,44 +37,78 @@ export function ChampionChallengerPage() {
 
   const data: ChampionChallengerSummary | undefined = summaryQuery.data
 
+  const columns = useMemo<ColumnDef<ChampionChallengerModelSummary>[]>(
+    () => [
+      {
+        accessorKey: "model_name",
+        header: "Model",
+        meta: { align: "left" },
+      },
+      {
+        id: "brier30",
+        header: "Brier (30d)",
+        meta: { align: "right" },
+        cell: ({ row }) => formatNumber(modelWindow(row.original, "30")?.brier?.brier),
+      },
+      {
+        id: "n",
+        header: "N",
+        meta: { align: "right" },
+        cell: ({ row }) => modelWindow(row.original, "30")?.brier?.n ?? 0,
+      },
+      {
+        id: "roi14",
+        header: "ROI 14d",
+        meta: { align: "right" },
+        cell: ({ row }) => formatPct(modelWindow(row.original, "14")?.matchup_roi?.roi_pct),
+      },
+      {
+        id: "roi30",
+        header: "ROI 30d",
+        meta: { align: "right" },
+        cell: ({ row }) => formatPct(modelWindow(row.original, "30")?.matchup_roi?.roi_pct),
+      },
+      {
+        id: "clv30",
+        header: "CLV 30d",
+        meta: { align: "right" },
+        cell: ({ row }) => formatBps(modelWindow(row.original, "30")?.clv?.clv_bps),
+      },
+    ],
+    [],
+  )
+
+  const columnVisibility = useMemo(
+    () => ({
+      n: false,
+    }),
+    [],
+  )
+
   return (
-    <div
-      style={{ flex: 1, overflowY: "auto", padding: "16px 18px", fontFamily: "var(--font-mono)" }}
-      data-testid="champion-challenger-page"
-    >
-      <div style={{ marginBottom: 16 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "var(--text-muted)",
-          }}
-        >
-          Research · Champion / Challenger
-        </div>
-        <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 4 }}>
-          Shadow-mode evaluation. Challengers never price live bets. Trailing 14-day and 30-day
-          Brier, matchup ROI, and CLV.
-        </div>
-      </div>
+    <div className="research-page" data-testid="champion-challenger-page">
+      <PageHeader
+        eyebrow="Research"
+        title="Champion / Challenger"
+        description="Shadow-mode evaluation. Challengers never price live bets. Trailing Brier, matchup ROI, and CLV."
+      />
 
       {summaryQuery.isLoading && (
-        <div style={{ fontSize: 11, color: "var(--text-faint)" }}>Loading…</div>
-      )}
-      {summaryQuery.isError && (
-        <div
-          data-testid="champion-challenger-error"
-          style={{ fontSize: 11, color: "var(--text-muted)" }}
-        >
-          Failed to load summary.
+        <div className="research-page-loading" aria-busy="true">
+          <Skeleton className="h-8 w-full max-w-md" />
+          <Skeleton className="h-48 w-full" />
         </div>
+      )}
+
+      {summaryQuery.isError && (
+        <p className="research-page-error" data-testid="champion-challenger-error">
+          Failed to load summary.
+        </p>
       )}
 
       {data && (
-        <div>
-          <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 8 }}>
+        <div className="research-page-body">
+          <p className="research-page-meta">
             Champion: <strong>{data.champion}</strong>
             {data.challengers.length > 0 ? (
               <>
@@ -78,62 +117,15 @@ export function ChampionChallengerPage() {
             ) : (
               <> · No active challengers</>
             )}
-          </div>
-          <table
-            data-testid="champion-challenger-table"
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 11,
-            }}
-          >
-            <thead>
-              <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
-                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.model}>
-                  Model
-                </th>
-                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.brier30}>
-                  Brier (30d)
-                </th>
-                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.n}>
-                  N
-                </th>
-                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.roi14}>
-                  Matchup ROI 14d
-                </th>
-                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.roi30}>
-                  Matchup ROI 30d
-                </th>
-                <th style={{ padding: "6px 8px" }} title={CHAMPION_TABLE_TOOLTIPS.clv30}>
-                  CLV 30d
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.models.map((model) => {
-                const win30 = modelWindow(model, "30")
-                const win14 = modelWindow(model, "14")
-                return (
-                  <tr
-                    key={model.model_name}
-                    data-testid={`champion-challenger-row-${model.model_name}`}
-                    style={{ borderTop: "1px solid var(--border-muted, #2a2a2a)" }}
-                  >
-                    <td style={{ padding: "6px 8px" }}>{model.model_name}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatNumber(win30?.brier?.brier)}</td>
-                    <td style={{ padding: "6px 8px" }}>{win30?.brier?.n ?? 0}</td>
-                    <td style={{ padding: "6px 8px" }}>
-                      {formatPct(win14?.matchup_roi?.roi_pct)}
-                    </td>
-                    <td style={{ padding: "6px 8px" }}>
-                      {formatPct(win30?.matchup_roi?.roi_pct)}
-                    </td>
-                    <td style={{ padding: "6px 8px" }}>{formatBps(win30?.clv?.clv_bps)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          </p>
+          <DataGrid
+            data={data.models}
+            columns={columns}
+            columnVisibility={columnVisibility}
+            testId="champion-challenger-table"
+            getRowTestId={(row) => `champion-challenger-row-${row.model_name}`}
+            emptyMessage="No models in summary"
+          />
         </div>
       )}
     </div>

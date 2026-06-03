@@ -13,6 +13,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react"
 import ReactECharts from "echarts-for-react"
+import { getEchartsTooltipStyle } from "@/lib/chart-theme"
 import { heatSpectrumHexFromUnit } from "@/lib/metric-heat"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
@@ -40,12 +41,8 @@ const T = {
   mono: "var(--font-mono)",
 }
 
-const TOOLTIP = {
-  backgroundColor: T.bg,
-  borderColor: T.border,
-  borderWidth: 1,
-  textStyle: { color: T.text, fontSize: 11, fontFamily: T.mono },
-  extraCssText: "border-radius:3px;box-shadow:0 4px 16px rgba(0,0,0,0.5);",
+function chartTooltip() {
+  return getEchartsTooltipStyle()
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────────── */
@@ -832,7 +829,7 @@ export function RollingBarLine({
           tooltip: {
             trigger: "axis",
             axisPointer: { type: "shadow" },
-            ...TOOLTIP,
+            ...chartTooltip(),
             formatter: (params: Array<{ seriesName?: string; value?: number; name?: string; dataIndex?: number; [k: string]: unknown }>) => {
               const bar = params.find((p) => p.seriesName === tab)
               const ma  = params.find((p) => p.seriesName !== tab && p.seriesName !== "_zero")

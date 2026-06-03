@@ -1,95 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/themes.css";
+@import "./styles/page-layouts.css";
 
 /* ─────────────────────────────────────────────────────
-   GOLF MODEL — TERMINAL ANALYTICS DESIGN SYSTEM
-   Bloomberg Terminal × Sports Broadcast
+   GOLF MODEL — Terminal analytics (tokens in themes.css)
    ───────────────────────────────────────────────────── */
-
-:root {
-  /* ── Surfaces — near-black, barely distinguishable */
-  --bg:         #080a0b;
-  --bg-1:       #0d1012;
-  --bg-2:       #111416;
-  --surface:    #141719;
-  --surface-2:  #191d1f;
-  --surface-3:  #1e2224;
-
-  /* ── Borders — extremely subtle, 1px lines only */
-  --border:       #1f2426;
-  --border-mid:   #252a2d;
-  --border-hi:    #2e3438;
-  --divider:      #1a1e20;
-
-  /* ── Text */
-  --text:       #e8ecef;
-  --text-muted: #6b7a84;
-  --text-faint: #374349;
-  --text-dim:   #4a5660;
-
-  /* ── Accents — color carries meaning, never decoration */
-  --green:      #22c55e;   /* win / positive / active */
-  --green-bg:   rgba(34,197,94,0.08);
-  --green-dim:  rgba(34,197,94,0.12);
-
-  --gold:       #f5b418;   /* conviction / value / champion */
-  --gold-bg:    rgba(245,180,24,0.08);
-  --gold-dim:   rgba(245,180,24,0.12);
-
-  /* Legacy alias — use --accent-link / --text-secondary for UI chrome links */
-  --cyan:       #8b9aa6;
-  --cyan-bg:    rgba(139, 154, 166, 0.08);
-
-  --red:        #ef4444;   /* loss / danger / negative */
-  --red-bg:     rgba(239,68,68,0.10);
-
-  --amber:      #f59e0b;   /* warning / moderate */
-  --amber-bg:   rgba(245,158,11,0.10);
-
-  /* ── Semantic aliases */
-  --positive:   #22c55e;
-  --positive-bg:rgba(34,197,94,0.10);
-  --danger:     #ef4444;
-  --danger-bg:  rgba(239,68,68,0.10);
-  --warning:    #f59e0b;
-  --warning-bg: rgba(245,158,11,0.10);
-
-  /* ── Refined scale (prefer these in new UI) */
-  --bg-base:           var(--bg);
-  --bg-raised:         var(--bg-1);
-  --bg-overlay:        var(--bg-2);
-  --text-primary:      var(--text);
-  --text-secondary:    var(--text-muted);
-  --text-tertiary:     var(--text-faint);
-  --accent-positive:   var(--green);
-  --accent-warning:    var(--amber);
-  --accent-danger:     var(--red);
-  --accent-focus:      #5c6b78;
-  --accent-link:       var(--text-secondary);
-
-  /* ── Typography — one sans for chrome, mono for numbers */
-  --font-display: 'Satoshi', 'Inter', system-ui, sans-serif;
-  --font-body:    'Satoshi', 'Inter', system-ui, sans-serif;
-  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-
-  --text-label:  10px;
-  --text-body:   12px;
-  --text-table:  13px;
-  --text-title:  15px;
-
-  /* ── Layout */
-  --sidebar-w:  200px;
-  --header-h:   48px;
-
-  /* ── Radius — near-square, terminal feel */
-  --r:    3px;
-  --r-sm: 3px;
-  --r-md: 4px;
-  --r-lg: 5px;
-
-  /* ── Transitions */
-  --ease: 160ms ease;
-}
 
 /* ── Terminal utilities ─────────────────────────────── */
 .terminal-table,
@@ -332,7 +248,6 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  color-scheme: dark;
 }
 
 body {
@@ -2698,4 +2613,297 @@ body {
   :root {
     --sidebar-w: 168px;
   }
+}
+
+/* ── UI overhaul utilities ───────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-header-eyebrow {
+  margin: 0 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.page-header-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.page-header-desc {
+  margin: 4px 0 0;
+  font-size: var(--text-body);
+  color: var(--text-secondary);
+  max-width: 52ch;
+}
+
+.page-header-action {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.data-grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.data-grid--compact .data-table th,
+.data-grid--compact .data-table td {
+  padding: 5px 8px;
+}
+
+.data-grid--comfortable .data-table th,
+.data-grid--comfortable .data-table td {
+  padding: 8px 10px;
+}
+
+.data-grid-sortable {
+  white-space: nowrap;
+}
+
+.data-grid-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.data-grid-sort-btn:disabled {
+  cursor: default;
+}
+
+.data-grid-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px 12px !important;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-header {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.sidebar {
+  background: var(--bg-base);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-section-label--spaced {
+  margin-top: 8px;
+}
+
+.sidebar-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-freshness {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  letter-spacing: 0.06em;
+}
+
+.nav-item:focus-visible,
+.mobile-bottom-nav-item:focus-visible,
+.mobile-menu-trigger:focus-visible,
+.data-grid-sort-btn:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .content-scroll,
+  .nav-item,
+  .card {
+    transition: background-color var(--ease), border-color var(--ease), color var(--ease);
+  }
+}
+
+.research-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.research-page-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.research-page-meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  color: var(--text-secondary);
+}
+
+.research-page-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.research-page-error {
+  font-size: var(--text-body);
+  color: var(--accent-danger);
+}
+
+.research-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.research-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.research-section-heading {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.link-subtle {
+  color: var(--accent-link);
+  text-decoration: underline;
+}
+
+.btn-sm {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.route-suspense-fallback {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.route-page-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-scroll-page {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.records-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.filter-bar-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.filter-bar-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-left: auto;
+}
+
+.cockpit-lab-root {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-lab-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cockpit-lab-banner-wrap {
+  flex-shrink: 0;
+}
+
+.cockpit-lab-banner {
+  margin: 8px 12px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cockpit-lab-workspace {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-lab-research-aside {
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-raised);
 }

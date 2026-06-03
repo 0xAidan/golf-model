@@ -14,6 +14,8 @@ import {
   Users,
   X,
 } from "lucide-react"
+import { RouteTransition } from "@/components/route-transition"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { StatusDot } from "@/components/ui/status-dot"
 import { cn } from "@/lib/utils"
 import { useIsNarrowViewport } from "@/hooks/use-media-query"
@@ -222,14 +224,14 @@ export function SuiteShell({
             <NavItemLink key={item.href} {...item} />
           ))}
 
-          <div className="sidebar-section-label" style={{ marginTop: 8 }}>
+          <div className="sidebar-section-label sidebar-section-label--spaced">
             Records
           </div>
           {RECORDS_NAV.map((item) => (
             <NavItemLink key={item.href} {...item} />
           ))}
 
-          <div className="sidebar-section-label" style={{ marginTop: 8 }}>
+          <div className="sidebar-section-label sidebar-section-label--spaced">
             Research
           </div>
           {RESEARCH_NAV.map((item) => (
@@ -271,10 +273,15 @@ export function SuiteShell({
             <div className="header-mode-switcher">{modeSwitcher}</div>
           )}
 
-          {actions && <div className="header-actions">{actions}</div>}
+          <div className="header-actions">
+            <ThemeToggle />
+            {actions}
+          </div>
         </header>
 
-        <main className="content-scroll">{children}</main>
+        <main className="content-scroll">
+          <RouteTransition>{children}</RouteTransition>
+        </main>
       </div>
 
       <MobileBottomNav />
@@ -399,23 +406,13 @@ export function SidebarStatus({
   const dotTone =
     runtimeStatus.tone === "good" ? "good" : runtimeStatus.tone === "warn" ? "warn" : "bad"
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div className="sidebar-status">
       <div className="sidebar-offline">
         <StatusDot tone={dotTone} />
         {runtimeStatus.label}
       </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--text-faint)",
-          letterSpacing: "0.06em",
-        }}
-      >
-        <Activity size={9} />
+      <div className="sidebar-freshness">
+        <Activity size={9} aria-hidden />
         {freshnessLabel}
       </div>
     </div>
