@@ -227,6 +227,37 @@ SIMPLE_AUTORESEARCH_OBJECTIVE = "weighted_roi_pct"
 SIMPLE_AUTORESEARCH_STUDY_NAME = "golf_scalar_simple"
 
 
+def _live_snapshot_dashboard_provenance() -> dict:
+    """Read strategy labels from on-disk live snapshot (no DB/registry queries)."""
+    snapshot_path = BASE_DIR / "data" / "live_refresh_snapshot.json"
+    empty = {
+        "strategy_source": "unknown",
+        "live_strategy_name": None,
+        "snapshot_generated_at": None,
+    }
+    try:
+        if not snapshot_path.is_file():
+            return empty
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return empty
+        live = payload.get("live_tournament")
+        live = live if isinstance(live, dict) else {}
+        variant = live.get("model_variant") or payload.get("model_variant")
+        generated_at = payload.get("generated_at")
+        if not variant and not generated_at:
+            return empty
+        out = dict(empty)
+        if variant:
+            out["strategy_source"] = "live_snapshot"
+            out["live_strategy_name"] = str(variant)
+        if generated_at:
+            out["snapshot_generated_at"] = str(generated_at)
+        return out
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return empty
+
+
 def _latest_output_file(*, subdir: str = "", suffix: str = ".md") -> str | None:
     base_dir = os.path.join(os.path.dirname(__file__), "output", subdir) if subdir else os.path.join(os.path.dirname(__file__), "output")
     if not os.path.isdir(base_dir):
@@ -2082,9 +2113,10 @@ def get_dashboard_state(scope: str = "global"):
     from src.ai_brain import get_ai_status
     from src.datagolf import get_datagolf_throttle_status
 
+    provenance = _live_snapshot_dashboard_provenance()
     payload = {
         "ai_status": get_ai_status(),
-        "baseline_provenance": {"strategy_source": "unknown", "live_strategy_name": None},
+        "baseline_provenance": provenance,
         "latest_outputs": {"prediction_markdown_path": None, "backtest_markdown_path": None, "research_markdown_path": None},
         "latest_prediction_artifact": None,
         "latest_backtest_artifact": None,

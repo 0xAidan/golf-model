@@ -56,6 +56,7 @@ export type DashboardState = {
   baseline_provenance?: {
     strategy_source?: string
     live_strategy_name?: string
+    snapshot_generated_at?: string | null
   }
   latest_outputs?: {
     prediction_markdown_path?: string | null

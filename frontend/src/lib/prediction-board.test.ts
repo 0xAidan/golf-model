@@ -73,6 +73,23 @@ describe("buildHydratedPredictionRun", () => {
     expect(run?.ranking_source).toBe("lab_current_event_model")
   })
 
+  it("describes live snapshot freshness instead of legacy history wording", () => {
+    const snapshot: LiveRefreshSnapshot = {
+      generated_at: "2026-06-03T20:02:00.574530+00:00",
+      live_tournament: {
+        event_name: "Memorial",
+        rankings: [],
+        matchup_bets: [{ player: "A", opponent: "B", book: "betcris", odds: "-110", ev: 0.06 }],
+        value_bets: {},
+      },
+    }
+
+    const run = buildHydratedPredictionRun(snapshot, "live")
+    expect(run?.warnings?.[0]).toContain("Live snapshot generated")
+    expect(run?.warnings?.[0]).toContain("1 matchup play")
+    expect(run?.warnings?.[0]).not.toContain("snapshot history")
+  })
+
   it("returns empty rankings and warning when eligibility fails", () => {
     const snapshot: LiveRefreshSnapshot = {
       live_tournament: {
