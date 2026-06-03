@@ -10,7 +10,12 @@ import { SnapshotChip } from "@/components/snapshot-chip"
 import { useLiveRefreshRuntime } from "@/hooks/use-live-refresh-runtime"
 import { usePredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
-import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
+import {
+  DEFAULT_COCKPIT_MIN_EDGE,
+  getMatchupStateMessage,
+  hasActiveMatchupFilters,
+} from "@/lib/cockpit-matchups"
+import { filterMatchupsForExploration } from "@/lib/matchup-edge-filter"
 import { formatDateTime } from "@/lib/format"
 import {
   buildHydratedPredictionRun,
@@ -366,23 +371,32 @@ function App() {
 
   const players = predictionTab === "past" ? [] : (effectivePredictionRun?.composite_results ?? [])
 
+  const productionMatchupDiagnostics = useMemo(() => {
+    if (predictionTab === "past") return undefined
+    if (predictionTab === "upcoming") {
+      return liveSnapshot?.upcoming_tournament?.diagnostics
+    }
+    return liveSnapshot?.live_tournament?.diagnostics
+  }, [liveSnapshot, predictionTab])
+
   const filteredMatchups = useMemo(() => {
     const sourceMatchups =
       visiblePredictionRun?.matchup_bets_all_books ??
       visiblePredictionRun?.matchup_bets ??
       []
-    return sourceMatchups.filter((matchup) => {
-      const matchupBook = normalizeSportsbook(matchup.book)
-      if (NON_BOOK_SOURCES.has(matchupBook)) return false
-      const passesBook = selectedBookSet.size === 0 || selectedBookSet.has(matchupBook)
-      const passesSearch = matchupSearch
-        ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
-        : true
-      return passesBook && passesSearch && matchup.ev >= minEdge
-    })
+    return filterMatchupsForExploration(
+      sourceMatchups,
+      productionMatchupDiagnostics?.failed_candidates,
+      {
+        selectedBooks: selectedBookSet,
+        matchupSearch,
+        minEdge,
+      },
+    )
   }, [
     visiblePredictionRun?.matchup_bets_all_books,
     visiblePredictionRun?.matchup_bets,
+    productionMatchupDiagnostics?.failed_candidates,
     matchupSearch,
     minEdge,
     selectedBookSet,
@@ -393,16 +407,24 @@ function App() {
       return "Use the dashboard home to review past-event matchup replay."
     if (predictionTab === "live" && !isLiveActive)
       return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
-    const diagnostics =
-      predictionTab === "upcoming"
-        ? liveSnapshot?.upcoming_tournament?.diagnostics
-        : liveSnapshot?.live_tournament?.diagnostics
     return getMatchupStateMessage({
-      state: diagnostics?.state,
-      reasonCodes: diagnostics?.reason_codes,
-      hasFilters: normalizedSelectedBooks.length > 0,
+      state: productionMatchupDiagnostics?.state,
+      reasonCodes: productionMatchupDiagnostics?.reason_codes,
+      hasFilters: hasActiveMatchupFilters({
+        selectedBooks: normalizedSelectedBooks,
+        matchupSearch,
+        minEdge,
+        defaultMinEdge: DEFAULT_COCKPIT_MIN_EDGE,
+      }),
     })
-  }, [isLiveActive, liveSnapshot, normalizedSelectedBooks, predictionTab])
+  }, [
+    isLiveActive,
+    matchupSearch,
+    minEdge,
+    normalizedSelectedBooks,
+    predictionTab,
+    productionMatchupDiagnostics,
+  ])
 
   const secondaryBets = useMemo(() => {
     if (predictionTab === "past") return []
@@ -421,23 +443,32 @@ function App() {
 
   const labVisiblePredictionRun = predictionTab === "past" ? null : labWorkspaceHydrated
 
+  const labMatchupDiagnostics = useMemo(() => {
+    if (predictionTab === "past" || !labSnapshotMerged) return undefined
+    if (predictionTab === "upcoming") {
+      return labSnapshotMerged.upcoming_tournament?.diagnostics
+    }
+    return labSnapshotMerged.live_tournament?.diagnostics
+  }, [labSnapshotMerged, predictionTab])
+
   const labFilteredMatchups = useMemo(() => {
     const sourceMatchups =
       labVisiblePredictionRun?.matchup_bets_all_books ??
       labVisiblePredictionRun?.matchup_bets ??
       []
-    return sourceMatchups.filter((matchup) => {
-      const matchupBook = normalizeSportsbook(matchup.book)
-      if (NON_BOOK_SOURCES.has(matchupBook)) return false
-      const passesBook = selectedBookSet.size === 0 || selectedBookSet.has(matchupBook)
-      const passesSearch = matchupSearch
-        ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
-        : true
-      return passesBook && passesSearch && matchup.ev >= minEdge
-    })
+    return filterMatchupsForExploration(
+      sourceMatchups,
+      labMatchupDiagnostics?.failed_candidates,
+      {
+        selectedBooks: selectedBookSet,
+        matchupSearch,
+        minEdge,
+      },
+    )
   }, [
     labVisiblePredictionRun?.matchup_bets_all_books,
     labVisiblePredictionRun?.matchup_bets,
+    labMatchupDiagnostics?.failed_candidates,
     matchupSearch,
     minEdge,
     selectedBookSet,
@@ -454,16 +485,26 @@ function App() {
       }
       return "No live snapshot yet. Start the live-refresh worker or use Refresh, then try again."
     }
-    const diagnostics =
-      predictionTab === "upcoming"
-        ? labSnapshotMerged.upcoming_tournament?.diagnostics
-        : labSnapshotMerged.live_tournament?.diagnostics
     return getMatchupStateMessage({
-      state: diagnostics?.state,
-      reasonCodes: diagnostics?.reason_codes,
-      hasFilters: normalizedSelectedBooks.length > 0,
+      state: labMatchupDiagnostics?.state,
+      reasonCodes: labMatchupDiagnostics?.reason_codes,
+      hasFilters: hasActiveMatchupFilters({
+        selectedBooks: normalizedSelectedBooks,
+        matchupSearch,
+        minEdge,
+        defaultMinEdge: DEFAULT_COCKPIT_MIN_EDGE,
+      }),
     })
-  }, [isLiveActive, labSnapshotMerged, liveSnapshot, normalizedSelectedBooks, predictionTab])
+  }, [
+    isLiveActive,
+    labMatchupDiagnostics,
+    labSnapshotMerged,
+    liveSnapshot,
+    matchupSearch,
+    minEdge,
+    normalizedSelectedBooks,
+    predictionTab,
+  ])
 
   const labSecondaryBets = useMemo(() => {
     if (predictionTab === "past") return []
@@ -845,7 +886,7 @@ function App() {
                     ? liveSnapshot?.lab_upcoming_tournament?.diagnostics
                     : liveSnapshot?.lab_live_tournament?.diagnostics
                 }
-                minEdgePct={Math.round(minEdge * 100)}
+                minEdgePct={Number((minEdge * 100).toFixed(1))}
                 secondaryBets={labSecondaryBets}
                 onPlayerSelect={setSelectedPlayerKey}
                 marketRows={labPicksMarketRows}
@@ -894,12 +935,8 @@ function App() {
               <PicksPage
                 matchups={filteredMatchups}
                 matchupsEmptyMessage={matchupsPageEmptyMessage}
-                matchupDiagnostics={
-                  predictionTab === "upcoming"
-                    ? liveSnapshot?.upcoming_tournament?.diagnostics
-                    : liveSnapshot?.live_tournament?.diagnostics
-                }
-                minEdgePct={Math.round(minEdge * 100)}
+                matchupDiagnostics={productionMatchupDiagnostics}
+                minEdgePct={Number((minEdge * 100).toFixed(1))}
                 secondaryBets={secondaryBets}
                 onPlayerSelect={setSelectedPlayerKey}
                 marketRows={picksMarketRows}

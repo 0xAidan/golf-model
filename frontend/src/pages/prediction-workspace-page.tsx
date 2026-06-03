@@ -22,7 +22,7 @@ import {
   buildCourseFeedModel,
   buildLeaderboardModel,
 } from "@/lib/cockpit-event-models"
-import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
+import { DEFAULT_COCKPIT_MIN_EDGE, getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import {
   buildReplayGeneratedMatchups,
   buildReplayGeneratedSecondaryBets,
@@ -165,8 +165,6 @@ function EmptyState({ message }: { message: string }) {
   )
 }
 
-const DEFAULT_COCKPIT_MIN_EDGE = 0.02
-
 type PastReplaySource = "dashboard" | "lab"
 type PastReplayLane = "completed" | "live" | "upcoming"
 type PastHistoryLane = "live" | "upcoming" | "lab_live" | "lab_upcoming"
@@ -257,8 +255,8 @@ function TopPicksPipelineHint({
         </div>
       ) : null}
       <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-faint)" }}>
-        Top picks uses the same filters as the matchup board (books, search, min edge {(minEdge * 100).toFixed(0)}%; default{" "}
-        {(DEFAULT_COCKPIT_MIN_EDGE * 100).toFixed(0)}%). Secondary markets can still show edges when matchups do not.
+        Top picks uses the same filters as the matchup board (books, search, min edge {(minEdge * 100).toFixed(1)}%; default{" "}
+        {(DEFAULT_COCKPIT_MIN_EDGE * 100).toFixed(1)}%). Drag the min edge slider to include near-miss candidates from the last model run.
         {filterActive ? " Filters are active — relax them to see more qualifying rows." : null}
       </div>
     </div>
@@ -958,19 +956,22 @@ export function PredictionWorkspacePage({
                 {/* Min edge */}
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--text-faint)", marginBottom: 6 }}>
-                    Min edge: <span style={{ color: "var(--text-muted)" }}>{(minEdge * 100).toFixed(0)}%</span>
+                    Min edge: <span style={{ color: "var(--text-muted)" }}>{(minEdge * 100).toFixed(1)}%</span>
                   </div>
                   <input
                     type="range"
                     min="0"
-                    max="0.2"
-                    step="0.01"
+                    max="0.12"
+                    step="0.0025"
                     value={minEdge}
                     onChange={(e) => onMinEdgeChange(Number(e.target.value))}
                     style={{ width: "100%", accentColor: "var(--green)" }}
                     aria-label="Minimum edge threshold"
                     data-testid="min-edge-slider"
                   />
+                  <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-faint)", lineHeight: 1.4 }}>
+                    Rows update live as you drag — includes near-miss matchups from the last model run.
+                  </div>
                 </div>
               </div>
             </div>
@@ -1206,7 +1207,7 @@ export function PredictionWorkspacePage({
                   <div className="card-desc">
                     {predictionTab === "past"
                       ? `${topPlays.length} picks generated for this event`
-                      : `${topPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`}
+                      : `${topPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(1)}%`}
                   </div>
                 </div>
                 {!displayPredictionRun?.card_content ? (

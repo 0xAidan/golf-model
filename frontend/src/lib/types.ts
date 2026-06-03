@@ -574,6 +574,10 @@ export type MatchupBet = {
   market_type?: string
   /** When set (replay payload or upstream), overrides leaderboard-derived grade in Past tab. */
   graded_result?: "win" | "loss" | "push"
+  /** ``card`` = shipped in snapshot; ``candidate`` = from diagnostics near-miss pool. */
+  explore_source?: "card" | "candidate"
+  /** Pipeline exclusion code when ``explore_source`` is ``candidate``. */
+  gate_reason?: string
 }
 
 export type SecondaryBet = {

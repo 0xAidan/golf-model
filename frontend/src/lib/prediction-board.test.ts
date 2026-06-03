@@ -79,7 +79,24 @@ describe("buildHydratedPredictionRun", () => {
       live_tournament: {
         event_name: "Memorial",
         rankings: [],
-        matchup_bets: [{ player: "A", opponent: "B", book: "betcris", odds: "-110", ev: 0.06 }],
+        matchup_bets: [
+          {
+            pick: "A",
+            pick_key: "a",
+            opponent: "B",
+            opponent_key: "b",
+            book: "betcris",
+            odds: "-110",
+            ev: 0.06,
+            ev_pct: "6.0%",
+            model_win_prob: 0.55,
+            implied_prob: 0.5,
+            composite_gap: 1,
+            form_gap: 0,
+            course_fit_gap: 0,
+            reason: "test",
+          },
+        ],
         value_bets: {},
       },
     }
