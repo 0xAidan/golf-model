@@ -2,13 +2,15 @@ import { render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 
+import { ThemeProvider } from "@/components/theme-provider"
 import { SuiteShell } from "@/components/shell"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 
 describe("SuiteShell", () => {
   it("keeps the mode switch visible alongside suite navigation", () => {
     render(
-      <MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter>
         <SuiteShell
           headline="RBC Heritage"
           subheadline="One dashboard for live, upcoming, and replay context."
@@ -18,7 +20,8 @@ describe("SuiteShell", () => {
         >
           <div>Dashboard body</div>
         </SuiteShell>
-      </MemoryRouter>,
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     expect(screen.getByText("Live / Upcoming / Past")).toBeInTheDocument()

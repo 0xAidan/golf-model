@@ -1,6 +1,22 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      (function () {
+        var key = "golf-model.theme";
+        var stored = localStorage.getItem(key);
+        var theme =
+          stored === "light" || stored === "dark" || stored === "system"
+            ? stored
+            : "system";
+        var dark =
+          theme === "dark" ||
+          (theme === "system" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,11 +35,15 @@
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-BE-CuV-I.js"></script>
+    <script type="module" crossorigin src="./assets/index-TedlS21i.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-Bg_NI1en.js">
-    <link rel="modulepreload" crossorigin href="./assets/chunk-QFMPRPBF-BR0TtgsD.js">
-    <link rel="modulepreload" crossorigin href="./assets/createLucideIcon-C4oPhTRB.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-CwrqO6HJ.css">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-QFMPRPBF-DdXxWSm3.js">
+    <link rel="modulepreload" crossorigin href="./assets/metric-tooltips-ChNEgWEU.js">
+    <link rel="modulepreload" crossorigin href="./assets/page-header-YqJUcbXJ.js">
+    <link rel="modulepreload" crossorigin href="./assets/dropdown-menu-D2fEsX8V.js">
+    <link rel="modulepreload" crossorigin href="./assets/sg-trajectory-meter-_KqkWMaQ.js">
+    <link rel="modulepreload" crossorigin href="./assets/format-D6RuehTL.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-BHARj_6x.css">
   </head>
   <body>
     <div id="root"></div>

@@ -5,6 +5,8 @@ import { ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { BarTrendChart } from "@/components/charts"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
+import { FilterBar } from "@/components/ui/filter-bar"
+import { PageHeader as RecordsPageHeader } from "@/components/ui/page-header"
 import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
@@ -27,19 +29,6 @@ function EmptyState({ message }: { message: string }) {
   return (
     <div className="empty-state">
       <div className="empty-state-title">{message}</div>
-    </div>
-  )
-}
-
-function PageHeader({ title, description }: { title: string; description?: string }) {
-  return (
-    <div style={{ marginBottom: 10, display: "flex", alignItems: "baseline", gap: 10 }}>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-        {title}
-      </div>
-      {description && (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-faint)" }}>{description}</div>
-      )}
     </div>
   )
 }
@@ -71,7 +60,10 @@ export function PlayersPage({
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <PageHeader title="Player Rankings" description="Full model board — click any row to expand the player's full projection profile." />
+      <RecordsPageHeader
+        title="Player rankings"
+        description="Full model board — click any row to expand the player's full projection profile."
+      />
       <div className="card">
         {players.length > 0 ? (
           <div style={{ overflow: "auto" }}>
@@ -227,17 +219,20 @@ export function GradingPage() {
   const totalPicks = gradingHistory.reduce((s, t) => s + (t.graded_pick_count ?? 0), 0)
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <PageHeader title="Grading History" description="Tournament-by-tournament performance tracking." />
+    <div className="records-page">
+      <RecordsPageHeader
+        eyebrow="Records"
+        title="Grading history"
+        description="Tournament-by-tournament performance tracking."
+      />
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>Pick source</span>
+      <FilterBar>
+        <span className="filter-bar-label">Pick source</span>
         {(["cockpit", "lab", "all"] as const).map((value) => (
           <button
             key={value}
             type="button"
-            className={`btn ${pickSource === value ? "btn-primary" : "btn-ghost"}`}
-            style={{ fontSize: 11 }}
+            className={`btn ${pickSource === value ? "btn-primary" : "btn-ghost"} btn-sm`}
             onClick={() => setPickSource(value)}
             data-testid={`grading-source-${value}`}
           >
@@ -245,9 +240,9 @@ export function GradingPage() {
           </button>
         ))}
         {gradingHistoryQuery.isFetching ? (
-          <span style={{ fontSize: 10, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>Updating…</span>
+          <span className="filter-bar-hint">Updating…</span>
         ) : null}
-      </div>
+      </FilterBar>
 
       {/* KPI strip */}
       <div className="kpi-grid">
@@ -460,8 +455,12 @@ export function TrackRecordPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <PageHeader title="Track Record" description="Full historical model performance across all graded tournaments." />
+    <div className="records-page">
+      <RecordsPageHeader
+        eyebrow="Records"
+        title="Track record"
+        description="Full historical model performance across all graded tournaments."
+      />
 
       {/* Summary strip */}
       <div className="kpi-grid">

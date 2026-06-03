@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "@/App"
+import { ThemeProvider } from "@/components/theme-provider"
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -47,11 +48,13 @@ function renderAppAtRoute(route: string) {
   })
 
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>
-        <App />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[route]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>,
   )
 }
 

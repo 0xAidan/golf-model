@@ -24,6 +24,7 @@ import {
   MATCHUP_TABLE_TOOLTIPS,
   TIER_BADGE_TOOLTIP,
 } from "@/lib/metric-tooltips"
+import { PageHeader } from "@/components/ui/page-header"
 import { PicksTableScroll } from "@/components/ui/picks-table-scroll"
 import { cn } from "@/lib/utils"
 import type {
@@ -170,30 +171,6 @@ function TierBadge({ tier, tierRationale, evKind }: { tier?: string; tierRationa
     <span className={`tier-badge ${t}`} title={title} style={{ cursor: "help" }}>
       {t}
     </span>
-  )
-}
-
-function PageHeader({ title, description }: { title: string; description?: string }) {
-  return (
-    <div style={{ marginBottom: 10, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "var(--text-muted)",
-        }}
-      >
-        {title}
-      </div>
-      {description && (
-        <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
-          {description}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -997,10 +974,11 @@ export function PicksPage({
   return (
     <div className="page-shell picks-page-shell">
       <div className="picks-page-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <PageHeader title="Picks" description={description} />
-          {lane === "lab" ? <span className="lane-chip">Lab lane</span> : null}
-        </div>
+        <PageHeader
+          title="Picks"
+          description={description}
+          action={lane === "lab" ? <span className="lane-chip">Lab lane</span> : undefined}
+        />
       </div>
 
       <PicksTabSwitcher

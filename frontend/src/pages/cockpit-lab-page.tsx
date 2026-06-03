@@ -29,25 +29,10 @@ export function CockpitLabPage({
   }, [])
 
   return (
-    <div
-      className="cockpit-lab-root lane-lab"
-      style={{
-        flex: 1,
-        minHeight: 0,
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ flexShrink: 0 }} data-testid="lab-board-banner-wrap">
-          <div
-            className="term-notice"
-            style={{
-              margin: "8px 12px 0",
-              fontSize: 12,
-              lineHeight: 1.45,
-            }}
-            data-testid="lab-board-banner"
-          >
+    <div className="cockpit-lab-root lane-lab">
+      <div className="cockpit-lab-main">
+        <div className="cockpit-lab-banner-wrap" data-testid="lab-board-banner-wrap">
+          <div className="term-notice cockpit-lab-banner" data-testid="lab-board-banner">
             <strong>Lab</strong> — matchup-lab champion (Optuna trial 327) via{" "}
             <strong>lab_live_tournament</strong> / <strong>lab_upcoming_tournament</strong> when{" "}
             <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> is on. Main{" "}
@@ -66,12 +51,7 @@ export function CockpitLabPage({
           </div>
           {usingProdSnapshotFallback ? (
             <div
-              className="term-notice amber"
-              style={{
-                margin: "8px 12px 0",
-                fontSize: 12,
-                lineHeight: 1.45,
-              }}
+              className="term-notice amber cockpit-lab-banner"
               data-testid="lab-board-prod-fallback-banner"
             >
               <strong>Lab lane off.</strong> Boards below mirror the main snapshot until the server enables the lab
@@ -80,12 +60,7 @@ export function CockpitLabPage({
           ) : null}
           {!usingProdSnapshotFallback && labLanePartialSections ? (
             <div
-              className="term-notice amber"
-              style={{
-                margin: "8px 12px 0",
-                fontSize: 12,
-                lineHeight: 1.45,
-              }}
+              className="term-notice amber cockpit-lab-banner"
               data-testid="lab-board-partial-sections-banner"
             >
               <strong>Partial lab snapshot.</strong> Only one of <code style={{ fontSize: 11 }}>lab_live_tournament</code>{" "}
@@ -94,18 +69,13 @@ export function CockpitLabPage({
             </div>
           ) : null}
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div className="cockpit-lab-workspace">
           <PredictionWorkspacePage {...cockpitWorkspaceProps} />
         </div>
       </div>
       <aside
         className="cockpit-lab-research-aside"
-        style={{
-          minHeight: 0,
-          overflowY: researchExpanded ? "auto" : "visible",
-          borderLeft: "1px solid var(--border)",
-          background: "var(--surface-0)",
-        }}
+        style={{ overflowY: researchExpanded ? "auto" : "visible" }}
         data-testid="lab-board-research-pane"
         data-research-expanded={researchExpanded ? "true" : "false"}
       >
