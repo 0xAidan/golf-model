@@ -2530,11 +2530,11 @@ async def get_live_refresh_snapshot():
                 refreshed = {}
             elif force_bypass_runtime_wait:
                 _logger.warning(
-                    "Live snapshot extremely stale (age=%ss) but API background heal is disabled; "
-                    "rely on golf-live-refresh worker or set LIVE_REFRESH_EMBEDDED_AUTOSTART=1.",
+                    "Live snapshot extremely stale (age=%ss) while runtime claims healthy; "
+                    "running bounded on-demand recompute from API path.",
                     age_seconds,
                 )
-                refreshed = {}
+                refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
             else:
                 refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
         if refreshed:

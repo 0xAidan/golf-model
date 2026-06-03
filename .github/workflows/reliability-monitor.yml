@@ -1,0 +1,102 @@
+name: Production Reliability Monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  synthetic-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run production synthetic reliability check
+        id: synthetic
+        run: |
+          python scripts/reliability_synthetic_check.py \
+            --base-url "https://golf.ancc.blog" \
+            --timeout-seconds 10 \
+            --max-root-ms 5000 \
+            --max-api-ms 8000 \
+            --max-snapshot-age-seconds 2700 \
+            --output-json reliability-check.json
+
+      - name: Upload synthetic-check results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-check-results
+          path: reliability-check.json
+          if-no-files-found: error
+
+      - name: Raise or update reliability alert issue
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          RUNBOOK_URL: "https://github.com/${{ github.repository }}/blob/main/docs/reliability_runbook.md"
+          RUN_URL: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const title = "Production reliability alert";
+            const label = "reliability-alert";
+            const body = [
+              "Synthetic reliability checks failed.",
+              "",
+              `- Workflow run: ${process.env.RUN_URL}`,
+              `- Runbook: ${process.env.RUNBOOK_URL}`,
+              "",
+              "Action: follow the runbook and attach root-cause notes before closing."
+            ].join("\n");
+
+            const { data: labels } = await github.rest.issues.listLabelsForRepo({
+              owner,
+              repo,
+              per_page: 100
+            });
+            const labelExists = labels.some(l => l.name === label);
+            if (!labelExists) {
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: label,
+                color: "B60205",
+                description: "Actionable production reliability alert"
+              }).catch(() => {});
+            }
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "open",
+              labels: label,
+              per_page: 50
+            });
+
+            const existing = issues.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels: [label]
+              });
+            }
