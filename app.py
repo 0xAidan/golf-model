@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import re
+import time
 import asyncio
 import logging
 import shutil
@@ -60,6 +61,8 @@ _logger = logging.getLogger("golf.app")
 
 _DEFAULT_LIVE_REFRESH_PIDFILE = "/tmp/golf_live_refresh.pid"
 _snapshot_heal_in_progress = False
+_dashboard_state_cache: dict[str, tuple[float, dict]] = {}
+_DASHBOARD_STATE_CACHE_TTL_S = 60.0
 
 
 def _live_refresh_pidfile_path() -> str:
@@ -2065,9 +2068,14 @@ async def get_card():
     return _last_analysis
 
 
-@app.get("/api/dashboard/state")
-async def get_dashboard_state(scope: str = "global"):
-    """Return actionable dashboard state for the simple UI."""
+def _build_dashboard_state_sync(scope: str = "global") -> dict:
+    """Sync dashboard state builder — run via ``asyncio.to_thread`` so SQLite/AI work cannot block the event loop."""
+    cached = _dashboard_state_cache.get(scope)
+    if cached is not None:
+        cached_at, payload = cached
+        if time.time() - cached_at < _DASHBOARD_STATE_CACHE_TTL_S:
+            return payload
+
     from src.db import ensure_initialized
     ensure_initialized()
 
@@ -2081,7 +2089,8 @@ async def get_dashboard_state(scope: str = "global"):
     from src.ai_brain import get_ai_status
     from src.datagolf import get_datagolf_throttle_status
 
-    return {
+    optimizer = get_optimizer_status()
+    payload = {
         "ai_status": get_ai_status(),
         "effective_live_weekly_model": get_live_weekly_model(scope).__dict__,
         "effective_research_champion": get_research_champion(scope).__dict__,
@@ -2103,18 +2112,26 @@ async def get_dashboard_state(scope: str = "global"):
         "latest_research_artifact": _latest_output_artifact("research"),
         "latest_completed_event": _latest_completed_event_summary(),
         "latest_graded_tournament": _latest_graded_tournament_summary(),
-        "optimizer": get_optimizer_status(),
+        "optimizer": optimizer,
         "autoresearch": {
-            "running": get_optimizer_status().get("running", False),
-            "run_count": get_optimizer_status().get("run_count", 0),
-            "last_started_at": get_optimizer_status().get("last_run_started_at"),
-            "last_finished_at": get_optimizer_status().get("last_run_finished_at"),
-            "last_result": get_optimizer_status().get("last_result"),
-            "last_error": get_optimizer_status().get("last_error"),
-            "scope": get_optimizer_status().get("scope", scope),
+            "running": optimizer.get("running", False),
+            "run_count": optimizer.get("run_count", 0),
+            "last_started_at": optimizer.get("last_run_started_at"),
+            "last_finished_at": optimizer.get("last_run_finished_at"),
+            "last_result": optimizer.get("last_result"),
+            "last_error": optimizer.get("last_error"),
+            "scope": optimizer.get("scope", scope),
         },
         "datagolf": get_datagolf_throttle_status(),
     }
+    _dashboard_state_cache[scope] = (time.time(), payload)
+    return payload
+
+
+@app.get("/api/dashboard/state")
+async def get_dashboard_state(scope: str = "global"):
+    """Return actionable dashboard state for the simple UI."""
+    return await asyncio.to_thread(_build_dashboard_state_sync, scope)
 
 
 @app.post("/api/live-refresh/start")
@@ -2498,16 +2515,17 @@ async def get_live_refresh_snapshot():
             and age_seconds is not None
             and age_seconds >= extreme_stale_floor
         )
-        if not runtime_claims_healthy or force_bypass_runtime_wait:
+        worker_running = bool(status.get("worker_running"))
+        if (not runtime_claims_healthy or force_bypass_runtime_wait) and not worker_running:
             # Never block the HTTP worker on a full recompute (lab lane doubles CPU time).
-            # Extreme staleness schedules background heal; client keeps last snapshot + stale banner.
-            if force_bypass_runtime_wait and _embedded_live_refresh_autostart_allowed():
+            # When the systemd worker owns refresh, return the on-disk snapshot and let it recompute.
+            if force_bypass_runtime_wait:
                 global _snapshot_heal_in_progress
                 if not _snapshot_heal_in_progress:
+                    _snapshot_heal_in_progress = True
 
                     async def _heal_extremely_stale_snapshot() -> None:
                         global _snapshot_heal_in_progress
-                        _snapshot_heal_in_progress = True
                         try:
                             await asyncio.to_thread(generate_snapshot_once, tour=tour)
                             _logger.warning(
@@ -2528,15 +2546,14 @@ async def get_live_refresh_snapshot():
                         age_seconds,
                     )
                 refreshed = {}
-            elif force_bypass_runtime_wait:
-                _logger.warning(
-                    "Live snapshot extremely stale (age=%ss) while runtime claims healthy; "
-                    "running bounded on-demand recompute from API path.",
-                    age_seconds,
-                )
-                refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
             else:
                 refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
+        elif force_bypass_runtime_wait and worker_running:
+            _logger.warning(
+                "Extremely stale snapshot (age=%ss) but live-refresh worker is running; "
+                "serving last snapshot without API recompute.",
+                age_seconds,
+            )
         if refreshed:
             snapshot = refreshed
             generated_at = snapshot.get("generated_at")
@@ -4221,4 +4238,10 @@ async def search_players(q: str = ""):
         ).fetchall()
     conn.close()
     return {"players": [dict(r) for r in rows]}
+
+
+@app.on_event("startup")
+async def _warm_dashboard_state_cache() -> None:
+    """Populate dashboard state cache in a worker thread so first UI poll is fast."""
+    asyncio.create_task(asyncio.to_thread(_build_dashboard_state_sync, "global"))
 
