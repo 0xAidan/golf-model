@@ -15,6 +15,8 @@ import {
   HistoryTable,
 } from "@/components/charts-v2"
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { cn } from "@/lib/utils"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { api } from "@/lib/api"
 import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
@@ -96,23 +98,23 @@ function KpiCell({
   return (
     <div
       title={title}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        padding: "10px 14px",
-        minWidth: 0,
-        cursor: title ? "help" : undefined,
-        background: accentUnit != null ? heatSpectrumGradientAlongUnit(accentUnit, "ltr") : undefined,
-      }}
+      className={cn("players-kpi-cell", title && "players-kpi-cell--help")}
+      style={accentUnit != null ? { background: heatSpectrumGradientAlongUnit(accentUnit, "ltr") } : undefined}
     >
-      <span style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: accentUnit != null ? "var(--bg)" : VAR.faint }}>
-        {label}
-      </span>
-      <span style={{ fontFamily: VAR.mono, fontSize: large ? 22 : 17, fontWeight: 700, color: accentUnit != null ? "var(--bg)" : toneColor(t), letterSpacing: "-0.02em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+      <span className={cn("players-kpi-label", accentUnit != null && "players-kpi-label--on-heat")}>{label}</span>
+      <span
+        className={cn(
+          "players-kpi-value",
+          large && "players-kpi-value--lg",
+          accentUnit == null && `players-kpi-value--${t}`,
+        )}
+        style={accentUnit != null ? { color: "var(--bg)" } : undefined}
+      >
         {value}
       </span>
-      {sub && <span style={{ fontFamily: VAR.mono, fontSize: 9, color: accentUnit != null ? "var(--bg)" : VAR.faint }}>{sub}</span>}
+      {sub && (
+        <span className={cn("players-kpi-sub", accentUnit != null && "players-kpi-label--on-heat")}>{sub}</span>
+      )}
     </div>
   )
 }
@@ -132,23 +134,10 @@ function MetricCard({
   title?: string
 }) {
   return (
-    <div
-      title={tip}
-      style={{
-        background: VAR.surface,
-        border: `1px solid ${VAR.border}`,
-        borderRadius: "var(--r-md)",
-        padding: "10px 12px",
-        cursor: tip ? "help" : undefined,
-      }}
-    >
-      <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: VAR.muted, marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontFamily: VAR.mono, fontSize: 18, fontWeight: 700, color: toneColor(t), letterSpacing: "-0.02em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
-        {value}
-      </div>
-      {sub && <div style={{ fontFamily: VAR.mono, fontSize: 10, color: VAR.faint, marginTop: 3 }}>{sub}</div>}
+    <div title={tip} className={cn("profile-metric-card", tip && "profile-metric-card--help")}>
+      <div className="profile-metric-label">{label}</div>
+      <div className={cn("profile-metric-value", `profile-metric-value--${t}`)}>{value}</div>
+      {sub && <div className="players-kpi-sub">{sub}</div>}
     </div>
   )
 }
@@ -419,26 +408,14 @@ function PlayerProfileView({
   } as const
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
-      {/* ── Player Header Strip ───────────────────────────────────── */}
-      <div
-        style={{
-          background: VAR.bg2,
-          borderBottom: `1px solid ${VAR.border}`,
-          padding: "10px 16px 8px",
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+    <div className="players-profile-scroll">
+      <div className="players-profile-header">
+        <div className="players-profile-header-row">
           <div>
-            <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: VAR.faint, marginBottom: 3 }}>
-              Player Profile
-            </div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 800, color: VAR.text, letterSpacing: "-0.01em", lineHeight: 1 }}>
-              {p.player_display}
-            </div>
+            <div className="players-profile-eyebrow">Player Profile</div>
+            <div className="players-profile-name">{p.player_display}</div>
           </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0, marginTop: 2 }}>
+          <div className="players-status-pills">
             {p.has_skill_data && <span className="status-pill good">DG Skills ✓</span>}
             {p.has_ranking_data && <span className="status-pill good">Rankings ✓</span>}
             {p.has_approach_data && <span className="status-pill good">Approach ✓</span>}
@@ -448,17 +425,7 @@ function PlayerProfileView({
           </div>
         </div>
 
-        {/* KPI Strip */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(6, 1fr)",
-            background: VAR.bg1,
-            border: `1px solid ${VAR.border}`,
-            borderRadius: "var(--r-md)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="players-kpi-grid">
           {[
             { label: "DG Rank",    value: p.header.dg_rank  ? `#${p.header.dg_rank}`  : "—" },
             { label: "OWGR",       value: p.header.owgr_rank ? `#${p.header.owgr_rank}` : "—" },
@@ -477,44 +444,27 @@ function PlayerProfileView({
             { label: "Events (DB)",value: String(p.header.events_tracked ?? 0), sub: "tracked events" },
             { label: "Rounds (DB)",value: String(p.header.rounds_in_db ?? 0), sub: "stored rounds" },
           ].map((item, i, arr) => (
-            <div
-              key={item.label}
-              style={{
-                borderRight: i < arr.length - 1 ? `1px solid ${VAR.border}` : "none",
-              }}
-            >
+            <div key={item.label} className={cn("players-kpi-cell-wrap", i === arr.length - 1 && "players-kpi-cell-wrap--last")}>
               <KpiCell {...item} title={PLAYER_PAGE_KPI_TOOLTIPS[item.label]} />
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── Main content ─────────────────────────────────────────── */}
-      <div style={{ flex: 1, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="players-content">
         {modelPlayer && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Model Alignment</span>
-              <span className="panel-label-dim">Current field model context for this player</span>
-            </div>
-            <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
+          <CollapsibleSection
+            title="Model alignment"
+            description="Current field model context"
+            defaultOpen
+          >
+            <div className="profile-panel-body profile-panel-body--grid-5">
               <MetricCard label="Model Rank" value={`#${modelPlayer.rank}`} title={PLAYER_PROFILE_STAT_TOOLTIPS["Model Rank"]} />
               <MetricCard label="Composite" value={modelPlayer.composite.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS.Composite} />
               <MetricCard label="Form" value={modelPlayer.form.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS.Form} />
               <MetricCard label="Course Fit" value={modelPlayer.course_fit.toFixed(1)} title={PLAYER_PROFILE_STAT_TOOLTIPS["Course Fit"]} />
-              <div
-                title={SG_TRAJECTORY_HELP}
-                style={{
-                  cursor: "help",
-                  background: VAR.surface,
-                  border: `1px solid ${VAR.border}`,
-                  borderRadius: "var(--r-md)",
-                  padding: "8px 10px",
-                }}
-              >
-                <div style={{ fontFamily: VAR.mono, fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: VAR.faint, marginBottom: 6 }}>
-                  SG Trajectory
-                </div>
+              <div title={SG_TRAJECTORY_HELP} className="profile-metric-card profile-metric-card--help">
+                <div className="profile-metric-label">SG Trajectory</div>
                 <SgTrajectoryMeter
                   momentumTrend={modelPlayer.momentum_trend}
                   momentumDirection={modelPlayer.momentum_direction}
@@ -523,109 +473,71 @@ function PlayerProfileView({
                 />
               </div>
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
         {p.ranking_card && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">DG Identity</span>
-              <span className="panel-label-dim">Structured DataGolf ranking context</span>
-            </div>
-            <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+          <CollapsibleSection title="DG identity" description="Structured DataGolf ranking context">
+            <div className="profile-panel-body profile-panel-body--grid-4">
               <MetricCard label="DG Rank" value={p.ranking_card.dg_rank ? `#${p.ranking_card.dg_rank}` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS["DG Rank"]} />
               <MetricCard label="OWGR" value={p.ranking_card.owgr_rank ? `#${p.ranking_card.owgr_rank}` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.OWGR} />
               <MetricCard label="DG Skill" value={signed(p.ranking_card.dg_skill_estimate, 2)} tone={tone(p.ranking_card.dg_skill_estimate)} title={PLAYER_PROFILE_STAT_TOOLTIPS["DG Skill"]} />
               <MetricCard label="Primary Tour" value={p.ranking_card.primary_tour ?? "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS["Primary Tour"]} />
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
         {/* Skill profile row: radar + KPIs beside field distribution when width allows */}
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
-            alignItems: "stretch",
-          }}
-        >
-          <div className="players-skill-radar-row" style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr) minmax(200px, 240px)" }}>
-            <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden", minWidth: 0 }}>
-              <div className="panel-header">
-                <span className="panel-label">Skill Profile</span>
-                <span className="panel-label-dim">Five-axis radar vs tour average (dashed)</span>
-              </div>
-              <div style={{ padding: "12px 14px" }}>
+        <CollapsibleSection title="Skill profile" description="Radar, driving stats, rolling windows" defaultOpen>
+            <div className="profile-skill-radar-inner">
+              <div className="profile-panel-body profile-panel-body--chart">
                 <PentagonRadar skills={p.sg_skills} playerName={p.player_display} height={300} />
               </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-              <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted }}>Driving</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Distance} />
-                <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Accuracy} />
+              <div className="profile-skill-side">
+                <div className="profile-section-label">Driving</div>
+                <div className="profile-skill-metrics-2">
+                  <MetricCard label="Distance" value={p.sg_skills.driving_dist ? `${p.sg_skills.driving_dist.toFixed(0)} yd` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Distance} />
+                  <MetricCard label="Accuracy" value={p.sg_skills.driving_acc ? `${(p.sg_skills.driving_acc * 100).toFixed(1)}%` : "—"} title={PLAYER_PROFILE_STAT_TOOLTIPS.Accuracy} />
+                </div>
+                <div className="profile-section-label" style={{ marginTop: 4 }}>Rolling windows</div>
+                {(["10", "25", "50"] as const).map((w) => {
+                  const val = p.rolling_windows?.[w]
+                  const heatT = heatUnitForSg(val)
+                  return (
+                    <div key={w} title={ROLLING_WINDOW_ROW_TOOLTIP} className="profile-rolling-row">
+                      <span className="profile-rolling-label">L{w}</span>
+                      <span
+                        className="profile-rolling-value"
+                        style={{ color: val != null ? heatSpectrumFromUnit(heatT) : undefined }}
+                      >
+                        {val != null ? signed(val) : "—"}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
-              <div style={{ fontFamily: VAR.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: VAR.muted, marginTop: 4 }}>Rolling windows</div>
-              {(["10", "25", "50"] as const).map((w) => {
-                const val = p.rolling_windows?.[w]
-                const heatT = heatUnitForSg(val)
-                return (
-                  <div
-                    key={w}
-                    title={ROLLING_WINDOW_ROW_TOOLTIP}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "7px 10px",
-                      background: VAR.bg2,
-                      border: `1px solid ${VAR.border}`,
-                      borderRadius: "var(--r-sm)",
-                      cursor: "help",
-                    }}
-                  >
-                    <span style={{ fontFamily: VAR.mono, fontSize: 11, color: VAR.muted, letterSpacing: "0.06em", fontWeight: 600 }}>
-                      L{w}
-                    </span>
-                    <span style={{ fontFamily: VAR.mono, fontSize: 15, fontWeight: 700, color: val != null ? heatSpectrumFromUnit(heatT) : VAR.faint }}>
-                      {val != null ? signed(val) : "—"}
-                    </span>
-                  </div>
-                )
-              })}
             </div>
-          </div>
+          </CollapsibleSection>
 
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden", minWidth: 0 }}>
-            <div className="panel-header">
-              <span className="panel-label">Field distribution</span>
-              <span className="panel-label-dim">You (green ring) vs field (grey)</span>
-            </div>
-            <div style={{ padding: "12px 14px" }}>
-              <BeeswarmStrip
-                categories={[
-                  { label: "Total SG", shortLabel: "TOTAL", playerValue: p.sg_skills.sg_total },
-                  { label: "Approach", shortLabel: "APP", playerValue: p.sg_skills.sg_app },
-                  { label: "Around Green", shortLabel: "ARG", playerValue: p.sg_skills.sg_arg },
-                  { label: "Putting", shortLabel: "PUTT", playerValue: p.sg_skills.sg_putt },
-                  { label: "Off the Tee", shortLabel: "OTT", playerValue: p.sg_skills.sg_ott },
-                ] satisfies BeeswarmCategory[]}
-                height={300}
-              />
-            </div>
+        <CollapsibleSection title="Field distribution" description="You (green ring) vs field (grey)">
+          <div className="profile-panel-body profile-panel-body--chart">
+            <BeeswarmStrip
+              categories={[
+                { label: "Total SG", shortLabel: "TOTAL", playerValue: p.sg_skills.sg_total },
+                { label: "Approach", shortLabel: "APP", playerValue: p.sg_skills.sg_app },
+                { label: "Around Green", shortLabel: "ARG", playerValue: p.sg_skills.sg_arg },
+                { label: "Putting", shortLabel: "PUTT", playerValue: p.sg_skills.sg_putt },
+                { label: "Off the Tee", shortLabel: "OTT", playerValue: p.sg_skills.sg_ott },
+              ] satisfies BeeswarmCategory[]}
+              height={300}
+            />
           </div>
-        </div>
+        </CollapsibleSection>
 
         {p.rolling_windows_expanded && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Rolling Windows Grid</span>
-              <span className="panel-label-dim">L10 / L25 / L50 by SG category</span>
-            </div>
-            <div style={{ padding: 12, overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 12 }}>
+          <CollapsibleSection title="Rolling windows grid" description="L10 / L25 / L50 by SG category">
+            <div className="profile-panel-body profile-panel-body--scroll">
+              <table className="profile-data-table">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
                     {["Window", "TOTAL", "OTT", "APP", "ARG", "PUTT", "T2G"].map((head) => (
@@ -680,17 +592,12 @@ function PlayerProfileView({
                 </tbody>
               </table>
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
-        {/* ── Event form: bars + moving average ──────────── */}
         {p.recent_events.length > 0 && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Event Form</span>
-              <span className="panel-label-dim">Per-event SG bars + moving average — switch stat with tabs</span>
-            </div>
-            <div style={{ padding: 12 }}>
+          <CollapsibleSection title="Event form" description="Per-event SG bars + moving average">
+            <div className="profile-panel-body">
               <RollingBarLine
                 events={p.recent_events as RollingEvent[]}
                 height={180}
@@ -699,17 +606,13 @@ function PlayerProfileView({
                 roundSeriesByMetric={roundSeriesByMetric}
               />
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
         {p.course_summaries && p.course_summaries.length > 0 && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Course Rollups</span>
-              <span className="panel-label-dim">Most tracked courses by rounds played</span>
-            </div>
-            <div style={{ padding: 12 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 10 }}>
+          <CollapsibleSection title="Course rollups" description="Most tracked courses by rounds played">
+            <div className="profile-panel-body">
+              <table className="profile-data-table">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
                     <th style={{ textAlign: "left", color: VAR.faint, padding: "6px 8px", letterSpacing: "0.08em" }}>Course</th>
@@ -730,17 +633,13 @@ function PlayerProfileView({
                 </tbody>
               </table>
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
         {p.recent_rounds_sample && p.recent_rounds_sample.length > 0 && (
-          <div style={{ background: VAR.bg1, border: `1px solid ${VAR.border}`, borderRadius: "var(--r-md)", overflow: "hidden" }}>
-            <div className="panel-header">
-              <span className="panel-label">Round Log</span>
-              <span className="panel-label-dim">Most recent rounds with SG splits and scoring context</span>
-            </div>
-            <div style={{ padding: 12, overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: VAR.mono, fontSize: 10 }}>
+          <CollapsibleSection title="Round log" description="Recent rounds with SG splits">
+            <div className="profile-panel-body profile-panel-body--scroll">
+              <table className="profile-data-table">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${VAR.border}` }}>
                     {["Date", "Event", "R", "Score", "TOT", "OTT", "APP", "ARG", "PUTT", "T2G"].map((head) => (
@@ -777,7 +676,7 @@ function PlayerProfileView({
                 </tbody>
               </table>
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
         {/* ── Row 4: Approach Arc Gauges ──────────────────────────── */}

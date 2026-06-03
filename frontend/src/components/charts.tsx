@@ -1,27 +1,25 @@
 import ReactECharts from "echarts-for-react"
 
+import { getEchartsTooltipStyle } from "@/lib/chart-theme"
+
 /* ─── Design tokens (match index.css) ───────────────────────────────── */
 const T = {
-  bg:       "#0d1012",
-  surface:  "#141719",
-  border:   "#1f2426",
-  text:     "#e8ecef",
-  muted:    "#6b7a84",
-  faint:    "#374349",
-  green:    "#22c55e",
-  cyan:     "#22c55e",
-  gold:     "#f5b418",
-  red:      "#ef4444",
-  amber:    "#f59e0b",
-  mono:     "'JetBrains Mono', 'Fira Code', monospace",
+  bg:       "var(--bg-1)",
+  surface:  "var(--surface)",
+  border:   "var(--border)",
+  text:     "var(--text)",
+  muted:    "var(--text-muted)",
+  faint:    "var(--text-faint)",
+  green:    "var(--green)",
+  cyan:     "var(--cyan)",
+  gold:     "var(--gold)",
+  red:      "var(--red)",
+  amber:    "var(--amber)",
+  mono:     "var(--font-mono)",
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: T.bg,
-  borderColor: T.border,
-  borderWidth: 1,
-  textStyle: { color: T.text, fontSize: 11, fontFamily: T.mono },
-  extraCssText: "border-radius:3px;box-shadow:0 4px 16px rgba(0,0,0,0.5);",
+function chartTooltip() {
+  return getEchartsTooltipStyle()
 }
 
 /* ─── Empty placeholder ─────────────────────────────────────────────── */
@@ -102,7 +100,7 @@ export function SparklineChart({
         ],
         tooltip: {
           trigger: "axis",
-          ...TOOLTIP_STYLE,
+          ...chartTooltip(),
           formatter: (params: Array<{ value?: number | number[]; dataIndex?: number; [k: string]: unknown }>) => {
             const v = params[0]?.value
             return `Round ${(params[0]?.dataIndex ?? 0) + 1}<br/><b style="color:${color}">${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(3)} SG</b>`
@@ -211,7 +209,7 @@ export function SgRollingChart({
         series,
         tooltip: {
           trigger: "axis",
-          ...TOOLTIP_STYLE,
+          ...chartTooltip(),
           formatter: (params: Array<{ value?: number | number[]; color?: string; seriesName?: string; [k: string]: unknown }>) => {
             return params.map((p) => {
               const v = Array.isArray(p.value) ? p.value[1] : p.value
@@ -299,7 +297,7 @@ export function SgSkillBarsChart({
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
-          ...TOOLTIP_STYLE,
+          ...chartTooltip(),
           formatter: (params: Array<{ value?: number; name?: string; [k: string]: unknown }>) => {
             const p = params[0]
             const v = Number(p.value)
@@ -395,7 +393,7 @@ export function ApproachBucketsChart({
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
-          ...TOOLTIP_STYLE,
+          ...chartTooltip(),
           formatter: (params: Array<{ value?: number; color?: string; seriesName?: string; [k: string]: unknown }>) => {
             return params.map((p) => {
               const v = Number(p.value)
@@ -484,7 +482,7 @@ export function TournamentHistoryChart({
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
-          ...TOOLTIP_STYLE,
+          ...chartTooltip(),
           formatter: (params: Array<{ value?: number; dataIndex?: number; [k: string]: unknown }>) => {
             const p = params[0]
             const v = Number(p.value)
@@ -551,7 +549,7 @@ export function BarTrendChart({
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
-          ...TOOLTIP_STYLE,
+          ...chartTooltip(),
         },
       }}
     />

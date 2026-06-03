@@ -14,6 +14,7 @@ import {
   Users,
   X,
 } from "lucide-react"
+import { RouteTransition } from "@/components/route-transition"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { StatusDot } from "@/components/ui/status-dot"
 import { cn } from "@/lib/utils"
@@ -278,7 +279,9 @@ export function SuiteShell({
           </div>
         </header>
 
-        <main className="content-scroll">{children}</main>
+        <main className="content-scroll">
+          <RouteTransition>{children}</RouteTransition>
+        </main>
       </div>
 
       <MobileBottomNav />

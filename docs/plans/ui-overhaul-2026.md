@@ -1,6 +1,6 @@
 # UI Overhaul 2026 — Design Specification
 
-**Status:** Phase 0 complete → implementation in `feat/ui-overhaul-2026`  
+**Status:** Phase 1–3 complete on `feat/ui-overhaul-2026` (PR #134)  
 **Scope:** Full `frontend/` visual and interaction rebuild; zero backend/API contract changes  
 **Last updated:** 2026-06-03
 
@@ -123,16 +123,16 @@ All existing IDs preserved. New IDs only where tests need hooks (`theme-toggle`,
 
 ## 5. Route-by-route checklist
 
-- [ ] **`/`** — KPI strip compact; resizable stack uses Card + Tabs; rankings/picks default columns; weather/collapsed; remove inline styles
-- [ ] **`/matchups`** — PageHeader + FilterBar; PicksTableScroll → DataTable; diagnostics collapsible default closed
-- [ ] **`/lab`** — Lab banners as Alert pattern; research deck Sheet on mobile
-- [ ] **`/lab/picks`** — Match picks page patterns + lab banner
-- [ ] **`/players`** — Two-pane layout; profile sections as Tabs/Accordion
-- [ ] **`/grading`** — KPI + DataTable events; chart in collapsible
-- [ ] **`/track-record`** — Accordion + dense pick table
-- [ ] **`/research/*`** — Unified PageHeader; tables via DataTable; no orphan terminal-only CSS
-- [ ] **Shell** — Theme toggle, context bar polish, focus rings
-- [ ] **`index.css`** — Tokens + globals only; layout classes migrate to Tailwind/modules
+- [x] **`/`** — Collapsible course/weather & recent results; shared workspace CSS; filters/rail polish; route motion
+- [x] **`/matchups`** — PageHeader + FilterBar; diagnostics in CollapsibleSection (default closed)
+- [x] **`/lab`** — Lab banners; research deck patterns (prior commit)
+- [x] **`/lab/picks`** — `lab-picks-*` layout utilities
+- [x] **`/players`** — Profile blocks in CollapsibleSection; KPI/metric CSS classes
+- [x] **`/grading`** — Season P&L chart in CollapsibleSection; `records-grid-2col`
+- [x] **`/track-record`** — Accordion patterns (prior commit)
+- [x] **`/research/*`** — PageHeader on research routes (prior commit)
+- [x] **Shell** — Theme toggle, `RouteTransition` (Framer Motion + reduced-motion)
+- [x] **`index.css`** — `themes.css` + `page-layouts.css`; inline styles reduced on major routes
 
 ---
 

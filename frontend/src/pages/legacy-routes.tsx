@@ -5,6 +5,7 @@ import { ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { BarTrendChart } from "@/components/charts"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { PlayerProfileSections } from "@/components/player-profile-sections"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { FilterBar } from "@/components/ui/filter-bar"
 import { PageHeader as RecordsPageHeader } from "@/components/ui/page-header"
 import { api } from "@/lib/api"
@@ -270,23 +271,21 @@ export function GradingPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16 }}>
-        {/* Season trend */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Season P&L trend</div>
-          </div>
-          <div className="card-body">
-            {profits.length > 0 ? (
-              <BarTrendChart labels={labels} values={profits} color="#22C55E" />
-            ) : (
-              <EmptyState message="Grade a tournament to start the season trend view." />
-            )}
-          </div>
-        </div>
+      <div className="records-grid-2col">
+        <CollapsibleSection
+          title="Season P&L trend"
+          description="Last 8 graded events"
+          defaultOpen={false}
+          className="records-chart-collapsible"
+        >
+          {profits.length > 0 ? (
+            <BarTrendChart labels={labels} values={profits} color="#22C55E" />
+          ) : (
+            <EmptyState message="Grade a tournament to start the season trend view." />
+          )}
+        </CollapsibleSection>
 
-        {/* Event list */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="stack-col-8">
           {gradingHistory.map((item) => {
             const id = `${item.event_id}-${item.year}`
             const isExpanded = expandedId === id
