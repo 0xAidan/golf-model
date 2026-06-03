@@ -1,34 +1,63 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+## Cursor Agent Operational Notes
 
 ### Services
 
 | Service | Command | Port | Notes |
 |---------|---------|------|-------|
-| FastAPI backend | `python3 app.py` | 8000 | Serves API + built React SPA at `/`; API docs at `/docs` |
-| Vite dev server | `cd frontend && npm run dev` | 5173 | Proxies `/api` and `/static` to `:8000`; use for frontend dev |
+| FastAPI backend | `python3 app.py` | 8000 | Serves API + built frontend (if present) at `/`; docs at `/docs` |
+| Vite dev server | `cd frontend && npm run dev` | 5173 | Use for frontend development; backend should already be running |
 
-Both services must run simultaneously for full-stack development. Start the backend first.
+For full-stack local work, run both services (backend first).
 
-### Quick reference
+### Environment Bootstrap
 
-- **Python tests:** `python3 -m pytest tests/ -v --tb=short` (405 tests, ~6s)
-- **Python lint:** `ruff check .` (pre-existing lint issues in `app.py` and `run_predictions.py` are known; do not fix unless explicitly asked)
-- **Frontend lint:** `cd frontend && npm run lint` (pre-existing ESLint errors in `legacy-routes.tsx` are known)
-- **Frontend typecheck:** `cd frontend && npm run typecheck`
-- **Frontend tests:** `cd frontend && npm run test` (22 files, 77 tests)
-- **Frontend build:** `cd frontend && npm run build` (outputs to `frontend/dist/`)
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
 
-### Gotchas
+Why this matters:
 
-- `python` is not available, use `python3` explicitly.
-- pip installs to `~/.local/bin` which may not be on PATH. Ensure `export PATH="$HOME/.local/bin:$PATH"` is in effect before running `pytest`, `ruff`, or `uvicorn`.
-- The `.env` file is required for the backend to start (even with a placeholder `DATAGOLF_API_KEY`). Without a real API key, the pipeline/sync endpoints will fail, but the dashboard and tests still work.
-- SQLite database `data/golf.db` is auto-created at runtime; no external database needed.
-- The live-refresh worker (`workers/live_refresh_worker.py`) is a separate daemon for production. For local dev, the FastAPI app handles everything — do not run the worker unless specifically testing it.
-- Frontend build chunk warning (>500KB) is expected and harmless.
+- `python` command is unavailable here; use `python3`.
+- System-level pip install may fail with "externally managed environment" (PEP 668), so virtualenv is the default path.
 
-### Standard workflows
+### Verification Commands
 
-See `README.md` for full quick-start and deployment. See `docs/AGENTS_KNOWLEDGE.md` for comprehensive architecture reference.
+Backend:
+
+- `.venv/bin/ruff check .`
+- `.venv/bin/python -m pytest tests/ -v --tb=short`
+
+Frontend:
+
+- `cd frontend && npm ci`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run typecheck`
+- `cd frontend && npm run test`
+- `cd frontend && npm run build`
+
+### Current Known Results (2026-06-03 audit)
+
+- Backend lint: passes (`ruff check .`)
+- Backend tests: 477 collected, 1 known failure:
+  - `tests/test_live_refresh_runtime.py::test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runtime_running`
+- Frontend lint: warnings only (no blocking errors)
+- Frontend typecheck: passes
+- Frontend test/build currently blocked in this environment by:
+  - Node `20.18.2` (toolchain expects `20.19+`)
+  - missing `rolldown` native binding package (`@rolldown/binding-linux-x64-gnu`)
+
+### Practical Gotchas
+
+- `.env` is required for real pipeline runs; without a real `DATAGOLF_API_KEY`, sync/pipeline operations fail.
+- SQLite (`data/golf.db`) is local and auto-created.
+- Production uses dedicated worker service for live refresh (`workers/live_refresh_worker.py`); local dev can run without separately launching it.
+
+### References
+
+- `README.md` for contributor onboarding
+- `docs/AGENTS_KNOWLEDGE.md` for architecture, workflows, and conventions

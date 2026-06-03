@@ -1,55 +1,50 @@
 # About This Project
 
-## What this is
+## What it is
 
-This project is an always-on golf betting intelligence app.
+Golf Model is a golf prediction and betting research platform.
 
-It continuously:
-- pulls tournament and player data from DataGolf,
-- updates player rankings and model scores,
-- evaluates matchup/value opportunities,
-- refreshes the dashboard for live and upcoming tournaments.
+It combines:
+
+- live and pre-tournament data ingestion,
+- model scoring (course fit, form, momentum),
+- value and matchup edge detection,
+- a web dashboard for operators,
+- a research loop for strategy improvement.
 
 ## Why it exists
 
-The goal is to remove manual workflows.
+The project is designed to reduce manual weekly betting workflow.
 
-Instead of pressing buttons to get updated picks, the platform runs a 24/7 background refresh loop and surfaces the latest snapshot in the UI.
+Instead of repeatedly running one-off scripts by hand, the system can keep data and snapshots fresh, expose current model output through the API/UI, and keep historical records for grading and learning.
 
-## What changed recently
+## Main building blocks
 
-The app now includes:
-- a dedicated live-refresh runtime (`backtester/dashboard_runtime.py`),
-- persisted refresh cadence settings (`src/live_refresh_policy.py`, `src/autoresearch_settings.py`),
-- new live-refresh API endpoints in `app.py`,
-- separate dashboard tabs for **Live Tournament** and **Upcoming Tournament**,
-- visibility-aware polling and quieter development access logs,
-- a dedicated `golf-live-refresh.service` for VPS deployment.
-
-## How data flows
-
-1. DataGolf endpoints are fetched on a cadence.
-2. Model services recompute rankings and matchup edges.
-3. Snapshot payload is written and exposed through API.
-4. Frontend polls status/snapshot and re-renders live tables.
+- **Backend API/UI host:** `app.py` (FastAPI)
+- **Prediction pipeline:** `run_predictions.py` + `src/services/golf_model_service.py`
+- **Research/backtesting:** `backtester/`
+- **Background workers:** `workers/`
+- **Frontend app:** `frontend/` (React + Vite)
+- **Persistence:** SQLite (`data/golf.db`)
 
 ## Runtime model
 
-The platform uses two complementary execution paths:
-- **API process** (FastAPI app + dashboard)
-- **Worker process** (live refresh loop for 24/7 updates)
+Typical production setup runs separate processes:
 
-On server deploy, `systemd` keeps these services running and restartable.
+- `golf-dashboard` (web/API)
+- `golf-agent` (research worker)
+- `golf-live-refresh` (continuous refresh worker)
 
-## Domain requirement
+These are managed by `systemd` through `deploy.sh`.
 
-A domain is **not required** to operate the system.
+## Who this is for
 
-You can run production from a Hetzner server IP first (for functional validation), then add a domain + HTTPS when you are ready for public access and trust signals.
+- Operators who want weekly model output and diagnostics
+- Builders who want a research/test loop before promoting strategy changes
+- Contributors who need a reproducible local/dev/deploy workflow
 
-## Intended audience
+## Where to start
 
-This repo is designed for:
-- operator-style usage (you run and monitor a live model),
-- iterative research and strategy tuning,
-- long-running deployment where reliability and observability matter.
+- `README.md` for setup and command basics
+- `AGENTS.md` for quick operational notes
+- `docs/AGENTS_KNOWLEDGE.md` for detailed architecture and conventions
