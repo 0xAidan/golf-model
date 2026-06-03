@@ -99,7 +99,7 @@ def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
             timeout=1.5,
         )
         command = (probe.stdout or "").strip().lower()
-        if command and "live_refresh_worker.py" not in command:
+        if command and "live_refresh_worker" not in command:
             return False
     except Exception:
         # Fall back to liveness-only semantics when command inspection fails.
@@ -2629,12 +2629,41 @@ async def refresh_live_refresh_snapshot():
         LiveRefreshRecomputeBusy,
         generate_snapshot_once,
         get_live_refresh_status,
+        read_snapshot,
+        request_background_recompute,
         start_live_refresh,
     )
 
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
+    if status.get("worker_running"):
+        request_background_recompute()
+        snapshot = read_snapshot()
+        generated_at = snapshot.get("generated_at")
+        age_seconds = None
+        if generated_at:
+            try:
+                age_seconds = max(
+                    0,
+                    int(
+                        (datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()
+                    ),
+                )
+            except ValueError:
+                age_seconds = None
+        return {
+            "ok": True,
+            "snapshot": snapshot,
+            "generated_at": generated_at,
+            "age_seconds": age_seconds,
+            "stale_reason": (
+                "Refresh queued on the background worker — the page will update when the recompute finishes "
+                "(usually a few minutes)."
+            ),
+            "fallback_reason": None,
+            "status": _with_live_refresh_worker_status(get_live_refresh_status()),
+        }
     if (
         _embedded_live_refresh_autostart_allowed()
         and not status.get("running")
@@ -2663,11 +2692,20 @@ async def refresh_live_refresh_snapshot():
         )
     except asyncio.TimeoutError:
         _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
+        from backtester.dashboard_runtime import read_snapshot
+
+        snapshot = read_snapshot()
+        generated_at = snapshot.get("generated_at")
         return {
             "ok": False,
-            "snapshot": None,
-            "stale_reason": "Manual refresh is still running in the background. Snapshot will update shortly.",
+            "snapshot": snapshot,
+            "generated_at": generated_at,
+            "stale_reason": (
+                "Manual refresh is still running in the background (this can take several minutes). "
+                "Snapshot will update automatically when it finishes — you can keep using the current data."
+            ),
             "fallback_reason": None,
+            "status": _with_live_refresh_worker_status(get_live_refresh_status()),
         }
     except Exception as exc:
         _logger.warning("Manual live snapshot refresh failed: %s", exc)

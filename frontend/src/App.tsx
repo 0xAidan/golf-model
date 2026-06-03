@@ -339,8 +339,12 @@ function App() {
     },
     onSuccess: (payload) => {
       if (payload.ok) {
-        const generated = payload.generated_at ? formatDateTime(payload.generated_at) : "just now"
-        setUiAlert(`Snapshot refreshed (${generated}).`)
+        if (payload.stale_reason) {
+          setUiAlert(payload.stale_reason)
+        } else {
+          const generated = payload.generated_at ? formatDateTime(payload.generated_at) : "just now"
+          setUiAlert(`Snapshot refreshed (${generated}).`)
+        }
       } else if (payload.busy) {
         setUiAlert(payload.stale_reason ?? "A snapshot refresh is already running.")
       } else {
@@ -357,7 +361,9 @@ function App() {
   const liveProgress = liveRefreshStatusQuery.data?.status?.progress
   const lrRefreshState = liveProgress?.refresh_state ?? liveRefreshStatusQuery.data?.status?.refresh_state
   const refreshButtonDisabled =
-    refreshSnapshotMutation.isPending || lrRefreshState === "running" || lrRefreshState === "busy"
+    refreshSnapshotMutation.isPending ||
+    ((lrRefreshState === "running" || lrRefreshState === "busy") &&
+      manualRefreshPending)
   useEffect(() => {
     if (!refreshButtonDisabled || !refreshStartedAt) return
     const updateElapsed = () => {
