@@ -12,18 +12,22 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 
+import { MatchupExpandDetail } from "@/components/cockpit/matchup-expand-detail"
 import { BarTrendChart } from "@/components/charts"
+import { EdgeBadge, TierBadge } from "@/components/ui/edge-badge"
+import { FilterBar } from "@/components/ui/filter-bar"
+import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import {
+  buildMatchupKey,
+  buildPicksPageMatchupColumns,
+  buildSecondaryColumns,
+} from "@/lib/cockpit-columns"
 import {
   buildReplayGeneratedMatchups,
   buildReplayGeneratedSecondaryBets,
 } from "@/lib/cockpit-picks"
 import { formatNumber } from "@/lib/format"
-import {
-  EV_BADGE_TOOLTIP,
-  MATCHUP_DETAIL_TOOLTIPS,
-  MATCHUP_TABLE_TOOLTIPS,
-  TIER_BADGE_TOOLTIP,
-} from "@/lib/metric-tooltips"
+import { EV_BADGE_TOOLTIP, MATCHUP_DETAIL_TOOLTIPS, MATCHUP_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageHeader } from "@/components/ui/page-header"
 import { PicksTableScroll } from "@/components/ui/picks-table-scroll"
@@ -35,7 +39,7 @@ import type {
   MatchupBet,
   PastMarketPredictionRow,
 } from "@/lib/types"
-import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
+import { secondaryBadgeLabel } from "@/pages/page-shared"
 
 type MatchupDiagnostics = NonNullable<LiveTournamentSnapshot["diagnostics"]>
 
@@ -148,30 +152,10 @@ function buildMarketInventory(rows: PastMarketPredictionRow[]): InventoryRow[] {
 
 function EmptyState({ message, children }: { message: string; children?: React.ReactNode }) {
   return (
-    <div className="empty-state" style={{ padding: "32px 16px" }}>
+    <div className="empty-state empty-state--padded">
       <div className="empty-state-title">{message}</div>
       {children}
     </div>
-  )
-}
-
-function EV({ ev, evPct }: { ev: number; evPct?: string }) {
-  const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
-  return (
-    <span className={`ev-badge ${cls}`} title={EV_BADGE_TOOLTIP} style={{ cursor: "help" }}>
-      {evPct ?? `${(ev * 100).toFixed(1)}%`}
-    </span>
-  )
-}
-
-function TierBadge({ tier, tierRationale, evKind }: { tier?: string; tierRationale?: string; evKind?: string }) {
-  const t = (tier ?? "LEAN").toUpperCase()
-  const bits = [evKind, tierRationale].filter(Boolean)
-  const title = bits.length > 0 ? bits.join(" — ") : TIER_BADGE_TOOLTIP
-  return (
-    <span className={`tier-badge ${t}`} title={title} style={{ cursor: "help" }}>
-      {t}
-    </span>
   )
 }
 
@@ -514,8 +498,27 @@ function MatchupsBoard({
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const failedCandidates = (diagnostics?.failed_candidates ?? []) as FailedMatchupCandidate[]
-  // Default ON when there are zero qualifying rows so the user immediately sees what was considered.
   const [showAll, setShowAll] = useState<boolean>(matchups.length === 0)
+  const matchupColumns = useMemo(() => buildPicksPageMatchupColumns(), [])
+
+  const renderMatchupSubRow = (matchup: MatchupBet) => (
+    <div className="matchup-detail-stack">
+      <MatchupExpandDetail matchup={matchup} />
+      <div className="matchup-detail-chart">
+        <BarTrendChart
+          labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
+          values={[
+            matchup.composite_gap,
+            matchup.form_gap,
+            matchup.course_fit_gap,
+            Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
+            Number(matchup.conviction ?? 0),
+          ]}
+          color="#22C55E"
+        />
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -525,22 +528,8 @@ function MatchupsBoard({
         visibleRowCount={matchups.length}
       />
       {failedCandidates.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            gap: 8,
-            marginBottom: 8,
-            fontSize: 11,
-            fontFamily: "var(--font-mono)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <label
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}
-            data-testid="show-all-candidates-toggle"
-          >
+        <div className="candidates-toggle-row">
+          <label className="candidates-toggle-label" data-testid="show-all-candidates-toggle">
             <input
               type="checkbox"
               checked={showAll}
@@ -552,196 +541,34 @@ function MatchupsBoard({
       )}
       <div className="card">
         {matchups.length > 0 ? (
-          <PicksTableScroll>
-            <table className="data-table terminal-table">
-              <thead>
-                <tr>
-                  <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
-                  <th title={MATCHUP_TABLE_TOOLTIPS.book}>Book</th>
-                  <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
-                  <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
-                    Tier
-                  </th>
-                  <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
-                    EV
-                  </th>
-                  <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
-                    Win%
-                  </th>
-                  <th style={{ width: 32 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {matchups.map((matchup) => {
-                  const key = buildMatchupKey(matchup)
-                  const isExpanded = expandedKey === key
-                  return (
-                    <>
-                      <tr
-                        key={key}
-                        onClick={() => setExpandedKey(isExpanded ? null : key)}
-                        style={{ cursor: "pointer" }}
-                        data-testid={`matchup-row-${key}`}
-                      >
-                        <td>
-                          <div style={{ fontWeight: 600, color: "var(--text)" }}>{matchup.pick}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                            vs {matchup.opponent}
-                          </div>
-                        </td>
-                        <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{matchup.book ?? "—"}</td>
-                        <td
-                          style={{
-                            fontWeight: 600,
-                            color: "var(--text)",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {matchup.odds}
-                        </td>
-                        <td className="center">
-                          <TierBadge
-                            tier={matchup.tier}
-                            tierRationale={matchup.tier_rationale}
-                            evKind={matchup.ev_kind}
-                          />
-                        </td>
-                        <td className="right">
-                          <EV ev={matchup.ev} evPct={matchup.ev_pct} />
-                        </td>
-                        <td className="right num" title={MATCHUP_TABLE_TOOLTIPS.winPct} style={{ color: "var(--text-muted)", fontSize: 12, cursor: "help" }}>
-                          {(matchup.model_win_prob * 100).toFixed(1)}%
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <ChevronDown
-                            size={14}
-                            style={{
-                              color: "var(--text-faint)",
-                              transform: isExpanded ? "rotate(180deg)" : "none",
-                              transition: "transform 180ms ease",
-                            }}
-                          />
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr key={`${key}-detail`}>
-                          <td colSpan={7} style={{ padding: 0 }}>
-                            <div className="matchup-detail">
-                              <div className="matchup-detail-grid">
-                                <div>
-                                  <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.compositeGap}>
-                                    Composite gap
-                                  </div>
-                                  <div className="detail-item-value num">
-                                    {formatNumber(matchup.composite_gap, 2)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.formGap}>
-                                    Form gap
-                                  </div>
-                                  <div className="detail-item-value num">
-                                    {formatNumber(matchup.form_gap, 2)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.courseGap}>
-                                    Course gap
-                                  </div>
-                                  <div className="detail-item-value num">
-                                    {formatNumber(matchup.course_fit_gap, 2)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.impliedProb}>
-                                    Implied prob
-                                  </div>
-                                  <div className="detail-item-value num">
-                                    {(matchup.implied_prob * 100).toFixed(1)}%
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.conviction}>
-                                    Conviction
-                                  </div>
-                                  <div className="detail-item-value num">
-                                    {formatNumber(matchup.conviction, 0)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.momentum}>
-                                    Momentum
-                                  </div>
-                                  <div
-                                    className="detail-item-value"
-                                    style={{
-                                      color: matchup.momentum_aligned
-                                        ? "var(--positive)"
-                                        : "var(--text-muted)",
-                                    }}
-                                  >
-                                    {matchup.momentum_aligned ? "Aligned ↑" : "Mixed"}
-                                  </div>
-                                </div>
-                              </div>
-                              {matchup.reason && (
-                                <div
-                                  style={{
-                                    marginTop: 10,
-                                    fontSize: 12,
-                                    color: "var(--text-muted)",
-                                    lineHeight: 1.6,
-                                  }}
-                                >
-                                  {matchup.reason}
-                                </div>
-                              )}
-                              <div style={{ marginTop: 12 }}>
-                                <BarTrendChart
-                                  labels={["Composite", "Form", "Course", "Momentum", "Conviction"]}
-                                  values={[
-                                    matchup.composite_gap,
-                                    matchup.form_gap,
-                                    matchup.course_fit_gap,
-                                    Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
-                                    Number(matchup.conviction ?? 0),
-                                  ]}
-                                  color="#22C55E"
-                                />
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )
-                })}
-              </tbody>
-            </table>
-          </PicksTableScroll>
+          <ProDataGrid
+            data={matchups}
+            columns={matchupColumns}
+            density="compact"
+            virtualizeAfter={80}
+            getRowId={(m) => buildMatchupKey(m)}
+            getRowTestId={(m) => `matchup-row-${buildMatchupKey(m)}`}
+            expandedRowId={expandedKey}
+            onRowClick={(m) => {
+              const key = buildMatchupKey(m)
+              setExpandedKey(expandedKey === key ? null : key)
+            }}
+            renderSubRow={renderMatchupSubRow}
+            testId="picks-matchups-grid"
+          />
         ) : (
           <div className="card-body">
             <EmptyState message={emptyMessage}>
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 11,
-                  color: "var(--text-faint)",
-                  fontFamily: "var(--font-mono)",
-                  maxWidth: 480,
-                  margin: "8px auto 0",
-                  lineHeight: 1.6,
-                }}
-              >
-                The model ran successfully — see the diagnostic strip above for the full breakdown of
-                candidates examined, books polled, and the reason codes that filtered each row.
-                {failedCandidates.length > 0 && " Toggle 'Show all candidates' above to see the gated rows."}
+              <div className="empty-state-hint">
+                Try lowering the min edge threshold or selecting more books on the dashboard.
               </div>
             </EmptyState>
           </div>
         )}
       </div>
-      {showAll && <FailedCandidatesTable candidates={failedCandidates} />}
+      {showAll && failedCandidates.length > 0 ? (
+        <FailedCandidatesTable candidates={failedCandidates} />
+      ) : null}
     </>
   )
 }
@@ -837,7 +664,7 @@ function SecondaryBoard({
                         {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
                       </td>
                       <td className="right">
-                        <EV ev={bet.ev} />
+                        <EdgeBadge ev={bet.ev} />
                       </td>
                     </tr>
                   )

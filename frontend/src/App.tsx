@@ -2,7 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useSyncExter
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
+import { toast } from "sonner"
 
+import { CommandMenu, CommandMenuTrigger } from "@/components/command-menu"
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
 import { RouteErrorBoundary } from "@/components/route-error-boundary"
 import { SuiteShell, SidebarStatus } from "@/components/shell"
@@ -95,6 +97,7 @@ function App() {
   const [pastReplayHeadline, setPastReplayHeadline] = useState<{ eventName: string; courseName?: string } | null>(
     null,
   )
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false)
 
   const location = useLocation()
 
@@ -301,12 +304,15 @@ function App() {
       api.gradeLatestTournament(dashboardQuery.data?.latest_completed_event ?? undefined),
     onSuccess: () => {
       setUiAlert(null)
+      toast.success("Event graded successfully")
       void queryClient.invalidateQueries({ queryKey: ["dashboard-state"] })
       void queryClient.invalidateQueries({ queryKey: ["grading-history"] })
       void queryClient.invalidateQueries({ queryKey: ["track-record"] })
     },
     onError: () => {
-      setUiAlert("Grading failed. Check backend logs and retry.")
+      const msg = "Grading failed. Check backend logs and retry."
+      setUiAlert(msg)
+      toast.error(msg)
     },
   })
 
@@ -324,17 +330,25 @@ function App() {
     onSuccess: (payload) => {
       if (payload.ok) {
         const generated = payload.generated_at ? formatDateTime(payload.generated_at) : "just now"
-        setUiAlert(`Snapshot refreshed (${generated}).`)
+        const msg = `Snapshot refreshed (${generated}).`
+        setUiAlert(msg)
+        toast.success(msg)
       } else if (payload.busy) {
-        setUiAlert(payload.stale_reason ?? "A snapshot refresh is already running.")
+        const msg = payload.stale_reason ?? "A snapshot refresh is already running."
+        setUiAlert(msg)
+        toast.message(msg)
       } else {
-        setUiAlert(payload.stale_reason ?? "Manual refresh did not return a snapshot.")
+        const msg = payload.stale_reason ?? "Manual refresh did not return a snapshot."
+        setUiAlert(msg)
+        toast.warning(msg)
       }
       void queryClient.invalidateQueries({ queryKey: ["live-refresh-status"] })
       void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
     },
     onError: () => {
-      setUiAlert("Manual refresh failed. Check runtime logs and try again.")
+      const msg = "Manual refresh failed. Check runtime logs and try again."
+      setUiAlert(msg)
+      toast.error(msg)
     },
   })
 
@@ -754,6 +768,7 @@ function App() {
   }, [location.pathname, shellEventName])
 
   return (
+    <>
     <SuiteShell
       headline={shellEventName}
       subheadline={shellEventMeta}
@@ -772,6 +787,7 @@ function App() {
       }
       actions={
         <>
+          <CommandMenuTrigger onClick={() => setCommandMenuOpen(true)} />
           <SnapshotChip
             generatedAt={liveSnapshot?.generated_at ?? liveSnapshotEnvelope?.generated_at ?? null}
             dataSource={liveSnapshot?.data_source ?? null}
@@ -953,6 +969,13 @@ function App() {
       </Routes>
       </RouteErrorBoundary>
     </SuiteShell>
+    <CommandMenu
+      open={commandMenuOpen}
+      onOpenChange={setCommandMenuOpen}
+      onGrade={() => gradeMutation.mutate()}
+      onRefresh={() => refreshSnapshotMutation.mutate()}
+    />
+    </>
   )
 }
 

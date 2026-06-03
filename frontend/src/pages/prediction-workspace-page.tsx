@@ -1,14 +1,18 @@
-import { Fragment, useEffect, useMemo, useState } from "react"
+import type { ColumnDef } from "@tanstack/react-table"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronDown, Download, ExternalLink, Radar } from "lucide-react"
+import { Download, ExternalLink, Radar } from "lucide-react"
 import { Link } from "react-router-dom"
 
+import { MatchupExpandDetail } from "@/components/cockpit/matchup-expand-detail"
 import {
   CourseWeatherFeedPanel,
   LeaderboardPanel,
 } from "@/components/cockpit/event-modules"
 import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
 import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
+import { EdgeBadge, TierBadge } from "@/components/ui/edge-badge"
+import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { isTeamEvent } from "@/lib/event-format"
 import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-stack"
 import { CockpitVerticalSections } from "@/components/cockpit/responsive-panels"
@@ -31,16 +35,13 @@ import {
 } from "@/lib/cockpit-picks"
 import { resolvePastMatchupGrade } from "@/lib/matchup-pick-grade"
 import { gradeSecondaryBetFromLeaderboard } from "@/lib/outright-replay-grade"
-import { formatNumber, formatUnits } from "@/lib/format"
+import { formatUnits } from "@/lib/format"
 import { buildGradingRecordSummary, buildPastReplayRecordSummary } from "@/lib/record-summary"
 import {
-  EV_BADGE_TOOLTIP,
   GRADING_TABLE_TOOLTIPS,
-  MATCHUP_DETAIL_TOOLTIPS,
   MATCHUP_TABLE_TOOLTIPS,
   POWER_RANKINGS_HELP,
   SG_TRAJECTORY_HELP,
-  TIER_BADGE_TOOLTIP,
 } from "@/lib/metric-tooltips"
 import {
   buildPredictionRunFromSection,
@@ -62,31 +63,17 @@ import type {
   PredictionRunResponse,
   RecordSummary,
 } from "@/lib/types"
+import { computeSgTrajectoryBounds } from "@/lib/metric-heat"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
-import { computeSgTrajectoryBounds, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
-import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
+import {
+  buildMatchupKey,
+  buildPickColumns,
+  buildRankingsColumns,
+  buildRecentResultsColumns,
+  buildSecondaryColumns,
+} from "@/lib/cockpit-columns"
 
 /* ── Small helpers ────────────────────────────── */
-function EV({ ev, evPct }: { ev: number; evPct?: string }) {
-  const cls = ev >= 0.08 ? "high" : ev >= 0.04 ? "medium" : "low"
-  return (
-    <span className={`ev-badge ${cls} help-cursor`} title={EV_BADGE_TOOLTIP}>
-      {evPct ?? `${(ev * 100).toFixed(1)}%`}
-    </span>
-  )
-}
-
-function TierBadge({ tier, tierRationale, evKind }: { tier?: string; tierRationale?: string; evKind?: string }) {
-  const t = tier ?? "LEAN"
-  const bits = [evKind, tierRationale].filter(Boolean)
-  const title = bits.length > 0 ? bits.join(" — ") : TIER_BADGE_TOOLTIP
-  return (
-    <span className={`tier-badge ${t} help-cursor`} title={title}>
-      {t}
-    </span>
-  )
-}
-
 function PastPickGradeCell({
   matchup,
   leaderboard,
@@ -242,33 +229,6 @@ function TopPicksPipelineHint({
         {(DEFAULT_COCKPIT_MIN_EDGE * 100).toFixed(0)}%). Secondary markets can still show edges when matchups do not.
         {filterActive ? " Filters are active — relax them to see more qualifying rows." : null}
       </div>
-    </div>
-  )
-}
-
-function ScoreBar({
-  value,
-  max = 100,
-  color = "green",
-}: {
-  value: number
-  max?: number
-  color?: "green" | "gold" | "composite"
-}) {
-  const pct = Math.min(100, Math.max(0, (value / max) * 100))
-  const heatFill =
-    (color === "green" || color === "composite") && max > 0 && Number.isFinite(value)
-      ? heatSpectrumGradientAlongUnit(Math.min(1, Math.max(0, value / max)), "ltr")
-      : undefined
-  return (
-    <div className="score-bar-wrap">
-      <div className="score-bar-track">
-        <div
-          className={heatFill ? "score-bar-fill" : `score-bar-fill ${color}`}
-          style={heatFill ? { width: `${pct}%`, background: heatFill } : { width: `${pct}%` }}
-        />
-      </div>
-      <span className="score-bar-val">{formatNumber(value, 1)}</span>
     </div>
   )
 }
@@ -651,7 +611,6 @@ export function PredictionWorkspacePage({
         })
 
   const topPlays = predictionTab === "past" ? pastMatchups : filteredMatchups
-  const matchupTableColumnCount = predictionTab === "past" ? 7 : 6
 
   const topPicksEmptyMessage = useMemo(() => {
     if (predictionTab === "past") {
@@ -666,6 +625,46 @@ export function PredictionWorkspacePage({
     }
     return diagnosticsMessage
   }, [diagnosticsMessage, matchupSearch, predictionTab, rawGeneratedMatchups.length, topPlays.length])
+
+  const isPastTab = predictionTab === "past"
+
+  const rankingsColumns = useMemo(
+    () => buildRankingsColumns({ onPlayerSelect, trajectoryBounds: boardTrajectoryBounds }),
+    [onPlayerSelect, boardTrajectoryBounds],
+  )
+
+  const pickColumns = useMemo(
+    () =>
+      buildPickColumns({
+        isPast: isPastTab,
+        renderResult: isPastTab
+          ? (matchup) => (
+              <span data-testid={`matchup-grade-${buildMatchupKey(matchup)}`}>
+                <PastPickGradeCell matchup={matchup} leaderboard={pastLeaderboardForGrades} />
+              </span>
+            )
+          : undefined,
+      }),
+    [isPastTab, pastLeaderboardForGrades],
+  )
+
+  const secondaryColumns = useMemo(
+    () =>
+      buildSecondaryColumns({
+        isPast: isPastTab,
+        onPlayerSelect,
+        renderResult: isPastTab
+          ? (bet) => (
+              <span data-testid={`secondary-grade-${bet.market}-${bet.player}`}>
+                <PastSecondaryGradeCell bet={bet} leaderboard={pastLeaderboardForGrades} />
+              </span>
+            )
+          : undefined,
+      }),
+    [isPastTab, onPlayerSelect, pastLeaderboardForGrades],
+  )
+
+  const recentResultsColumns = useMemo(() => buildRecentResultsColumns(), [])
 
   // Team-format events (Zurich Classic) intentionally short-circuit the
   // pipeline in the backend (see src/event_format.py). Mirror the skip on
@@ -921,55 +920,17 @@ export function PredictionWorkspacePage({
                   All grading →
                 </Link>
               </div>
-              <div className="table-scroll-region">
+              <div className="table-scroll">
                 {pastRecentResults.length > 0 ? (
-                  <table className="data-table terminal-table">
-                    <thead>
-                      <tr>
-                        <th title={GRADING_TABLE_TOOLTIPS.event}>Event</th>
-                        <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
-                          P&L
-                        </th>
-                        <th className="right" title={GRADING_TABLE_TOOLTIPS.hitPct}>
-                          Hit%
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pastRecentResults.map(({ kind, event }) => {
-                        const profit = event.total_profit == null ? null : Number(event.total_profit ?? 0)
-                        const picks = event.graded_pick_count ?? 0
-                        const hits = event.hits ?? 0
-                        const hr = picks > 0 ? ((hits / picks) * 100).toFixed(0) : "—"
-                        return (
-                          <tr key={`${event.event_id}-${event.name}`}>
-                            <td className="player-name" title={event.name}>
-                              {event.name}
-                              {kind === "replay" ? (
-                                <span className="replay-tag">replay</span>
-                              ) : null}
-                            </td>
-                            <td
-                              className={`right num ${
-                                profit == null
-                                  ? "profit-muted"
-                                  : profit >= 0
-                                    ? "profit-positive"
-                                    : "profit-negative"
-                              }`}
-                            >
-                              {profit == null ? "—" : formatUnits(profit)}
-                            </td>
-                            <td className="right num text-muted-11">
-                              {typeof hr === "string" ? hr : `${hr}%`}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <ProDataGrid
+                    data={pastRecentResults}
+                    columns={recentResultsColumns as ColumnDef<(typeof pastRecentResults)[number], unknown>[]}
+                    density="compact"
+                    virtualizeAfter={999}
+                    getRowId={(row) => `${row.event.event_id}-${row.event.name}`}
+                  />
                 ) : (
-                  <div style={{ padding: "12px 10px" }}>
+                  <div className="card-body-pad">
                     <EmptyState
                       message={
                         predictionTab === "past"
@@ -1041,63 +1002,16 @@ export function PredictionWorkspacePage({
               </div>
               <div className="table-scroll">
                 {displayPlayers.length > 0 ? (
-                  <table className="data-table rankings-table">
-                    <thead>
-                      <tr>
-                        <th className="col-rank-narrow" title={POWER_RANKINGS_HELP.rank}>
-                          #
-                        </th>
-                        <th title={POWER_RANKINGS_HELP.player}>Player</th>
-                        <th title={POWER_RANKINGS_HELP.composite}>Composite</th>
-                        <th title={POWER_RANKINGS_HELP.form}>Form</th>
-                        <th title={POWER_RANKINGS_HELP.course}>Course</th>
-                        <th className="center" title={SG_TRAJECTORY_HELP}>
-                          SG traj
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayPlayers.map((player) => {
-                        return (
-                          <tr
-                            key={player.player_key}
-                            onClick={() => onPlayerSelect(player.player_key)}
-                            data-testid={`player-row-${player.player_key}`}
-                          >
-                            <td className="rank-cell">{player.rank}</td>
-                            <td className="player-name rankings-player-name">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  onPlayerSelect(player.player_key)
-                                }}
-                              >
-                                {player.player_display}
-                              </button>
-                            </td>
-                            <td title={POWER_RANKINGS_HELP.composite}>
-                              <ScoreBar value={player.composite} max={100} color="composite" />
-                            </td>
-                            <td title={POWER_RANKINGS_HELP.form}>
-                              <ScoreBar value={player.form} max={100} color="green" />
-                            </td>
-                            <td title={POWER_RANKINGS_HELP.course}>
-                              <ScoreBar value={player.course_fit} max={100} color="gold" />
-                            </td>
-                            <td className="center">
-                              <SgTrajectoryMeter
-                                momentumTrend={player.momentum_trend}
-                                momentumDirection={player.momentum_direction}
-                                normMin={boardTrajectoryBounds.min}
-                                normMax={boardTrajectoryBounds.max}
-                              />
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <ProDataGrid
+                    data={displayPlayers}
+                    columns={rankingsColumns}
+                    density="compact"
+                    virtualizeAfter={80}
+                    getRowId={(player) => player.player_key}
+                    getRowTestId={(player) => `player-row-${player.player_key}`}
+                    onRowClick={(player) => onPlayerSelect(player.player_key)}
+                    testId="cockpit-rankings-grid"
+                  />
                 ) : (
                   <div className="card-body">
                     <EmptyState message="No rankings available for this event context." />
@@ -1166,142 +1080,21 @@ export function PredictionWorkspacePage({
                     </div>
                   </div>
                 ) : topPlays.length > 0 ? (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
-                        <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
-                        <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
-                          Tier
-                        </th>
-                        {predictionTab === "past" ? (
-                          <th className="center" title={MATCHUP_TABLE_TOOLTIPS.result}>
-                            Res.
-                          </th>
-                        ) : null}
-                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
-                          EV
-                        </th>
-                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
-                          Win%
-                        </th>
-                        <th style={{ width: 32 }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topPlays.map((matchup) => {
-                        const key = buildMatchupKey(matchup)
-                        const isExpanded = expandedMatchupKey === key
-                        return (
-                          <Fragment key={key}>
-                            <tr
-                              onClick={() => setExpandedMatchupKey(isExpanded ? null : key)}
-                              style={{ cursor: "pointer" }}
-                              data-testid={`matchup-row-${key}`}
-                            >
-                              <td>
-                                <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13 }}>
-                                  {matchup.pick}
-                                </div>
-                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                                  vs {matchup.opponent}
-                                </div>
-                              </td>
-                              <td>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                  {matchup.book ?? "—"}
-                                </div>
-                                <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 600 }}>
-                                  {matchup.odds}
-                                </div>
-                              </td>
-                              <td className="center">
-                                <TierBadge
-                                  tier={matchup.tier}
-                                  tierRationale={matchup.tier_rationale}
-                                  evKind={matchup.ev_kind}
-                                />
-                              </td>
-                              {predictionTab === "past" ? (
-                                <td className="center" data-testid={`matchup-grade-${key}`}>
-                                  <PastPickGradeCell matchup={matchup} leaderboard={pastLeaderboardForGrades} />
-                                </td>
-                              ) : null}
-                              <td className="right">
-                                <EV ev={matchup.ev} evPct={matchup.ev_pct} />
-                              </td>
-                              <td className="right num" title={MATCHUP_TABLE_TOOLTIPS.winPct} style={{ color: "var(--text-muted)", fontSize: 12, cursor: "help" }}>
-                                {(matchup.model_win_prob * 100).toFixed(1)}%
-                              </td>
-                              <td style={{ textAlign: "center" }}>
-                                <ChevronDown
-                                  size={14}
-                                  style={{
-                                    color: "var(--text-faint)",
-                                    transform: isExpanded ? "rotate(180deg)" : "none",
-                                    transition: "transform 180ms ease",
-                                  }}
-                                />
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <tr>
-                                <td colSpan={matchupTableColumnCount} style={{ padding: 0 }}>
-                                  <div className="matchup-detail">
-                                    <div className="matchup-detail-grid">
-                                      <div>
-                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.compositeGap}>
-                                          Composite gap
-                                        </div>
-                                        <div className="detail-item-value num">{formatNumber(matchup.composite_gap, 2)}</div>
-                                      </div>
-                                      <div>
-                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.formGap}>
-                                          Form gap
-                                        </div>
-                                        <div className="detail-item-value num">{formatNumber(matchup.form_gap, 2)}</div>
-                                      </div>
-                                      <div>
-                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.courseGap}>
-                                          Course gap
-                                        </div>
-                                        <div className="detail-item-value num">{formatNumber(matchup.course_fit_gap, 2)}</div>
-                                      </div>
-                                      <div>
-                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.impliedProb}>
-                                          Implied prob
-                                        </div>
-                                        <div className="detail-item-value num">{(matchup.implied_prob * 100).toFixed(1)}%</div>
-                                      </div>
-                                      <div>
-                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.conviction}>
-                                          Conviction
-                                        </div>
-                                        <div className="detail-item-value num">{formatNumber(matchup.conviction, 0)}</div>
-                                      </div>
-                                      <div>
-                                        <div className="detail-item-label" title={MATCHUP_DETAIL_TOOLTIPS.momentum}>
-                                          Momentum
-                                        </div>
-                                        <div className="detail-item-value" style={{ color: matchup.momentum_aligned ? "var(--positive)" : "var(--text-muted)" }}>
-                                          {matchup.momentum_aligned ? "Aligned ↑" : "Mixed"}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    {matchup.reason && (
-                                      <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
-                                        {matchup.reason}
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <ProDataGrid
+                    data={topPlays}
+                    columns={pickColumns}
+                    density="compact"
+                    virtualizeAfter={80}
+                    getRowId={(matchup) => buildMatchupKey(matchup)}
+                    getRowTestId={(matchup) => `matchup-row-${buildMatchupKey(matchup)}`}
+                    expandedRowId={expandedMatchupKey}
+                    onRowClick={(matchup) => {
+                      const key = buildMatchupKey(matchup)
+                      setExpandedMatchupKey(expandedMatchupKey === key ? null : key)
+                    }}
+                    renderSubRow={(matchup) => <MatchupExpandDetail matchup={matchup} />}
+                    testId="cockpit-picks-grid"
+                  />
                 ) : (
                   <div className="card-body">
                     <EmptyState message={topPicksEmptyMessage} />
@@ -1326,68 +1119,16 @@ export function PredictionWorkspacePage({
                 </div>
                 <div className="table-scroll">
                   {displaySecondaryBets.length > 0 ? (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
-                        <th title={MATCHUP_TABLE_TOOLTIPS.market}>Market</th>
-                        {predictionTab === "past" ? (
-                          <th className="center" title={MATCHUP_TABLE_TOOLTIPS.result}>
-                            Res.
-                          </th>
-                        ) : null}
-                        <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
-                        <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
-                          EV
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displaySecondaryBets.map((bet) => {
-                        const tier = (bet.confidence ?? "LEAN").toUpperCase()
-                        return (
-                          <tr
-                            key={`${bet.market}-${bet.player}-${bet.odds}`}
-                            onClick={() => bet.player_key && onPlayerSelect(bet.player_key)}
-                            data-testid={`secondary-row-${bet.player}`}
-                          >
-                            <td className="player-name">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  if (bet.player_key) onPlayerSelect(bet.player_key)
-                                }}
-                              >
-                                {bet.player}
-                              </button>
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span className={`tier-badge ${tier}`} style={{ fontSize: 9 }}>
-                                  {tier}
-                                </span>
-                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                                  {secondaryBadgeLabel(bet.market)}
-                                </span>
-                              </div>
-                            </td>
-                            {predictionTab === "past" ? (
-                              <td className="center" data-testid={`secondary-grade-${bet.market}-${bet.player}`}>
-                                <PastSecondaryGradeCell bet={bet} leaderboard={pastLeaderboardForGrades} />
-                              </td>
-                            ) : null}
-                            <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                              {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
-                            </td>
-                            <td className="right">
-                              <EV ev={bet.ev} />
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                    <ProDataGrid
+                      data={displaySecondaryBets}
+                      columns={secondaryColumns}
+                      density="compact"
+                      virtualizeAfter={80}
+                      getRowId={(bet) => `${bet.market}-${bet.player}-${bet.odds}`}
+                      getRowTestId={(bet) => `secondary-row-${bet.player}`}
+                      onRowClick={(bet) => bet.player_key && onPlayerSelect(bet.player_key)}
+                      testId="cockpit-secondary-grid"
+                    />
                   ) : (
                     <div className="card-body">
                       <EmptyState message="No secondary market edges in this context." />
@@ -1422,15 +1163,11 @@ export function PredictionWorkspacePage({
 
   return (
     <div
-      className={isNarrow ? "prediction-workspace prediction-workspace--narrow" : "prediction-workspace"}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minHeight: 0,
-        overflowX: "hidden",
-        overflowY: "hidden",
-      }}
+      className={
+        isNarrow
+          ? "prediction-workspace prediction-workspace--narrow prediction-workspace-root"
+          : "prediction-workspace prediction-workspace-root"
+      }
     >
       {/* ── Notice bar ──────────────────────────── */}
       {snapshotNotice && (

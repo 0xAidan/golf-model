@@ -5,6 +5,7 @@ import { HashRouter } from "react-router-dom"
 
 import App from "@/App"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "sonner"
 import "@/index.css"
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <HashRouter>
           <App />
+          <Toaster position="top-center" richColors closeButton />
         </HashRouter>
       </QueryClientProvider>
     </ThemeProvider>

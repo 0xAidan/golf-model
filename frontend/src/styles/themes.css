@@ -51,10 +51,15 @@
   --accent-warning: var(--amber);
   --accent-danger: var(--red);
   --accent-focus: #2563eb;
+  --accent-edge: #059669;
   --accent-link: var(--text-secondary);
+  --row-hover: rgba(5, 150, 105, 0.06);
+  --row-selected: rgba(5, 150, 105, 0.12);
+  --line-flash-up: rgba(5, 150, 105, 0.35);
+  --line-flash-down: rgba(220, 38, 38, 0.35);
 
-  --font-display: "Cabinet Grotesk", system-ui, sans-serif;
-  --font-body: "Satoshi", system-ui, sans-serif;
+  --font-display: "Geist Variable", "Geist", system-ui, sans-serif;
+  --font-body: "Geist Variable", "Geist", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --text-label: 10px;
@@ -137,6 +142,11 @@
   --warning-bg: rgba(245, 158, 11, 0.1);
 
   --accent-focus: #5c6b78;
+  --accent-edge: #34d399;
+  --row-hover: rgba(52, 211, 153, 0.08);
+  --row-selected: rgba(52, 211, 153, 0.14);
+  --line-flash-up: rgba(52, 211, 153, 0.4);
+  --line-flash-down: rgba(239, 68, 68, 0.4);
 
   --background: #080a0b;
   --foreground: #e8ecef;
