@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
 import { BarTrendChart } from "@/components/charts"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
@@ -8,6 +8,8 @@ import { PlayerProfileSections } from "@/components/player-profile-sections"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { FilterBar } from "@/components/ui/filter-bar"
 import { PageHeader as RecordsPageHeader } from "@/components/ui/page-header"
+import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import { buildGradingPickColumns, buildTrackRecordPickColumns } from "@/lib/records-columns"
 import { api } from "@/lib/api"
 import { formatDateTime, formatNumber, formatUnits } from "@/lib/format"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
@@ -197,6 +199,9 @@ export function PlayersPage({
 }
 
 /* ── Grading page ───────────────────────────── */
+const gradingPickColumns = buildGradingPickColumns()
+const trackRecordPickColumns = buildTrackRecordPickColumns()
+
 export function GradingPage() {
   const [pickSource, setPickSource] = useState<"all" | "cockpit" | "lab">("cockpit")
   const gradingHistoryQuery = useQuery({
@@ -344,68 +349,14 @@ export function GradingPage() {
                       </div>
                     </div>
                     {(item.picks?.length ?? 0) > 0 && (
-                      <div style={{ marginTop: 10 }}>
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
-                              <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
-                              <th title="Stored pick source">Source</th>
-                              <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
-                                Model Win%
-                              </th>
-                              <th className="right" title={GRADING_TABLE_TOOLTIPS.edgePct}>
-                                Edge%
-                              </th>
-                              <th className="center" title={GRADING_TABLE_TOOLTIPS.result}>
-                                Result
-                              </th>
-                              <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
-                                P&L
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(item.picks ?? []).map((pick, pickIdx) => {
-                              const variant = pick.model_variant ?? "baseline"
-                              const modelWin = pick.model_prob != null ? `${(pick.model_prob * 100).toFixed(1)}%` : "—"
-                              const edge = pick.ev != null ? `${(pick.ev * 100).toFixed(1)}%` : "—"
-                              return (
-                                <tr key={`${pick.player_display}-${pickIdx}`}>
-                                  <td style={{ fontWeight: 600, color: "var(--text)" }}>
-                                    {pick.player_display}
-                                    {pick.opponent_display ? ` vs ${pick.opponent_display}` : ""}
-                                  </td>
-                                  <td style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                                    {variant}
-                                  </td>
-                                  <td style={{ fontSize: 10, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
-                                    {pick.source ?? "—"}
-                                  </td>
-                                  <td className="right num">{modelWin}</td>
-                                  <td className="right num">{edge}</td>
-                                  <td className="center" style={{ textTransform: "uppercase", fontSize: 11 }}>
-                                    {pick.outcome ?? "—"}
-                                  </td>
-                                  <td
-                                    className="right num"
-                                    style={{
-                                      fontWeight: 700,
-                                      color:
-                                        Number(pick.profit) > 0
-                                          ? "var(--positive)"
-                                          : Number(pick.profit) < 0
-                                          ? "var(--danger)"
-                                          : "var(--text-muted)",
-                                    }}
-                                  >
-                                    {formatUnits(pick.profit)}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
+                      <div className="records-picks-grid">
+                        <ProDataGrid
+                          data={item.picks ?? []}
+                          columns={gradingPickColumns}
+                          getRowId={(row) => `${row.player_display}-${row.opponent_display ?? "solo"}`}
+                          density="compact"
+                          testId={`grading-picks-${id}`}
+                        />
                       </div>
                     )}
                   </div>
@@ -537,73 +488,14 @@ export function TrackRecordPage() {
 
                 {isExpanded && picks.length > 0 && (
                   <div className="tr-event-body">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th title={MATCHUP_TABLE_TOOLTIPS.pick}>Pick</th>
-                          <th title={MATCHUP_TABLE_TOOLTIPS.lane}>Lane</th>
-                          <th title={MATCHUP_TABLE_TOOLTIPS.opponent}>Opponent</th>
-                          <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
-                          <th className="right" title={GRADING_TABLE_TOOLTIPS.modelWin}>
-                            Model Win%
-                          </th>
-                          <th className="right" title={GRADING_TABLE_TOOLTIPS.edgePct}>
-                            Edge%
-                          </th>
-                          <th className="center" title={GRADING_TABLE_TOOLTIPS.result}>
-                            Result / Finish
-                          </th>
-                          <th className="right" title={GRADING_TABLE_TOOLTIPS.pl}>
-                            P&L
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {picks.map((pick, i) => {
-                          // StaticTrackRecordPick fields: pick, opponent, odds, result, pl
-                          const isWin = pick.result?.toLowerCase() === "win"
-                          const isLoss = pick.result?.toLowerCase() === "loss"
-                          return (
-                            <tr key={i} data-testid={`pick-row-${i}`}>
-                              <td style={{ fontWeight: 600, color: "var(--text)" }}>{pick.pick}</td>
-                              <td style={{ color: "var(--text-muted)", fontSize: 11, textTransform: "uppercase" }}>
-                                {pick.modelVariant ?? "baseline"}
-                              </td>
-                              <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{pick.opponent}</td>
-                              <td style={{ fontVariantNumeric: "tabular-nums", fontSize: 12 }}>{pick.odds}</td>
-                              <td className="right num">{pick.winProbPct != null ? `${pick.winProbPct.toFixed(1)}%` : "—"}</td>
-                              <td className="right num">{pick.edgePct != null ? `${pick.edgePct.toFixed(1)}%` : "—"}</td>
-                              <td className="center">
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                                  {isWin ? (
-                                    <TrendingUp size={14} style={{ color: "var(--positive)" }} />
-                                  ) : isLoss ? (
-                                    <TrendingDown size={14} style={{ color: "var(--danger)" }} />
-                                  ) : (
-                                    <Minus size={14} style={{ color: "var(--text-faint)" }} />
-                                  )}
-                                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{pick.finish ?? "—"}</span>
-                                </div>
-                              </td>
-                              <td
-                                className="right num"
-                                style={{
-                                  fontWeight: 700,
-                                  color:
-                                    Number(pick.pl) > 0
-                                      ? "var(--positive)"
-                                      : Number(pick.pl) < 0
-                                      ? "var(--danger)"
-                                      : "var(--text-muted)",
-                                }}
-                              >
-                                {formatUnits(pick.pl)}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                    <ProDataGrid
+                      data={picks}
+                      columns={trackRecordPickColumns}
+                      getRowId={(row) => `${row.pick}-${row.opponent}-${row.odds}`}
+                      getRowTestId={(row) => `pick-row-${row.pick}`}
+                      density="compact"
+                      testId={`track-record-picks-${idx}`}
+                    />
                   </div>
                 )}
 

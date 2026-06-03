@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 
-import { DataGrid } from "@/components/ui/data-grid"
+import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { PageHeader } from "@/components/ui/page-header"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
@@ -118,7 +118,7 @@ export function ChampionChallengerPage() {
               <> · No active challengers</>
             )}
           </p>
-          <DataGrid
+          <ProDataGrid
             data={data.models}
             columns={columns}
             columnVisibility={columnVisibility}

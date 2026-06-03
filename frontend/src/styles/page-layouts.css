@@ -752,3 +752,347 @@
     transition: none !important;
   }
 }
+
+/* Terminal grid utilities */
+.terminal-row-clickable {
+  cursor: pointer;
+}
+
+.terminal-row-clickable:hover {
+  background: var(--row-hover);
+}
+
+.terminal-row-expanded {
+  background: var(--row-selected);
+}
+
+.terminal-cell-numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-sub-row td {
+  padding: 0 !important;
+  border-top: none;
+  background: var(--bg-overlay);
+}
+
+.pro-grid-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.pro-grid-virtual-scroll {
+  max-height: min(52vh, 520px);
+  overflow: auto;
+}
+
+.panel-chrome {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.panel-chrome-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-overlay);
+}
+
+.panel-chrome-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.panel-chrome-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.prediction-workspace-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.expand-col {
+  width: 32px;
+}
+
+.command-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.command-menu {
+  width: min(480px, 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.command-menu [cmdk-input] {
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-table);
+  outline: none;
+}
+
+.command-menu [cmdk-list] {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.command-menu [cmdk-group-heading] {
+  padding: 6px 8px 4px;
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.command-menu [cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: var(--text-body);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.command-menu [cmdk-item][data-selected="true"] {
+  background: var(--row-selected);
+  color: var(--accent-edge);
+}
+
+.command-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.command-menu-trigger:hover {
+  border-color: var(--accent-edge);
+  color: var(--accent-edge);
+}
+
+.nav-item-active {
+  color: var(--accent-edge) !important;
+}
+
+.bottom-nav-item.active {
+  color: var(--accent-edge);
+}
+
+.pick-primary {
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-table);
+}
+
+.pick-odds {
+  font-size: var(--text-table);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.player-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.player-name-btn:hover {
+  color: var(--accent-edge);
+}
+
+.tier-badge--xs {
+  font-size: 9px;
+}
+
+.card-body-pad {
+  padding: 12px 10px;
+}
+
+.mode-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+  flex-shrink: 0;
+  animation: pulse-glow 1.8s ease-in-out infinite;
+}
+
+.cockpit-module--flex-3 {
+  flex: 3;
+  min-height: 0;
+}
+
+.cockpit-module--flex-1,
+.cockpit-module:not([class*="cockpit-module--flex-"]) {
+  flex: 1;
+  min-height: 0;
+}
+
+.empty-state--padded {
+  padding: 32px 16px;
+}
+
+.empty-state-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  max-width: 480px;
+  margin-inline: auto;
+  line-height: 1.6;
+}
+
+.candidates-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.candidates-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.matchup-detail-stack {
+  padding: 0 8px 8px;
+}
+
+.matchup-detail-chart {
+  margin-top: 12px;
+  padding: 0 8px 8px;
+}
+
+.matchup-detail-reason {
+  margin-top: 10px;
+  font-size: var(--text-body);
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* Records / grading ProDataGrid helpers */
+.records-picks-grid {
+  margin-top: 10px;
+}
+
+.records-pick-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.records-lane-chip {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.records-source {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+.records-result {
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.records-pl {
+  font-weight: 700;
+}
+
+.records-pl--positive {
+  color: var(--positive);
+}
+
+.records-pl--negative {
+  color: var(--danger);
+}
+
+.records-pl--muted {
+  color: var(--text-muted);
+}
+
+.records-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.records-result-icon--win {
+  color: var(--positive);
+}
+
+.records-result-icon--loss {
+  color: var(--danger);
+}
+
+.records-result-icon--push {
+  color: var(--text-faint);
+}
+
+.records-finish {
+  font-size: 11px;
+  color: var(--text-muted);
+}

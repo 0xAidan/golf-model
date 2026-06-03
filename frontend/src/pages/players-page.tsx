@@ -217,6 +217,9 @@ function PlayerSearchSidebar({
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
             placeholder="Search players…"
+            data-testid="players-search"
+            aria-label="Search players"
+            className="players-search-input"
             style={{
               width: "100%",
               background: VAR.surface,

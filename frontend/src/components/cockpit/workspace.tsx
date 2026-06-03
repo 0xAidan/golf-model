@@ -46,6 +46,7 @@ export function CockpitWorkspace({
   if (useMobileTabs) {
     const tabs: CockpitTabOption[] = [
       { id: "picks", label: "Picks", content: center },
+      { id: "rankings", label: "Rankings", content: center },
       { id: "intel", label: "Intel", content: leftRail },
       { id: "player", label: "Player", content: rightRail },
     ]
@@ -133,9 +134,9 @@ export function CockpitModule({
         "cockpit-module",
         tone === "accent" && "cockpit-module--accent",
         tone === "muted" && "cockpit-module--muted",
+        flex != null && `cockpit-module--flex-${flex}`,
         className,
       )}
-      style={{ flex: flex ?? 1, minHeight: 0 }}
     >
       <div className="cockpit-module-header">
         <div className="cockpit-module-header-main">
@@ -190,18 +191,7 @@ export function CockpitModeSwitch({
             data-testid={`mode-btn-${opt.value}`}
           >
             {isLive && liveActive && (
-              <span
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: "var(--green)",
-                  display: "inline-block",
-                  flexShrink: 0,
-                  animation: "pulse-glow 1.8s ease-in-out infinite",
-                }}
-                aria-hidden="true"
-              />
+              <span className="mode-live-dot" aria-hidden="true" />
             )}
             {opt.label}
           </button>

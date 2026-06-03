@@ -1,7 +1,7 @@
 import rawTrackRecordData from "@/data/trackRecord.json"
 import type { TrackRecordEvent } from "@/lib/types"
 
-type StaticTrackRecordPick = {
+export type StaticTrackRecordPick = {
   pick: string
   opponent: string
   odds: string
