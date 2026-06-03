@@ -22,7 +22,7 @@ from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.disk_guard import warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
 from src.live_refresh_policy import resolve_cadence
-from src.services.live_snapshot_service import run_snapshot_analysis
+from src.services.live_snapshot_service import run_lab_snapshot_analysis, run_snapshot_analysis
 
 _logger = logging.getLogger("dashboard.runtime")
 _state_lock = threading.Lock()
@@ -1611,7 +1611,7 @@ def _build_lab_tournament_sections(
     lab_upcoming_result: dict[str, Any] = {}
     if upcoming_event_name:
         try:
-            lab_upcoming_result = run_snapshot_analysis(
+            lab_upcoming_result = run_lab_snapshot_analysis(
                 tour=tour,
                 event_id=str(upcoming_row.get("event_id") or "") or None,
                 tournament_name=upcoming_event_name,
@@ -1619,7 +1619,6 @@ def _build_lab_tournament_sections(
                 mode="full",
                 enable_ai=False,
                 enable_backfill=False,
-                model_variant=lab_mv,
             )
         except Exception as exc:
             _logger.warning("Lab upcoming snapshot recompute failed: %s", exc)
@@ -1666,7 +1665,7 @@ def _build_lab_tournament_sections(
 
     lab_live_result: dict[str, Any] = {}
     try:
-        lab_live_result = run_snapshot_analysis(
+        lab_live_result = run_lab_snapshot_analysis(
             tour=tour,
             event_id=str(ingest_summary.get("event_id") or "") or None,
             tournament_name=str(ingest_summary.get("event_name") or "").strip() or None,
@@ -1674,7 +1673,6 @@ def _build_lab_tournament_sections(
             mode=mode,
             enable_ai=False,
             enable_backfill=False,
-            model_variant=lab_mv,
         )
     except Exception as exc:
         _logger.warning("Lab live snapshot recompute failed: %s", exc)
@@ -1796,8 +1794,9 @@ def _build_lab_tournament_sections(
         "generated_from": "lab_current_event_model" if live_is_active else lab_ranking_source,
         "eligibility": lab_eligibility,
         "verification_error": lab_verification_error,
-        "model_variant": lab_mv,
+        "model_variant": (lab_live_result.get("strategy_meta") or {}).get("model_variant") or lab_mv,
         "strategy_meta": lab_live_result.get("strategy_meta"),
+        "lab_champion_id": (lab_live_result.get("strategy_meta") or {}).get("lab_champion_id"),
         "diagnostics": {
             "market_counts": ingest_summary.get("market_counts") or {},
             "selection_counts": lab_diag.get("selection_counts") or {},

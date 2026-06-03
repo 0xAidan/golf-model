@@ -9,7 +9,7 @@ import os
 import time
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from src import config
 from src import db
@@ -783,11 +783,31 @@ class GolfModelService:
     def _get_weights(self, course_num: int = None) -> dict:
         """Merge DB/course weights with resolved strategy blend (matches run_predictions)."""
         base = db.get_weights_for_course(course_num)
+        merged = dict(base)
         if self.strategy_config and "weights" in self.strategy_config:
-            merged = dict(base)
             merged.update(self.strategy_config["weights"])
-            return merged
-        return base
+        sg = (self.strategy_config or {}).get("sg_weights")
+        if isinstance(sg, dict):
+            merged.update(sg)
+        return merged
+
+    def _matchup_runtime_from_config(self) -> dict[str, Any] | None:
+        """Lab champion (or explicit pipeline) matchup overrides for live pricing."""
+        cfg = self.strategy_config or {}
+        if not cfg.get("lab_champion_id"):
+            return None
+        runtime: dict[str, Any] = {
+            "platt_a": cfg.get("platt_a"),
+            "platt_b": cfg.get("platt_b"),
+            "min_composite_gap": cfg.get("min_composite_gap"),
+            "max_win_prob_cap": cfg.get("max_win_prob_cap"),
+            "dg_matchup_blend_weight": cfg.get("dg_matchup_blend_weight"),
+            "model_matchup_blend_weight": cfg.get("model_matchup_blend_weight"),
+        }
+        filters = cfg.get("matchup_filters")
+        if isinstance(filters, dict):
+            runtime.update(filters)
+        return runtime
 
     def _filter_composite_to_field(self, composite: list[dict], field_keys: list[str]) -> tuple[list[dict], dict]:
         """Drop phantom players so rankings and bets use the strict confirmed field."""
@@ -807,7 +827,7 @@ class GolfModelService:
             tournament_id,
             weights,
             course_name=course_name,
-            strategy_config=None,
+            strategy_config=self.strategy_config or None,
             model_variant=self.model_variant,
         )
 
@@ -945,6 +965,7 @@ class GolfModelService:
                         composite, odds, ev_threshold=ev_threshold, tournament_id=tid,
                         market_type=market_key,
                         model_variant=self.model_variant,
+                        matchup_runtime=self._matchup_runtime_from_config(),
                         return_diagnostics=True,
                     )
                     diagnostics["selection_counts"]["input_rows"] += int(selection_diag.get("input_rows", 0))

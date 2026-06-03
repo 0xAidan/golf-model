@@ -636,6 +636,9 @@ export type PredictionRunResponse = {
   strategy_meta?: {
     strategy_source?: string
     strategy_name?: string
+    lab_champion_id?: string
+    lab_champion_primary_roi_pct?: number
+    lab_champion_holdout_roi_pct?: number
   }
   run_quality?: {
     pass?: boolean

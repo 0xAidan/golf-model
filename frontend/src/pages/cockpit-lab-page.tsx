@@ -48,9 +48,9 @@ export function CockpitLabPage({
             }}
             data-testid="lab-board-banner"
           >
-            <strong>Lab</strong> — sandbox boards read from <strong>lab_live_tournament</strong> /{" "}
-            <strong>lab_upcoming_tournament</strong> when the server has{" "}
-            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> on.{" "}
+            <strong>Lab</strong> — matchup-lab champion (Optuna trial 327) via{" "}
+            <strong>lab_live_tournament</strong> / <strong>lab_upcoming_tournament</strong> when{" "}
+            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> is on. Main{" "}
             <Link to="/" aria-label="Leave Lab: open main dashboard">
               Dashboard
             </Link>{" "}

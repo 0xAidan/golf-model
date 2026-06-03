@@ -1,0 +1,49 @@
+{
+  "id": "optuna_trial_327",
+  "study": "matchup_lab_max_roi_enterprise_v1",
+  "promotion": "robust_constrained_winner",
+  "primary_roi_pct": 13.8,
+  "holdout_roi_pct": 9.05,
+  "strategy": {
+    "name": "lab_matchup_champion_trial_327",
+    "markets": [
+      "win",
+      "top_5",
+      "top_10",
+      "top_20",
+      "matchup"
+    ],
+    "model_variant": "v5",
+    "matchup_ev_threshold": 0.03,
+    "platt_a": -0.1,
+    "platt_b": 0.18,
+    "min_composite_gap": 1.5,
+    "max_win_prob_cap": 0.81,
+    "w_sub_course_fit": 0.0914,
+    "w_sub_form": 0.8769,
+    "w_sub_momentum": 0.0316,
+    "dg_matchup_blend_weight": 0.8,
+    "model_matchup_blend_weight": 0.2,
+    "matchup_require_positive_ev": true,
+    "matchup_include_all_sides": false,
+    "matchup_include_all_books": true
+  },
+  "matchup_filters": {
+    "tier_floor": "STRONG",
+    "max_positive_odds": 400,
+    "matchup_ev_threshold": 0.03
+  },
+  "sg_weights": {
+    "form_sg_tot": 0.0333,
+    "form_sg_app": 0.0228,
+    "form_sg_ott": 0.841,
+    "form_sg_arg": 0.05,
+    "form_sg_putt": 0.0529,
+    "course_sg_tot": 0.2801,
+    "course_sg_app": 0.0017,
+    "course_sg_ott": 0.387,
+    "course_sg_arg": 0.0021,
+    "course_sg_putt": 0.2028,
+    "course_par_eff": 0.1263
+  }
+}
