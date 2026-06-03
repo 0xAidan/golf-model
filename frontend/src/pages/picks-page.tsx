@@ -27,7 +27,6 @@ import {
 import { PicksTableScroll } from "@/components/ui/picks-table-scroll"
 import { cn } from "@/lib/utils"
 import type {
-  FailedMatchupCandidate,
   FlattenedSecondaryBet,
   LiveTournamentSnapshot,
   MatchupBet,
@@ -312,10 +311,12 @@ function MatchupDiagnosticsStrip({
   diagnostics,
   minEdgePct,
   visibleRowCount,
+  explorePoolSize,
 }: {
   diagnostics?: MatchupDiagnostics
   minEdgePct: number
   visibleRowCount: number
+  explorePoolSize?: number
 }) {
   if (!diagnostics) return null
 
@@ -378,8 +379,15 @@ function MatchupDiagnosticsStrip({
         <DiagStat label="Card-curated" value={selectedRows.toString()} />
         <DiagStat label="Showing" value={visibleRowCount.toString()} />
         <DiagStat label="Books" value={booksSeen.toString()} />
-        <DiagStat label="Min edge" value={`${minEdgePct}%`} />
+        <DiagStat label="Min edge (UI)" value={`${minEdgePct}%`} />
+        {explorePoolSize != null && explorePoolSize > 0 ? (
+          <DiagStat label="Explorable pool" value={explorePoolSize.toString()} />
+        ) : null}
         {adaptation !== "normal" && <DiagStat label="Adaptation" value={adaptation} tone="warn" />}
+      </div>
+
+      <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-faint)", lineHeight: 1.45 }}>
+        Drag the min edge slider on the dashboard — the table updates live as you raise or lower the threshold.
       </div>
 
       {reasonEntries.length > 0 && (
@@ -445,8 +453,6 @@ function DiagStat({ label, value, tone }: { label: string; value: string; tone?:
   )
 }
 
-/* ── Failed candidates table — "show all candidates" view ───────────────── */
-
 function reasonBadge(reasonCode: string) {
   const map: Record<string, { label: string; color: string }> = {
     below_ev_threshold: { label: "Below EV", color: "var(--text-muted)" },
@@ -473,94 +479,6 @@ function reasonBadge(reasonCode: string) {
   )
 }
 
-function FailedCandidatesTable({ candidates }: { candidates: FailedMatchupCandidate[] }) {
-  if (candidates.length === 0) return null
-  return (
-    <div className="card" style={{ marginTop: 8 }} data-testid="failed-candidates-table">
-      <div
-        className="card-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <div className="card-title">All candidates considered</div>
-        <div className="card-desc">{candidates.length} rows · ranked by EV (closest to clearing first)</div>
-      </div>
-      <PicksTableScroll>
-        <table className="data-table terminal-table">
-          <thead>
-            <tr>
-              <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
-              <th title={MATCHUP_TABLE_TOOLTIPS.book}>Book</th>
-              <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
-              <th className="center" title={MATCHUP_TABLE_TOOLTIPS.reason}>
-                Reason
-              </th>
-              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
-                EV
-              </th>
-              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
-                Win%
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {candidates.map((cand, idx) => {
-              const winPct =
-                cand.model_win_prob !== undefined && cand.model_win_prob !== null
-                  ? `${(cand.model_win_prob * 100).toFixed(1)}%`
-                  : "—"
-              const evDisplay =
-                cand.ev_pct ??
-                (cand.ev !== null && cand.ev !== undefined ? `${(cand.ev * 100).toFixed(1)}%` : "—")
-              return (
-                <tr key={`${cand.pick}-${cand.opponent}-${cand.book ?? "none"}-${idx}`}>
-                  <td>
-                    <div style={{ fontWeight: 600, color: "var(--text)" }}>{cand.pick}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                      vs {cand.opponent}
-                    </div>
-                  </td>
-                  <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{cand.book ?? "—"}</td>
-                  <td
-                    style={{
-                      fontWeight: 600,
-                      color: "var(--text)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {cand.odds ?? "—"}
-                  </td>
-                  <td className="center">{reasonBadge(cand.reason_code)}</td>
-                  <td
-                    className="right num"
-                    title={EV_BADGE_TOOLTIP}
-                    style={{
-                      color:
-                        cand.ev !== null && cand.ev !== undefined && cand.ev >= 0
-                          ? "var(--text)"
-                          : "var(--text-muted)",
-                      cursor: "help",
-                    }}
-                  >
-                    {evDisplay}
-                  </td>
-                  <td className="right num" title={MATCHUP_TABLE_TOOLTIPS.winPct} style={{ color: "var(--text-muted)", fontSize: 12, cursor: "help" }}>
-                    {winPct}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-          </PicksTableScroll>
-    </div>
-  )
-}
-
 /* ── Matchups sub-tab ─────────────────────────────────────────────────── */
 
 function MatchupsBoard({
@@ -575,9 +493,9 @@ function MatchupsBoard({
   minEdgePct: number
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
-  const failedCandidates = (diagnostics?.failed_candidates ?? []) as FailedMatchupCandidate[]
-  // Default ON when there are zero qualifying rows so the user immediately sees what was considered.
-  const [showAll, setShowAll] = useState<boolean>(matchups.length === 0)
+  const explorePoolSize =
+    (diagnostics?.selection_counts?.all_qualifying_rows ?? 0) +
+    (diagnostics?.failed_candidates?.length ?? 0)
 
   return (
     <>
@@ -585,33 +503,8 @@ function MatchupsBoard({
         diagnostics={diagnostics}
         minEdgePct={minEdgePct}
         visibleRowCount={matchups.length}
+        explorePoolSize={explorePoolSize}
       />
-      {failedCandidates.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            gap: 8,
-            marginBottom: 8,
-            fontSize: 11,
-            fontFamily: "var(--font-mono)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <label
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}
-            data-testid="show-all-candidates-toggle"
-          >
-            <input
-              type="checkbox"
-              checked={showAll}
-              onChange={(e) => setShowAll(e.target.checked)}
-            />
-            Show all candidates ({failedCandidates.length})
-          </label>
-        </div>
-      )}
       <div className="card">
         {matchups.length > 0 ? (
           <PicksTableScroll>
@@ -637,13 +530,18 @@ function MatchupsBoard({
                 {matchups.map((matchup) => {
                   const key = buildMatchupKey(matchup)
                   const isExpanded = expandedKey === key
+                  const isCandidate = matchup.explore_source === "candidate"
                   return (
                     <>
                       <tr
                         key={key}
                         onClick={() => setExpandedKey(isExpanded ? null : key)}
-                        style={{ cursor: "pointer" }}
+                        style={{
+                          cursor: "pointer",
+                          opacity: isCandidate ? 0.92 : 1,
+                        }}
                         data-testid={`matchup-row-${key}`}
+                        data-explore-source={matchup.explore_source ?? "card"}
                       >
                         <td>
                           <div style={{ fontWeight: 600, color: "var(--text)" }}>{matchup.pick}</div>
@@ -662,11 +560,17 @@ function MatchupsBoard({
                           {matchup.odds}
                         </td>
                         <td className="center">
-                          <TierBadge
-                            tier={matchup.tier}
-                            tierRationale={matchup.tier_rationale}
-                            evKind={matchup.ev_kind}
-                          />
+                          {matchup.tier ? (
+                            <TierBadge
+                              tier={matchup.tier}
+                              tierRationale={matchup.tier_rationale}
+                              evKind={matchup.ev_kind}
+                            />
+                          ) : matchup.gate_reason ? (
+                            reasonBadge(matchup.gate_reason)
+                          ) : (
+                            <span style={{ color: "var(--text-faint)", fontSize: 11 }}>—</span>
+                          )}
                         </td>
                         <td className="right">
                           <EV ev={matchup.ev} evPct={matchup.ev_pct} />
@@ -797,13 +701,12 @@ function MatchupsBoard({
               >
                 The model ran successfully — see the diagnostic strip above for the full breakdown of
                 candidates examined, books polled, and the reason codes that filtered each row.
-                {failedCandidates.length > 0 && " Toggle 'Show all candidates' above to see the gated rows."}
+                Lower the min edge slider on the dashboard to reveal near-miss matchups from the last run.
               </div>
             </EmptyState>
           </div>
         )}
       </div>
-      {showAll && <FailedCandidatesTable candidates={failedCandidates} />}
     </>
   )
 }

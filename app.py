@@ -15,6 +15,7 @@ import logging
 import shutil
 import tempfile
 import subprocess
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +31,7 @@ except ImportError:
     pass  # python-dotenv not installed; keys must be in environment
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 import uvicorn
 
 from src import config
@@ -98,7 +99,7 @@ def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
             timeout=1.5,
         )
         command = (probe.stdout or "").strip().lower()
-        if command and "live_refresh_worker.py" not in command:
+        if command and "live_refresh_worker" not in command:
             return False
     except Exception:
         # Fall back to liveness-only semantics when command inspection fails.
@@ -213,6 +214,7 @@ app.include_router(data_health_router)
 
 # Store last analysis in memory for the card page
 _last_analysis = {}
+_dashboard_state_cache = {"scope": None, "payload": None, "ts": 0.0}
 
 CSV_DIR = os.path.join(os.path.dirname(__file__), "data", "csvs")
 os.makedirs(CSV_DIR, exist_ok=True)
@@ -223,6 +225,37 @@ SIMPLE_AUTORESEARCH_INTERVAL_SECONDS = 300
 SIMPLE_AUTORESEARCH_TRIALS_PER_CYCLE = 3
 SIMPLE_AUTORESEARCH_OBJECTIVE = "weighted_roi_pct"
 SIMPLE_AUTORESEARCH_STUDY_NAME = "golf_scalar_simple"
+
+
+def _live_snapshot_dashboard_provenance() -> dict:
+    """Read strategy labels from on-disk live snapshot (no DB/registry queries)."""
+    snapshot_path = BASE_DIR / "data" / "live_refresh_snapshot.json"
+    empty = {
+        "strategy_source": "unknown",
+        "live_strategy_name": None,
+        "snapshot_generated_at": None,
+    }
+    try:
+        if not snapshot_path.is_file():
+            return empty
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return empty
+        live = payload.get("live_tournament")
+        live = live if isinstance(live, dict) else {}
+        variant = live.get("model_variant") or payload.get("model_variant")
+        generated_at = payload.get("generated_at")
+        if not variant and not generated_at:
+            return empty
+        out = dict(empty)
+        if variant:
+            out["strategy_source"] = "live_snapshot"
+            out["live_strategy_name"] = str(variant)
+        if generated_at:
+            out["snapshot_generated_at"] = str(generated_at)
+        return out
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return empty
 
 
 def _latest_output_file(*, subdir: str = "", suffix: str = ".md") -> str | None:
@@ -2066,55 +2099,38 @@ async def get_card():
 
 
 @app.get("/api/dashboard/state")
-async def get_dashboard_state(scope: str = "global"):
-    """Return actionable dashboard state for the simple UI."""
-    from src.db import ensure_initialized
-    ensure_initialized()
+def get_dashboard_state(scope: str = "global"):
+    """Return lightweight dashboard state quickly even under DB contention."""
+    cache_ttl_seconds = 10.0
+    now = time.time()
+    if (
+        _dashboard_state_cache.get("scope") == scope
+        and _dashboard_state_cache.get("payload") is not None
+        and (now - float(_dashboard_state_cache.get("ts") or 0.0)) < cache_ttl_seconds
+    ):
+        return _dashboard_state_cache["payload"]
 
-    from backtester.model_registry import (
-        get_live_weekly_model,
-        get_live_weekly_model_record,
-        get_research_champion,
-        get_research_champion_record,
-    )
-    from backtester.optimizer_runtime import get_optimizer_status
     from src.ai_brain import get_ai_status
     from src.datagolf import get_datagolf_throttle_status
 
-    return {
+    provenance = _live_snapshot_dashboard_provenance()
+    payload = {
         "ai_status": get_ai_status(),
-        "effective_live_weekly_model": get_live_weekly_model(scope).__dict__,
-        "effective_research_champion": get_research_champion(scope).__dict__,
-        "live_weekly_model_record": get_live_weekly_model_record(scope),
-        "research_champion_record": get_research_champion_record(scope),
-        "baseline_provenance": {
-            "strategy_source": "live" if get_live_weekly_model_record(scope) else "research_champion",
-            "live_record_id": (get_live_weekly_model_record(scope) or {}).get("id"),
-            "research_record_id": (get_research_champion_record(scope) or {}).get("id"),
-            "live_strategy_name": get_live_weekly_model(scope).__dict__.get("name"),
-        },
-        "latest_outputs": {
-            "prediction_markdown_path": _latest_output_file(subdir="", suffix=".md"),
-            "backtest_markdown_path": _latest_output_file(subdir="backtests", suffix=".md"),
-            "research_markdown_path": _latest_output_file(subdir="research", suffix=".md"),
-        },
-        "latest_prediction_artifact": _latest_output_artifact("prediction"),
-        "latest_backtest_artifact": _latest_output_artifact("backtest"),
-        "latest_research_artifact": _latest_output_artifact("research"),
-        "latest_completed_event": _latest_completed_event_summary(),
-        "latest_graded_tournament": _latest_graded_tournament_summary(),
-        "optimizer": get_optimizer_status(),
-        "autoresearch": {
-            "running": get_optimizer_status().get("running", False),
-            "run_count": get_optimizer_status().get("run_count", 0),
-            "last_started_at": get_optimizer_status().get("last_run_started_at"),
-            "last_finished_at": get_optimizer_status().get("last_run_finished_at"),
-            "last_result": get_optimizer_status().get("last_result"),
-            "last_error": get_optimizer_status().get("last_error"),
-            "scope": get_optimizer_status().get("scope", scope),
-        },
+        "baseline_provenance": provenance,
+        "latest_outputs": {"prediction_markdown_path": None, "backtest_markdown_path": None, "research_markdown_path": None},
+        "latest_prediction_artifact": None,
+        "latest_backtest_artifact": None,
+        "latest_research_artifact": None,
+        "latest_completed_event": None,
+        "latest_graded_tournament": None,
+        "optimizer": {"running": False, "run_count": 0, "last_error": None},
+        "autoresearch": {"running": False, "run_count": 0, "last_started_at": None, "last_finished_at": None, "last_error": None},
         "datagolf": get_datagolf_throttle_status(),
     }
+    _dashboard_state_cache["scope"] = scope
+    _dashboard_state_cache["payload"] = payload
+    _dashboard_state_cache["ts"] = now
+    return payload
 
 
 @app.post("/api/live-refresh/start")
@@ -2613,12 +2629,41 @@ async def refresh_live_refresh_snapshot():
         LiveRefreshRecomputeBusy,
         generate_snapshot_once,
         get_live_refresh_status,
+        read_snapshot,
+        request_background_recompute,
         start_live_refresh,
     )
 
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
+    if status.get("worker_running"):
+        request_background_recompute()
+        snapshot = read_snapshot()
+        generated_at = snapshot.get("generated_at")
+        age_seconds = None
+        if generated_at:
+            try:
+                age_seconds = max(
+                    0,
+                    int(
+                        (datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()
+                    ),
+                )
+            except ValueError:
+                age_seconds = None
+        return {
+            "ok": True,
+            "snapshot": snapshot,
+            "generated_at": generated_at,
+            "age_seconds": age_seconds,
+            "stale_reason": (
+                "Refresh queued on the background worker — the page will update when the recompute finishes "
+                "(usually a few minutes)."
+            ),
+            "fallback_reason": None,
+            "status": _with_live_refresh_worker_status(get_live_refresh_status()),
+        }
     if (
         _embedded_live_refresh_autostart_allowed()
         and not status.get("running")
@@ -2647,11 +2692,20 @@ async def refresh_live_refresh_snapshot():
         )
     except asyncio.TimeoutError:
         _logger.warning("Manual live snapshot refresh timed out; leaving runtime to finish in background.")
+        from backtester.dashboard_runtime import read_snapshot
+
+        snapshot = read_snapshot()
+        generated_at = snapshot.get("generated_at")
         return {
             "ok": False,
-            "snapshot": None,
-            "stale_reason": "Manual refresh is still running in the background. Snapshot will update shortly.",
+            "snapshot": snapshot,
+            "generated_at": generated_at,
+            "stale_reason": (
+                "Manual refresh is still running in the background (this can take several minutes). "
+                "Snapshot will update automatically when it finishes — you can keep using the current data."
+            ),
             "fallback_reason": None,
+            "status": _with_live_refresh_worker_status(get_live_refresh_status()),
         }
     except Exception as exc:
         _logger.warning("Manual live snapshot refresh failed: %s", exc)
@@ -4194,7 +4248,7 @@ async def get_player_standalone_profile(player_key: str):
 
 
 @app.get("/api/players/search")
-async def search_players(q: str = ""):
+def search_players(q: str = ""):
     """Search players by name from the rounds database."""
     from src import db as src_db
     conn = src_db.get_conn()
@@ -4221,4 +4275,23 @@ async def search_players(q: str = ""):
         ).fetchall()
     conn.close()
     return {"players": [dict(r) for r in rows]}
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def spa_fallback(full_path: str):
+    """Serve SPA routes and redirect legacy player-path links."""
+    normalized = (full_path or "").strip("/")
+    if not normalized:
+        return _render_dashboard_html()
+    if normalized.startswith("api/") or normalized.startswith("assets/"):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    if normalized.startswith("player="):
+        from urllib.parse import quote
+
+        player_key = normalized.split("=", 1)[1].strip()
+        if player_key:
+            return RedirectResponse(url=f"/?player={quote(player_key)}", status_code=307)
+    if "." in normalized:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return _render_dashboard_html()
 

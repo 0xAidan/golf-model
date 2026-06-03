@@ -32,6 +32,9 @@ _thread: threading.Thread | None = None
 _last_snapshot_prune_at: float = 0.0
 
 _SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "live_refresh_snapshot.json"
+_MANUAL_RECOMPUTE_TRIGGER = Path(
+    os.environ.get("LIVE_REFRESH_MANUAL_TRIGGER", "/tmp/golf_live_refresh.trigger"),
+)
 _OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 _DOWNLOADS_DIR = Path.home() / "Downloads"
 
@@ -75,6 +78,47 @@ def _iso_now() -> str:
 
 class LiveRefreshRecomputeBusy(RuntimeError):
     """Non-blocking recompute could not start because another thread holds the recompute lock."""
+
+
+def request_background_recompute() -> None:
+    """Signal the dedicated live-refresh worker to recompute on its next loop tick."""
+    try:
+        _MANUAL_RECOMPUTE_TRIGGER.write_text(_iso_now(), encoding="utf-8")
+    except OSError as exc:
+        _logger.warning("Failed to write manual recompute trigger: %s", exc)
+
+
+def _consume_manual_recompute_trigger() -> bool:
+    if not _MANUAL_RECOMPUTE_TRIGGER.exists():
+        return False
+    try:
+        _MANUAL_RECOMPUTE_TRIGGER.unlink()
+    except OSError as exc:
+        _logger.warning("Failed to clear manual recompute trigger: %s", exc)
+    return True
+
+
+def _maybe_clear_stale_progress() -> None:
+    """Drop a stuck ``running`` flag when progress has not advanced for a long time."""
+    with _state_lock:
+        refresh_state = _state.get("refresh_state")
+        updated_raw = _state.get("progress_updated_at")
+    if refresh_state not in {"running", "busy"} or not updated_raw:
+        return
+    try:
+        updated_ts = datetime.fromisoformat(str(updated_raw))
+    except ValueError:
+        return
+    stale_after = float(os.environ.get("LIVE_REFRESH_STALE_PROGRESS_S", "600") or "600")
+    if (_utc_now() - updated_ts).total_seconds() < stale_after:
+        return
+    _touch_progress(
+        idle=True,
+        last_error=(
+            f"Live refresh progress stalled (>{int(stale_after)}s); cleared UI lock. "
+            "Retry refresh or restart the live-refresh worker."
+        ),
+    )
 
 
 def _touch_progress(
@@ -2637,6 +2681,8 @@ def _run_loop(tour: str) -> None:
             continue
         cadence = resolve_cadence(settings)
         now_epoch = time.time()
+        if _consume_manual_recompute_trigger():
+            next_recompute = 0.0
         with _state_lock:
             _state["cadence_mode"] = cadence.mode
             _state["ingest_seconds"] = cadence.ingest_seconds
@@ -2736,6 +2782,7 @@ def stop_live_refresh() -> dict[str, Any]:
 
 
 def get_live_refresh_status() -> dict[str, Any]:
+    _maybe_clear_stale_progress()
     with _state_lock:
         status = dict(_state)
     snapshot = read_snapshot()

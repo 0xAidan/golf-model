@@ -1,3 +1,5 @@
+export const DEFAULT_COCKPIT_MIN_EDGE = 0.02
+
 type MatchupStateMessageInput = {
   state?: string
   reasonCodes?: Record<string, number>

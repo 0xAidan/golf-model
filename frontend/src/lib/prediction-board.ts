@@ -242,7 +242,23 @@ export function buildHydratedPredictionRun(
       ? (snapshot.live_tournament ?? snapshot.upcoming_tournament ?? snapshot.legacy_tournament)
       : (snapshot.upcoming_tournament ?? snapshot.live_tournament ?? snapshot.legacy_tournament)
 
-  return buildPredictionRunFromSection(source)
+  const run = buildPredictionRunFromSection(source)
+  if (!run) {
+    return null
+  }
+
+  const matchupCount = run.matchup_bets?.length ?? 0
+  const generatedAt = snapshot.generated_at?.trim()
+  const snapshotLine = generatedAt
+    ? `Live snapshot generated ${generatedAt}.`
+    : "Loaded from the live refresh snapshot."
+
+  return {
+    ...run,
+    warnings: [
+      `${snapshotLine} ${matchupCount} matchup play${matchupCount === 1 ? "" : "s"} cleared the model EV threshold (default 5%). Use Refresh snapshot for a manual update.`,
+    ],
+  }
 }
 
 export function buildPredictionRunFromSection(
