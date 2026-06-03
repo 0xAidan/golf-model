@@ -1,162 +1,156 @@
-# Golf Betting Model
+# Golf Model
 
-Production-focused golf betting platform that continuously ingests DataGolf data, computes player rankings and matchup edges, and powers an always-on dashboard with separate **Live Tournament** and **Upcoming Tournament** views.
+Production-oriented golf modeling platform with a FastAPI backend, React dashboard, live snapshot refresh, and research/backtesting workflows.
 
-For a product-level overview, see [`ABOUT.md`](ABOUT.md).
+For a plain-English product summary, see `ABOUT.md`.
 
-## Core Capabilities
+## What This Repo Does
 
-- **Always-on live refresh**: background runtime updates snapshots without manual button clicks.
-- **Live + upcoming views**: top-nav dashboard tabs for active and next tournament contexts.
-- **Quant model pipeline**: course fit, form, and momentum blended into composite rankings.
-- **Odds + value detection**: compares model probabilities vs sportsbook odds across placements and matchups.
-- **Autoresearch control plane**: walk-forward evaluation, Optuna studies, and guarded strategy iteration.
-- **Post-event learning**: grading, calibration tracking, and model adaptation feedback loops.
+- Pulls Data Golf data (field, rounds, predictions, rankings, odds)
+- Computes model scores (course fit + form + momentum)
+- Prices value bets and matchup edges
+- Serves dashboard + API from `app.py`
+- Runs autoresearch and walk-forward evaluation tooling
+- Stores model history and artifacts in SQLite + markdown/json outputs
 
 ## Requirements
 
-- Python 3.11+
-- API keys in `.env`:
+- Python `3.11+` (verified here on `3.12.3`)
+- Node `20.19+` or `22.12+` for modern Vite toolchain
+- npm (verified here on `10.8.2`)
+- `.env` file (copy from `.env.example`)
 
-| Key | Required | Source |
-|---|---|---|
-| `DATAGOLF_API_KEY` | Yes | [datagolf.com/api-access](https://datagolf.com/api-access) |
-| `OPENAI_API_KEY` | Optional | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| `ANTHROPIC_API_KEY` | Optional | [console.anthropic.com](https://console.anthropic.com) |
+Required env key:
 
-Optional:
-- `AI_BRAIN_PROVIDER` (`openai`, `anthropic`, `gemini`)
-- `OPENAI_MODEL` (override default)
-- `QUIET_DEV_ACCESS_LOGS=1` (reduce local access-log noise)
-- `LIVE_REFRESH_ENABLED=0` (hard kill switch for live-refresh runtime)
+- `DATAGOLF_API_KEY` (real key required for live pipeline/data sync)
 
-## Quick Start
+Optional keys:
+
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `ODDS_API_KEY`
+- `AI_BRAIN_PROVIDER`, `OPENAI_MODEL`, `LIVE_REFRESH_LAB_PROFILE_ENABLED`, others in `.env.example`
+
+## Quick Start (Copy/Paste)
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-
-python setup_wizard.py
-python app.py
+python3 app.py
 ```
 
-Open: `http://localhost:8000`
+Open:
 
-API docs: `http://localhost:8000/docs`
+- `http://localhost:8000`
+- API docs: `http://localhost:8000/docs`
 
-## Always-On Live Refresh
+Notes:
 
-The app now supports an always-on refresh loop with tournament-aware cadence windows (`off_window`, `upcoming_window`, `live_window`, `settlement_window`).
+- Use `python3` (this environment has no `python` alias).
+- On Debian/Ubuntu, global `pip install` may fail with PEP 668 ("externally managed"); virtualenv avoids that.
 
-Key endpoints:
+## Common Commands
 
-- `POST /api/live-refresh/start`
-- `POST /api/live-refresh/stop`
-- `GET /api/live-refresh/status`
-- `GET /api/live-refresh/snapshot`
+Backend:
 
-Settings persist under `live_refresh` in `data/autoresearch_settings.json`.
+```bash
+. .venv/bin/activate
+python3 app.py
+python3 start.py --help
+python3 run_predictions.py
+python3 results.py --tournament "Masters Tournament" --score-only
+```
 
-### Matchup Diagnostics Runbook
+Frontend:
 
-Use this sequence before assuming matchup generation is broken:
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
 
-1. Check `GET /api/live-refresh/snapshot`.
-2. Inspect `snapshot.live_tournament.diagnostics.state` (or `upcoming_tournament` when on upcoming tab).
-3. Interpret state:
-   - `no_market_posted_yet`: books have not published matchup rows yet.
-   - `market_available_no_edges`: rows exist, but none pass model/EV filters.
-   - `pipeline_error`: fetch/transform/model pipeline failed; inspect diagnostics errors.
-   - `edges_available`: rows should be visible unless filtered in UI.
-4. Compare counts:
-   - `diagnostics.market_counts.tournament_matchups.raw_rows` (raw posted rows)
-   - `diagnostics.selection_counts.selected_rows` (rows that survived model filters)
-5. If UI still shows empty with `edges_available`, clear book/search/min-EV filters or switch board source.
+## Verified Status (Audit: 2026-06-03)
 
-## Dashboard UX
+From this audit run:
 
-- Top navigation (no side nav for primary workflow)
-- Primary tabs:
-  - **Live Tournament**
-  - **Upcoming Tournament**
-- Manual controls moved to **Ops** tab to keep core views clean
-- Visibility-aware polling to reduce hidden-tab API traffic
+- `python3` exists; `python` does **not**
+- `.venv/bin/ruff check .` passes
+- `.venv/bin/python -m pytest tests/ -v --tb=short` collects 477 tests, with:
+  - `475 passed`
+  - `1 skipped`
+  - `1 failed` (`tests/test_live_refresh_runtime.py::test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runtime_running`)
+- `frontend`:
+  - `npm run lint` returns warnings only (no lint errors)
+  - `npm run typecheck` passes
+  - `npm run test` and `npm run build` fail in this environment because Node is `20.18.2` (below required `20.19+`) and `rolldown` native binding is missing
 
-## Deployment (Hetzner-friendly)
+## Local Full-Stack Dev
 
-You can deploy first on a raw server IP; a domain is optional.
+Run backend + Vite in separate terminals:
 
-`deploy.sh` provisions:
-- `golf-dashboard.service`
-- `golf-agent.service`
-- `golf-live-refresh.service`
+```bash
+# terminal 1
+. .venv/bin/activate
+python3 app.py
+```
+
+```bash
+# terminal 2
+cd frontend
+npm run dev
+```
+
+Default ports:
+
+- FastAPI: `8000`
+- Vite: `5173`
+
+## Deployment
+
+Primary script: `deploy.sh`
+
+```bash
+# first-time setup from local machine
+DEPLOY_HOST='root@<server-ip>' ./deploy.sh --setup
+
+# update from local machine
+DEPLOY_HOST='root@<server-ip>' ./deploy.sh --update
+
+# update while already SSH'd into server
+cd /opt/golf-model && ./deploy.sh --update-local
+
+# status
+DEPLOY_HOST='root@<server-ip>' ./deploy.sh --status
+```
+
+Services managed by deploy script:
+
+- `golf-dashboard`
+- `golf-agent`
+- `golf-live-refresh`
 - `golf-backup.timer`
 
-Commands:
+## Repo Map (Short)
 
-```bash
-./deploy.sh --setup
-./deploy.sh --update
-./deploy.sh --status
-```
+- `app.py` — FastAPI app + dashboard API
+- `run_predictions.py` — full prediction pipeline CLI
+- `start.py` — unified launcher CLI
+- `src/` — model, DB, value logic, routes, services
+- `backtester/` — walk-forward/research runtime
+- `workers/` — background daemons
+- `frontend/` — React + Vite dashboard
+- `docs/` — runbooks, architecture notes, research docs
 
-## Project Structure
+## More Documentation
 
-```text
-golf-model/
-├── app.py
-├── deploy.sh
-├── start.py
-├── backtester/
-│   ├── dashboard_runtime.py
-│   └── ...
-├── workers/
-│   ├── live_refresh_worker.py
-│   └── research_agent.py
-├── src/
-│   ├── datagolf.py
-│   ├── db.py
-│   ├── live_refresh_policy.py
-│   ├── autoresearch_settings.py
-│   └── services/
-│       ├── golf_model_service.py
-│       └── live_snapshot_service.py
-├── frontend/
-├── tests/
-└── docs/
-```
-
-## Data health and storage
-
-Read-only audit of `golf.db` coverage (2026 picks, storage breakdown, gaps):
-
-```bash
-python3 scripts/audit_data_coverage.py --year 2026 --output output/data_health_2026.json
-```
-
-On the production VPS, point at the live DB:
-
-```bash
-python3 scripts/audit_data_coverage.py --year 2026 \
-  --db-path /opt/golf-model/data/golf.db \
-  --output output/data_health_2026.json
-```
-
-Prune old live-refresh ticks and reclaim disk (maintenance window):
-
-```bash
-SNAPSHOT_HISTORY_RETAIN_DAYS=210 python3 scripts/prune_snapshot_history.py --vacuum
-```
-
-Dashboard: **Research → Diagnostics → Data health** (`GET /api/data-health`).  
-See [docs/data-contracts.md](docs/data-contracts.md) and [docs/storage-retention.md](docs/storage-retention.md).
-
-## Quality Status
-
-- Test suite: `174 passed` (latest full run)
-- Focused live-refresh + dashboard tests added
-- Syntax checks for updated runtime/service modules pass
+- `AGENTS.md` — quick operational commands/caveats
+- `docs/AGENTS_KNOWLEDGE.md` — deep architecture + conventions
+- `docs/autoresearch/RUNBOOK.md` — autoresearch operator flow
+- `docs/data-contracts.md` and `docs/storage-retention.md` — data/retention references
 
 ## License
 
-Private. Not for redistribution.
+Private repository. Not for redistribution.
