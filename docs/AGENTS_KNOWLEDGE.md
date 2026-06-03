@@ -324,7 +324,7 @@ Before treating the Lab board as broken or “same as production”, verify on t
 4. **Environment** — **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** (overrides persisted JSON when set), **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (operator **`/`** live+upcoming snapshot; default **`baseline`** / Masters-era boards), **`DEFAULT_MODEL_VARIANT`** (CLI / non-snapshot defaults, typically **`v5`**), **`LEGACY_MODEL_VARIANT`** (legacy tournament section for AB rows).
 5. **Worker logs** — search for **`Lab upcoming snapshot recompute failed`**, **`Lab live snapshot recompute failed`**, **`Parallel lab snapshot lane failed`** in `backtester/dashboard_runtime.py` warning paths.
 
-**Two-track intent:** **Dashboard (`/`)** uses **`live_tournament` / `upcoming_tournament`** built with **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (default **`baseline`**, Masters-era operator boards). **Lab (`/lab`)** hydrates from **`lab_live_tournament` / `lab_upcoming_tournament`** after merge (`frontend/src/lib/lab-snapshot.ts`) — parallel **`run_snapshot_analysis`** with **`resolve_lab_model_variant(lab_profile_name)`** (default **`lab_sandbox`** → **`v5`**). Legacy SPA URL **`/cockpit-lab`** redirects to **`/lab`**. Tracks are independent; grading uses **`pick_source`** `cockpit` (main) vs `lab` (unchanged API values).
+**Two-track intent:** **Dashboard (`/`)** uses **`live_tournament` / `upcoming_tournament`** built with **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (default **`baseline`**, Masters-era operator boards). **Lab (`/lab`)** hydrates from **`lab_live_tournament` / `lab_upcoming_tournament`** — parallel **`run_lab_snapshot_analysis()`** loading **`config/lab_matchup_champion_trial327.json`** (promoted Optuna trial 327: v5 + matchup thresholds/Platt/SG weights). Legacy SPA URL **`/cockpit-lab`** redirects to **`/lab`**. Tracks are independent; grading uses **`pick_source`** `cockpit` (main) vs `lab` (unchanged API values).
 
 **AB report vs Lab board:** **`GET /api/research/ab-report`** pairs **research v5** rows (`section` **`lab_live` / `lab_upcoming`** with v5 payload, or legacy **`live` / `upcoming`** v5 rows) vs **reference baseline** (`section` **`legacy`**, or **`live` / `upcoming`** with baseline payload). Lab-only rows still log under **`lab_*`** sections in **`market_prediction_rows`**.
 
@@ -387,7 +387,7 @@ All default to false if missing. Current flags: `dynamic_blend`, `exposure_caps`
 
 Standard profiles: `default` (AI + backfill 2024–2026), `quick` (no AI, no backfill), `full` (AI + backfill 2020–2026). Keys: `tour`, `enable_ai`, `enable_backfill`, `backfill_years`, `output_dir`.
 
-**Lab lane:** **`lab_sandbox`** — used when **`live_refresh.lab_profile_name`** is `lab_sandbox` (default). Includes **`model_variant`** (`baseline` or `v5`) for the **parallel** lab snapshot recomputation (`lab_*` sections). Default **`v5`** differentiates Lab from operator **`/`** (which uses **`COCKPIT_SNAPSHOT_MODEL_VARIANT`**, default baseline).
+**Lab lane:** **`lab_sandbox`** — gates **`live_refresh.lab_profile_enabled`**. Snapshot recompute uses **`run_lab_snapshot_analysis()`** + **`config/lab_matchup_champion_trial327.json`** (not production `resolve_runtime_strategy`). Operator **`/`** stays on **`COCKPIT_SNAPSHOT_MODEL_VARIANT`** (default baseline) for A/B.
 
 ### `src/config.py` (model tuning — single source of truth)
 
