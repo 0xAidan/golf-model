@@ -153,7 +153,7 @@ golf-model/
 │   ├── audit_ev_math.py     # Read-only EV/implied audit → output/audits/*.json|*.md
 │   ├── value_bet_audit_6mo.py  # 6-month +EV matchup audit, grading checks, markdown/json report
 │   ├── matchup_walkforward_benchmark.py # Frozen E0 baseline JSON (hit/ROI/Brier/n by event)
-│   ├── run_matchup_lab_research.py # Phase 2/3 lab matrix (E0-E8 + H1-H13) + persistent max-ROI Optuna search; emits tuning + PIT audit + full-slate coverage + checkpoint artifacts under output/research/
+│   ├── run_matchup_lab_research.py # Phase 2/3 lab matrix (E0-E8 + H1-H13) + persistent max-ROI Optuna; `--run-max-roi-trials 0` re-summarizes study; credible winner uses robust gate (primary n≥300, holdout n≥200, holdout ROI≥8%); artifacts under output/research/
 │   ├── run_autoresearch_eval.py
 │   ├── run_autoresearch_loop.py
 │   └── run_autoresearch_holdout.py
