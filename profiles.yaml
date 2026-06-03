@@ -20,11 +20,12 @@ profiles:
     output_dir: output
 
   # Parallel lab snapshot lane — Cockpit (Lab) / lab_* snapshot sections (see live_refresh.lab_profile_*).
-  # Independent research track for comparison vs production Cockpit (DEFAULT_MODEL_VARIANT, typically v5).
-  # Tune weights/thresholds here to differentiate Lab from production without changing the shipped default.
+  # Uses promoted matchup-lab champion (config/lab_matchup_champion_trial327.json), not production strategy.
+  # Main dashboard stays on COCKPIT_SNAPSHOT_MODEL_VARIANT (baseline) for A/B vs Lab.
   lab_sandbox:
     tour: pga
     model_variant: v5
+    lab_champion_config: config/lab_matchup_champion_trial327.json
     enable_ai: false
     enable_backfill: false
     output_dir: output

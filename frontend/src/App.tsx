@@ -658,9 +658,11 @@ function App() {
     if (!labSnapshotMerged) {
       return "Lab track unavailable — showing production snapshot boards until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh worker, wait for next tick). For an independent Lab vs Dashboard comparison, lab_* sections must be non-null."
     }
-    const mv = labWorkspaceHydrated?.model_variant ?? "unknown"
-    return `Lab — research model "${mv}" (profiles.yaml via live_refresh.lab_profile_name). Production / (Dashboard) uses the baseline snapshot by default.`
-  }, [isLabBoardRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant])
+    const meta = labWorkspaceHydrated?.strategy_meta
+    const champion = meta?.lab_champion_id ?? meta?.strategy_name ?? "lab_champion"
+    const mv = labWorkspaceHydrated?.model_variant ?? "v5"
+    return `Lab — promoted matchup model ${champion} (${mv}). Dashboard / Picks stay on the production snapshot for A/B.`
+  }, [isLabBoardRoute, labSnapshotMerged, labWorkspaceHydrated?.model_variant, labWorkspaceHydrated?.strategy_meta])
 
   const labBoardWorkspaceProps = useMemo<PredictionWorkspacePageProps>(
     () => ({

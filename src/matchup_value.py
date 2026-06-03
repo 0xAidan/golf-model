@@ -535,6 +535,13 @@ def evaluate_matchup_pair(
     return row, None, {}
 
 
+def _tier_meets_floor(tier: str, floor: str | None) -> bool:
+    if not floor:
+        return True
+    tier_order = {"LEAN": 0, "GOOD": 1, "STRONG": 2}
+    return tier_order.get(str(tier or "LEAN").upper(), 0) >= tier_order.get(str(floor).upper(), 0)
+
+
 def _find_matchup_value_bets_core(
     composite_results: list[dict],
     matchup_odds: list[dict],
@@ -543,6 +550,7 @@ def _find_matchup_value_bets_core(
     required_book: str | None = None,
     market_type: str = "tournament_matchups",
     model_variant: str = "baseline",
+    matchup_runtime: dict[str, Any] | None = None,
 ) -> tuple[list[dict], list[dict], dict]:
     diagnostics = {
         "input_rows": len(matchup_odds or []),
@@ -588,6 +596,12 @@ def _find_matchup_value_bets_core(
         ev_threshold = max(ev_threshold, adaptation["ev_threshold"])
     diagnostics["adaptation_state"] = adaptation.get("state", "normal") if adaptation else "normal"
     diagnostics["ev_threshold_effective"] = ev_threshold
+
+    runtime = dict(matchup_runtime or {})
+    filter_ev = runtime.get("matchup_ev_threshold")
+    if filter_ev is not None:
+        ev_threshold = max(ev_threshold, float(filter_ev))
+        diagnostics["ev_threshold_effective"] = ev_threshold
 
     composite_lookup = {r["player_key"]: r for r in composite_results}
 
@@ -646,9 +660,19 @@ def _find_matchup_value_bets_core(
             pick_data, opp_data = p2_data, p1_data
             pick_side = "p2"
 
-        # Model win probability via Platt-style sigmoid (baseline) or v5 uncertainty-aware path.
         gap = abs(composite_gap)
-        A, B = _get_platt_params()
+        min_gap = float(runtime.get("min_composite_gap", 0.0) or 0.0)
+        if gap < min_gap:
+            diagnostics["reason_codes"]["below_min_composite_gap"] = (
+                diagnostics["reason_codes"].get("below_min_composite_gap", 0) + 1
+            )
+            continue
+
+        # Model win probability via Platt-style sigmoid (baseline) or v5 uncertainty-aware path.
+        if runtime.get("platt_a") is not None and runtime.get("platt_b") is not None:
+            A, B = float(runtime["platt_a"]), float(runtime["platt_b"])
+        else:
+            A, B = _get_platt_params()
         if model_variant == "v5":
             from src.models.v5_probabilities import v5_matchup_win_probability
             platt_win_prob, v5_uncertainty = v5_matchup_win_probability(
@@ -680,10 +704,10 @@ def _find_matchup_value_bets_core(
         if dg_prob is None:
             dg_prob = _extract_dg_prob_from_matchup(matchup, pick_side)
         if dg_prob is not None:
-            model_win_prob = (
-                config.DG_MATCHUP_BLEND_WEIGHT * dg_prob
-                + config.MODEL_MATCHUP_BLEND_WEIGHT * platt_win_prob
-            )
+            dg_w = float(runtime.get("dg_matchup_blend_weight", config.DG_MATCHUP_BLEND_WEIGHT))
+            model_w = float(runtime.get("model_matchup_blend_weight", config.MODEL_MATCHUP_BLEND_WEIGHT))
+            blend_total = max(1e-9, dg_w + model_w)
+            model_win_prob = (dg_w / blend_total) * dg_prob + (model_w / blend_total) * platt_win_prob
             if config.REQUIRE_DG_MODEL_AGREEMENT:
                 if (dg_prob > 0.5) != (platt_win_prob > 0.5):
                     diagnostics["reason_codes"]["dg_model_disagreement"] += 1
@@ -753,6 +777,15 @@ def _find_matchup_value_bets_core(
                 books_seen.add(normalized_book)
                 _book_stats(normalized_book)["lines_seen"] += 1
 
+            platt_params = None
+            if runtime.get("platt_a") is not None and runtime.get("platt_b") is not None:
+                platt_params = (float(runtime["platt_a"]), float(runtime["platt_b"]))
+            blend_weights = None
+            if "dg_matchup_blend_weight" in runtime:
+                dg_w = float(runtime["dg_matchup_blend_weight"])
+                model_w = float(runtime.get("model_matchup_blend_weight", 1.0 - dg_w))
+                blend_weights = (dg_w, model_w)
+            win_prob_cap = runtime.get("max_win_prob_cap")
             m_row, eval_reason, eval_context = evaluate_matchup_pair(
                 p1_data=p1_data,
                 p2_data=p2_data,
@@ -763,12 +796,21 @@ def _find_matchup_value_bets_core(
                 model_variant=model_variant,
                 market_type=market_type,
                 book=book_name,
+                platt_params=platt_params,
+                blend_weights=blend_weights,
+                win_prob_cap=float(win_prob_cap) if win_prob_cap is not None else None,
             )
             if eval_reason:
                 if eval_reason in diagnostics["reason_codes"]:
                     diagnostics["reason_codes"][eval_reason] += 1
                 if eval_reason == "below_ev_threshold" and len(failed_candidates) < FAILED_CANDIDATE_LIMIT:
                     failed_candidates.append({**eval_context, "reason_code": "below_ev_threshold"})
+                continue
+
+            max_pos_odds = runtime.get("max_positive_odds")
+            if max_pos_odds is not None and int(m_row.get("odds", 0) or 0) > int(max_pos_odds):
+                continue
+            if not _tier_meets_floor(str(m_row.get("tier") or "LEAN"), runtime.get("tier_floor")):
                 continue
 
             if normalized_book:
@@ -866,6 +908,7 @@ def find_matchup_value_bets_with_all_books(
     required_book: str | None = None,
     market_type: str = "tournament_matchups",
     model_variant: str = "baseline",
+    matchup_runtime: dict[str, Any] | None = None,
     return_diagnostics: bool = False,
 ) -> tuple[list[dict], list[dict]] | tuple[list[dict], list[dict], dict]:
     """Return both card-curated and all-book qualifying matchup edges."""
@@ -877,6 +920,7 @@ def find_matchup_value_bets_with_all_books(
         required_book=required_book,
         market_type=market_type,
         model_variant=model_variant,
+        matchup_runtime=matchup_runtime,
     )
     if return_diagnostics:
         return curated_bets, all_qualifying_bets, diagnostics
