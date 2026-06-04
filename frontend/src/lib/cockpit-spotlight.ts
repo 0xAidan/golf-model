@@ -24,6 +24,7 @@ export type CockpitSpotlightModel = {
   modeLabel: string
   sourceBadges: string[]
   narrative: string
+  movementSummary?: string
   headerStats: SpotlightStat[]
   summaryStats: SpotlightStat[]
   inventoryNotes: SpotlightInventoryNote[]
@@ -88,6 +89,7 @@ export function buildCockpitSpotlight({
       || normalizeName(bet.player_display ?? bet.player) === normalizeName(selectedName),
   )
   const totalGeneratedPickCount = generatedMatchups.length + generatedSecondaryByName.length
+  const movementSummary = buildMovementSummary(selectedPlayer, selectedLeaderboardRow)
   const sourceBadges = buildSourceBadges({
     hasRanking: Boolean(selectedPlayer),
     hasLeaderboard: Boolean(selectedLeaderboardRow),
@@ -107,12 +109,14 @@ export function buildCockpitSpotlight({
           ? "Upcoming"
           : "Past",
     sourceBadges,
+    movementSummary,
     narrative: buildNarrative({
       predictionTab,
       eventName,
       selectedName,
       selectedPlayer,
       selectedLeaderboardRow,
+      movementSummary,
       featuredMatchupCount: featuredMatchups.length,
       totalGeneratedPickCount,
     }),
@@ -178,6 +182,7 @@ function buildNarrative({
   selectedName,
   selectedPlayer,
   selectedLeaderboardRow,
+  movementSummary,
   featuredMatchupCount,
   totalGeneratedPickCount,
 }: {
@@ -186,6 +191,7 @@ function buildNarrative({
   selectedName: string
   selectedPlayer: CompositePlayer | null
   selectedLeaderboardRow: LiveLeaderboardRow | null
+  movementSummary?: string
   featuredMatchupCount: number
   totalGeneratedPickCount: number
 }) {
@@ -195,7 +201,8 @@ function buildNarrative({
       ? `${selectedName} is on the live board at ${position}`
       : `${selectedName} is part of the live board scan`
     const rankTail = selectedPlayer ? ` while still carrying model rank ${formatRank(selectedPlayer.rank)}` : ""
-    return `${liveLead} for ${eventName}${rankTail}. The cockpit is tracking ${featuredMatchupCount} featured play mention${pluralize(featuredMatchupCount)} and ${totalGeneratedPickCount} total generated pick${pluralize(totalGeneratedPickCount)} for this player right now.`
+    const movementTail = movementSummary ? ` ${movementSummary}.` : ""
+    return `${liveLead} for ${eventName}${rankTail}.${movementTail} The cockpit is tracking ${featuredMatchupCount} featured play mention${pluralize(featuredMatchupCount)} and ${totalGeneratedPickCount} total generated pick${pluralize(totalGeneratedPickCount)} for this player right now.`
   }
 
   if (predictionTab === "upcoming") {
@@ -370,4 +377,34 @@ function formatPercentValue(value?: number | null) {
 
 function pluralize(value: number) {
   return value === 1 ? "" : "s"
+}
+
+function buildMovementSummary(
+  selectedPlayer: CompositePlayer | null,
+  selectedLeaderboardRow: LiveLeaderboardRow | null,
+) {
+  if (!selectedPlayer) return undefined
+  const modelStart = selectedPlayer.start_rank
+  const modelNow = selectedPlayer.current_rank ?? selectedPlayer.rank
+  const modelDelta = selectedPlayer.rank_delta
+  const scoringStart = selectedPlayer.start_leaderboard_position ?? selectedLeaderboardRow?.start_leaderboard_position
+  const scoringNow = selectedPlayer.leaderboard_position ?? selectedLeaderboardRow?.leaderboard_position ?? selectedLeaderboardRow?.position
+  const scoringDelta = selectedPlayer.leaderboard_delta ?? selectedLeaderboardRow?.leaderboard_delta
+  const modelPart = modelStart != null
+    ? `Model: #${modelStart} -> #${modelNow} (${formatMovementDelta(modelDelta)})`
+    : `Model: #${modelNow}`
+  const scoringPart = scoringNow
+    ? (
+        scoringStart
+          ? `Scoring: ${scoringStart} -> ${scoringNow} (${formatMovementDelta(scoringDelta)})`
+          : `Scoring: ${scoringNow}`
+      )
+    : "Scoring: --"
+  return `${modelPart} · ${scoringPart}`
+}
+
+function formatMovementDelta(delta?: number | null) {
+  if (delta === null || delta === undefined || Number.isNaN(delta)) return "--"
+  if (delta === 0) return "0"
+  return delta > 0 ? `↑${delta}` : `↓${Math.abs(delta)}`
 }

@@ -154,6 +154,8 @@ function EmptyState({ message }: { message: string }) {
 }
 
 const DEFAULT_COCKPIT_MIN_EDGE = 0.02
+const LIVE_OPPORTUNITY_PIN_MS = 30 * 60 * 1000
+const HIGH_EV_FLOOR = 0.08
 
 type PastReplaySource = "dashboard" | "lab"
 type PastReplayLane = "completed" | "live" | "upcoming"
@@ -304,6 +306,8 @@ export function PredictionWorkspacePage({
   const [expandedMatchupKey, setExpandedMatchupKey] = useState<string | null>(null)
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
   const [pastReplaySection, setPastReplaySection] = useState<PastReplayLane>("completed")
+  const [opportunityFilter, setOpportunityFilter] = useState<"all" | "new" | "high">("all")
+  const [dismissedOpportunityGeneratedAt, setDismissedOpportunityGeneratedAt] = useState<string | null>(null)
 
   const pastEventsQuery = useQuery({
     queryKey: ["live-refresh-past-events"],
@@ -578,6 +582,16 @@ export function PredictionWorkspacePage({
     predictionTab === "past"
       ? (pastPredictionRun?.field_size ?? null)
       : (activeSection?.field_size ?? displayPredictionRun?.field_size ?? null)
+  const modelBaselineLabel = (() => {
+    if (predictionTab !== "live") return null
+    if ((activeSection?.frozen_pre_teeoff_rankings?.length ?? 0) > 0) return "Baseline: frozen at tee-off"
+    return "Baseline: pre-event model order"
+  })()
+  const scoringBaselineLabel = (() => {
+    if (predictionTab !== "live") return null
+    if (activeSection?.scoring_baseline_label === "frozen_at_tee_off") return "Scoring baseline: tee-off"
+    return "Scoring baseline: since live start"
+  })()
 
   const pastReplayHasData =
     predictionTab === "past" &&
@@ -612,20 +626,73 @@ export function PredictionWorkspacePage({
         })
 
   const topPlays = predictionTab === "past" ? pastMatchups : filteredMatchups
+  const liveOpportunityAlerts =
+    predictionTab === "live" ? (activeSection?.live_opportunity_alerts ?? []) : []
+  const shouldShowOpportunityAlertStrip =
+    predictionTab === "live"
+    && liveOpportunityAlerts.length > 0
+    && dismissedOpportunityGeneratedAt !== (liveSnapshot?.generated_at ?? null)
+
+  useEffect(() => {
+    if (predictionTab !== "live") return
+    if (!liveSnapshot?.generated_at) return
+    setDismissedOpportunityGeneratedAt((current) =>
+      current === liveSnapshot.generated_at ? current : null,
+    )
+  }, [liveSnapshot?.generated_at, predictionTab])
+
+  const nowMs = Date.now()
+  const isStillPinnedOpportunity = (firstSeenAt?: string) => {
+    if (!firstSeenAt) return false
+    const parsed = Date.parse(firstSeenAt)
+    if (Number.isNaN(parsed)) return false
+    return nowMs - parsed <= LIVE_OPPORTUNITY_PIN_MS
+  }
+
+  const passesOpportunityFilter = (
+    row: { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
+  ) => {
+    if (predictionTab !== "live") return true
+    if (opportunityFilter === "all") return true
+    if (opportunityFilter === "new") {
+      return Boolean(row.is_new_live_opportunity) || isStillPinnedOpportunity(row.first_seen_at)
+    }
+    const highEvThreshold = Math.max(minEdge, HIGH_EV_FLOOR)
+    return Number(row.ev ?? 0) >= highEvThreshold
+  }
+
+  const prioritizeLiveOpportunity = <
+    T extends { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
+  >(rows: T[]) =>
+    [...rows].sort((left, right) => {
+      const leftPinned = (left.is_new_live_opportunity || isStillPinnedOpportunity(left.first_seen_at)) ? 1 : 0
+      const rightPinned = (right.is_new_live_opportunity || isStillPinnedOpportunity(right.first_seen_at)) ? 1 : 0
+      if (leftPinned !== rightPinned) return rightPinned - leftPinned
+      return Number(right.ev ?? 0) - Number(left.ev ?? 0)
+    })
+
+  const filteredTopPlays = useMemo(
+    () => prioritizeLiveOpportunity(topPlays.filter((row) => passesOpportunityFilter(row))),
+    [topPlays, opportunityFilter, predictionTab, minEdge, liveSnapshot?.generated_at],
+  )
+  const filteredSecondaryBets = useMemo(
+    () => prioritizeLiveOpportunity(displaySecondaryBets.filter((row) => passesOpportunityFilter(row))),
+    [displaySecondaryBets, opportunityFilter, predictionTab, minEdge, liveSnapshot?.generated_at],
+  )
 
   const topPicksEmptyMessage = useMemo(() => {
     if (predictionTab === "past") {
-      if (rawGeneratedMatchups.length > 0 && topPlays.length === 0 && matchupSearch.trim()) {
+      if (rawGeneratedMatchups.length > 0 && filteredTopPlays.length === 0 && matchupSearch.trim()) {
         return `${rawGeneratedMatchups.length} recovered matchup line(s) are available; none match your search.`
       }
       return diagnosticsMessage
     }
     const rawLen = rawGeneratedMatchups.length
-    if (rawLen > 0 && topPlays.length === 0) {
+    if (rawLen > 0 && filteredTopPlays.length === 0) {
       return `${diagnosticsMessage} ${rawLen} matchup line(s) from the model did not pass your filters or min edge — try more books or a lower edge threshold.`
     }
     return diagnosticsMessage
-  }, [diagnosticsMessage, matchupSearch, predictionTab, rawGeneratedMatchups.length, topPlays.length])
+  }, [diagnosticsMessage, filteredTopPlays.length, matchupSearch, predictionTab, rawGeneratedMatchups.length])
 
   const isPastTab = predictionTab === "past"
 
@@ -701,7 +768,7 @@ export function PredictionWorkspacePage({
     onPlayerSelect,
     players: displayPlayers,
     leaderboardRows: activeSection?.leaderboard ?? pastSnapshotSection?.leaderboard ?? [],
-    topPlays,
+    topPlays: filteredTopPlays,
     rawGeneratedMatchups,
     rawGeneratedSecondaryBets,
   })
@@ -991,6 +1058,12 @@ export function PredictionWorkspacePage({
                     {predictionTab === "past"
                       ? `${displayPlayers.length} players — last rankings before tee off`
                       : `${displayPlayers.length} players ranked by model`}
+                    {predictionTab === "live" && modelBaselineLabel ? (
+                      <span className="card-desc-accent">{modelBaselineLabel}</span>
+                    ) : null}
+                    {predictionTab === "live" && scoringBaselineLabel ? (
+                      <span className="card-desc-accent">{scoringBaselineLabel}</span>
+                    ) : null}
                     {powerRankingsSubtitle ? (
                       <span className="card-desc-accent">{powerRankingsSubtitle}</span>
                     ) : null}
@@ -1029,8 +1102,8 @@ export function PredictionWorkspacePage({
                   </div>
                   <div className="card-desc">
                     {predictionTab === "past"
-                      ? `${topPlays.length} picks generated for this event`
-                      : `${topPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`}
+                      ? `${filteredTopPlays.length} picks generated for this event`
+                      : `${filteredTopPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`}
                   </div>
                 </div>
                 {!displayPredictionRun?.card_content ? (
@@ -1059,6 +1132,31 @@ export function PredictionWorkspacePage({
                 selectedBooksLength={selectedBooks.length}
                 matchupSearchTrimmed={matchupSearch.trim()}
               />
+              {predictionTab === "live" ? (
+                <div className="filter-strip workspace-opportunity-filters" role="group" aria-label="Live opportunity filters">
+                  <button
+                    type="button"
+                    className={`filter-chip${opportunityFilter === "all" ? " active" : ""}`}
+                    onClick={() => setOpportunityFilter("all")}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className={`filter-chip${opportunityFilter === "new" ? " active" : ""}`}
+                    onClick={() => setOpportunityFilter("new")}
+                  >
+                    New this refresh
+                  </button>
+                  <button
+                    type="button"
+                    className={`filter-chip${opportunityFilter === "high" ? " active" : ""}`}
+                    onClick={() => setOpportunityFilter("high")}
+                  >
+                    High EV
+                  </button>
+                </div>
+              ) : null}
 
               <div className="table-scroll">
                 {predictionTab === "live" && !isLiveActive ? (
@@ -1079,9 +1177,9 @@ export function PredictionWorkspacePage({
                       </div>
                     </div>
                   </div>
-                ) : topPlays.length > 0 ? (
+                ) : filteredTopPlays.length > 0 ? (
                   <ProDataGrid
-                    data={topPlays}
+                    data={filteredTopPlays}
                     columns={pickColumns}
                     density="compact"
                     virtualizeAfter={80}
@@ -1093,6 +1191,13 @@ export function PredictionWorkspacePage({
                       setExpandedMatchupKey(expandedMatchupKey === key ? null : key)
                     }}
                     renderSubRow={(matchup) => <MatchupExpandDetail matchup={matchup} />}
+                    getRowClassName={(matchup) =>
+                      matchup.is_new_live_opportunity
+                        ? "row-live-opportunity"
+                        : matchup.is_material_ev_increase
+                          ? "row-live-material"
+                          : undefined
+                    }
                     testId="cockpit-picks-grid"
                   />
                 ) : (
@@ -1108,7 +1213,7 @@ export function PredictionWorkspacePage({
                 <div className="card-header">
                   <div className="card-title">Secondary markets</div>
                   <div className="card-desc">
-                    {displaySecondaryBets.length} picks
+                    {filteredSecondaryBets.length} picks
                     <Link
                       to="/matchups?tab=secondary"
                       style={{ marginLeft: 8, color: "var(--accent-link)", fontSize: 10, textDecoration: "none" }}
@@ -1118,15 +1223,22 @@ export function PredictionWorkspacePage({
                   </div>
                 </div>
                 <div className="table-scroll">
-                  {displaySecondaryBets.length > 0 ? (
+                  {filteredSecondaryBets.length > 0 ? (
                     <ProDataGrid
-                      data={displaySecondaryBets}
+                      data={filteredSecondaryBets}
                       columns={secondaryColumns}
                       density="compact"
                       virtualizeAfter={80}
                       getRowId={(bet) => `${bet.market}-${bet.player}-${bet.odds}`}
                       getRowTestId={(bet) => `secondary-row-${bet.player}`}
                       onRowClick={(bet) => bet.player_key && onPlayerSelect(bet.player_key)}
+                      getRowClassName={(bet) =>
+                        bet.is_new_live_opportunity
+                          ? "row-live-opportunity"
+                          : bet.is_material_ev_increase
+                            ? "row-live-material"
+                            : undefined
+                      }
                       testId="cockpit-secondary-grid"
                     />
                   ) : (
@@ -1174,6 +1286,32 @@ export function PredictionWorkspacePage({
         <div className="alert-banner" role="status" aria-live="polite">
           <Radar size={11} style={{ flexShrink: 0 }} />
           {snapshotNotice}
+        </div>
+      )}
+      {shouldShowOpportunityAlertStrip && (
+        <div
+          className="alert-banner alert-banner--opportunity"
+          role="status"
+          aria-live="polite"
+          data-testid="live-opportunity-alert-strip"
+        >
+          <span className="live-opportunity-banner-title">
+            {liveOpportunityAlerts.length} new live opportunit{liveOpportunityAlerts.length === 1 ? "y" : "ies"}
+          </span>
+          <span className="live-opportunity-banner-list">
+            {liveOpportunityAlerts
+              .slice(0, 3)
+              .map((alert) => `${alert.market_type ?? "market"} · ${alert.player ?? "player"} · ${(Number(alert.ev ?? 0) * 100).toFixed(1)}%`)
+              .join(" | ")}
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-compact"
+            onClick={() => setDismissedOpportunityGeneratedAt(liveSnapshot?.generated_at ?? null)}
+            aria-label="Dismiss live opportunity alerts"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -1250,7 +1388,7 @@ export function PredictionWorkspacePage({
                 {
                   id: "picks",
                   label: "Picks",
-                  badge: topPlays.length,
+                  badge: filteredTopPlays.length,
                   content: (
                     <>
                       <Link to="/matchups" className="cockpit-mobile-cta">

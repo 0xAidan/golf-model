@@ -27,9 +27,10 @@ export type CockpitLeaderboardRowModel = {
   positionLabel: string
   playerLabel: string
   playerKey?: string | null
+  startPositionLabel?: string
+  positionDeltaLabel?: string
+  positionDeltaAria?: string
   toParLabel: string
-  roundLabel: string
-  scoreLabel: string
   detail?: string
 }
 
@@ -217,12 +218,13 @@ export function buildLeaderboardModel({
 }) {
   if (leaderboardRows.length > 0) {
     const rows = leaderboardRows.slice(0, 10).map((row) => ({
-      positionLabel: row.position ?? String(row.rank ?? "--"),
+      positionLabel: row.leaderboard_position ?? row.position ?? String(row.rank ?? "--"),
       playerLabel: row.player,
       playerKey: row.player_key,
+      startPositionLabel: row.start_leaderboard_position ?? "--",
+      positionDeltaLabel: formatMovement(row.leaderboard_delta),
+      positionDeltaAria: formatPositionDeltaAria(row.start_leaderboard_position, row.leaderboard_position ?? row.position, row.leaderboard_delta),
       toParLabel: formatToParValue(row.total_to_par),
-      roundLabel: row.latest_round_num ? `R${row.latest_round_num}` : "--",
-      scoreLabel: row.latest_round_score === null || row.latest_round_score === undefined ? "--" : String(row.latest_round_score),
       detail: row.finish_state ?? undefined,
     }))
 
@@ -262,9 +264,10 @@ export function buildLeaderboardModel({
       positionLabel: `Model ${player.rank}`,
       playerLabel: player.player_display,
       playerKey: player.player_key,
+      startPositionLabel: "--",
+      positionDeltaLabel: "--",
+      positionDeltaAria: "No live scoring baseline yet",
       toParLabel: "Pre",
-      roundLabel: "--",
-      scoreLabel: formatNumber(player.composite, 1),
       detail: `${formatNumber(player.course_fit, 1)} course · ${formatNumber(player.form, 1)} form`,
     }))
 
@@ -282,7 +285,7 @@ export function buildLeaderboardModel({
         },
         {
           label: "Top composite",
-          value: rows[0]?.scoreLabel ?? "--",
+          value: players[0] ? formatNumber(players[0].composite, 1) : "--",
           detail: "Best available pre-event model score",
         },
       ],
@@ -611,4 +614,31 @@ function formatToParValue(value?: number | null) {
     return "E"
   }
   return value > 0 ? `+${value}` : `${value}`
+}
+
+function formatMovement(delta?: number | null) {
+  if (delta === null || delta === undefined || Number.isNaN(delta)) {
+    return "--"
+  }
+  if (delta === 0) return "0"
+  return delta > 0 ? `↑${delta}` : `↓${Math.abs(delta)}`
+}
+
+function formatPositionDeltaAria(
+  startPosition?: string | null,
+  currentPosition?: string | null,
+  delta?: number | null,
+) {
+  const start = startPosition?.trim() || "unknown"
+  const current = currentPosition?.trim() || "unknown"
+  if (delta === null || delta === undefined || Number.isNaN(delta)) {
+    return `Position moved from ${start} to ${current}`
+  }
+  if (delta > 0) {
+    return `Position improved ${delta} from ${start} to ${current}`
+  }
+  if (delta < 0) {
+    return `Position fell ${Math.abs(delta)} from ${start} to ${current}`
+  }
+  return `Position unchanged at ${current} from ${start}`
 }

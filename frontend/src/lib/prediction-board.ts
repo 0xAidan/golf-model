@@ -119,6 +119,9 @@ function normalizeSnapshotMatchupRows(rows: MatchupBet[]): MatchupBet[] {
         pick_momentum: row.pick_momentum != null ? Number(row.pick_momentum) : undefined,
         opp_momentum: row.opp_momentum != null ? Number(row.opp_momentum) : undefined,
         stake_multiplier: row.stake_multiplier != null ? Number(row.stake_multiplier) : undefined,
+        is_new_live_opportunity: Boolean(row.is_new_live_opportunity),
+        is_material_ev_increase: Boolean(row.is_material_ev_increase),
+        first_seen_at: row.first_seen_at,
       }
     })
     .sort((left, right) => right.ev - left.ev)
@@ -173,6 +176,9 @@ export function hydrateSnapshotValueBets(source: LiveTournamentSnapshot): Record
           ev,
           ev_pct: bet.ev_pct ?? `${(ev * 100).toFixed(1)}%`,
           is_value: true,
+          is_new_live_opportunity: Boolean(bet.is_new_live_opportunity),
+          is_material_ev_increase: Boolean(bet.is_material_ev_increase),
+          first_seen_at: bet.first_seen_at,
         }
       })
       .sort((left, right) => right.ev - left.ev)
@@ -224,6 +230,9 @@ export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null
           ev: bet.ev,
           confidence: bet.confidence,
           book: normalizeSportsbook(bet.book ?? bet.best_book),
+          is_new_live_opportunity: Boolean(bet.is_new_live_opportunity),
+          is_material_ev_increase: Boolean(bet.is_material_ev_increase),
+          first_seen_at: bet.first_seen_at,
         })),
     )
     .sort((left, right) => right.ev - left.ev)
@@ -283,16 +292,29 @@ export function buildPredictionRunFromSection(
   const matchupBetsAllBooks = hydrateSnapshotMatchupsAllBooks(source)
   const valueBets = hydrateSnapshotValueBets(source)
 
-  return {
-    status: "hydrated",
-    event_name: source.event_name ?? "Event",
-    course_name: source.course_name ?? "",
-    field_size: source.field_size ?? rankings.length,
-    tournament_id: source.tournament_id,
-    course_num: source.course_num,
-    model_variant: source.model_variant,
-    ranking_source: source.ranking_source,
-    composite_results: rankings.map((row) => ({
+  const rankingRows = source.live_player_board && source.live_player_board.length > 0
+    ? source.live_player_board.map((row, index) => ({
+      player_key: row.player_key ?? normalizeNameForUi(row.player),
+      player_display: row.player ?? "Unknown player",
+      rank: Number(row.model?.current_rank ?? index + 1),
+      composite: Number(row.model?.composite ?? 0),
+      course_fit: 0,
+      form: 0,
+      momentum: 0,
+      start_rank: row.model?.start_rank ?? null,
+      current_rank: row.model?.current_rank ?? null,
+      rank_delta: row.model?.rank_delta ?? null,
+      start_composite: row.model?.start_composite ?? null,
+      pre_tournament_composite: row.model?.pre_tournament_composite ?? null,
+      leaderboard_rank: row.scoring?.position_rank ?? null,
+      leaderboard_position: row.scoring?.position_label ?? null,
+      start_leaderboard_rank: row.scoring?.start_position_rank ?? null,
+      start_leaderboard_position: row.scoring?.start_position ?? null,
+      leaderboard_delta: row.scoring?.position_delta ?? null,
+      leaderboard_baseline_source: row.scoring?.baseline_source ?? null,
+      total_to_par: row.scoring?.total_to_par ?? null,
+    }))
+    : rankings.map((row) => ({
       player_key: row.player_key ?? normalizeNameForUi(row.player),
       player_display: row.player,
       rank: Number(row.rank ?? 0),
@@ -309,10 +331,36 @@ export function buildPredictionRunFromSection(
       form_flags: row.form_flags,
       form_notes: row.form_notes,
       details: row.details,
-    })),
+      current_rank: row.current_rank != null ? Number(row.current_rank) : undefined,
+      start_rank: row.start_rank != null ? Number(row.start_rank) : undefined,
+      rank_delta: row.rank_delta != null ? Number(row.rank_delta) : undefined,
+      start_composite: row.start_composite != null ? Number(row.start_composite) : undefined,
+      pre_tournament_composite: row.pre_tournament_composite != null ? Number(row.pre_tournament_composite) : undefined,
+      leaderboard_rank: row.leaderboard_rank != null ? Number(row.leaderboard_rank) : undefined,
+      leaderboard_position: row.leaderboard_position ?? undefined,
+      start_leaderboard_rank: row.start_leaderboard_rank != null ? Number(row.start_leaderboard_rank) : undefined,
+      start_leaderboard_position: row.start_leaderboard_position ?? undefined,
+      leaderboard_delta: row.leaderboard_delta != null ? Number(row.leaderboard_delta) : undefined,
+      leaderboard_baseline_source: row.leaderboard_baseline_source ?? undefined,
+      total_to_par: row.total_to_par != null ? Number(row.total_to_par) : undefined,
+    }))
+
+  return {
+    status: "hydrated",
+    event_name: source.event_name ?? "Event",
+    course_name: source.course_name ?? "",
+    field_size: source.field_size ?? rankings.length,
+    tournament_id: source.tournament_id,
+    course_num: source.course_num,
+    model_variant: source.model_variant,
+    ranking_source: source.ranking_source,
+    composite_results: rankingRows,
     matchup_bets: matchupBets,
     matchup_bets_all_books: matchupBetsAllBooks,
     value_bets: valueBets,
-    warnings: ["Hydrated from snapshot history. Manual runs are still required for card export and full provenance details."],
+    warnings: [
+      "Hydrated from snapshot history. Manual runs are still required for card export and full provenance details.",
+      ...(source.ranking_fallback_reason ? [source.ranking_fallback_reason] : []),
+    ],
   }
 }

@@ -68,7 +68,11 @@ export function LeaderboardPanel({
         <div className="term-notice term-notice--inset">
           Pre-tournament board seeded from model rankings. Live scores replace this once the event starts.
         </div>
-      ) : null}
+      ) : (
+        <div className="term-notice term-notice--inset">
+          Tournament scoring view: Pos / Start pos / Pos Δ track movement alongside the model board.
+        </div>
+      )}
       <ProDataGrid
         data={rows}
         columns={columns}

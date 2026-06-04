@@ -40,6 +40,11 @@ export function PlayerSpotlightPanel({
     >
       <div className="spotlight-head">
         {spotlight.narrative ? <div className="spotlight-narrative">{spotlight.narrative}</div> : null}
+        {spotlight.movementSummary ? (
+          <div className="spotlight-movement-summary" aria-live="polite">
+            {spotlight.movementSummary}
+          </div>
+        ) : null}
         {spotlight.sourceBadges.length > 0 ? (
           <div className="spotlight-badges-row">
             {spotlight.sourceBadges.map((badge) => (

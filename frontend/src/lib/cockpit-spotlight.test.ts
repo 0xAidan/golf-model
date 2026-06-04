@@ -80,6 +80,32 @@ describe("buildCockpitSpotlight", () => {
     expect(spotlight?.summaryStats.map((item) => `${item.label}:${item.value}`)).toContain("Model rank:#1")
   })
 
+  it("includes compact model/scoring movement summary in live mode", () => {
+    const spotlight = buildCockpitSpotlight({
+      predictionTab: "live",
+      eventName: "RBC Heritage",
+      selectedPlayerKey: "scottie_scheffler",
+      players: [
+        {
+          ...basePlayer,
+          start_rank: 12,
+          current_rank: 4,
+          rank_delta: 8,
+          leaderboard_position: "T3",
+          start_leaderboard_position: "T15",
+          leaderboard_delta: 12,
+        },
+      ],
+      leaderboardRows: [liveRow],
+      topPlays: [featuredMatchup],
+      rawGeneratedMatchups: [featuredMatchup],
+      rawGeneratedSecondaryBets: [],
+    })
+
+    expect(spotlight?.movementSummary).toContain("Model: #12 -> #4")
+    expect(spotlight?.movementSummary).toContain("Scoring: T15 -> T3")
+  })
+
   it("builds upcoming context when the player is driven by rankings and generated inventory", () => {
     const spotlight = buildCockpitSpotlight({
       predictionTab: "upcoming",
