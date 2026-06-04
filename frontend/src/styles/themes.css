@@ -58,17 +58,23 @@
   --line-flash-up: rgba(5, 150, 105, 0.35);
   --line-flash-down: rgba(220, 38, 38, 0.35);
 
-  --font-display: "Geist Variable", "Geist", system-ui, sans-serif;
-  --font-body: "Geist Variable", "Geist", system-ui, sans-serif;
+  --font-display: "Cabinet Grotesk", system-ui, sans-serif;
+  --font-body: "Satoshi", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --text-label: 10px;
-  --text-body: 12px;
-  --text-table: 13px;
-  --text-title: 15px;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-label: var(--text-2xs);
+  --text-body: var(--text-sm);
+  --text-table: var(--text-base);
+  --text-title: var(--text-md);
 
-  --sidebar-w: 200px;
-  --header-h: 48px;
+  --sidebar-w: 176px;
+  --header-h: 44px;
 
   --r: 4px;
   --r-sm: 4px;

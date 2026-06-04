@@ -1,18 +1,117 @@
+import type { ColumnDef } from "@tanstack/react-table"
+import { useMemo } from "react"
 import { Link } from "react-router-dom"
 
-import { DataTable } from "@/components/ui/data-table"
-import { PageHeader } from "@/components/ui/page-header"
+import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import type { LiveRefreshSnapshot } from "@/lib/types"
+
+type LegacyRanking = {
+  player_key?: string
+  player: string
+  rank: number
+  composite: number
+  course_fit: number
+  form: number
+  momentum: number
+}
+
+type LegacyMatchup = {
+  pick_key: string
+  opponent_key: string
+  pick: string
+  opponent: string
+  book?: string | null
+  odds: number | string
+  ev_pct?: string | null
+  tier?: string | null
+}
+
+function buildLegacyRankingColumns(): ColumnDef<LegacyRanking, unknown>[] {
+  return [
+    { id: "rank", accessorKey: "rank", header: "Rank", meta: { label: "Rank", mono: true } },
+    { id: "player", accessorKey: "player", header: "Player", meta: { label: "Player", sticky: true } },
+    {
+      id: "composite",
+      accessorKey: "composite",
+      header: "Composite",
+      meta: { label: "Composite", align: "right", mono: true },
+      cell: ({ getValue }) => <span className="num metric">{(getValue() as number).toFixed(1)}</span>,
+    },
+    {
+      id: "course",
+      accessorKey: "course_fit",
+      header: "Course",
+      meta: { label: "Course", align: "right", mono: true },
+      cell: ({ getValue }) => <span className="num metric">{(getValue() as number).toFixed(1)}</span>,
+    },
+    {
+      id: "form",
+      accessorKey: "form",
+      header: "Form",
+      meta: { label: "Form", align: "right", mono: true },
+      cell: ({ getValue }) => <span className="num metric">{(getValue() as number).toFixed(1)}</span>,
+    },
+    {
+      id: "momentum",
+      accessorKey: "momentum",
+      header: "Momentum",
+      meta: { label: "Momentum", align: "right", mono: true },
+      cell: ({ getValue }) => <span className="num metric">{(getValue() as number).toFixed(1)}</span>,
+    },
+  ]
+}
+
+function buildLegacyMatchupColumns(): ColumnDef<LegacyMatchup, unknown>[] {
+  return [
+    { id: "pick", accessorKey: "pick", header: "Pick", meta: { label: "Pick", sticky: true } },
+    { id: "opponent", accessorKey: "opponent", header: "Opponent", meta: { label: "Opponent" } },
+    {
+      id: "book",
+      accessorKey: "book",
+      header: "Book",
+      meta: { label: "Book" },
+      cell: ({ getValue }) => <span>{(getValue() as string | null) ?? "—"}</span>,
+    },
+    {
+      id: "odds",
+      accessorKey: "odds",
+      header: "Odds",
+      meta: { label: "Odds", align: "right", mono: true },
+      cell: ({ getValue }) => <span className="num metric">{String(getValue() ?? "—")}</span>,
+    },
+    {
+      id: "edge",
+      accessorKey: "ev_pct",
+      header: "Edge",
+      meta: { label: "Edge", align: "right", mono: true },
+      cell: ({ getValue }) => <span className="num metric">{(getValue() as string | null) ?? "—"}</span>,
+    },
+    {
+      id: "tier",
+      accessorKey: "tier",
+      header: "Tier",
+      meta: { label: "Tier" },
+      cell: ({ getValue }) => <span>{(getValue() as string | null) ?? "—"}</span>,
+    },
+  ]
+}
 
 export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSnapshot | null }) {
   const legacy = liveSnapshot?.legacy_tournament
-  const rankings = legacy?.rankings ?? []
-  const matchupBets = legacy?.matchup_bets_all_books ?? legacy?.matchup_bets ?? []
+  const rankings = (legacy?.rankings ?? []).slice(0, 25) as LegacyRanking[]
+  const matchupBets = (legacy?.matchup_bets_all_books ?? legacy?.matchup_bets ?? []).slice(
+    0,
+    25,
+  ) as LegacyMatchup[]
   const diagnosticsErrors = legacy?.diagnostics?.errors ?? []
+
+  const rankingColumns = useMemo(() => buildLegacyRankingColumns(), [])
+  const matchupColumns = useMemo(() => buildLegacyMatchupColumns(), [])
 
   return (
     <div className="research-page">
-      <PageHeader
+      <TerminalPageHeader
         eyebrow="Research"
         title="Legacy model (baseline)"
         description="Read-only fallback lane for last month's baseline model."
@@ -48,30 +147,13 @@ export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSna
                     <div className="empty-state-title">No baseline rankings in this snapshot.</div>
                   </div>
                 ) : (
-                  <DataTable>
-                    <thead>
-                      <tr>
-                        <th>Rank</th>
-                        <th>Player</th>
-                        <th className="num">Composite</th>
-                        <th className="num">Course</th>
-                        <th className="num">Form</th>
-                        <th className="num">Momentum</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rankings.slice(0, 25).map((row) => (
-                        <tr key={`${row.player_key ?? row.player}-${row.rank}`}>
-                          <td>{row.rank}</td>
-                          <td>{row.player}</td>
-                          <td className="num metric">{row.composite.toFixed(1)}</td>
-                          <td className="num metric">{row.course_fit.toFixed(1)}</td>
-                          <td className="num metric">{row.form.toFixed(1)}</td>
-                          <td className="num metric">{row.momentum.toFixed(1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </DataTable>
+                  <ProDataGrid
+                    data={rankings}
+                    columns={rankingColumns}
+                    density="compact"
+                    getRowId={(row) => `${row.player_key ?? row.player}-${row.rank}`}
+                    testId="legacy-rankings-grid"
+                  />
                 )}
               </section>
 
@@ -82,30 +164,13 @@ export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSna
                     <div className="empty-state-title">No baseline matchup edges in this snapshot.</div>
                   </div>
                 ) : (
-                  <DataTable>
-                    <thead>
-                      <tr>
-                        <th>Pick</th>
-                        <th>Opponent</th>
-                        <th>Book</th>
-                        <th className="num">Odds</th>
-                        <th className="num">Edge</th>
-                        <th>Tier</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matchupBets.slice(0, 25).map((bet) => (
-                        <tr key={`${bet.pick_key}-${bet.opponent_key}-${bet.book}-${bet.odds}`}>
-                          <td>{bet.pick}</td>
-                          <td>{bet.opponent}</td>
-                          <td>{bet.book ?? "—"}</td>
-                          <td className="num metric">{bet.odds}</td>
-                          <td className="num metric">{bet.ev_pct ?? "—"}</td>
-                          <td>{bet.tier ?? "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </DataTable>
+                  <ProDataGrid
+                    data={matchupBets}
+                    columns={matchupColumns}
+                    density="compact"
+                    getRowId={(row) => `${row.pick_key}-${row.opponent_key}-${row.book}-${row.odds}`}
+                    testId="legacy-matchups-grid"
+                  />
                 )}
               </section>
             </>

@@ -35,7 +35,7 @@ export function CockpitLabPage({
           <div className="term-notice cockpit-lab-banner" data-testid="lab-board-banner">
             <strong>Lab</strong> — matchup-lab champion (Optuna trial 327) via{" "}
             <strong>lab_live_tournament</strong> / <strong>lab_upcoming_tournament</strong> when{" "}
-            <code style={{ fontSize: 11 }}>live_refresh.lab_profile_enabled</code> is on. Main{" "}
+            <code className="lab-code-inline">live_refresh.lab_profile_enabled</code> is on. Main{" "}
             <Link to="/" aria-label="Leave Lab: open main dashboard">
               Dashboard
             </Link>{" "}
@@ -55,7 +55,7 @@ export function CockpitLabPage({
               data-testid="lab-board-prod-fallback-banner"
             >
               <strong>Lab lane off.</strong> Boards below mirror the main snapshot until the server enables the lab
-              profile and the next recompute fills <code style={{ fontSize: 11 }}>lab_*</code> sections.
+              profile and the next recompute fills <code className="lab-code-inline">lab_*</code> sections.
             </div>
           ) : null}
           {!usingProdSnapshotFallback && labLanePartialSections ? (
@@ -63,8 +63,8 @@ export function CockpitLabPage({
               className="term-notice amber cockpit-lab-banner"
               data-testid="lab-board-partial-sections-banner"
             >
-              <strong>Partial lab snapshot.</strong> Only one of <code style={{ fontSize: 11 }}>lab_live_tournament</code>{" "}
-              / <code style={{ fontSize: 11 }}>lab_upcoming_tournament</code> is populated — the missing side still uses
+              <strong>Partial lab snapshot.</strong> Only one of <code className="lab-code-inline">lab_live_tournament</code>{" "}
+              / <code className="lab-code-inline">lab_upcoming_tournament</code> is populated — the missing side still uses
               the production board until both sections fill.
             </div>
           ) : null}
@@ -75,8 +75,8 @@ export function CockpitLabPage({
       </div>
       <aside
         className="cockpit-lab-research-aside"
-        style={{ overflowY: researchExpanded ? "auto" : "visible" }}
         data-testid="lab-board-research-pane"
+        data-research-scroll={researchExpanded ? "auto" : "visible"}
         data-research-expanded={researchExpanded ? "true" : "false"}
       >
         <div className="box-border h-full min-h-0 px-3 pb-3 pt-2">

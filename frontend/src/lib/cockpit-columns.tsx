@@ -14,6 +14,7 @@ import {
   SG_TRAJECTORY_HELP,
 } from "@/lib/metric-tooltips"
 import type { CompositePlayer, FlattenedSecondaryBet, MatchupBet } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
 
 export type RankingsColumnOptions = {
@@ -388,4 +389,150 @@ export function buildPicksPageMatchupColumns(): ColumnDef<MatchupBet, unknown>[]
   ]
 }
 
-export { POWER_RANKINGS_HELP, MATCHUP_TABLE_TOOLTIPS, MATCHUP_DETAIL_TOOLTIPS, GRADING_TABLE_TOOLTIPS, SG_TRAJECTORY_HELP, buildMatchupKey }
+export type LeaderboardColumnOptions = {
+  onPlayerSelect: (playerKey: string) => void
+}
+
+export function buildLeaderboardColumns({
+  onPlayerSelect,
+}: LeaderboardColumnOptions): ColumnDef<import("@/lib/cockpit-event-models").CockpitLeaderboardRowModel, unknown>[] {
+  return [
+    {
+      id: "pos",
+      accessorKey: "positionLabel",
+      header: "Pos",
+      meta: { label: "Pos", mono: true },
+    },
+    {
+      id: "player",
+      header: "Player",
+      meta: { label: "Player", sticky: true },
+      cell: ({ row }) => {
+        const r = row.original
+        return (
+          <div>
+            {r.playerKey ? (
+              <button
+                type="button"
+                className="player-name-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onPlayerSelect(r.playerKey!)
+                }}
+              >
+                {r.playerLabel}
+              </button>
+            ) : (
+              r.playerLabel
+            )}
+            {r.detail ? <div className="leaderboard-row-detail">{r.detail}</div> : null}
+          </div>
+        )
+      },
+    },
+    {
+      id: "score",
+      accessorKey: "toParLabel",
+      header: "Score",
+      meta: { label: "Score", align: "right", mono: true },
+    },
+    {
+      id: "rd",
+      accessorKey: "roundLabel",
+      header: "Rd",
+      meta: { label: "Rd", align: "right", mono: true },
+    },
+    {
+      id: "tot",
+      accessorKey: "scoreLabel",
+      header: "Tot",
+      meta: { label: "Tot", align: "right", mono: true },
+    },
+  ]
+}
+
+function failedReasonBadge(reasonCode: string) {
+  const map: Record<string, { label: string; className: string }> = {
+    below_ev_threshold: { label: "Below EV", className: "reason-badge reason-badge--muted" },
+    dg_model_disagreement: { label: "DG disagree", className: "reason-badge reason-badge--gold" },
+  }
+  const entry = map[reasonCode] ?? { label: reasonCode, className: "reason-badge reason-badge--muted" }
+  return <span className={entry.className}>{entry.label}</span>
+}
+
+export function buildFailedCandidateColumns(): ColumnDef<import("@/lib/types").FailedMatchupCandidate, unknown>[] {
+  return [
+    {
+      id: "pickVsOpp",
+      header: "Pick vs Opponent",
+      meta: { label: "Pick vs Opponent", sticky: true },
+      cell: ({ row }) => {
+        const c = row.original
+        return (
+          <div>
+            <div className="pick-primary">{c.pick}</div>
+            <div className="text-muted-11">vs {c.opponent}</div>
+          </div>
+        )
+      },
+    },
+    {
+      id: "book",
+      accessorKey: "book",
+      header: "Book",
+      meta: { label: "Book" },
+      cell: ({ getValue }) => <span className="text-muted-11">{(getValue() as string | null) ?? "—"}</span>,
+    },
+    {
+      id: "odds",
+      accessorKey: "odds",
+      header: "Odds",
+      meta: { label: "Odds", mono: true },
+      cell: ({ getValue }) => <span className="pick-odds">{getValue() != null ? String(getValue()) : "—"}</span>,
+    },
+    {
+      id: "reason",
+      accessorKey: "reason_code",
+      header: "Reason",
+      meta: { label: "Reason", align: "center" },
+      cell: ({ getValue }) => failedReasonBadge(String(getValue() ?? "")),
+    },
+    {
+      id: "ev",
+      accessorKey: "ev",
+      header: "EV",
+      meta: { label: "EV", align: "right", mono: true },
+      cell: ({ row }) => {
+        const c = row.original
+        const evDisplay =
+          c.ev_pct ??
+          (c.ev != null && c.ev !== undefined ? `${(c.ev * 100).toFixed(1)}%` : "—")
+        return (
+          <span className={cn("num help-cursor", c.ev != null && c.ev >= 0 ? "text-primary" : "text-muted-11")}>
+            {evDisplay}
+          </span>
+        )
+      },
+    },
+    {
+      id: "winPct",
+      header: "Win%",
+      meta: { label: "Win%", align: "right", mono: true },
+      cell: ({ row }) => {
+        const c = row.original
+        const winPct =
+          c.model_win_prob != null ? `${(c.model_win_prob * 100).toFixed(1)}%` : "—"
+        return <span className="num text-muted-11">{winPct}</span>
+      },
+    },
+  ]
+}
+
+export {
+  POWER_RANKINGS_HELP,
+  MATCHUP_TABLE_TOOLTIPS,
+  MATCHUP_DETAIL_TOOLTIPS,
+  GRADING_TABLE_TOOLTIPS,
+  SG_TRAJECTORY_HELP,
+  buildMatchupKey,
+}

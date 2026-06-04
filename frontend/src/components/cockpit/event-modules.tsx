@@ -1,7 +1,11 @@
 import { CircleAlert, History, Radar, ShieldAlert } from "lucide-react"
+import { useMemo } from "react"
 
 import { MetricTile } from "@/components/shell"
-import { COCKPIT_METRIC_TOOLTIPS, LEADERBOARD_COLUMN_TOOLTIPS } from "@/lib/metric-tooltips"
+import { PanelChrome } from "@/components/ui/panel-chrome"
+import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import { buildLeaderboardColumns } from "@/lib/cockpit-columns"
+import { COCKPIT_METRIC_TOOLTIPS } from "@/lib/metric-tooltips"
 import type {
   CockpitFeedItemModel,
   CockpitLeaderboardRowModel,
@@ -20,7 +24,11 @@ export function CourseWeatherFeedPanel({
   feedItems: CockpitFeedItemModel[]
 }) {
   return (
-    <div>
+    <PanelChrome
+      title="Course & weather"
+      description="Conditions and feed context"
+      className="panel-chrome--course-weather"
+    >
       {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       <div>
         {feedItems.map((item) => (
@@ -30,7 +38,7 @@ export function CourseWeatherFeedPanel({
           </div>
         ))}
       </div>
-    </div>
+    </PanelChrome>
   )
 }
 
@@ -47,6 +55,8 @@ export function LeaderboardPanel({
   emptyMessage: string | null
   onPlayerSelect: (playerKey: string) => void
 }) {
+  const columns = useMemo(() => buildLeaderboardColumns({ onPlayerSelect }), [onPlayerSelect])
+
   if (rows.length === 0) {
     return <PanelEmptyState icon={Radar} message={emptyMessage ?? "No leaderboard rows available."} />
   }
@@ -55,43 +65,20 @@ export function LeaderboardPanel({
     <div>
       {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       {seededFromRankings ? (
-        <div className="term-notice" style={{ margin: "6px 8px" }}>
+        <div className="term-notice term-notice--inset">
           Pre-tournament board seeded from model rankings. Live scores replace this once the event starts.
         </div>
       ) : null}
-      <div className="table-scroll">
-        <table className="data-table" role="grid">
-          <thead>
-            <tr>
-              <th title={LEADERBOARD_COLUMN_TOOLTIPS.Pos}>Pos</th>
-              <th title={LEADERBOARD_COLUMN_TOOLTIPS.Player}>Player</th>
-              <th style={{ textAlign: "right" }} title={LEADERBOARD_COLUMN_TOOLTIPS.Score}>
-                Score
-              </th>
-              <th style={{ textAlign: "right" }} title={LEADERBOARD_COLUMN_TOOLTIPS.Rd}>
-                Rd
-              </th>
-              <th style={{ textAlign: "right" }} title={LEADERBOARD_COLUMN_TOOLTIPS.Tot}>
-                Tot
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${row.positionLabel}-${row.playerLabel}`}>
-                <td style={{ color: "var(--text-muted)" }}>{row.positionLabel}</td>
-                <td>
-                  <SelectableInlinePlayer playerKey={row.playerKey} label={row.playerLabel} onPlayerSelect={onPlayerSelect} />
-                  {row.detail ? <div style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{row.detail}</div> : null}
-                </td>
-                <td style={{ textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{row.toParLabel}</td>
-                <td style={{ textAlign: "right" }}>{row.roundLabel}</td>
-                <td style={{ textAlign: "right" }}>{row.scoreLabel}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ProDataGrid
+        data={rows}
+        columns={columns}
+        density="compact"
+        getRowId={(row) => `${row.positionLabel}-${row.playerLabel}`}
+        getRowTestId={(row) =>
+          row.playerKey ? `leaderboard-row-${row.playerKey}` : undefined
+        }
+        testId="cockpit-leaderboard-grid"
+      />
     </div>
   )
 }
@@ -112,7 +99,11 @@ export function MarketIntelPanel({
   }
 
   return (
-    <div>
+    <PanelChrome
+      title="Market intel"
+      description="Model vs market divergence"
+      className="panel-chrome--market-intel"
+    >
       {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
       <div>
         {rows.map((row) => (
@@ -120,20 +111,20 @@ export function MarketIntelPanel({
             <div className="term-row-split">
               <div className="term-row-split-left">
                 <span className="term-row-eye">{row.eyebrow}</span>
-                <div className="term-row-val" style={{ marginTop: "2px" }}>
+                <div className="term-row-val term-row-val-mt">
                   <SelectableInlinePlayer playerKey={row.playerKey} label={row.label} onPlayerSelect={onPlayerSelect} />
                 </div>
                 {row.detail ? <span className="term-row-det">{row.detail}</span> : null}
               </div>
               <div className="term-row-split-right">
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)" }}>{row.edgeLabel}</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{row.priceLabel}</div>
+                <div className="term-row-edge">{row.edgeLabel}</div>
+                <div className="term-row-price">{row.priceLabel}</div>
               </div>
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </PanelChrome>
   )
 }
 

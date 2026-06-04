@@ -18,6 +18,7 @@ import { CockpitResizableStack } from "@/components/cockpit/cockpit-resizable-st
 import { CockpitVerticalSections } from "@/components/cockpit/responsive-panels"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { FilterSheet } from "@/components/ui/filter-sheet"
 import { useCockpitSpotlight } from "@/hooks/use-cockpit-spotlight"
 import { useIsNarrowViewport } from "@/hooks/use-media-query"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
@@ -825,8 +826,7 @@ export function PredictionWorkspacePage({
                 id: "filters",
                 label: "Filters",
                 content: (
-                  <>
-            {/* Book filters */}
+                  <FilterSheet title="Board filters" description="Books, player search, min edge">
             <div className="card">
               <div className="card-header">
                 <div className="card-title">Filters</div>
@@ -901,7 +901,7 @@ export function PredictionWorkspacePage({
                 </div>
               </div>
             </div>
-                  </>
+                  </FilterSheet>
                 ),
               },
               {
@@ -1230,7 +1230,17 @@ export function PredictionWorkspacePage({
         </div>
       </div>
 
-      {/* ── Three-column dashboard workspace ─────────────────── */}
+      {isNarrow ? (
+        <div className="workspace-filter-summary-row">
+          <span className="filter-summary-chip" data-testid="filter-summary-chip">
+            {selectedBooks.length > 0 ? `${selectedBooks.length} book${selectedBooks.length === 1 ? "" : "s"}` : "All books"}
+            {" · "}
+            {(minEdge * 100).toFixed(0)}% min edge
+            {matchupSearch.trim() ? ` · “${matchupSearch.trim()}”` : ""}
+          </span>
+        </div>
+      ) : null}
+
       <CockpitWorkspace
         className="cockpit-fill"
         layout={isNarrow ? "stack" : "columns"}
