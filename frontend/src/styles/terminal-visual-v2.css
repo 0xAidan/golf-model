@@ -1,4 +1,4 @@
-/* UI Overhaul V2 — visual identity overrides (Bucket 1) */
+/* UI Overhaul V2 — visual identity overrides (must load AFTER terminal-base.css) */
 
 :root {
   --logo-accent: var(--accent-edge);
@@ -10,6 +10,9 @@
   --bg: #030405;
   --bg-1: #060809;
   --bg-2: #0a0c0e;
+  --surface: #0a0c0e;
+  --surface-2: #0d1012;
+  --surface-3: #141719;
 }
 
 body {
@@ -28,11 +31,28 @@ body {
 
 .sidebar-logo-name {
   font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-size: 15px;
+}
+
+.sidebar-section-label {
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+}
+
+.nav-item {
+  font-family: var(--font-body);
+  font-size: 12px;
+  border-radius: 0;
+}
+
+.nav-item:hover {
+  background: color-mix(in srgb, var(--accent-edge) 6%, transparent);
 }
 
 .nav-item.active {
+  background: color-mix(in srgb, var(--accent-edge) 10%, var(--bg-1));
   box-shadow: inset 3px 0 0 0 var(--accent-edge);
   border-color: color-mix(in srgb, var(--accent-edge) 35%, var(--border));
   color: var(--text-primary);
@@ -40,6 +60,7 @@ body {
 
 .mobile-bottom-nav-item.active {
   color: var(--accent-edge);
+  background: color-mix(in srgb, var(--accent-edge) 8%, var(--bg-1));
   box-shadow: inset 0 3px 0 0 var(--accent-edge);
 }
 
@@ -67,11 +88,12 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Flat terminal modules */
+/* Flat terminal modules — no gray card fill */
 .cockpit-module,
 .card,
 .panel-chrome {
   border-radius: 0;
+  background: var(--bg);
 }
 
 .cockpit-module-header,
@@ -79,6 +101,11 @@ body {
 .panel-chrome-header {
   background: var(--bg);
   min-height: 28px;
+}
+
+.cockpit-module--accent .cockpit-module-header,
+.cockpit-stack-card--picks > .card-header {
+  background: var(--bg);
 }
 
 .cockpit-module-title,
