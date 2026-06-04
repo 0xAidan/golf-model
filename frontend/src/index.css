@@ -5,7 +5,6 @@
 @import "@fontsource/jetbrains-mono/500.css";
 @import "./styles/themes.css";
 @import "./styles/page-layouts.css";
-@import "./styles/terminal-visual-v2.css";
 
 /* ─────────────────────────────────────────────────────
    GOLF MODEL — Terminal analytics (tokens in themes.css)
@@ -235,3 +234,4 @@
 }
 
 @import "./styles/terminal-base.css";
+@import "./styles/terminal-visual-v2.css";
