@@ -11,6 +11,7 @@ import {
   POWER_RANKINGS_HELP,
   SG_TRAJECTORY_HELP,
 } from "@/lib/metric-tooltips"
+import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import type { CompositePlayer, FlattenedSecondaryBet, MatchupBet } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { buildMatchupKey, secondaryBadgeLabel } from "@/pages/page-shared"
@@ -20,9 +21,112 @@ export type RankingsColumnOptions = {
   trajectoryBounds: { min: number; max: number }
 }
 
-export function buildRankingsColumns({
+function buildPlayerColumn(onPlayerSelect: (playerKey: string) => void): ColumnDef<CompositePlayer, unknown> {
+  return {
+    id: "player",
+    accessorKey: "player_display",
+    header: "Player",
+    meta: { label: "Player", sticky: true },
+    enableSorting: true,
+    cell: ({ row }) => (
+      <button
+        type="button"
+        className="player-name-btn"
+        onClick={(e) => {
+          e.stopPropagation()
+          onPlayerSelect(row.original.player_key)
+        }}
+      >
+        {row.original.player_display}
+      </button>
+    ),
+  }
+}
+
+/** Pre-tournament / upcoming / past replay — model-centric columns (restored behavior). */
+export function buildUpcomingRankingsColumns({
   onPlayerSelect,
+  trajectoryBounds,
 }: RankingsColumnOptions): ColumnDef<CompositePlayer, unknown>[] {
+  return [
+    {
+      id: "rank",
+      accessorKey: "rank",
+      header: "#",
+      meta: { label: "Rank", align: "left", sticky: true, mono: true },
+      enableSorting: true,
+      cell: ({ row }) => <span className="num">{formatRankCell(row.original.rank)}</span>,
+    },
+    buildPlayerColumn(onPlayerSelect),
+    {
+      id: "composite",
+      accessorKey: "composite",
+      header: "Composite",
+      meta: { label: "Composite", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num help-cursor" title={POWER_RANKINGS_HELP.composite}>
+          {formatNumber(row.original.composite, 1)}
+        </span>
+      ),
+    },
+    {
+      id: "form",
+      accessorKey: "form",
+      header: "Form",
+      meta: { label: "Form", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num help-cursor" title={POWER_RANKINGS_HELP.form}>
+          {formatNumber(row.original.form, 1)}
+        </span>
+      ),
+    },
+    {
+      id: "courseFit",
+      accessorKey: "course_fit",
+      header: "Course",
+      meta: { label: "Course fit", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num help-cursor" title={POWER_RANKINGS_HELP.course}>
+          {formatNumber(row.original.course_fit, 1)}
+        </span>
+      ),
+    },
+    {
+      id: "momentum",
+      accessorKey: "momentum",
+      header: "Mom.",
+      meta: { label: "Momentum", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num help-cursor" title={POWER_RANKINGS_HELP.momentum}>
+          {formatNumber(row.original.momentum, 1)}
+        </span>
+      ),
+    },
+    {
+      id: "sgTraj",
+      header: "SG Traj",
+      meta: { label: "SG trajectory", align: "center" },
+      enableSorting: false,
+      cell: ({ row }) => (
+        <SgTrajectoryMeter
+          momentumTrend={row.original.momentum_trend}
+          momentumDirection={row.original.momentum_direction}
+          normMin={trajectoryBounds.min}
+          normMax={trajectoryBounds.max}
+        />
+      ),
+    },
+  ]
+}
+
+/** Live tournament — dual model/scoring movement columns. */
+export function buildLiveRankingsColumns({
+  onPlayerSelect,
+}: Omit<RankingsColumnOptions, "trajectoryBounds">): ColumnDef<CompositePlayer, unknown>[] {
   return [
     {
       id: "currentRank",
@@ -34,25 +138,7 @@ export function buildRankingsColumns({
         <span className="num">{formatRankCell(row.original.current_rank ?? row.original.rank)}</span>
       ),
     },
-    {
-      id: "player",
-      accessorKey: "player_display",
-      header: "Player",
-      meta: { label: "Player", sticky: true },
-      enableSorting: true,
-      cell: ({ row }) => (
-        <button
-          type="button"
-          className="player-name-btn"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPlayerSelect(row.original.player_key)
-          }}
-        >
-          {row.original.player_display}
-        </button>
-      ),
-    },
+    buildPlayerColumn(onPlayerSelect),
     {
       id: "startModelRank",
       accessorKey: "start_rank",
@@ -140,6 +226,11 @@ export function buildRankingsColumns({
       ),
     },
   ]
+}
+
+/** @deprecated Use buildUpcomingRankingsColumns or buildLiveRankingsColumns */
+export function buildRankingsColumns(options: RankingsColumnOptions): ColumnDef<CompositePlayer, unknown>[] {
+  return buildLiveRankingsColumns(options)
 }
 
 export type PickColumnOptions = {

@@ -269,12 +269,6 @@ body {
   min-height: 420px;
 }
 
-.cockpit-stacked-zone .cockpit-left-rail-panels--stacked .cockpit-resize-handle-row {
-  flex: 0 0 8px !important;
-  min-height: 8px !important;
-  height: 8px !important;
-}
-
 .cockpit-vertical-stack-mobile {
   display: flex;
   flex-direction: column;
@@ -1771,7 +1765,162 @@ body {
   overflow: hidden !important;
 }
 
-/* Three main columns (react-resizable-panels, direction horizontal) */
+/* Three main columns — fixed CSS grid (no drag handles) */
+.cockpit-grid-workspace {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.cockpit-grid-columns {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-2, 8px);
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.cockpit-grid-columns--desktop {
+  grid-template-columns: minmax(200px, 16%) minmax(0, 1fr) minmax(260px, 26%);
+}
+
+.cockpit-grid-columns--tablet {
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.cockpit-tablet-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-2, 8px);
+}
+
+.cockpit-stack-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cockpit-vertical-tabs {
+  height: 100%;
+  min-height: 0;
+}
+
+.feedback-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-6, 24px);
+  text-align: center;
+}
+
+.feedback-state-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  max-width: 320px;
+}
+
+.feedback-skeleton-row {
+  height: 12px;
+  width: 100%;
+}
+
+.feedback-state-message {
+  font-size: var(--text-sm, 12px);
+  color: var(--text-secondary, #6b7a84);
+}
+
+.terminal-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.terminal-kpi {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-kpi-label {
+  font-size: var(--text-2xs, 10px);
+  color: var(--text-secondary, #6b7a84);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.terminal-kpi-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-base, 13px);
+  color: var(--text-primary);
+}
+
+.picks-page-filters-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg-base);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 8px;
+}
+
+.players-page-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.players-page-shell .players-layout {
+  flex: 1;
+  min-height: 0;
+}
+
+.players-page-header {
+  flex-shrink: 0;
+  padding: 12px 16px 0;
+}
+
+.data-grid-loading {
+  text-align: center;
+  padding: var(--space-4, 16px);
+  color: var(--text-secondary, #6b7a84);
+  font-size: var(--text-sm, 12px);
+}
+
+.page-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+}
+
+.page-skeleton-row {
+  height: 48px;
+  width: 100%;
+}
+
+.alert-banner--warn {
+  border-color: var(--accent-warning, #f59e0b);
+  background: color-mix(in srgb, var(--accent-warning, #f59e0b) 12%, transparent);
+}
+
+/* Legacy resizable panels (deprecated — kept for reference during migration) */
 .cockpit-horizontal-panels {
   display: flex;
   flex-direction: row;
@@ -1831,54 +1980,7 @@ body {
   overflow-y: auto;
 }
 
-/* Between columns — stretch full panel height (do not set height on .cockpit-resize-handle base). */
-.cockpit-resize-handle-col {
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  width: 10px;
-  min-width: 10px;
-  max-width: 10px;
-  margin: 0 2px;
-  height: 100%;
-  min-height: 100%;
-  align-self: stretch;
-  cursor: col-resize;
-  /* Subtle rail so the affordance reads as a strip, not a dot */
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-/* ─────────────────────────────────────────────────────
-   COCKPIT CENTER — vertical split panes (react-resizable-panels)
-   ───────────────────────────────────────────────────── */
-.cockpit-vertical-panels {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.cockpit-panel-shell {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.cockpit-panel-fill {
-  box-sizing: border-box;
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Left rail vertical panels scroll inside each band */
-.cockpit-panel-fill.cockpit-left-rail-section {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-/* Cards inside a pane fill height and scroll inside .table-scroll */
+/* Cards inside cockpit stack fill height and scroll inside .table-scroll */
 .card.cockpit-stack-card {
   flex: 1;
   min-height: 0;
@@ -1891,40 +1993,6 @@ body {
   min-height: 0;
   height: 100%;
   max-height: 100%;
-}
-
-/* Shared chrome — orientation + thickness come from .cockpit-resize-handle-col | -row */
-.cockpit-resize-handle {
-  flex-shrink: 0;
-  border-radius: var(--r-sm);
-  background: var(--border);
-  touch-action: none;
-  outline: none;
-  transition: background var(--ease), box-shadow var(--ease);
-}
-
-.cockpit-resize-handle:hover,
-.cockpit-resize-handle:focus-visible {
-  background: rgba(34, 197, 94, 0.28);
-  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
-}
-
-.cockpit-resize-handle:active {
-  background: var(--green-dim);
-}
-
-/* Between stacked panels — full track width, comfortable hit height */
-.cockpit-resize-handle-row {
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  width: 100%;
-  min-width: 100%;
-  height: 10px;
-  min-height: 10px;
-  align-self: stretch;
-  margin: 2px 0;
-  cursor: row-resize;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 /* ─────────────────────────────────────────────────────

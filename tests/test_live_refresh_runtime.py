@@ -111,8 +111,8 @@ def test_live_refresh_snapshot_endpoint_generates_snapshot_on_demand(monkeypatch
     assert body["snapshot"]["live_tournament"]["event_name"] == "Future Open"
 
 
-def test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runtime_running(monkeypatch):
-    """Hung worker + pidfile healthy used to skip all on-demand recomputes forever (Q10 regression)."""
+def test_live_refresh_snapshot_extremely_stale_serves_stale_when_worker_running(monkeypatch):
+    """When the dedicated worker is running, API must not block on on-demand recompute."""
     import app as app_module
 
     calls = {"generate": 0}
@@ -163,9 +163,73 @@ def test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runt
     response = client.get("/api/live-refresh/snapshot")
     assert response.status_code == 200
     body = response.json()
-    assert calls["generate"] == 1
+    assert calls["generate"] == 0
     assert body["ok"] is True
-    assert body["snapshot"]["live_tournament"]["event_name"] == "Recovered Open"
+    assert body["snapshot"]["generated_at"] == "2000-01-01T00:00:00+00:00"
+    assert "event_name" not in (body["snapshot"].get("live_tournament") or {})
+
+
+def test_live_refresh_snapshot_extremely_stale_schedules_background_heal_without_worker(monkeypatch):
+    """Extremely stale snapshot with no worker should schedule background heal (non-blocking)."""
+    import app as app_module
+
+    calls = {"generate": 0}
+    stale_snapshot = {
+        "generated_at": "2000-01-01T00:00:00+00:00",
+        "live_tournament": {
+            "active": True,
+            "diagnostics": {"state": "edges_available"},
+        },
+        "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
+    }
+    fresh_snapshot = {
+        "generated_at": "2099-06-01T12:00:00+00:00",
+        "live_tournament": {
+            "active": True,
+            "event_name": "Recovered Open",
+            "diagnostics": {"state": "edges_available"},
+        },
+        "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
+    }
+
+    def fake_generate(*, tour: str = "pga"):
+        calls["generate"] += 1
+        return fresh_snapshot
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "src.autoresearch_settings.get_settings",
+        lambda: {
+            "live_refresh": {
+                "enabled": True,
+                "tour": "pga",
+                "autostart": True,
+                "mode_override": "live_window",
+            }
+        },
+    )
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
+    monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: stale_snapshot)
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", fake_generate)
+    monkeypatch.setattr(
+        app_module,
+        "_with_live_refresh_worker_status",
+        lambda raw: {**raw, "running": True, "worker_running": False, "runtime_owner": "api"},
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/snapshot")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["snapshot"]["generated_at"] == "2000-01-01T00:00:00+00:00"
+    import time
+
+    deadline = time.time() + 2.0
+    while time.time() < deadline and calls["generate"] == 0:
+        time.sleep(0.05)
+    assert calls["generate"] >= 1
+    app_module._snapshot_heal_in_progress = False
 
 
 def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):

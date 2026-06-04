@@ -1,0 +1,30 @@
+# Frontend Overhaul Verification — 2026-06-04 (final)
+
+## Frontend gates (PASS)
+- `npm run typecheck` — pass
+- `npm run test` — 29 files, 106 tests passed
+- `npm run build` — pass
+
+## Python gates (PASS)
+- `python3 -m pytest tests/ -q` — 481 passed, 1 skipped
+
+## Fixes in this release
+- `test_live_refresh_snapshot_extremely_stale_*` aligned with worker-running behavior
+- Dashboard state cache flake fixed (`_dashboard_state_cache.clear()` in test)
+- ESLint purity fix in prediction-workspace-page (opportunity pin clock)
+
+## Rankings contract
+- `buildUpcomingRankingsColumns` / `buildLiveRankingsColumns` + workspace tests (upcoming, live, past, hydration, eligibility)
+- Eligibility banner: `data-testid="eligibility-warning-banner"` (eligibility/withheld warnings only)
+
+## Route overhauls
+- `/matchups`: TerminalPageHeader, KPI strip, sticky filters, shared EmptyState/LoadingState/ErrorState
+- `/players`: TerminalPageHeader, shared EmptyState, page shell layout
+- `/lab/picks`: TerminalPageHeader
+
+## Visual evidence
+- Screenshot matrix: `docs/screenshots/ui-overhaul-v2/` (40 PNGs)
+- Index: `docs/screenshots/ui-overhaul-v2/README.md`
+
+## Post-deploy soak
+- See append below after `./deploy.sh --update-local`

@@ -14,6 +14,7 @@ import type {
   PredictionRunResponse,
 } from "@/lib/types"
 import { FilterSheet } from "@/components/ui/filter-sheet"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { PicksPage } from "@/pages/picks-page"
 
 type MatchupDiagnostics = NonNullable<LiveTournamentSnapshot["diagnostics"]>
@@ -163,6 +164,11 @@ export const LabPicksPage = ({
 
   return (
     <div className="lane-lab lab-picks-root">
+      <TerminalPageHeader
+        eyebrow="Lab lane"
+        title="Lab picks"
+        description="Parallel lab snapshot matchups — logged to grading with source=lab_sandbox."
+      />
       <div className="term-notice cockpit-lab-banner" data-testid="lab-picks-banner">
         <strong>Lab picks</strong> — uses the parallel lab snapshot lane. Displayed matchups and value markets sync to
         the database automatically (deduped); <code className="lab-code-inline">source=lab_sandbox</code>. Production{" "}

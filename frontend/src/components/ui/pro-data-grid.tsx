@@ -36,6 +36,8 @@ export type ProDataGridProps<T> = {
   onColumnVisibilityChange?: OnChangeFn<VisibilityState>
   toolbar?: ReactNode
   emptyMessage?: string
+  isLoading?: boolean
+  loadingMessage?: string
   className?: string
   testId?: string
   getRowTestId?: (row: T) => string | undefined
@@ -61,6 +63,8 @@ export function ProDataGrid<T>({
   onColumnVisibilityChange,
   toolbar,
   emptyMessage = "No rows",
+  isLoading = false,
+  loadingMessage = "Loading rows…",
   className,
   testId = "pro-data-grid",
   getRowTestId,
@@ -161,6 +165,16 @@ export function ProDataGrid<T>({
   const virtualRows = shouldVirtualize ? virtualizer.getVirtualItems() : null
 
   const tbodyContent = (() => {
+    if (isLoading) {
+      return (
+        <tr>
+          <td colSpan={columns.length} className="data-grid-loading" data-testid="data-grid-loading">
+            {loadingMessage}
+          </td>
+        </tr>
+      )
+    }
+
     if (rows.length === 0) {
       return (
         <tr>

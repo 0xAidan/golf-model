@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
@@ -153,8 +154,11 @@ function renderPage(props: PredictionWorkspacePageProps) {
 }
 
 describe("PredictionWorkspacePage live UX", () => {
-  it("renders dual model/scoring ranking columns", () => {
+  it("renders dual model/scoring ranking columns in live mode", async () => {
+    const user = userEvent.setup()
     renderPage(buildProps())
+
+    await user.click(screen.getByTestId("cockpit-tab-rankings"))
 
     expect(screen.getByText("Model now")).toBeInTheDocument()
     expect(screen.getByText("Start (model)")).toBeInTheDocument()
@@ -165,11 +169,110 @@ describe("PredictionWorkspacePage live UX", () => {
     expect(screen.getAllByText("To par").length).toBeGreaterThan(0)
   })
 
+  it("renders model-centric ranking columns in upcoming mode", async () => {
+    const user = userEvent.setup()
+    const props = buildProps()
+    props.predictionTab = "upcoming"
+    props.players = [
+      {
+        player_key: "player_a",
+        player_display: "Player A",
+        rank: 1,
+        composite: 82,
+        course_fit: 78,
+        form: 80,
+        momentum: 76,
+        momentum_trend: 0.4,
+        momentum_direction: "hot",
+      },
+    ]
+    renderPage(props)
+
+    await user.click(screen.getByTestId("cockpit-tab-rankings"))
+
+    expect(screen.getByText("Form")).toBeInTheDocument()
+    expect(screen.getByText("Course")).toBeInTheDocument()
+    expect(screen.getByText("Mom.")).toBeInTheDocument()
+    expect(screen.getByText("SG Traj")).toBeInTheDocument()
+    expect(screen.queryByText("Model Δ")).not.toBeInTheDocument()
+    expect(screen.queryByText("To par")).not.toBeInTheDocument()
+  })
+
   it("shows alert strip count and NEW LIVE badges", () => {
     renderPage(buildProps())
 
     expect(screen.getByTestId("live-opportunity-alert-strip")).toHaveTextContent(/1 new live opportunity/i)
     expect(screen.getAllByText("NEW LIVE").length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: "New this refresh" })).toBeInTheDocument()
+  })
+
+  it("renders model-centric columns in past mode", async () => {
+    const user = userEvent.setup()
+    apiMock.getLiveRefreshPastSnapshot.mockResolvedValue({
+      ok: true,
+      snapshot: {
+        event_name: "Past Open",
+        rankings: [
+          {
+            rank: 1,
+            player_key: "player_a",
+            player: "Player A",
+            composite: 82,
+            course_fit: 78,
+            form: 80,
+            momentum: 76,
+          },
+        ],
+        diagnostics: { state: "edges_available" },
+      },
+    } as never)
+    apiMock.getLiveRefreshPastMarketRows.mockResolvedValue({ ok: true, rows: [] })
+
+    const props = buildProps()
+    props.predictionTab = "past"
+    props.gradingHistory = [
+      {
+        event_id: "500",
+        name: "Past Open",
+        total_profit: 0,
+        graded_pick_count: 0,
+      },
+    ]
+    renderPage(props)
+
+    await user.click(screen.getByTestId("cockpit-tab-rankings"))
+
+    const grid = await screen.findByTestId("cockpit-rankings-grid")
+    expect(grid).toHaveTextContent("Form")
+    expect(grid).not.toHaveTextContent("Model Δ")
+  })
+
+  it("shows hydration fallback banner when section cross-falls back", () => {
+    const props = buildProps()
+    props.predictionRun = {
+      ...props.predictionRun!,
+      hydration_section: "upcoming_fallback_live",
+    }
+    renderPage(props)
+
+    expect(screen.getByTestId("hydration-fallback-banner")).toHaveTextContent(/upcoming view is showing live/i)
+  })
+
+  it("shows eligibility warning banner when rankings withheld", () => {
+    const props = buildProps()
+    props.predictionTab = "upcoming"
+    props.players = []
+    props.predictionRun = {
+      status: "hydrated",
+      event_name: "Test Event",
+      composite_results: [],
+      matchup_bets: [],
+      value_bets: {},
+      warnings: ["Rankings withheld: field eligibility not verified."],
+      hydration_section: "upcoming",
+    }
+    renderPage(props)
+
+    expect(screen.getByTestId("eligibility-warning-banner")).toHaveTextContent(/eligibility not verified/i)
   })
 })

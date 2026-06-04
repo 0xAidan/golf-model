@@ -17,7 +17,9 @@ import {
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
 import { PlayersKpiCell } from "@/components/players-kpi-cell"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { EmptyState } from "@/components/ui/empty-state"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
@@ -583,16 +585,14 @@ function PlayerProfileView({
   )
 }
 
-function EmptyState() {
+function PlayersEmptyPrompt() {
   return (
-    <div className="profile-empty-center">
-      <User size={24} className="profile-empty-icon" />
-      <div className="profile-empty-msg">
-        Select a player from the list
-        <br />
-        to view their full profile
-      </div>
-    </div>
+    <EmptyState
+      message="Select a player from the list"
+      description="View full skill profile, rolling windows, and course history."
+      icon={<User size={24} className="profile-empty-icon" />}
+      className="profile-empty-center"
+    />
   )
 }
 
@@ -635,7 +635,28 @@ export function PlayersPage({
   }, [effectiveKey])
 
   return (
-    <div className="players-layout">
+    <div className="players-page-shell">
+      <TerminalPageHeader
+        eyebrow="Field intelligence"
+        title="Players"
+        description="Deep-dive profiles independent of active tournament context."
+        kpis={
+          <div className="terminal-kpi-strip">
+            <span className="terminal-kpi">
+              <span className="terminal-kpi-label">Field</span>
+              <span className="terminal-kpi-value">{players.length}</span>
+            </span>
+            {effectiveKey ? (
+              <span className="terminal-kpi">
+                <span className="terminal-kpi-label">Selected</span>
+                <span className="terminal-kpi-value">{effectiveDisplay}</span>
+              </span>
+            ) : null}
+          </div>
+        }
+        className="players-page-header"
+      />
+      <div className="players-layout">
       <PlayerSearchSidebar
         activePlayers={players}
         selectedKey={effectiveKey}
@@ -652,8 +673,9 @@ export function PlayersPage({
             activePlayers={players}
           />
         ) : (
-          <EmptyState />
+          <PlayersEmptyPrompt />
         )}
+      </div>
       </div>
     </div>
   )
