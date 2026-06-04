@@ -31,7 +31,9 @@ import {
 import { formatNumber } from "@/lib/format"
 import { EV_BADGE_TOOLTIP, MATCHUP_DETAIL_TOOLTIPS, MATCHUP_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
-import { PageHeader } from "@/components/ui/page-header"
+import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorState, LoadingState } from "@/components/ui/feedback-state"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { PicksTableScroll } from "@/components/ui/picks-table-scroll"
 import { cn } from "@/lib/utils"
 import type {
@@ -151,15 +153,6 @@ function buildMarketInventory(rows: PastMarketPredictionRow[]): InventoryRow[] {
 }
 
 /* ── Mini components ─────────────────────────────────────────────────── */
-
-function EmptyState({ message, children }: { message: string; children?: React.ReactNode }) {
-  return (
-    <div className="empty-state empty-state--padded">
-      <div className="empty-state-title">{message}</div>
-      {children}
-    </div>
-  )
-}
 
 /* ── Sub-tab pill switcher ────────────────────────────────────────────── */
 
@@ -433,11 +426,11 @@ function MatchupsBoard({
           />
         ) : (
           <div className="card-body">
-            <EmptyState message={emptyMessage}>
-              <div className="empty-state-hint">
-                Try lowering the min edge threshold or selecting more books on the dashboard.
-              </div>
-            </EmptyState>
+            <EmptyState
+              message={emptyMessage}
+              description="Try lowering the min edge threshold or selecting more books on the dashboard."
+              className="empty-state--padded"
+            />
           </div>
         )}
       </div>
@@ -485,12 +478,11 @@ function SecondaryBoard({
     return (
       <div className="card">
         <div className="card-body">
-          <EmptyState message="No secondary-market edges available right now.">
-            <div className="picks-empty-hint">
-              Top-finish, make-cut, and outright markets are scanned every refresh. Edges appear here
-              when book pricing diverges from the model by enough to clear EV thresholds.
-            </div>
-          </EmptyState>
+          <EmptyState
+            message="No secondary-market edges available right now."
+            description="Top-finish, make-cut, and outright markets are scanned every refresh. Edges appear when book pricing diverges from the model."
+            className="empty-state--padded"
+          />
         </div>
       </div>
     )
@@ -605,14 +597,30 @@ export function PicksPage({
 
   return (
     <div className="page-shell picks-page-shell">
-      <div className="picks-page-header">
-        <PageHeader
-          title="Picks"
-          description={description}
-          action={lane === "lab" ? <span className="lane-chip">Lab lane</span> : undefined}
-        />
-      </div>
+      <TerminalPageHeader
+        eyebrow={lane === "lab" ? "Lab lane" : "Matchups workspace"}
+        title="Picks"
+        description={description}
+        action={lane === "lab" ? <span className="lane-chip">Lab lane</span> : undefined}
+        kpis={
+          <div className="terminal-kpi-strip">
+            <span className="terminal-kpi">
+              <span className="terminal-kpi-label">Matchups</span>
+              <span className="terminal-kpi-value">{matchupSource.length}</span>
+            </span>
+            <span className="terminal-kpi">
+              <span className="terminal-kpi-label">Secondary</span>
+              <span className="terminal-kpi-value">{secondarySource.length}</span>
+            </span>
+            <span className="terminal-kpi">
+              <span className="terminal-kpi-label">Min edge</span>
+              <span className="terminal-kpi-value">{minEdgePct}%</span>
+            </span>
+          </div>
+        }
+      />
 
+      <div className="picks-page-filters-sticky">
       <PicksTabSwitcher
         value={tab}
         onChange={setTab}
@@ -626,11 +634,12 @@ export function PicksPage({
           counts={availabilityCounts}
         />
       </FilterSheet>
+      </div>
       {marketRowsLoading ? (
-        <div className="picks-diag-hint">Syncing tracked pick inventory…</div>
+        <LoadingState message="Syncing tracked pick inventory…" />
       ) : null}
       {marketRowsError ? (
-        <div className="picks-diag-warn">Inventory history unavailable: {marketRowsError}</div>
+        <ErrorState message={`Inventory history unavailable: ${marketRowsError}`} />
       ) : null}
 
       {tab === "matchups" ? (

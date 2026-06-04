@@ -642,44 +642,71 @@ export function PredictionWorkspacePage({
     )
   }, [liveSnapshot?.generated_at, predictionTab])
 
-  const nowMs = Date.now()
-  const isStillPinnedOpportunity = (firstSeenAt?: string) => {
-    if (!firstSeenAt) return false
-    const parsed = Date.parse(firstSeenAt)
-    if (Number.isNaN(parsed)) return false
-    return nowMs - parsed <= LIVE_OPPORTUNITY_PIN_MS
-  }
+  const opportunityPinClockMs = useMemo(() => {
+    if (!liveSnapshot?.generated_at) return 0
+    const parsed = Date.parse(liveSnapshot.generated_at)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }, [liveSnapshot?.generated_at])
 
-  const passesOpportunityFilter = (
-    row: { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
-  ) => {
-    if (predictionTab !== "live") return true
-    if (opportunityFilter === "all") return true
-    if (opportunityFilter === "new") {
-      return Boolean(row.is_new_live_opportunity) || isStillPinnedOpportunity(row.first_seen_at)
+  const filteredTopPlays = useMemo(() => {
+    const isStillPinnedOpportunity = (firstSeenAt?: string) => {
+      if (!firstSeenAt || !opportunityPinClockMs) return false
+      const parsed = Date.parse(firstSeenAt)
+      if (Number.isNaN(parsed)) return false
+      return opportunityPinClockMs - parsed <= LIVE_OPPORTUNITY_PIN_MS
     }
-    const highEvThreshold = Math.max(minEdge, HIGH_EV_FLOOR)
-    return Number(row.ev ?? 0) >= highEvThreshold
-  }
+    const passesOpportunityFilter = (
+      row: { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
+    ) => {
+      if (predictionTab !== "live") return true
+      if (opportunityFilter === "all") return true
+      if (opportunityFilter === "new") {
+        return Boolean(row.is_new_live_opportunity) || isStillPinnedOpportunity(row.first_seen_at)
+      }
+      const highEvThreshold = Math.max(minEdge, HIGH_EV_FLOOR)
+      return Number(row.ev ?? 0) >= highEvThreshold
+    }
+    const prioritizeLiveOpportunity = <
+      T extends { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
+    >(rows: T[]) =>
+      [...rows].sort((left, right) => {
+        const leftPinned = (left.is_new_live_opportunity || isStillPinnedOpportunity(left.first_seen_at)) ? 1 : 0
+        const rightPinned = (right.is_new_live_opportunity || isStillPinnedOpportunity(right.first_seen_at)) ? 1 : 0
+        if (leftPinned !== rightPinned) return rightPinned - leftPinned
+        return Number(right.ev ?? 0) - Number(left.ev ?? 0)
+      })
+    return prioritizeLiveOpportunity(topPlays.filter((row) => passesOpportunityFilter(row)))
+  }, [topPlays, opportunityFilter, predictionTab, minEdge, opportunityPinClockMs])
 
-  const prioritizeLiveOpportunity = <
-    T extends { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
-  >(rows: T[]) =>
-    [...rows].sort((left, right) => {
-      const leftPinned = (left.is_new_live_opportunity || isStillPinnedOpportunity(left.first_seen_at)) ? 1 : 0
-      const rightPinned = (right.is_new_live_opportunity || isStillPinnedOpportunity(right.first_seen_at)) ? 1 : 0
-      if (leftPinned !== rightPinned) return rightPinned - leftPinned
-      return Number(right.ev ?? 0) - Number(left.ev ?? 0)
-    })
-
-  const filteredTopPlays = useMemo(
-    () => prioritizeLiveOpportunity(topPlays.filter((row) => passesOpportunityFilter(row))),
-    [topPlays, opportunityFilter, predictionTab, minEdge, liveSnapshot?.generated_at],
-  )
-  const filteredSecondaryBets = useMemo(
-    () => prioritizeLiveOpportunity(displaySecondaryBets.filter((row) => passesOpportunityFilter(row))),
-    [displaySecondaryBets, opportunityFilter, predictionTab, minEdge, liveSnapshot?.generated_at],
-  )
+  const filteredSecondaryBets = useMemo(() => {
+    const isStillPinnedOpportunity = (firstSeenAt?: string) => {
+      if (!firstSeenAt || !opportunityPinClockMs) return false
+      const parsed = Date.parse(firstSeenAt)
+      if (Number.isNaN(parsed)) return false
+      return opportunityPinClockMs - parsed <= LIVE_OPPORTUNITY_PIN_MS
+    }
+    const passesOpportunityFilter = (
+      row: { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
+    ) => {
+      if (predictionTab !== "live") return true
+      if (opportunityFilter === "all") return true
+      if (opportunityFilter === "new") {
+        return Boolean(row.is_new_live_opportunity) || isStillPinnedOpportunity(row.first_seen_at)
+      }
+      const highEvThreshold = Math.max(minEdge, HIGH_EV_FLOOR)
+      return Number(row.ev ?? 0) >= highEvThreshold
+    }
+    const prioritizeLiveOpportunity = <
+      T extends { ev?: number; is_new_live_opportunity?: boolean; first_seen_at?: string },
+    >(rows: T[]) =>
+      [...rows].sort((left, right) => {
+        const leftPinned = (left.is_new_live_opportunity || isStillPinnedOpportunity(left.first_seen_at)) ? 1 : 0
+        const rightPinned = (right.is_new_live_opportunity || isStillPinnedOpportunity(right.first_seen_at)) ? 1 : 0
+        if (leftPinned !== rightPinned) return rightPinned - leftPinned
+        return Number(right.ev ?? 0) - Number(left.ev ?? 0)
+      })
+    return prioritizeLiveOpportunity(displaySecondaryBets.filter((row) => passesOpportunityFilter(row)))
+  }, [displaySecondaryBets, opportunityFilter, predictionTab, minEdge, opportunityPinClockMs])
 
   const topPicksEmptyMessage = useMemo(() => {
     if (predictionTab === "past") {
@@ -1304,6 +1331,17 @@ export function PredictionWorkspacePage({
           {displayPredictionRun.hydration_section === "upcoming_fallback_live"
             ? "Upcoming view is showing live snapshot data — upcoming section unavailable."
             : "Live view is showing upcoming snapshot data — live section unavailable."}
+        </div>
+      ) : null}
+      {(displayPredictionRun?.warnings ?? []).some((w) => /eligibility|withheld/i.test(w)) ? (
+        <div
+          className="alert-banner alert-banner--warn"
+          role="status"
+          data-testid="eligibility-warning-banner"
+        >
+          {(displayPredictionRun?.warnings ?? [])
+            .filter((w) => /eligibility|withheld/i.test(w))
+            .join(" ")}
         </div>
       ) : null}
       {shouldShowOpportunityAlertStrip && (

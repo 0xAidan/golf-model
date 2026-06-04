@@ -1,24 +1,30 @@
-# Frontend Overhaul Verification — 2026-06-04
+# Frontend Overhaul Verification — 2026-06-04 (final)
 
 ## Frontend gates (PASS)
-- `npm run typecheck` — pass (103 tests context)
-- `npm run test` — 29 files, 103 tests passed
+- `npm run typecheck` — pass
+- `npm run test` — 29 files, 106 tests passed
 - `npm run build` — pass
 
-## Python gates
-- `python3 -m pytest tests/ -q` — 478 passed, 1 skipped, 2 failed (pre-existing on main)
-  - `test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runtime_running` — fails on main too
-  - `test_dashboard_state_includes_latest_completed_event_and_relative_prediction_path` — branch-only flake; passes on main
+## Python gates (PASS)
+- `python3 -m pytest tests/ -q` — 481 passed, 1 skipped
 
-## Visual evidence
-- Screenshot matrix: `docs/screenshots/ui-overhaul-v2/` (40 PNGs, all core routes × 375/1280 × dark/light)
-- Index: `docs/screenshots/ui-overhaul-v2/README.md`
+## Fixes in this release
+- `test_live_refresh_snapshot_extremely_stale_*` aligned with worker-running behavior
+- Dashboard state cache flake fixed (`_dashboard_state_cache.clear()` in test)
+- ESLint purity fix in prediction-workspace-page (opportunity pin clock)
 
 ## Rankings contract
-- `buildUpcomingRankingsColumns` — model-centric headers, no live scoring columns
-- `buildLiveRankingsColumns` — movement/scoring headers only
-- `prediction-board.test.ts` — upcoming never prefers live_player_board; live prefers it
-- `prediction-workspace-page.test.tsx` — UI column headers per tab
+- `buildUpcomingRankingsColumns` / `buildLiveRankingsColumns` + workspace tests (upcoming, live, past, hydration, eligibility)
+- Eligibility banner: `data-testid="eligibility-warning-banner"` (eligibility/withheld warnings only)
 
-## Interaction
-- `react-resizable-panels` removed from dependencies; cockpit uses fixed grid + segment tabs
+## Route overhauls
+- `/matchups`: TerminalPageHeader, KPI strip, sticky filters, shared EmptyState/LoadingState/ErrorState
+- `/players`: TerminalPageHeader, shared EmptyState, page shell layout
+- `/lab/picks`: TerminalPageHeader
+
+## Visual evidence
+- Screenshot matrix: `docs/screenshots/ui-overhaul-v2/` (40 PNGs)
+- Index: `docs/screenshots/ui-overhaul-v2/README.md`
+
+## Post-deploy soak
+- See append below after `./deploy.sh --update-local`

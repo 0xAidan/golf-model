@@ -416,6 +416,7 @@ def test_dashboard_state_includes_latest_completed_event_and_relative_prediction
         "_latest_graded_tournament_summary",
         lambda: {"name": "Valero Texas Open", "total_profit": 1.5, "graded_pick_count": 4},
     )
+    app_module._dashboard_state_cache.clear()
 
     client = TestClient(app_module.app)
     response = client.get("/api/dashboard/state")
