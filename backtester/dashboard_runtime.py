@@ -22,6 +22,7 @@ from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.disk_guard import warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
 from src.live_refresh_policy import resolve_cadence
+from src.player_normalizer import normalize_name
 from src.services.live_snapshot_service import run_lab_snapshot_analysis, run_snapshot_analysis
 
 _logger = logging.getLogger("dashboard.runtime")
@@ -672,6 +673,476 @@ def _normalize_market_odds(value: Any, fallback: Any = None) -> str | None:
         return f"+{number}" if number > 0 else str(number)
     text = str(candidate).strip()
     return text or None
+
+
+def _coerce_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_player_key(value: Any, *, fallback_name: Any = None) -> str:
+    key = str(value or "").strip().lower()
+    if key:
+        return key
+    name = str(fallback_name or "").strip()
+    if not name:
+        return ""
+    return normalize_name(name)
+
+
+def _parse_position_rank(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    text = str(value).strip().upper()
+    if not text:
+        return None
+    if text.startswith("T"):
+        text = text[1:]
+    if not text.isdigit():
+        return None
+    parsed = _coerce_int(text)
+    if parsed is None or parsed <= 0:
+        return None
+    return parsed
+
+
+def _build_rank_baseline_map(rows: list[dict]) -> dict[str, dict[str, Any]]:
+    baseline: dict[str, dict[str, Any]] = {}
+    for idx, row in enumerate(rows or [], start=1):
+        key = _normalize_player_key(row.get("player_key"), fallback_name=row.get("player"))
+        if not key:
+            continue
+        rank = _coerce_int(row.get("rank")) or idx
+        baseline[key] = {
+            "rank": rank,
+            "composite": _coerce_float(row.get("composite")),
+            "player": row.get("player"),
+        }
+    return baseline
+
+
+def _build_leaderboard_lookup(
+    rows: list[dict],
+    *,
+    source: str,
+) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    for idx, row in enumerate(rows or [], start=1):
+        key = _normalize_player_key(row.get("player_key"), fallback_name=row.get("player"))
+        if not key:
+            continue
+        position_label = str(row.get("position") or row.get("finish_state") or "").strip()
+        rank = _parse_position_rank(row.get("rank"))
+        if rank is None:
+            rank = _parse_position_rank(position_label)
+        if rank is None:
+            rank = idx
+        lookup[key] = {
+            "rank": rank,
+            "position": position_label or (f"T{rank}" if str(position_label).upper().startswith("T") else str(rank)),
+            "player": row.get("player"),
+            "total_to_par": _coerce_int(row.get("total_to_par")),
+            "source": source,
+        }
+    return lookup
+
+
+def _build_leaderboard_baseline_map(
+    *,
+    event_id: str,
+    frozen_section: dict[str, Any] | None,
+    history_section: str,
+) -> dict[str, dict[str, Any]]:
+    baseline: dict[str, dict[str, Any]] = {}
+    frozen_rows = (frozen_section or {}).get("leaderboard") or []
+    baseline.update(_build_leaderboard_lookup(frozen_rows, source="tee_off_frozen"))
+    if not event_id:
+        return baseline
+    first_snapshot = db.get_first_snapshot_section(event_id, section=history_section)
+    first_rows = ((first_snapshot or {}).get("snapshot") or {}).get("leaderboard") or []
+    first_lookup = _build_leaderboard_lookup(first_rows, source="since_live_start")
+    for key, row in first_lookup.items():
+        baseline.setdefault(key, row)
+    return baseline
+
+
+def _enrich_leaderboard_rows(
+    rows: list[dict],
+    *,
+    baseline_lookup: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], str]:
+    enriched: list[dict[str, Any]] = []
+    joined_lookup: dict[str, dict[str, Any]] = {}
+    default_source = "tee_off_frozen" if any(
+        str(item.get("source") or "").strip() == "tee_off_frozen"
+        for item in baseline_lookup.values()
+    ) else "since_live_start"
+    observed_sources: set[str] = set()
+    for idx, row in enumerate(rows or [], start=1):
+        item = dict(row or {})
+        key = _normalize_player_key(item.get("player_key"), fallback_name=item.get("player"))
+        current_rank = _parse_position_rank(item.get("rank"))
+        if current_rank is None:
+            current_rank = _parse_position_rank(item.get("position"))
+        if current_rank is None:
+            current_rank = idx
+        position_label = str(item.get("position") or "").strip() or str(current_rank)
+        baseline_row = baseline_lookup.get(key) if key else None
+        if baseline_row is None:
+            baseline_row = {
+                "rank": current_rank,
+                "position": position_label,
+                "source": default_source,
+                "total_to_par": _coerce_int(item.get("total_to_par")),
+            }
+            if key:
+                baseline_lookup[key] = baseline_row
+        start_rank = _coerce_int(baseline_row.get("rank"))
+        start_position = str(baseline_row.get("position") or "").strip() or (str(start_rank) if start_rank else None)
+        delta = (start_rank - current_rank) if (start_rank is not None and current_rank is not None) else None
+        baseline_source = str(baseline_row.get("source") or default_source).strip() or default_source
+        observed_sources.add(baseline_source)
+        item["leaderboard_rank"] = current_rank
+        item["leaderboard_position"] = position_label
+        item["start_leaderboard_rank"] = start_rank
+        item["start_leaderboard_position"] = start_position
+        item["leaderboard_delta"] = delta
+        item["leaderboard_baseline_source"] = baseline_source
+        enriched.append(item)
+        if key:
+            joined_lookup[key] = {
+                "leaderboard_rank": current_rank,
+                "leaderboard_position": position_label,
+                "start_leaderboard_rank": start_rank,
+                "start_leaderboard_position": start_position,
+                "leaderboard_delta": delta,
+                "leaderboard_baseline_source": baseline_source,
+                "total_to_par": _coerce_int(item.get("total_to_par")),
+            }
+    if "tee_off_frozen" in observed_sources:
+        baseline_label = "frozen_at_tee_off"
+    elif "since_live_start" in observed_sources:
+        baseline_label = "since_live_start"
+    else:
+        baseline_label = default_source
+    return enriched, joined_lookup, baseline_label
+
+
+def _enrich_static_rankings(rows: list[dict], *, ranking_source: str) -> list[dict]:
+    enriched: list[dict] = []
+    for idx, row in enumerate(rows or [], start=1):
+        item = dict(row or {})
+        current_rank = _coerce_int(item.get("rank")) or idx
+        baseline_rank = _coerce_int(item.get("start_rank")) or current_rank
+        baseline_composite = _coerce_float(item.get("start_composite"))
+        if baseline_composite is None:
+            baseline_composite = _coerce_float(item.get("pre_tournament_composite"))
+        if baseline_composite is None:
+            baseline_composite = _coerce_float(item.get("composite"))
+        item["current_rank"] = current_rank
+        item["start_rank"] = baseline_rank
+        item["rank_delta"] = baseline_rank - current_rank
+        item["start_composite"] = baseline_composite
+        item["pre_tournament_composite"] = baseline_composite
+        item.setdefault("ranking_source", ranking_source)
+        enriched.append(item)
+    return enriched
+
+
+def _enrich_live_rankings(
+    rows: list[dict],
+    *,
+    pre_baseline: dict[str, dict[str, Any]],
+    frozen_baseline: dict[str, dict[str, Any]],
+    leaderboard_lookup: dict[str, dict[str, Any]],
+    ranking_source: str,
+    live_point_in_time_source: str | None,
+) -> list[dict]:
+    enriched: list[dict] = []
+    for idx, row in enumerate(rows or [], start=1):
+        item = dict(row or {})
+        key = _normalize_player_key(item.get("player_key"), fallback_name=item.get("player"))
+        baseline = frozen_baseline.get(key) or pre_baseline.get(key) or {}
+        current_rank = _coerce_int(item.get("rank")) or idx
+        start_rank = _coerce_int(baseline.get("rank"))
+        start_composite = _coerce_float(baseline.get("composite"))
+        pre_tournament_composite = _coerce_float(item.get("pre_tournament_composite"))
+        if pre_tournament_composite is None:
+            pre_tournament_composite = start_composite
+        if start_composite is None:
+            start_composite = pre_tournament_composite
+        rank_delta = (start_rank - current_rank) if (start_rank is not None) else None
+        item["current_rank"] = current_rank
+        item["start_rank"] = start_rank
+        item["rank_delta"] = rank_delta
+        item["start_composite"] = start_composite
+        item["pre_tournament_composite"] = pre_tournament_composite
+        item["ranking_source"] = ranking_source
+        item["live_point_in_time_source"] = live_point_in_time_source
+        scoring = leaderboard_lookup.get(key) or {}
+        item["leaderboard_rank"] = scoring.get("leaderboard_rank")
+        item["leaderboard_position"] = scoring.get("leaderboard_position")
+        item["start_leaderboard_rank"] = scoring.get("start_leaderboard_rank")
+        item["start_leaderboard_position"] = scoring.get("start_leaderboard_position")
+        item["leaderboard_delta"] = scoring.get("leaderboard_delta")
+        item["leaderboard_baseline_source"] = scoring.get("leaderboard_baseline_source")
+        item["total_to_par"] = scoring.get("total_to_par")
+        enriched.append(item)
+    return enriched
+
+
+def _build_live_player_board(live_rankings: list[dict]) -> list[dict]:
+    board: list[dict] = []
+    for row in live_rankings or []:
+        board.append(
+            {
+                "player_key": row.get("player_key"),
+                "player": row.get("player"),
+                "finish_state": row.get("finish_state"),
+                "model": {
+                    "start_rank": row.get("start_rank"),
+                    "current_rank": row.get("current_rank"),
+                    "rank_delta": row.get("rank_delta"),
+                    "composite": row.get("composite"),
+                    "start_composite": row.get("start_composite"),
+                    "pre_tournament_composite": row.get("pre_tournament_composite"),
+                },
+                "scoring": {
+                    "position_label": row.get("leaderboard_position"),
+                    "position_rank": row.get("leaderboard_rank"),
+                    "start_position": row.get("start_leaderboard_position"),
+                    "start_position_rank": row.get("start_leaderboard_rank"),
+                    "position_delta": row.get("leaderboard_delta"),
+                    "total_to_par": row.get("total_to_par"),
+                    "baseline_source": row.get("leaderboard_baseline_source"),
+                },
+            }
+        )
+    return board
+
+
+def _market_ev_threshold(market_family: str, market_type: str) -> float:
+    if market_family == "matchup":
+        return float(config.MATCHUP_EV_THRESHOLD)
+    threshold = config.MARKET_EV_THRESHOLDS.get(str(market_type or "").strip().lower(), config.DEFAULT_EV_THRESHOLD)
+    try:
+        return float(threshold)
+    except (TypeError, ValueError):
+        return float(config.DEFAULT_EV_THRESHOLD)
+
+
+def _ev_threshold_steps(market_family: str, market_type: str) -> list[float]:
+    thresholds = {
+        _market_ev_threshold(market_family, market_type),
+        float(config.MATCHUP_TIER_GOOD_EV_PCT) / 100.0,
+        float(config.MATCHUP_TIER_STRONG_EV_PCT) / 100.0,
+    }
+    return sorted(step for step in thresholds if step > 0)
+
+
+def _is_material_ev_increase(
+    previous_ev: float | None,
+    current_ev: float | None,
+    *,
+    market_family: str,
+    market_type: str,
+) -> bool:
+    if previous_ev is None or current_ev is None:
+        return False
+    if current_ev <= previous_ev:
+        return False
+    for threshold in _ev_threshold_steps(market_family, market_type):
+        if previous_ev < threshold <= current_ev:
+            return True
+    return False
+
+
+def _build_live_opportunity_groups(section_payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    section = section_payload or {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    matchup_surfaces = [
+        section.get("matchup_bets") or [],
+        section.get("matchup_bets_all_books") or [],
+    ]
+    for surface in matchup_surfaces:
+        for row in surface:
+            item = dict(row or {})
+            ev = _coerce_float(item.get("ev"))
+            market_type = str(item.get("market_type") or "tournament_matchups").strip() or "tournament_matchups"
+            book = str(item.get("book") or item.get("bookmaker") or "").strip().lower()
+            pick_key = _normalize_player_key(item.get("pick_key") or item.get("player_key"), fallback_name=item.get("pick") or item.get("player"))
+            opp_key = _normalize_player_key(item.get("opponent_key"), fallback_name=item.get("opponent"))
+            odds = str(item.get("odds") or item.get("market_odds") or "").strip()
+            key = "|".join(["matchup", market_type, pick_key, opp_key, book, odds])
+            grouped.setdefault(key, []).append(
+                {
+                    "row": row,
+                    "ev": ev,
+                    "market_family": "matchup",
+                    "market_type": market_type,
+                    "bookmaker": book,
+                    "player": item.get("pick") or item.get("player"),
+                    "opponent": item.get("opponent"),
+                }
+            )
+    for market_type, bets in (section.get("value_bets") or {}).items():
+        for row in bets or []:
+            item = dict(row or {})
+            ev = _coerce_float(item.get("ev"))
+            if ev is None:
+                continue
+            book = str(item.get("book") or item.get("best_book") or "").strip().lower()
+            player_key = _normalize_player_key(item.get("player_key"), fallback_name=item.get("player"))
+            odds = str(item.get("odds") or item.get("best_odds") or "").strip()
+            key = "|".join(["value", str(market_type).strip().lower(), player_key, book, odds])
+            grouped.setdefault(key, []).append(
+                {
+                    "row": row,
+                    "ev": ev,
+                    "market_family": "value",
+                    "market_type": str(market_type),
+                    "bookmaker": book,
+                    "player": item.get("player"),
+                    "opponent": None,
+                }
+            )
+    return grouped
+
+
+def _apply_live_opportunity_flags(
+    section_payload: dict[str, Any],
+    *,
+    previous_section_payload: dict[str, Any] | None,
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(section_payload, dict):
+        return []
+    current_groups = _build_live_opportunity_groups(section_payload)
+    previous_groups = _build_live_opportunity_groups(previous_section_payload or {}) if previous_section_payload else {}
+    previous_exists = bool(previous_section_payload)
+    previous_lookup: dict[str, dict[str, Any]] = {}
+    for key, rows in previous_groups.items():
+        best = max(rows, key=lambda item: item.get("ev") if item.get("ev") is not None else float("-inf"))
+        previous_lookup[key] = {
+            "ev": best.get("ev"),
+            "first_seen_at": ((best.get("row") or {}).get("first_seen_at")),
+        }
+    alerts: list[dict[str, Any]] = []
+    for key, rows in current_groups.items():
+        best = max(rows, key=lambda item: item.get("ev") if item.get("ev") is not None else float("-inf"))
+        previous = previous_lookup.get(key)
+        is_new = bool(previous_exists and previous is None)
+        material = bool(
+            previous_exists
+            and previous is not None
+            and _is_material_ev_increase(
+                previous.get("ev"),
+                best.get("ev"),
+                market_family=str(best.get("market_family") or ""),
+                market_type=str(best.get("market_type") or ""),
+            )
+        )
+        first_seen_at = generated_at if is_new else (previous.get("first_seen_at") if previous else generated_at)
+        for item in rows:
+            row = item.get("row")
+            if not isinstance(row, dict):
+                continue
+            row["is_new_live_opportunity"] = is_new
+            row["is_material_ev_increase"] = material
+            row["first_seen_at"] = first_seen_at
+        if not (is_new or material):
+            continue
+        alerts.append(
+            {
+                "opportunity_key": key,
+                "is_new_live_opportunity": is_new,
+                "is_material_ev_increase": material,
+                "first_seen_at": first_seen_at,
+                "ev": best.get("ev"),
+                "market_family": best.get("market_family"),
+                "market_type": best.get("market_type"),
+                "bookmaker": best.get("bookmaker"),
+                "player": best.get("player"),
+                "opponent": best.get("opponent"),
+            }
+        )
+    alerts.sort(key=lambda row: _coerce_float(row.get("ev")) or float("-inf"), reverse=True)
+    return alerts[:20]
+
+
+def _enrich_live_section(
+    section_payload: dict[str, Any],
+    *,
+    event_id: str,
+    generated_at: str,
+    previous_section: dict[str, Any] | None,
+    frozen_section: dict[str, Any] | None,
+    history_section: str,
+) -> None:
+    if not isinstance(section_payload, dict):
+        return
+    pre_rows = _enrich_static_rankings(
+        section_payload.get("pre_tournament_rankings") or section_payload.get("rankings") or [],
+        ranking_source="pre_tournament_model",
+    )
+    frozen_rows = _enrich_static_rankings(
+        (frozen_section or {}).get("rankings")
+        or (frozen_section or {}).get("pre_tournament_rankings")
+        or [],
+        ranking_source="frozen_pre_teeoff",
+    )
+    pre_baseline = _build_rank_baseline_map(pre_rows)
+    frozen_baseline = _build_rank_baseline_map(frozen_rows)
+    leaderboard_baseline = _build_leaderboard_baseline_map(
+        event_id=event_id,
+        frozen_section=frozen_section,
+        history_section=history_section,
+    )
+    leaderboard_rows, leaderboard_lookup, scoring_baseline_label = _enrich_leaderboard_rows(
+        section_payload.get("leaderboard") or [],
+        baseline_lookup=leaderboard_baseline,
+    )
+    live_rows = _enrich_live_rankings(
+        section_payload.get("live_rankings") or section_payload.get("rankings") or [],
+        pre_baseline=pre_baseline,
+        frozen_baseline=frozen_baseline,
+        leaderboard_lookup=leaderboard_lookup,
+        ranking_source=str(section_payload.get("ranking_source") or ""),
+        live_point_in_time_source=section_payload.get("live_point_in_time_source"),
+    )
+    fallback_reason = None
+    if str(section_payload.get("live_point_in_time_source") or "") == "live_point_in_time_pre_tournament_fallback":
+        fallback_reason = (
+            "Model order unchanged - waiting for live scoring signal."
+        )
+    section_payload["pre_tournament_rankings"] = pre_rows
+    section_payload["frozen_pre_teeoff_rankings"] = frozen_rows
+    section_payload["live_rankings"] = live_rows
+    section_payload["rankings"] = live_rows
+    section_payload["leaderboard"] = leaderboard_rows
+    section_payload["live_player_board"] = _build_live_player_board(live_rows)
+    section_payload["scoring_baseline_label"] = scoring_baseline_label
+    section_payload["ranking_fallback_reason"] = fallback_reason
+    section_payload["live_opportunity_alerts"] = _apply_live_opportunity_flags(
+        section_payload,
+        previous_section_payload=previous_section,
+        generated_at=generated_at,
+    )
 
 
 def _build_market_prediction_rows(
@@ -1919,6 +2390,11 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         live_source_event_year = int(live_source_event_year_raw) if live_source_event_year_raw is not None else None
     except (TypeError, ValueError):
         live_source_event_year = None
+    frozen_pre_teeoff_section = (
+        db.get_pre_teeoff_frozen_payload(live_source_event_id)
+        if live_source_event_id
+        else None
+    )
 
     upcoming_result = {}
     if upcoming_event_name:
@@ -2370,6 +2846,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "rankings": live_rankings,
             "live_rankings": live_rankings,
             "pre_tournament_rankings": pre_tournament_rankings,
+            "frozen_pre_teeoff_rankings": [],
             "live_point_in_time_source": live_point_in_time_source,
             "matchups": live_matchups,
             "matchup_bets": live_board_matchup_bets,
@@ -2457,17 +2934,6 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             snapshot["lab_live_tournament"] = None
             lab_rows_extra = []
 
-    for section_key in (
-        "live_tournament",
-        "upcoming_tournament",
-        "legacy_tournament",
-        "lab_live_tournament",
-        "lab_upcoming_tournament",
-    ):
-        section_payload = snapshot.get(section_key)
-        if isinstance(section_payload, dict):
-            snapshot[section_key] = _trim_snapshot_section_for_memory(section_payload)
-
     try:
         upcoming_payload = snapshot.get("upcoming_tournament") or {}
         upcoming_eid = str(upcoming_payload.get("source_event_id") or "").strip()
@@ -2480,6 +2946,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             )
     except Exception as exc:
         _logger.warning("pre-teeoff candidate upsert failed: %s", exc)
+
     if live_is_active and live_source_event_id:
         try:
             _maybe_freeze_pre_teeoff(
@@ -2491,6 +2958,41 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             )
         except Exception as exc:
             _logger.warning("pre-teeoff freeze failed: %s", exc)
+
+    if live_source_event_id:
+        frozen_pre_teeoff_section = (
+            db.get_pre_teeoff_frozen_payload(live_source_event_id)
+            or frozen_pre_teeoff_section
+        )
+
+    _enrich_live_section(
+        snapshot.get("live_tournament") or {},
+        event_id=live_source_event_id,
+        generated_at=generated_at,
+        previous_section=(previous_snapshot or {}).get("live_tournament"),
+        frozen_section=frozen_pre_teeoff_section,
+        history_section="live",
+    )
+    if isinstance(snapshot.get("lab_live_tournament"), dict):
+        _enrich_live_section(
+            snapshot["lab_live_tournament"],
+            event_id=live_source_event_id,
+            generated_at=generated_at,
+            previous_section=(previous_snapshot or {}).get("lab_live_tournament"),
+            frozen_section=frozen_pre_teeoff_section,
+            history_section="live",
+        )
+
+    for section_key in (
+        "live_tournament",
+        "upcoming_tournament",
+        "legacy_tournament",
+        "lab_live_tournament",
+        "lab_upcoming_tournament",
+    ):
+        section_payload = snapshot.get(section_key)
+        if isinstance(section_payload, dict):
+            snapshot[section_key] = _trim_snapshot_section_for_memory(section_payload)
     try:
         _touch_progress(phase="persist", phase_detail="sqlite history + market rows")
         history_count = db.store_live_snapshot_sections(

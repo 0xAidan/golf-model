@@ -159,4 +159,85 @@ describe("buildHydratedPredictionRun", () => {
     expect(flattened[0].odds).toBe("+13000")
     expect(flattened[0].player_key).toBe("jj_spaun")
   })
+
+  it("hydrates live-player-board model/scoring movement fields", () => {
+    const run = buildPredictionRunFromSection({
+      event_name: "Live Event",
+      live_player_board: [
+        {
+          player_key: "tommy_fleetwood",
+          player: "Tommy Fleetwood",
+          model: {
+            start_rank: 12,
+            current_rank: 4,
+            rank_delta: 8,
+            composite: 79.2,
+            start_composite: 73.8,
+          },
+          scoring: {
+            position_label: "T3",
+            position_rank: 3,
+            start_position: "T15",
+            start_position_rank: 15,
+            position_delta: 12,
+            total_to_par: -8,
+            baseline_source: "frozen_at_tee_off",
+          },
+        },
+      ],
+      value_bets: {},
+    })
+
+    expect(run?.composite_results?.[0]?.start_rank).toBe(12)
+    expect(run?.composite_results?.[0]?.rank_delta).toBe(8)
+    expect(run?.composite_results?.[0]?.leaderboard_position).toBe("T3")
+    expect(run?.composite_results?.[0]?.leaderboard_delta).toBe(12)
+  })
+
+  it("preserves new-live flags on matchup and secondary rows", () => {
+    const run = buildPredictionRunFromSection({
+      event_name: "Live Event",
+      rankings: [],
+      matchup_bets: [
+        {
+          pick: "Player A",
+          pick_key: "player_a",
+          opponent: "Player B",
+          opponent_key: "player_b",
+          odds: "+110",
+          book: "fanduel",
+          model_win_prob: 0.56,
+          implied_prob: 0.5,
+          ev: 0.1,
+          ev_pct: "10.0%",
+          composite_gap: 2,
+          form_gap: 1,
+          course_fit_gap: 1,
+          reason: "Edge",
+          is_new_live_opportunity: true,
+          first_seen_at: "2026-06-04T16:00:00Z",
+        },
+      ],
+      value_bets: {
+        top10: [
+          {
+            player: "Player A",
+            player_key: "player_a",
+            bet_type: "top10",
+            odds: "+400",
+            book: "fanduel",
+            ev: 0.2,
+            is_value: true,
+            is_new_live_opportunity: true,
+            first_seen_at: "2026-06-04T16:00:00Z",
+          },
+        ],
+      },
+    })
+
+    expect(run?.matchup_bets?.[0]?.is_new_live_opportunity).toBe(true)
+    const flattened = flattenSecondaryBets(run)
+    expect(flattened[0]?.is_new_live_opportunity).toBe(true)
+    expect(flattened[0]?.first_seen_at).toBe("2026-06-04T16:00:00Z")
+  })
 })

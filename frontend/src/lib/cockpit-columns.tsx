@@ -3,8 +3,6 @@ import { ChevronDown } from "lucide-react"
 import type { ReactNode } from "react"
 
 import { EdgeBadge, TierBadge } from "@/components/ui/edge-badge"
-import { ScoreBar } from "@/components/ui/score-bar"
-import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import { formatNumber, formatUnits } from "@/lib/format"
 import {
   GRADING_TABLE_TOOLTIPS,
@@ -24,15 +22,17 @@ export type RankingsColumnOptions = {
 
 export function buildRankingsColumns({
   onPlayerSelect,
-  trajectoryBounds,
 }: RankingsColumnOptions): ColumnDef<CompositePlayer, unknown>[] {
   return [
     {
-      id: "rank",
-      accessorKey: "rank",
-      header: "#",
-      meta: { label: "Rank", align: "left", sticky: true, mono: true },
+      id: "currentRank",
+      accessorKey: "current_rank",
+      header: "Model now",
+      meta: { label: "Model now", align: "left", sticky: true, mono: true },
       enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num">{formatRankCell(row.original.current_rank ?? row.original.rank)}</span>
+      ),
     },
     {
       id: "player",
@@ -54,40 +54,89 @@ export function buildRankingsColumns({
       ),
     },
     {
+      id: "startModelRank",
+      accessorKey: "start_rank",
+      header: "Start (model)",
+      meta: { label: "Start (model)", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num text-muted-11">{formatRankCell(row.original.start_rank)}</span>
+      ),
+    },
+    {
+      id: "modelDelta",
+      accessorKey: "rank_delta",
+      header: "Model Δ",
+      meta: { label: "Model Δ", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span
+          className="num"
+          aria-label={formatModelDeltaAriaLabel(
+            row.original.start_rank,
+            row.original.current_rank ?? row.original.rank,
+            row.original.rank_delta,
+          )}
+        >
+          {formatMovementCell(row.original.rank_delta)}
+        </span>
+      ),
+    },
+    {
+      id: "leaderboardPos",
+      accessorKey: "leaderboard_position",
+      header: "Pos",
+      meta: { label: "Pos", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num">{row.original.leaderboard_position ?? "--"}</span>
+      ),
+    },
+    {
+      id: "leaderboardStartPos",
+      accessorKey: "start_leaderboard_position",
+      header: "Start pos",
+      meta: { label: "Start pos", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num text-muted-11">{row.original.start_leaderboard_position ?? "--"}</span>
+      ),
+    },
+    {
+      id: "leaderboardDelta",
+      accessorKey: "leaderboard_delta",
+      header: "Pos Δ",
+      meta: { label: "Pos Δ", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span
+          className="num"
+          aria-label={formatScoringDeltaAriaLabel(
+            row.original.start_leaderboard_position,
+            row.original.leaderboard_position,
+            row.original.leaderboard_delta,
+          )}
+        >
+          {formatMovementCell(row.original.leaderboard_delta)}
+        </span>
+      ),
+    },
+    {
+      id: "toPar",
+      accessorKey: "total_to_par",
+      header: "To par",
+      meta: { label: "To par", align: "right", mono: true },
+      enableSorting: true,
+      cell: ({ row }) => <span className="num">{formatToPar(row.original.total_to_par)}</span>,
+    },
+    {
       id: "composite",
       accessorKey: "composite",
       header: "Composite",
-      meta: { label: "Composite", align: "right" },
+      meta: { label: "Composite", align: "right", mono: true },
       enableSorting: true,
-      cell: ({ row }) => <ScoreBar value={row.original.composite} max={100} color="composite" />,
-    },
-    {
-      id: "form",
-      accessorKey: "form",
-      header: "Form",
-      meta: { label: "Form", align: "right" },
-      enableSorting: true,
-      cell: ({ row }) => <ScoreBar value={row.original.form} max={100} color="green" />,
-    },
-    {
-      id: "course",
-      accessorKey: "course_fit",
-      header: "Course",
-      meta: { label: "Course", align: "right" },
-      enableSorting: true,
-      cell: ({ row }) => <ScoreBar value={row.original.course_fit} max={100} color="gold" />,
-    },
-    {
-      id: "sgTrajectory",
-      header: "SG traj",
-      meta: { label: "SG trajectory", align: "center" },
       cell: ({ row }) => (
-        <SgTrajectoryMeter
-          momentumTrend={row.original.momentum_trend}
-          momentumDirection={row.original.momentum_direction}
-          normMin={trajectoryBounds.min}
-          normMax={trajectoryBounds.max}
-        />
+        <span className="num">{formatNumber(row.original.composite, 1)}</span>
       ),
     },
   ]
@@ -112,7 +161,14 @@ export function buildPickColumns({
         const m = row.original
         return (
           <div>
-            <div className="pick-primary">{m.pick}</div>
+            <div className="pick-primary">
+              {m.pick}
+              {m.is_new_live_opportunity ? (
+                <span className="live-opportunity-badge" aria-label="New live opportunity">
+                  NEW LIVE
+                </span>
+              ) : null}
+            </div>
             <div className="text-muted-11">vs {m.opponent}</div>
           </div>
         )
@@ -223,6 +279,9 @@ export function buildSecondaryColumns({
         return (
           <div className="flex-wrap-gap-6">
             <span className={`tier-badge ${tier} tier-badge--xs`}>{tier}</span>
+            {row.original.is_new_live_opportunity ? (
+              <span className="live-opportunity-badge">NEW LIVE</span>
+            ) : null}
             <span className="text-muted-11">{secondaryBadgeLabel(row.original.market)}</span>
           </div>
         )
@@ -431,24 +490,89 @@ export function buildLeaderboardColumns({
       },
     },
     {
-      id: "score",
+      id: "startPos",
+      accessorKey: "startPositionLabel",
+      header: "Start pos",
+      meta: { label: "Start pos", align: "right", mono: true },
+    },
+    {
+      id: "delta",
+      accessorKey: "positionDeltaLabel",
+      header: "Pos Δ",
+      meta: { label: "Pos Δ", align: "right", mono: true },
+      cell: ({ row }) => (
+        <span aria-label={row.original.positionDeltaAria ?? undefined}>
+          {row.original.positionDeltaLabel ?? "--"}
+        </span>
+      ),
+    },
+    {
+      id: "toPar",
       accessorKey: "toParLabel",
-      header: "Score",
-      meta: { label: "Score", align: "right", mono: true },
-    },
-    {
-      id: "rd",
-      accessorKey: "roundLabel",
-      header: "Rd",
-      meta: { label: "Rd", align: "right", mono: true },
-    },
-    {
-      id: "tot",
-      accessorKey: "scoreLabel",
-      header: "Tot",
-      meta: { label: "Tot", align: "right", mono: true },
+      header: "To par",
+      meta: { label: "To par", align: "right", mono: true },
     },
   ]
+}
+
+function formatRankCell(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "--"
+  }
+  return `#${value}`
+}
+
+function formatMovementCell(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "--"
+  }
+  if (value === 0) return "0"
+  return value > 0 ? `↑${value}` : `↓${Math.abs(value)}`
+}
+
+function formatModelDeltaAriaLabel(
+  startRank?: number | null,
+  currentRank?: number | null,
+  delta?: number | null,
+) {
+  if (startRank === null || startRank === undefined || currentRank === null || currentRank === undefined) {
+    return "Model rank movement unavailable"
+  }
+  if (delta === null || delta === undefined || Number.isNaN(delta)) {
+    return `Model rank moved from ${startRank} to ${currentRank}`
+  }
+  if (delta > 0) {
+    return `Model rank improved ${delta} since tee off from ${startRank} to ${currentRank}`
+  }
+  if (delta < 0) {
+    return `Model rank dropped ${Math.abs(delta)} since tee off from ${startRank} to ${currentRank}`
+  }
+  return `Model rank unchanged at ${currentRank}`
+}
+
+function formatScoringDeltaAriaLabel(
+  startPos?: string | null,
+  currentPos?: string | null,
+  delta?: number | null,
+) {
+  const start = startPos?.trim() || "unknown"
+  const current = currentPos?.trim() || "unknown"
+  if (delta === null || delta === undefined || Number.isNaN(delta)) {
+    return `Scoring position moved from ${start} to ${current}`
+  }
+  if (delta > 0) {
+    return `Scoring position improved ${delta} from ${start} to ${current}`
+  }
+  if (delta < 0) {
+    return `Scoring position fell ${Math.abs(delta)} from ${start} to ${current}`
+  }
+  return `Scoring position unchanged at ${current}`
+}
+
+function formatToPar(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--"
+  if (value === 0) return "E"
+  return value > 0 ? `+${value}` : `${value}`
 }
 
 function failedReasonBadge(reasonCode: string) {

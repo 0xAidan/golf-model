@@ -2053,6 +2053,35 @@ def get_latest_snapshot_section(event_id: str, *, section: str = "live") -> dict
     return payload
 
 
+def get_first_snapshot_section(event_id: str, *, section: str = "live") -> dict | None:
+    """Return the earliest stored section payload for a given event id."""
+    normalized_event_id = str(event_id or "").strip()
+    if not normalized_event_id:
+        return None
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT snapshot_id, generated_at, tour, cadence_mode, section, source_event_id,
+               source_event_name, active, payload_json
+        FROM live_snapshot_history
+        WHERE source_event_id = ? AND section = ?
+        ORDER BY generated_at ASC, id ASC
+        LIMIT 1
+        """,
+        (normalized_event_id, section),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    payload = dict(row)
+    raw_payload = payload.pop("payload_json", None)
+    try:
+        payload["snapshot"] = json.loads(raw_payload) if raw_payload else {}
+    except json.JSONDecodeError:
+        payload["snapshot"] = {}
+    return payload
+
+
 def list_snapshot_timeline_points(event_id: str, *, section: str = "live", limit: int = 120) -> list[dict]:
     """Return summarized replay timeline points for a stored event section."""
     normalized_event_id = str(event_id or "").strip()

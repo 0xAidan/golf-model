@@ -1142,6 +1142,232 @@ def test_build_live_point_in_time_rankings_falls_back_when_no_tournament_signal(
     assert rankings[0]["player_key"] == "alpha"
 
 
+def test_enrich_live_section_applies_model_and_scoring_deltas(monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    monkeypatch.setattr(runtime.db, "get_first_snapshot_section", lambda event_id, section="live": None)
+
+    section = {
+        "ranking_source": "live_point_in_time_model_tournament_state",
+        "live_point_in_time_source": "live_point_in_time_model_tournament_state",
+        "pre_tournament_rankings": [
+            {
+                "rank": 12,
+                "player_key": "player_a",
+                "player": "Player A",
+                "composite": 72.5,
+                "course_fit": 70.0,
+                "form": 69.0,
+                "momentum": 68.0,
+            }
+        ],
+        "live_rankings": [
+            {
+                "rank": 4,
+                "player_key": "player_a",
+                "player": "Player A",
+                "composite": 79.1,
+                "course_fit": 70.0,
+                "form": 69.0,
+                "momentum": 68.0,
+            }
+        ],
+        "leaderboard": [
+            {
+                "rank": 3,
+                "position": "T3",
+                "player_key": "player_a",
+                "player": "Player A",
+                "total_to_par": -8,
+            }
+        ],
+        "matchup_bets": [],
+        "matchup_bets_all_books": [],
+        "value_bets": {},
+    }
+    frozen_section = {
+        "rankings": [
+            {
+                "rank": 12,
+                "player_key": "player_a",
+                "player": "Player A",
+                "composite": 72.5,
+                "course_fit": 70.0,
+                "form": 69.0,
+                "momentum": 68.0,
+            }
+        ],
+        "leaderboard": [
+            {
+                "rank": 15,
+                "position": "T15",
+                "player_key": "player_a",
+                "player": "Player A",
+                "total_to_par": -1,
+            }
+        ],
+    }
+
+    runtime._enrich_live_section(
+        section,
+        event_id="evt_1",
+        generated_at="2026-06-04T16:00:00+00:00",
+        previous_section=None,
+        frozen_section=frozen_section,
+        history_section="live",
+    )
+
+    row = section["live_rankings"][0]
+    assert row["start_rank"] == 12
+    assert row["current_rank"] == 4
+    assert row["rank_delta"] == 8
+    assert row["start_leaderboard_position"] == "T15"
+    assert row["leaderboard_position"] == "T3"
+    assert row["leaderboard_delta"] == 12
+    assert section["frozen_pre_teeoff_rankings"][0]["start_rank"] == 12
+    assert section["live_player_board"][0]["model"]["rank_delta"] == 8
+    assert section["scoring_baseline_label"] == "frozen_at_tee_off"
+
+
+def test_apply_live_opportunity_flags_marks_new_and_material():
+    from backtester import dashboard_runtime as runtime
+
+    previous_section = {
+        "matchup_bets": [
+            {
+                "pick": "Player A",
+                "pick_key": "player_a",
+                "opponent": "Player B",
+                "opponent_key": "player_b",
+                "book": "fanduel",
+                "odds": "+110",
+                "market_type": "tournament_matchups",
+                "ev": 0.07,
+                "first_seen_at": "2026-06-04T15:50:00+00:00",
+            }
+        ],
+        "value_bets": {
+            "top10": [
+                {
+                    "player": "Player A",
+                    "player_key": "player_a",
+                    "book": "fanduel",
+                    "odds": "+400",
+                    "ev": 0.09,
+                    "is_value": True,
+                    "first_seen_at": "2026-06-04T15:50:00+00:00",
+                }
+            ]
+        },
+    }
+    current_section = {
+        "matchup_bets": [
+            {
+                "pick": "Player A",
+                "pick_key": "player_a",
+                "opponent": "Player B",
+                "opponent_key": "player_b",
+                "book": "fanduel",
+                "odds": "+110",
+                "market_type": "tournament_matchups",
+                "ev": 0.16,
+            }
+        ],
+        "value_bets": {
+            "top10": [
+                {
+                    "player": "Player A",
+                    "player_key": "player_a",
+                    "book": "fanduel",
+                    "odds": "+400",
+                    "ev": 0.09,
+                    "is_value": True,
+                },
+                {
+                    "player": "Player C",
+                    "player_key": "player_c",
+                    "book": "fanduel",
+                    "odds": "+550",
+                    "ev": 0.14,
+                    "is_value": True,
+                },
+            ]
+        },
+    }
+
+    alerts = runtime._apply_live_opportunity_flags(
+        current_section,
+        previous_section_payload=previous_section,
+        generated_at="2026-06-04T16:00:00+00:00",
+    )
+
+    matchup_row = current_section["matchup_bets"][0]
+    new_value_row = current_section["value_bets"]["top10"][1]
+    assert matchup_row["is_new_live_opportunity"] is False
+    assert matchup_row["is_material_ev_increase"] is True
+    assert new_value_row["is_new_live_opportunity"] is True
+    assert len(alerts) == 2
+
+
+def test_enrich_live_section_applies_same_fields_for_lab_snapshot(monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    monkeypatch.setattr(runtime.db, "get_first_snapshot_section", lambda event_id, section="live": None)
+
+    lab_section = {
+        "ranking_source": "lab_live_point_in_time_model_tournament_state",
+        "live_point_in_time_source": "live_point_in_time_model_tournament_state",
+        "pre_tournament_rankings": [
+            {
+                "rank": 20,
+                "player_key": "player_z",
+                "player": "Player Z",
+                "composite": 68.0,
+                "course_fit": 66.0,
+                "form": 65.0,
+                "momentum": 64.0,
+            }
+        ],
+        "live_rankings": [
+            {
+                "rank": 14,
+                "player_key": "player_z",
+                "player": "Player Z",
+                "composite": 72.0,
+                "course_fit": 66.0,
+                "form": 65.0,
+                "momentum": 64.0,
+            }
+        ],
+        "leaderboard": [
+            {
+                "rank": 10,
+                "position": "10",
+                "player_key": "player_z",
+                "player": "Player Z",
+                "total_to_par": -4,
+            }
+        ],
+        "matchup_bets": [],
+        "matchup_bets_all_books": [],
+        "value_bets": {},
+    }
+
+    runtime._enrich_live_section(
+        lab_section,
+        event_id="evt_1",
+        generated_at="2026-06-04T16:00:00+00:00",
+        previous_section=None,
+        frozen_section=None,
+        history_section="live",
+    )
+
+    assert lab_section["live_rankings"][0]["start_rank"] == 20
+    assert lab_section["live_rankings"][0]["rank_delta"] == 6
+    assert "live_player_board" in lab_section
+    assert "live_opportunity_alerts" in lab_section
+
+
 def test_live_refresh_past_snapshot_endpoints(monkeypatch):
     import app as app_module
 

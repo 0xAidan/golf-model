@@ -110,6 +110,20 @@ export type LiveRankingRow = {
     form_notes?: string[]
     availability?: Record<string, number | string | null>
   }
+  current_rank?: number | null
+  start_rank?: number | null
+  rank_delta?: number | null
+  start_composite?: number | null
+  pre_tournament_composite?: number | null
+  ranking_source?: string | null
+  live_point_in_time_source?: string | null
+  leaderboard_rank?: number | null
+  leaderboard_position?: string | null
+  start_leaderboard_rank?: number | null
+  start_leaderboard_position?: string | null
+  leaderboard_delta?: number | null
+  leaderboard_baseline_source?: string | null
+  total_to_par?: number | null
 }
 
 export type LiveLeaderboardRow = {
@@ -122,6 +136,12 @@ export type LiveLeaderboardRow = {
   latest_round_score?: number | null
   rounds_played?: number
   finish_state?: string | null
+  leaderboard_rank?: number | null
+  leaderboard_position?: string | null
+  start_leaderboard_rank?: number | null
+  start_leaderboard_position?: string | null
+  leaderboard_delta?: number | null
+  leaderboard_baseline_source?: string | null
 }
 
 export type LiveMatchupRow = {
@@ -207,6 +227,10 @@ export type LiveTournamentSnapshot = {
   live_rankings?: LiveRankingRow[]
   pre_tournament_rankings?: LiveRankingRow[]
   frozen_pre_teeoff_rankings?: LiveRankingRow[]
+  live_player_board?: LivePlayerBoardRow[]
+  live_opportunity_alerts?: LiveOpportunityAlert[]
+  scoring_baseline_label?: string
+  ranking_fallback_reason?: string | null
   matchups?: LiveMatchupRow[]
   matchup_bets?: MatchupBet[]
   matchup_bets_all_books?: MatchupBet[]
@@ -241,6 +265,42 @@ export type LiveTournamentSnapshot = {
     market_rows_written?: number
     market_rows_write_error?: string
   }
+}
+
+export type LivePlayerBoardRow = {
+  player_key?: string
+  player?: string
+  finish_state?: string | null
+  model?: {
+    start_rank?: number | null
+    current_rank?: number | null
+    rank_delta?: number | null
+    composite?: number | null
+    start_composite?: number | null
+    pre_tournament_composite?: number | null
+  }
+  scoring?: {
+    position_label?: string | null
+    position_rank?: number | null
+    start_position?: string | null
+    start_position_rank?: number | null
+    position_delta?: number | null
+    total_to_par?: number | null
+    baseline_source?: string | null
+  }
+}
+
+export type LiveOpportunityAlert = {
+  opportunity_key: string
+  is_new_live_opportunity?: boolean
+  is_material_ev_increase?: boolean
+  first_seen_at?: string | null
+  ev?: number | null
+  market_family?: string | null
+  market_type?: string | null
+  bookmaker?: string | null
+  player?: string | null
+  opponent?: string | null
 }
 
 export type FailedMatchupCandidate = {
@@ -541,6 +601,18 @@ export type CompositePlayer = {
     form_notes?: string[]
     availability?: Record<string, number | string | null>
   }
+  current_rank?: number | null
+  start_rank?: number | null
+  rank_delta?: number | null
+  start_composite?: number | null
+  pre_tournament_composite?: number | null
+  leaderboard_rank?: number | null
+  leaderboard_position?: string | null
+  start_leaderboard_rank?: number | null
+  start_leaderboard_position?: string | null
+  leaderboard_delta?: number | null
+  leaderboard_baseline_source?: string | null
+  total_to_par?: number | null
 }
 
 export type MatchupBet = {
@@ -573,6 +645,9 @@ export type MatchupBet = {
   market_type?: string
   /** When set (replay payload or upstream), overrides leaderboard-derived grade in Past tab. */
   graded_result?: "win" | "loss" | "push"
+  is_new_live_opportunity?: boolean
+  is_material_ev_increase?: boolean
+  first_seen_at?: string
 }
 
 export type SecondaryBet = {
@@ -592,6 +667,9 @@ export type SecondaryBet = {
   market_prob?: number
   best_odds?: number
   best_book?: string
+  is_new_live_opportunity?: boolean
+  is_material_ev_increase?: boolean
+  first_seen_at?: string
 }
 
 export type FlattenedSecondaryBet = {
@@ -603,6 +681,9 @@ export type FlattenedSecondaryBet = {
   ev: number
   confidence?: string
   book?: string
+  is_new_live_opportunity?: boolean
+  is_material_ev_increase?: boolean
+  first_seen_at?: string
 }
 
 export type FieldValidation = {
