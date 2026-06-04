@@ -160,38 +160,111 @@ describe("buildHydratedPredictionRun", () => {
     expect(flattened[0].player_key).toBe("jj_spaun")
   })
 
-  it("hydrates live-player-board model/scoring movement fields", () => {
-    const run = buildPredictionRunFromSection({
-      event_name: "Live Event",
-      live_player_board: [
-        {
-          player_key: "tommy_fleetwood",
-          player: "Tommy Fleetwood",
-          model: {
-            start_rank: 12,
-            current_rank: 4,
-            rank_delta: 8,
-            composite: 79.2,
-            start_composite: 73.8,
+  it("hydrates live-player-board when preferLivePlayerBoard is true", () => {
+    const run = buildPredictionRunFromSection(
+      {
+        event_name: "Live Event",
+        live_player_board: [
+          {
+            player_key: "tommy_fleetwood",
+            player: "Tommy Fleetwood",
+            model: {
+              start_rank: 12,
+              current_rank: 4,
+              rank_delta: 8,
+              composite: 79.2,
+              start_composite: 73.8,
+            },
+            scoring: {
+              position_label: "T3",
+              position_rank: 3,
+              start_position: "T15",
+              start_position_rank: 15,
+              position_delta: 12,
+              total_to_par: -8,
+              baseline_source: "frozen_at_tee_off",
+            },
           },
-          scoring: {
-            position_label: "T3",
-            position_rank: 3,
-            start_position: "T15",
-            start_position_rank: 15,
-            position_delta: 12,
-            total_to_par: -8,
-            baseline_source: "frozen_at_tee_off",
+        ],
+        rankings: [
+          {
+            rank: 99,
+            player_key: "tommy_fleetwood",
+            player: "Tommy Fleetwood",
+            composite: 50,
+            course_fit: 50,
+            form: 50,
+            momentum: 50,
           },
-        },
-      ],
-      value_bets: {},
-    })
+        ],
+        value_bets: {},
+      },
+      { preferLivePlayerBoard: true, hydrationSection: "live" },
+    )
 
     expect(run?.composite_results?.[0]?.start_rank).toBe(12)
     expect(run?.composite_results?.[0]?.rank_delta).toBe(8)
     expect(run?.composite_results?.[0]?.leaderboard_position).toBe("T3")
-    expect(run?.composite_results?.[0]?.leaderboard_delta).toBe(12)
+    expect(run?.hydration_section).toBe("live")
+  })
+
+  it("upcoming hydration uses rankings not live_player_board", () => {
+    const run = buildPredictionRunFromSection(
+      {
+        event_name: "Upcoming Event",
+        live_player_board: [
+          {
+            player_key: "player_a",
+            player: "Player A",
+            model: { current_rank: 1, composite: 90 },
+            scoring: { position_label: "T1", total_to_par: -5 },
+          },
+        ],
+        rankings: [
+          {
+            rank: 3,
+            player_key: "player_a",
+            player: "Player A",
+            composite: 78,
+            course_fit: 72,
+            form: 74,
+            momentum: 70,
+          },
+        ],
+        value_bets: {},
+      },
+      { preferLivePlayerBoard: false, hydrationSection: "upcoming" },
+    )
+
+    expect(run?.composite_results?.[0]?.rank).toBe(3)
+    expect(run?.composite_results?.[0]?.form).toBe(74)
+    expect(run?.composite_results?.[0]?.leaderboard_position).toBeUndefined()
+    expect(run?.hydration_section).toBe("upcoming")
+  })
+
+  it("records fallback section when upcoming uses live snapshot", () => {
+    const snapshot: LiveRefreshSnapshot = {
+      live_tournament: {
+        event_name: "Live Only",
+        rankings: [
+          {
+            rank: 1,
+            player_key: "a",
+            player: "A",
+            composite: 80,
+            course_fit: 70,
+            form: 70,
+            momentum: 70,
+          },
+        ],
+        matchup_bets: [],
+        value_bets: {},
+      },
+    }
+
+    const run = buildHydratedPredictionRun(snapshot, "upcoming")
+    expect(run?.hydration_section).toBe("upcoming_fallback_live")
+    expect(run?.warnings?.some((w) => w.includes("Upcoming board is using live"))).toBe(true)
   })
 
   it("preserves new-live flags on matchup and secondary rows", () => {

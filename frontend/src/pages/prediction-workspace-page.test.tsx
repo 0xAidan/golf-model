@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
@@ -153,8 +154,11 @@ function renderPage(props: PredictionWorkspacePageProps) {
 }
 
 describe("PredictionWorkspacePage live UX", () => {
-  it("renders dual model/scoring ranking columns", () => {
+  it("renders dual model/scoring ranking columns in live mode", async () => {
+    const user = userEvent.setup()
     renderPage(buildProps())
+
+    await user.click(screen.getByTestId("cockpit-tab-rankings"))
 
     expect(screen.getByText("Model now")).toBeInTheDocument()
     expect(screen.getByText("Start (model)")).toBeInTheDocument()
@@ -163,6 +167,35 @@ describe("PredictionWorkspacePage live UX", () => {
     expect(screen.getAllByText("Start pos").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Pos Δ").length).toBeGreaterThan(0)
     expect(screen.getAllByText("To par").length).toBeGreaterThan(0)
+  })
+
+  it("renders model-centric ranking columns in upcoming mode", async () => {
+    const user = userEvent.setup()
+    const props = buildProps()
+    props.predictionTab = "upcoming"
+    props.players = [
+      {
+        player_key: "player_a",
+        player_display: "Player A",
+        rank: 1,
+        composite: 82,
+        course_fit: 78,
+        form: 80,
+        momentum: 76,
+        momentum_trend: 0.4,
+        momentum_direction: "hot",
+      },
+    ]
+    renderPage(props)
+
+    await user.click(screen.getByTestId("cockpit-tab-rankings"))
+
+    expect(screen.getByText("Form")).toBeInTheDocument()
+    expect(screen.getByText("Course")).toBeInTheDocument()
+    expect(screen.getByText("Mom.")).toBeInTheDocument()
+    expect(screen.getByText("SG Traj")).toBeInTheDocument()
+    expect(screen.queryByText("Model Δ")).not.toBeInTheDocument()
+    expect(screen.queryByText("To par")).not.toBeInTheDocument()
   })
 
   it("shows alert strip count and NEW LIVE badges", () => {

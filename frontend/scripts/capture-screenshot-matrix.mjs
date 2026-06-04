@@ -4,7 +4,7 @@
  * Requires: npm install -D playwright && npx playwright install chromium
  */
 import { chromium } from "playwright"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, readdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -17,6 +17,8 @@ const routes = [
   { name: "dashboard", hash: "#/" },
   { name: "picks", hash: "#/matchups" },
   { name: "players", hash: "#/players" },
+  { name: "lab", hash: "#/lab" },
+  { name: "lab-picks", hash: "#/lab/picks" },
   { name: "grading", hash: "#/grading" },
   { name: "track-record", hash: "#/track-record" },
   { name: "legacy-model", hash: "#/research/legacy-model" },
@@ -45,15 +47,25 @@ async function main() {
       await context.addInitScript((t) => {
         localStorage.setItem("golf-model.theme", t)
       }, theme)
+      await context.route(/fontshare|fonts\.googleapis|fonts\.gstatic/, (route) => route.abort())
       const page = await context.newPage()
       for (const route of routes) {
         const url = `${baseUrl.replace(/\/$/, "")}${route.hash.startsWith("#") ? route.hash : `#${route.hash}`}`
         const fileName = `${route.name}-${vp.label}-${theme}.png`
         const file = path.join(outDir, fileName)
         try {
-          await page.goto(url, { waitUntil: "load", timeout: 45_000 })
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 })
           await page.waitForTimeout(1200)
-          await page.screenshot({ path: file, fullPage: true })
+          await Promise.race([
+            page.evaluate(() => document.fonts?.ready),
+            page.waitForTimeout(2500),
+          ])
+          await page.screenshot({
+            path: file,
+            fullPage: true,
+            timeout: 15_000,
+            animations: "disabled",
+          })
           index.push({ route: route.name, viewport: vp.label, theme, file: fileName })
           console.log("wrote", file)
         } catch (err) {
@@ -65,9 +77,13 @@ async function main() {
   }
   await browser.close()
 
+  const pngFiles = (await readdir(outDir)).filter((name) => name.endsWith(".png"))
+  const hasShot = (route, viewport, theme) =>
+    pngFiles.includes(`${route}-${viewport}-${theme}.png`)
+
   await writeFile(
     path.join(outDir, "README.md"),
-    `# UI Overhaul V2 screenshot matrix\n\nCaptured: ${new Date().toISOString()}\n\nTotal: ${index.length} images\n\n| Route | 375 dark | 375 light | 1280 dark | 1280 light |\n|-------|----------|-----------|-----------|------------|\n${routes.map((r) => `| ${r.name} | ${index.some((i) => i.route === r.name && i.viewport === "375" && i.theme === "dark") ? "yes" : "—"} | ${index.some((i) => i.route === r.name && i.viewport === "375" && i.theme === "light") ? "yes" : "—"} | ${index.some((i) => i.route === r.name && i.viewport === "1280" && i.theme === "dark") ? "yes" : "—"} | ${index.some((i) => i.route === r.name && i.viewport === "1280" && i.theme === "light") ? "yes" : "—"} |`).join("\n")}\n`,
+    `# UI Overhaul V2 screenshot matrix\n\nCaptured: ${new Date().toISOString()}\n\nTotal: ${pngFiles.length} images on disk (${index.length} captured this run)\n\n| Route | 375 dark | 375 light | 1280 dark | 1280 light |\n|-------|----------|-----------|-----------|------------|\n${routes.map((r) => `| ${r.name} | ${hasShot(r.name, "375", "dark") ? "yes" : "—"} | ${hasShot(r.name, "375", "light") ? "yes" : "—"} | ${hasShot(r.name, "1280", "dark") ? "yes" : "—"} | ${hasShot(r.name, "1280", "light") ? "yes" : "—"} |`).join("\n")}\n`,
   )
   console.log(`Done: ${index.length} screenshots`)
 }

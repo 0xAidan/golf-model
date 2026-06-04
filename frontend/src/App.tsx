@@ -22,6 +22,7 @@ import {
   normalizeSportsbook,
 } from "@/lib/prediction-board"
 import { mergeLabSnapshotSections } from "@/lib/lab-snapshot"
+import { POLLING, SUSTAINED_FAILURE_THRESHOLD } from "@/lib/query-polling"
 import { useLocalStorageState } from "@/lib/storage"
 import type { LiveRefreshSnapshot, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
 import { CockpitLabPage } from "@/pages/cockpit-lab-page"
@@ -121,7 +122,7 @@ function App() {
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
     queryFn: api.getDashboardState,
-    refetchInterval: tabPollingSuspended ? false : 30_000,
+    refetchInterval: tabPollingSuspended ? false : POLLING.dashboard,
   })
   const gradingHistoryPickSource = labRouteActive ? "lab" : "cockpit"
   const gradingHistoryQuery = useQuery({
@@ -136,15 +137,15 @@ function App() {
       const data = query.state.data
       const pr = data?.status?.progress?.refresh_state
       if (manualRefreshPending || data?.status?.running || pr === "busy") {
-        return 2_500
+        return POLLING.liveRefreshStatusBusy
       }
-      return 15_000
+      return POLLING.liveRefreshStatusIdle
     },
   })
   const liveSnapshotQuery = useQuery({
     queryKey: ["live-refresh-snapshot"],
     queryFn: api.getLiveRefreshSnapshot,
-    refetchInterval: tabPollingSuspended ? false : 10_000,
+    refetchInterval: tabPollingSuspended ? false : POLLING.liveSnapshot,
   })
 
   const liveSnapshotEnvelope = liveSnapshotQuery.data
@@ -170,7 +171,6 @@ function App() {
   // "check API health" banner. We only flag it after the query has retried
   // multiple times without success — React Query exposes this via
   // `failureCount`, which resets to 0 on the next successful poll.
-  const SUSTAINED_FAILURE_THRESHOLD = 2
   const snapshotSustainedFailure =
     liveSnapshotQuery.isError && liveSnapshotQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
   const statusSustainedFailure =

@@ -728,7 +728,16 @@ export type PredictionRunResponse = {
   }
   warnings?: string[]
   errors?: string[]
+  /** Which snapshot section hydrated this run (for upcoming vs live correctness). */
+  hydration_section?: HydrationSectionKey
 }
+
+export type HydrationSectionKey =
+  | "upcoming"
+  | "live"
+  | "legacy"
+  | "upcoming_fallback_live"
+  | "live_fallback_upcoming"
 
 export type PlayerRound = {
   event_name?: string

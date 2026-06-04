@@ -67,11 +67,12 @@ import type {
 import { computeSgTrajectoryBounds } from "@/lib/metric-heat"
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
 import {
+  buildLiveRankingsColumns,
   buildMatchupKey,
   buildPickColumns,
-  buildRankingsColumns,
   buildRecentResultsColumns,
   buildSecondaryColumns,
+  buildUpcomingRankingsColumns,
 } from "@/lib/cockpit-columns"
 
 /* ── Small helpers ────────────────────────────── */
@@ -696,10 +697,15 @@ export function PredictionWorkspacePage({
 
   const isPastTab = predictionTab === "past"
 
-  const rankingsColumns = useMemo(
-    () => buildRankingsColumns({ onPlayerSelect, trajectoryBounds: boardTrajectoryBounds }),
-    [onPlayerSelect, boardTrajectoryBounds],
-  )
+  const rankingsColumns = useMemo(() => {
+    if (predictionTab === "live") {
+      return buildLiveRankingsColumns({ onPlayerSelect })
+    }
+    return buildUpcomingRankingsColumns({
+      onPlayerSelect,
+      trajectoryBounds: boardTrajectoryBounds,
+    })
+  }, [onPlayerSelect, boardTrajectoryBounds, predictionTab])
 
   const pickColumns = useMemo(
     () =>
@@ -1288,6 +1294,18 @@ export function PredictionWorkspacePage({
           {snapshotNotice}
         </div>
       )}
+      {displayPredictionRun?.hydration_section === "upcoming_fallback_live" ||
+      displayPredictionRun?.hydration_section === "live_fallback_upcoming" ? (
+        <div
+          className="alert-banner alert-banner--warn"
+          role="status"
+          data-testid="hydration-fallback-banner"
+        >
+          {displayPredictionRun.hydration_section === "upcoming_fallback_live"
+            ? "Upcoming view is showing live snapshot data — upcoming section unavailable."
+            : "Live view is showing upcoming snapshot data — live section unavailable."}
+        </div>
+      ) : null}
       {shouldShowOpportunityAlertStrip && (
         <div
           className="alert-banner alert-banner--opportunity"

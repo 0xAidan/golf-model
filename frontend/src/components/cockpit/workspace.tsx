@@ -1,13 +1,11 @@
 import type { ReactNode } from "react"
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 
 import { CockpitTabbedStack, type CockpitTabOption } from "@/components/cockpit/responsive-panels"
 import { useViewportTier } from "@/hooks/use-viewport"
 import { cn } from "@/lib/utils"
 
-/* ── Three-column dashboard workspace — fills viewport height; columns resize via drag handles.
-    Sizes persist in localStorage (autoSaveId). Center uses CockpitResizableStack for
-    vertical splits; left rail may nest a vertical PanelGroup from the page. */
+/* ── Three-column dashboard workspace — fixed grid, no drag handles.
+    Center uses CockpitResizableStack (tabbed boards); left rail uses vertical tabs. */
 export type CockpitWorkspaceLayout = "columns" | "stack"
 
 export function CockpitWorkspace({
@@ -59,52 +57,25 @@ export function CockpitWorkspace({
 
   if (tier === "tablet") {
     return (
-      <div className={cn("cockpit-tablet-workspace", className)} data-testid="cockpit-tablet-workspace">
+      <div className={cn("cockpit-tablet-workspace cockpit-grid-workspace", className)} data-testid="cockpit-tablet-workspace">
         <div className="cockpit-tablet-rail">{leftRail}</div>
-        <PanelGroup
-          direction="horizontal"
-          autoSaveId="golf-model-cockpit-columns-tablet"
-          className="cockpit-horizontal-panels cockpit-tablet-columns"
-        >
-          <Panel defaultSize={62} minSize={40} className="cockpit-column-panel">
-            <div className="cockpit-column-fill">{center}</div>
-          </Panel>
-          <PanelResizeHandle
-            className="cockpit-resize-handle cockpit-resize-handle-col"
-            aria-label="Resize center and player columns"
-          />
-          <Panel defaultSize={38} minSize={22} maxSize={52} className="cockpit-column-panel">
-            <div className="cockpit-column-scroll">{rightRail}</div>
-          </Panel>
-        </PanelGroup>
+        <div className="cockpit-grid-columns cockpit-grid-columns--tablet">
+          <div className="cockpit-column-fill">{center}</div>
+          <div className="cockpit-column-scroll">{rightRail}</div>
+        </div>
       </div>
     )
   }
 
   return (
-    <PanelGroup
-      direction="horizontal"
-      autoSaveId="golf-model-cockpit-columns"
-      className={cn("cockpit-horizontal-panels", className)}
+    <div
+      className={cn("cockpit-grid-workspace cockpit-grid-columns cockpit-grid-columns--desktop", className)}
+      data-testid="cockpit-desktop-workspace"
     >
-      <Panel defaultSize={14} minSize={12} maxSize={40} className="cockpit-column-panel">
-        <div className="cockpit-column-stack">{leftRail}</div>
-      </Panel>
-      <PanelResizeHandle
-        className="cockpit-resize-handle cockpit-resize-handle-col"
-        aria-label="Resize left and center columns"
-      />
-      <Panel defaultSize={62} minSize={36} className="cockpit-column-panel">
-        <div className="cockpit-column-fill">{center}</div>
-      </Panel>
-      <PanelResizeHandle
-        className="cockpit-resize-handle cockpit-resize-handle-col"
-        aria-label="Resize center and right columns"
-      />
-      <Panel defaultSize={24} minSize={15} maxSize={48} className="cockpit-column-panel">
-        <div className="cockpit-column-scroll">{rightRail}</div>
-      </Panel>
-    </PanelGroup>
+      <div className="cockpit-column-stack">{leftRail}</div>
+      <div className="cockpit-column-fill">{center}</div>
+      <div className="cockpit-column-scroll">{rightRail}</div>
+    </div>
   )
 }
 

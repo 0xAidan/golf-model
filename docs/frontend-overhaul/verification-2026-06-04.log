@@ -1,0 +1,24 @@
+# Frontend Overhaul Verification — 2026-06-04
+
+## Frontend gates (PASS)
+- `npm run typecheck` — pass (103 tests context)
+- `npm run test` — 29 files, 103 tests passed
+- `npm run build` — pass
+
+## Python gates
+- `python3 -m pytest tests/ -q` — 478 passed, 1 skipped, 2 failed (pre-existing on main)
+  - `test_live_refresh_snapshot_extremely_stale_triggers_on_demand_even_when_runtime_running` — fails on main too
+  - `test_dashboard_state_includes_latest_completed_event_and_relative_prediction_path` — branch-only flake; passes on main
+
+## Visual evidence
+- Screenshot matrix: `docs/screenshots/ui-overhaul-v2/` (40 PNGs, all core routes × 375/1280 × dark/light)
+- Index: `docs/screenshots/ui-overhaul-v2/README.md`
+
+## Rankings contract
+- `buildUpcomingRankingsColumns` — model-centric headers, no live scoring columns
+- `buildLiveRankingsColumns` — movement/scoring headers only
+- `prediction-board.test.ts` — upcoming never prefers live_player_board; live prefers it
+- `prediction-workspace-page.test.tsx` — UI column headers per tab
+
+## Interaction
+- `react-resizable-panels` removed from dependencies; cockpit uses fixed grid + segment tabs

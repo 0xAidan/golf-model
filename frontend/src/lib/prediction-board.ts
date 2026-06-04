@@ -1,5 +1,6 @@
 import type {
   FlattenedSecondaryBet,
+  HydrationSectionKey,
   LiveMatchupRow,
   LiveRefreshSnapshot,
   LiveTournamentSnapshot,
@@ -7,6 +8,8 @@ import type {
   PredictionRunResponse,
   SecondaryBet,
 } from "./types"
+
+export type { HydrationSectionKey }
 
 export const NON_BOOK_SOURCES = new Set(["datagolf"])
 
@@ -238,6 +241,12 @@ export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null
     .sort((left, right) => right.ev - left.ev)
 }
 
+export type HydrationOptions = {
+  /** When true, prefer live_player_board rows over rankings (live mode only). */
+  preferLivePlayerBoard?: boolean
+  hydrationSection?: HydrationSectionKey
+}
+
 export function buildHydratedPredictionRun(
   snapshot: LiveRefreshSnapshot | null,
   tab: "live" | "upcoming",
@@ -246,16 +255,40 @@ export function buildHydratedPredictionRun(
     return null
   }
 
-  const source =
-    tab === "live"
-      ? (snapshot.live_tournament ?? snapshot.upcoming_tournament ?? snapshot.legacy_tournament)
-      : (snapshot.upcoming_tournament ?? snapshot.live_tournament ?? snapshot.legacy_tournament)
+  let source: LiveTournamentSnapshot | null | undefined
+  let hydrationSection: HydrationSectionKey
 
-  return buildPredictionRunFromSection(source)
+  if (tab === "live") {
+    if (snapshot.live_tournament) {
+      source = snapshot.live_tournament
+      hydrationSection = "live"
+    } else if (snapshot.upcoming_tournament) {
+      source = snapshot.upcoming_tournament
+      hydrationSection = "live_fallback_upcoming"
+    } else {
+      source = snapshot.legacy_tournament
+      hydrationSection = "legacy"
+    }
+  } else if (snapshot.upcoming_tournament) {
+    source = snapshot.upcoming_tournament
+    hydrationSection = "upcoming"
+  } else if (snapshot.live_tournament) {
+    source = snapshot.live_tournament
+    hydrationSection = "upcoming_fallback_live"
+  } else {
+    source = snapshot.legacy_tournament
+    hydrationSection = "legacy"
+  }
+
+  return buildPredictionRunFromSection(source, {
+    preferLivePlayerBoard: tab === "live",
+    hydrationSection,
+  })
 }
 
 export function buildPredictionRunFromSection(
   source: LiveTournamentSnapshot | null | undefined,
+  options: HydrationOptions = {},
 ): PredictionRunResponse | null {
   if (!source) {
     return null
@@ -284,6 +317,7 @@ export function buildPredictionRunFromSection(
       value_bets: {},
       errors: [warning],
       warnings: [warning],
+      hydration_section: options.hydrationSection,
     }
   }
 
@@ -292,8 +326,14 @@ export function buildPredictionRunFromSection(
   const matchupBetsAllBooks = hydrateSnapshotMatchupsAllBooks(source)
   const valueBets = hydrateSnapshotValueBets(source)
 
-  const rankingRows = source.live_player_board && source.live_player_board.length > 0
-    ? source.live_player_board.map((row, index) => ({
+  const livePlayerBoard =
+    source.live_player_board && source.live_player_board.length > 0
+      ? source.live_player_board
+      : null
+  const useLivePlayerBoard = options.preferLivePlayerBoard !== false && livePlayerBoard != null
+
+  const rankingRows = useLivePlayerBoard
+    ? livePlayerBoard.map((row, index) => ({
       player_key: row.player_key ?? normalizeNameForUi(row.player),
       player_display: row.player ?? "Unknown player",
       rank: Number(row.model?.current_rank ?? index + 1),
@@ -345,6 +385,17 @@ export function buildPredictionRunFromSection(
       total_to_par: row.total_to_par != null ? Number(row.total_to_par) : undefined,
     }))
 
+  const hydrationWarnings: string[] = []
+  if (options.hydrationSection === "upcoming_fallback_live") {
+    hydrationWarnings.push(
+      "Upcoming board is using live snapshot data — upcoming section was unavailable.",
+    )
+  } else if (options.hydrationSection === "live_fallback_upcoming") {
+    hydrationWarnings.push(
+      "Live board is using upcoming snapshot data — live section was unavailable.",
+    )
+  }
+
   return {
     status: "hydrated",
     event_name: source.event_name ?? "Event",
@@ -354,6 +405,7 @@ export function buildPredictionRunFromSection(
     course_num: source.course_num,
     model_variant: source.model_variant,
     ranking_source: source.ranking_source,
+    hydration_section: options.hydrationSection,
     composite_results: rankingRows,
     matchup_bets: matchupBets,
     matchup_bets_all_books: matchupBetsAllBooks,
@@ -361,6 +413,7 @@ export function buildPredictionRunFromSection(
     warnings: [
       "Hydrated from snapshot history. Manual runs are still required for card export and full provenance details.",
       ...(source.ranking_fallback_reason ? [source.ranking_fallback_reason] : []),
+      ...hydrationWarnings,
     ],
   }
 }
