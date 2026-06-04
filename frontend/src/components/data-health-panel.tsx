@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 type DataHealthReport = {
   status?: string
@@ -21,12 +22,6 @@ type DataHealthReport = {
   row_counts?: Record<string, number>
 }
 
-const statusColor = (status: string | undefined) => {
-  if (status === "green") return "var(--green, #22c55e)"
-  if (status === "red") return "var(--red, #ef4444)"
-  return "var(--amber, #f59e0b)"
-}
-
 export const DataHealthPanel = () => {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["data-health", 2026],
@@ -40,17 +35,12 @@ export const DataHealthPanel = () => {
   return (
     <section
       aria-labelledby="data-health-heading"
-      className="card"
-      style={{ marginBottom: 12 }}
+      className="card data-health-card"
       data-testid="data-health-panel"
     >
       <div className="card-header">
         <div>
-          <h2
-            id="data-health-heading"
-            className="card-title"
-            style={{ margin: 0, fontSize: 13 }}
-          >
+          <h2 id="data-health-heading" className="card-title data-health-title">
             Data health
           </h2>
           <div className="card-desc">
@@ -58,61 +48,42 @@ export const DataHealthPanel = () => {
           </div>
         </div>
         <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: statusColor(status),
-          }}
+          className={cn(
+            "data-health-status",
+            status === "green" && "data-health-status--green",
+            status === "red" && "data-health-status--red",
+            status !== "green" && status !== "red" && "data-health-status--amber",
+          )}
           data-testid="data-health-status"
         >
           {status}
         </span>
       </div>
-      <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {isLoading ? (
-          <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Loading audit…</p>
-        ) : null}
+      <div className="card-body data-health-body">
+        {isLoading ? <p className="data-health-muted">Loading audit…</p> : null}
         {isError ? (
-          <p style={{ margin: 0, fontSize: 11, color: "var(--red, #ef4444)" }} role="alert">
+          <p className="data-health-error" role="alert">
             {(error as Error)?.message ?? "Failed to load data health"}
           </p>
         ) : null}
         {!isLoading && !isError && report.summary ? (
-          <p style={{ margin: 0, fontSize: 12, color: "var(--text)", lineHeight: 1.45 }}>
-            {report.summary}
-          </p>
+          <p className="data-health-summary">{report.summary}</p>
         ) : null}
         {report.file_sizes_human?.main ? (
-          <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
+          <p className="data-health-muted">
             Main DB: <strong>{report.file_sizes_human.main}</strong>
             {report.file_sizes_human.wal ? ` · WAL: ${report.file_sizes_human.wal}` : null}
           </p>
         ) : null}
         {(report.storage_warnings ?? []).map((w) => (
-          <p
-            key={w}
-            style={{ margin: 0, fontSize: 11, color: "var(--amber, #f59e0b)" }}
-            role="status"
-          >
+          <p key={w} className="data-health-warn" role="status">
             {w}
           </p>
         ))}
         {(report.table_byte_stats ?? []).slice(0, 5).length > 0 ? (
           <div>
-            <div
-              style={{
-                fontSize: 10,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-muted)",
-                marginBottom: 4,
-              }}
-            >
-              Largest tables
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11 }}>
+            <div className="data-health-section-title">Largest tables</div>
+            <ul className="data-health-list">
               {(report.table_byte_stats ?? []).slice(0, 5).map((row) => (
                 <li key={row.table}>
                   {row.table}: {row.mb} MB
@@ -123,17 +94,8 @@ export const DataHealthPanel = () => {
         ) : null}
         {report.monthly_coverage ? (
           <div>
-            <div
-              style={{
-                fontSize: 10,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-muted)",
-                marginBottom: 4,
-              }}
-            >
-              2026 monthly picks
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11 }}>
+            <div className="data-health-section-title">2026 monthly picks</div>
+            <ul className="data-health-list">
               {Object.entries(report.monthly_coverage)
                 .filter(([, c]) => (c.picks ?? 0) > 0 || (c.tournaments ?? 0) > 0)
                 .map(([mo, c]) => (
@@ -146,8 +108,8 @@ export const DataHealthPanel = () => {
         ) : null}
         {(report.gaps ?? []).length > 0 ? (
           <div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Gaps</div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11 }}>
+            <div className="data-health-section-title">Gaps</div>
+            <ul className="data-health-list">
               {report.gaps!.map((g) => (
                 <li key={g.detail}>{g.detail}</li>
               ))}

@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { Fragment, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { Fragment, useRef, useState, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useOddsFlashMap } from "@/hooks/use-odds-flash"
+import { setTableDensity, useTableDensity, type TableDensityPreference } from "@/lib/table-density"
 import { cn } from "@/lib/utils"
 
 export type TableDensity = "compact" | "comfortable"
@@ -41,6 +43,9 @@ export type ProDataGridProps<T> = {
   renderSubRow?: (row: T) => ReactNode
   expandedRowId?: string | null
   getRowId?: (row: T) => string
+  getOddsForFlash?: (row: T) => number | string | null | undefined
+  getRowClassName?: (row: T) => string | undefined
+  showDensityToggle?: boolean
 }
 
 const COMPACT_ROW = 30
@@ -49,7 +54,7 @@ const COMFORTABLE_ROW = 38
 export function ProDataGrid<T>({
   data,
   columns,
-  density = "compact",
+  density: densityProp,
   stickyHeader = true,
   virtualizeAfter = 80,
   columnVisibility: controlledVisibility,
@@ -63,7 +68,14 @@ export function ProDataGrid<T>({
   renderSubRow,
   expandedRowId,
   getRowId,
+  getOddsForFlash,
+  getRowClassName,
+  showDensityToggle = false,
 }: ProDataGridProps<T>) {
+  const globalDensity = useTableDensity()
+  const effectiveDensity = showDensityToggle
+    ? globalDensity
+    : (densityProp ?? globalDensity)
   const [sorting, setSorting] = useState<SortingState>([])
   const [internalVisibility, setInternalVisibility] = useState<VisibilityState>({})
   const columnVisibility = controlledVisibility ?? internalVisibility
@@ -83,29 +95,36 @@ export function ProDataGrid<T>({
   const rows = table.getRowModel().rows
   const hideable = table.getAllColumns().filter((col) => col.getCanHide())
   const shouldVirtualize = rows.length >= virtualizeAfter
-  const rowHeight = density === "compact" ? COMPACT_ROW : COMFORTABLE_ROW
+  const rowHeight = effectiveDensity === "compact" ? COMPACT_ROW : COMFORTABLE_ROW
 
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
-    overscan: 8,
-    enabled: shouldVirtualize,
-  })
+  const flashMap = useOddsFlashMap(
+    getOddsForFlash && getRowId ? data : [],
+    (row) => (getRowId ? getRowId(row) : ""),
+    (row) => (getOddsForFlash ? getOddsForFlash(row) : null),
+  )
 
-  const virtualRows = shouldVirtualize ? virtualizer.getVirtualItems() : null
+  const handleDensityChange = (next: TableDensityPreference) => {
+    setTableDensity(next)
+  }
 
-  const renderRow = (row: Row<T>, style?: CSSProperties) => {
+  const renderRow = (row: Row<T>, style?: { height?: number }) => {
     const rowId = getRowId?.(row.original) ?? row.id
     const isExpanded = expandedRowId != null && expandedRowId === rowId
     const subRow = isExpanded && renderSubRow ? renderSubRow(row.original) : null
+    const flash = getRowId ? flashMap[getRowId(row.original)] : undefined
 
     return (
       <Fragment key={row.id}>
         <tr
           data-testid={getRowTestId?.(row.original)}
           onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-          className={cn(onRowClick && "terminal-row-clickable", isExpanded && "terminal-row-expanded")}
+          className={cn(
+            onRowClick && "terminal-row-clickable",
+            isExpanded && "terminal-row-expanded",
+            flash === "up" && "terminal-row-flash-up",
+            flash === "down" && "terminal-row-flash-down",
+            getRowClassName?.(row.original),
+          )}
           style={style}
         >
           {row.getVisibleCells().map((cell, cellIdx) => (
@@ -130,6 +149,16 @@ export function ProDataGrid<T>({
       </Fragment>
     )
   }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 8,
+    enabled: shouldVirtualize,
+  })
+
+  const virtualRows = shouldVirtualize ? virtualizer.getVirtualItems() : null
 
   const tbodyContent = (() => {
     if (rows.length === 0) {
@@ -175,9 +204,31 @@ export function ProDataGrid<T>({
 
   return (
     <div className={cn("data-grid pro-data-grid", className)} data-testid={testId}>
-      {(toolbar || hideable.length > 0) && (
+      {(toolbar || hideable.length > 0 || showDensityToggle) && (
         <div className="data-grid-toolbar">
           {toolbar}
+          {showDensityToggle ? (
+            <div className="data-grid-density-toggle" role="group" aria-label="Table density">
+              <Button
+                type="button"
+                variant={effectiveDensity === "compact" ? "default" : "outline"}
+                size="xs"
+                data-testid="data-table-density-compact"
+                onClick={() => handleDensityChange("compact")}
+              >
+                Compact
+              </Button>
+              <Button
+                type="button"
+                variant={effectiveDensity === "comfortable" ? "default" : "outline"}
+                size="xs"
+                data-testid="data-table-density-comfortable"
+                onClick={() => handleDensityChange("comfortable")}
+              >
+                Comfortable
+              </Button>
+            </div>
+          ) : null}
           {hideable.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -213,7 +264,7 @@ export function ProDataGrid<T>({
             "data-table",
             "terminal-table",
             stickyHeader && "data-grid--sticky",
-            density === "compact" ? "data-grid--compact" : "data-grid--comfortable",
+            effectiveDensity === "compact" ? "data-grid--compact" : "data-grid--comfortable",
           )}
         >
           <thead>

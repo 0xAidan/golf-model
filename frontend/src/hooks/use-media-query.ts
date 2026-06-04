@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react"
 
 /** Viewport width at or below this value uses the compact (mobile) shell and dashboard layout. */
-export const NARROW_VIEWPORT_MAX_PX = 768
+export const NARROW_VIEWPORT_MAX_PX = 767
 
 export function useMediaQuery(query: string): boolean {
   const subscribe = (callback: () => void) => {

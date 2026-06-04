@@ -16,8 +16,10 @@ import { MatchupExpandDetail } from "@/components/cockpit/matchup-expand-detail"
 import { BarTrendChart } from "@/components/charts"
 import { EdgeBadge, TierBadge } from "@/components/ui/edge-badge"
 import { FilterBar } from "@/components/ui/filter-bar"
+import { FilterSheet } from "@/components/ui/filter-sheet"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import {
+  buildFailedCandidateColumns,
   buildMatchupKey,
   buildPicksPageMatchupColumns,
   buildSecondaryColumns,
@@ -177,7 +179,7 @@ function PicksTabSwitcher({
     { value: "secondary", label: "Secondary", count: secondaryCount },
   ]
   return (
-    <div className="mode-switcher" role="tablist" aria-label="Picks sub-tabs" style={{ marginBottom: 12 }}>
+    <div className="mode-switcher picks-mode-switcher" role="tablist" aria-label="Picks sub-tabs">
       {tabs.map((tab) => {
         const active = tab.value === value
         return (
@@ -191,20 +193,7 @@ function PicksTabSwitcher({
             data-testid={`picks-tab-${tab.value}`}
           >
             {tab.label}
-            <span
-              style={{
-                marginLeft: 6,
-                padding: "1px 6px",
-                borderRadius: 8,
-                fontSize: 9,
-                fontWeight: 700,
-                background: active ? "rgba(34,197,94,0.15)" : "var(--surface-2)",
-                color: active ? "var(--green)" : "var(--text-muted)",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {tab.count}
-            </span>
+            <span className={cn("mode-tab-count", active && "mode-tab-count--active")}>{tab.count}</span>
           </button>
         )
       })}
@@ -227,15 +216,7 @@ function AvailabilityFilterBar({
     { value: "unavailable", label: "No longer available", count: counts.unavailable },
   ]
   return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 8,
-        marginBottom: 10,
-      }}
-      aria-label="Availability filter"
-    >
+    <div className="picks-availability-bar" aria-label="Availability filter">
       {options.map((option) => {
         const active = value === option.value
         return (
@@ -243,24 +224,10 @@ function AvailabilityFilterBar({
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={cn("mode-tab", active && "active")}
-            style={{ minHeight: 30 }}
+            className={cn("mode-tab picks-availability-tab", active && "active")}
           >
             {option.label}
-            <span
-              style={{
-                marginLeft: 6,
-                padding: "1px 6px",
-                borderRadius: 8,
-                fontSize: 9,
-                fontWeight: 700,
-                background: active ? "rgba(34,197,94,0.15)" : "var(--surface-2)",
-                color: active ? "var(--green)" : "var(--text-muted)",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {option.count}
-            </span>
+            <span className={cn("mode-tab-count", active && "mode-tab-count--active")}>{option.count}</span>
           </button>
         )
       })}
@@ -369,116 +336,24 @@ function DiagStat({ label, value, tone }: { label: string; value: string; tone?:
 
 /* ── Failed candidates table — "show all candidates" view ───────────────── */
 
-function reasonBadge(reasonCode: string) {
-  const map: Record<string, { label: string; color: string }> = {
-    below_ev_threshold: { label: "Below EV", color: "var(--text-muted)" },
-    dg_model_disagreement: { label: "DG disagree", color: "var(--gold)" },
-  }
-  const entry = map[reasonCode] ?? { label: reasonCode, color: "var(--text-muted)" }
-  return (
-    <span
-      style={{
-        fontSize: 9,
-        fontFamily: "var(--font-mono)",
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        padding: "2px 6px",
-        borderRadius: 4,
-        border: "1px solid var(--border)",
-        color: entry.color,
-        background: "var(--surface-2)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {entry.label}
-    </span>
-  )
-}
-
 function FailedCandidatesTable({ candidates }: { candidates: FailedMatchupCandidate[] }) {
+  const columns = useMemo(() => buildFailedCandidateColumns(), [])
   if (candidates.length === 0) return null
   return (
-    <div className="card" style={{ marginTop: 8 }} data-testid="failed-candidates-table">
-      <div
-        className="card-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
+    <div className="card failed-candidates-card" data-testid="failed-candidates-table">
+      <div className="card-header failed-candidates-header">
         <div className="card-title">All candidates considered</div>
         <div className="card-desc">{candidates.length} rows · ranked by EV (closest to clearing first)</div>
       </div>
-      <PicksTableScroll>
-        <table className="data-table terminal-table">
-          <thead>
-            <tr>
-              <th title={MATCHUP_TABLE_TOOLTIPS.pickVsOpp}>Pick vs Opponent</th>
-              <th title={MATCHUP_TABLE_TOOLTIPS.book}>Book</th>
-              <th title={MATCHUP_TABLE_TOOLTIPS.odds}>Odds</th>
-              <th className="center" title={MATCHUP_TABLE_TOOLTIPS.reason}>
-                Reason
-              </th>
-              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
-                EV
-              </th>
-              <th className="right" title={MATCHUP_TABLE_TOOLTIPS.winPct}>
-                Win%
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {candidates.map((cand, idx) => {
-              const winPct =
-                cand.model_win_prob !== undefined && cand.model_win_prob !== null
-                  ? `${(cand.model_win_prob * 100).toFixed(1)}%`
-                  : "—"
-              const evDisplay =
-                cand.ev_pct ??
-                (cand.ev !== null && cand.ev !== undefined ? `${(cand.ev * 100).toFixed(1)}%` : "—")
-              return (
-                <tr key={`${cand.pick}-${cand.opponent}-${cand.book ?? "none"}-${idx}`}>
-                  <td>
-                    <div style={{ fontWeight: 600, color: "var(--text)" }}>{cand.pick}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                      vs {cand.opponent}
-                    </div>
-                  </td>
-                  <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{cand.book ?? "—"}</td>
-                  <td
-                    style={{
-                      fontWeight: 600,
-                      color: "var(--text)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {cand.odds ?? "—"}
-                  </td>
-                  <td className="center">{reasonBadge(cand.reason_code)}</td>
-                  <td
-                    className="right num"
-                    title={EV_BADGE_TOOLTIP}
-                    style={{
-                      color:
-                        cand.ev !== null && cand.ev !== undefined && cand.ev >= 0
-                          ? "var(--text)"
-                          : "var(--text-muted)",
-                      cursor: "help",
-                    }}
-                  >
-                    {evDisplay}
-                  </td>
-                  <td className="right num" title={MATCHUP_TABLE_TOOLTIPS.winPct} style={{ color: "var(--text-muted)", fontSize: 12, cursor: "help" }}>
-                    {winPct}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-          </PicksTableScroll>
+      <div className="card-body failed-candidates-body">
+        <ProDataGrid
+          data={candidates}
+          columns={columns}
+          density="compact"
+          getRowId={(row) => `${row.pick}-${row.opponent}-${row.book ?? "none"}`}
+          testId="failed-candidates-grid"
+        />
+      </div>
     </div>
   )
 }
@@ -578,11 +453,12 @@ function MatchupsBoard({
 function SecondaryBoard({
   bets,
   onPlayerSelect,
+  isPast = false,
 }: {
   bets: FlattenedSecondaryBet[]
   onPlayerSelect?: (playerKey: string) => void
+  isPast?: boolean
 }) {
-  // Group by market for clarity
   const grouped = useMemo(() => {
     const map = new Map<string, FlattenedSecondaryBet[]>()
     for (const bet of bets) {
@@ -590,29 +466,27 @@ function SecondaryBoard({
       list.push(bet)
       map.set(bet.market, list)
     }
-    // Sort each group by EV desc; preserve input market order
     for (const list of map.values()) {
       list.sort((a, b) => b.ev - a.ev)
     }
     return Array.from(map.entries())
   }, [bets])
 
+  const secondaryColumns = useMemo(
+    () =>
+      buildSecondaryColumns({
+        isPast,
+        onPlayerSelect: (key) => onPlayerSelect?.(key),
+      }),
+    [isPast, onPlayerSelect],
+  )
+
   if (bets.length === 0) {
     return (
       <div className="card">
         <div className="card-body">
           <EmptyState message="No secondary-market edges available right now.">
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 11,
-                color: "var(--text-faint)",
-                fontFamily: "var(--font-mono)",
-                maxWidth: 480,
-                margin: "8px auto 0",
-                lineHeight: 1.6,
-              }}
-            >
+            <div className="picks-empty-hint">
               Top-finish, make-cut, and outright markets are scanned every refresh. Edges appear here
               when book pricing diverges from the model by enough to clear EV thresholds.
             </div>
@@ -623,55 +497,25 @@ function SecondaryBoard({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="picks-secondary-stack">
       {grouped.map(([market, marketBets]) => (
-        <div key={market} className="card">
+        <div key={market} className="card secondary-grid-card">
           <div className="card-header">
             <div className="card-title">{secondaryBadgeLabel(market)}</div>
             <div className="card-desc">{marketBets.length} edges</div>
           </div>
-          <PicksTableScroll>
-            <table className="data-table terminal-table">
-              <thead>
-                <tr>
-                  <th title={MATCHUP_TABLE_TOOLTIPS.player}>Player</th>
-                  <th className="center" title={MATCHUP_TABLE_TOOLTIPS.tier}>
-                    Tier
-                  </th>
-                  <th title={MATCHUP_TABLE_TOOLTIPS.bookOdds}>Book · Odds</th>
-                  <th className="right" title={MATCHUP_TABLE_TOOLTIPS.ev}>
-                    EV
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {marketBets.map((bet) => {
-                  const tier = (bet.confidence ?? "LEAN").toUpperCase()
-                  return (
-                    <tr
-                      key={`${bet.market}-${bet.player}-${bet.odds}`}
-                      onClick={() => bet.player_key && onPlayerSelect?.(bet.player_key)}
-                      style={{ cursor: bet.player_key ? "pointer" : "default" }}
-                      data-testid={`secondary-row-${bet.player}`}
-                    >
-                      <td className="player-name">
-                        <div style={{ fontWeight: 600, color: "var(--text)" }}>{bet.player}</div>
-                      </td>
-                      <td className="center">
-                        <TierBadge tier={tier} />
-                      </td>
-                      <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {bet.book ? `${bet.book} · ${bet.odds}` : bet.odds}
-                      </td>
-                      <td className="right">
-                        <EdgeBadge ev={bet.ev} />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </PicksTableScroll>
+          <ProDataGrid
+            data={marketBets}
+            columns={secondaryColumns}
+            density="compact"
+            getRowId={(row) => `${row.market}-${row.player}-${row.odds}`}
+            getRowTestId={(row) => `secondary-row-${row.player}`}
+            onRowClick={(row) => {
+              if (row.player_key) onPlayerSelect?.(row.player_key)
+            }}
+            getRowClassName={(row) => (row.player_key ? "row-clickable" : undefined)}
+            testId={`secondary-grid-${market}`}
+          />
         </div>
       ))}
     </div>
@@ -775,21 +619,19 @@ export function PicksPage({
         matchupCount={matchupSource.length}
         secondaryCount={secondarySource.length}
       />
-      <AvailabilityFilterBar
-        value={availabilityFilter}
-        onChange={setAvailabilityFilter}
-        counts={availabilityCounts}
-      />
-      {marketRowsLoading && (
-        <div style={{ marginBottom: 8, fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>
-          Syncing tracked pick inventory…
-        </div>
-      )}
-      {marketRowsError && (
-        <div style={{ marginBottom: 8, fontSize: 11, color: "var(--gold)", fontFamily: "var(--font-mono)" }}>
-          Inventory history unavailable: {marketRowsError}
-        </div>
-      )}
+      <FilterSheet title="Picks filters" description="Availability for tracked lines">
+        <AvailabilityFilterBar
+          value={availabilityFilter}
+          onChange={setAvailabilityFilter}
+          counts={availabilityCounts}
+        />
+      </FilterSheet>
+      {marketRowsLoading ? (
+        <div className="picks-diag-hint">Syncing tracked pick inventory…</div>
+      ) : null}
+      {marketRowsError ? (
+        <div className="picks-diag-warn">Inventory history unavailable: {marketRowsError}</div>
+      ) : null}
 
       {tab === "matchups" ? (
         <MatchupsBoard

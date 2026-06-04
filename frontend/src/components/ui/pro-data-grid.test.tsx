@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { describe, expect, it } from "vitest"
 
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import { setTableDensity } from "@/lib/table-density"
 
 type Row = { id: string; name: string; score: number }
 
@@ -56,6 +57,22 @@ describe("ProDataGrid", () => {
       />,
     )
     expect(screen.getByTestId("row-x")).toBeInTheDocument()
+  })
+
+  it("shows density toggle when enabled", async () => {
+    const user = userEvent.setup()
+    setTableDensity("compact")
+    render(
+      <ProDataGrid
+        data={[{ id: "a", name: "A", score: 1 }]}
+        columns={columns}
+        showDensityToggle
+        testId="density-grid"
+      />,
+    )
+    const comfortable = screen.getByRole("button", { name: /comfortable/i })
+    await user.click(comfortable)
+    expect(screen.getByRole("button", { name: /compact/i })).toBeInTheDocument()
   })
 
   it("does not virtualize below threshold", () => {

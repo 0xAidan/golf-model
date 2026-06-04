@@ -122,10 +122,10 @@ function LogoMark({ size = 32 }: { size?: number }) {
       fill="none"
       aria-label="Golf Model"
     >
-      <line x1="11" y1="6" x2="11" y2="26" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" />
-      <path d="M11 6 L24 11 L11 16 Z" fill="#22C55E" opacity="0.9" />
-      <path d="M5 26 Q16 22 27 26" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
-      <circle cx="20" cy="25" r="2.5" fill="#E8ECEF" stroke="#4A5660" strokeWidth="0.4" />
+      <line x1="11" y1="6" x2="11" y2="26" stroke="var(--logo-accent)" strokeWidth="2" strokeLinecap="round" />
+      <path d="M11 6 L24 11 L11 16 Z" fill="var(--logo-accent)" opacity="0.9" />
+      <path d="M5 26 Q16 22 27 26" stroke="var(--logo-accent)" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
+      <circle cx="20" cy="25" r="2.5" fill="var(--logo-ball)" stroke="var(--logo-ball-stroke)" strokeWidth="0.4" />
     </svg>
   )
 }

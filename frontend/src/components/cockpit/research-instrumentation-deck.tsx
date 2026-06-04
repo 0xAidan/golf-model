@@ -20,9 +20,9 @@ function resolveLabEventId(snapshot: LiveRefreshSnapshot | null, tab: Prediction
 
 function ErrorPanel({ message }: { message: string }) {
   return (
-    <div className="term-notice" style={{ marginTop: 8 }}>
+    <div className="term-notice research-deck-notice-mt">
       {message}{" "}
-      <a href="/docs" target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
+      <a href="/docs" target="_blank" rel="noreferrer" className="research-deck-link">
         Open API docs
       </a>{" "}
       to verify the backend, then retry.
@@ -72,25 +72,8 @@ export function ResearchInstrumentationDeck({
   const [abTableExpanded, setAbTableExpanded] = useState(false)
 
   return (
-    <div
-      className="research-instrumentation-deck"
-      style={{
-        flexShrink: 0,
-        padding: "12px 12px 24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        maxWidth: "min(100%, 720px)",
-        margin: "0 auto",
-        width: "100%",
-        fontSize: 12,
-      }}
-    >
-      {!hideTitle ? (
-        <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: "var(--text-muted)" }}>
-          Research instrumentation
-        </h2>
-      ) : null}
+    <div className="research-instrumentation-deck research-deck-root">
+      {!hideTitle ? <h2 className="research-deck-heading">Research instrumentation</h2> : null}
 
       <div className="card">
         <div className="card-header">
