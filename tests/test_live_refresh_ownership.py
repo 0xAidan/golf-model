@@ -229,6 +229,26 @@ def test_pid_probe_accepts_live_refresh_worker_process(tmp_path, monkeypatch):
     assert app_module._live_refresh_worker_is_running(str(pidfile)) is True
 
 
+def test_pid_probe_accepts_live_refresh_worker_module_process(tmp_path, monkeypatch):
+    import app as app_module
+
+    pidfile = tmp_path / "live_refresh.pid"
+    pidfile.write_text("4444\n", encoding="utf-8")
+
+    monkeypatch.setattr(app_module.os, "kill", lambda pid, sig: None)
+
+    def _fake_ps(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["ps", "-p", "4444", "-o", "command="],
+            returncode=0,
+            stdout="/opt/golf-model/venv/bin/python -m workers.live_refresh_worker\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(app_module.subprocess, "run", _fake_ps)
+    assert app_module._live_refresh_worker_is_running(str(pidfile)) is True
+
+
 def test_snapshot_does_not_embed_autostart_when_env_unset(monkeypatch, patched_refresh):
     """Stopping the systemd worker must not start recompute inside the API process."""
     _reset_autostart_env(monkeypatch, None)

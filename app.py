@@ -101,7 +101,11 @@ def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
             timeout=1.5,
         )
         command = (probe.stdout or "").strip().lower()
-        if command and "live_refresh_worker.py" not in command:
+        worker_markers = (
+            "live_refresh_worker.py",
+            "workers.live_refresh_worker",
+        )
+        if command and not any(marker in command for marker in worker_markers):
             return False
     except Exception:
         # Fall back to liveness-only semantics when command inspection fails.
