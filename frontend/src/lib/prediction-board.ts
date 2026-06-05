@@ -13,6 +13,26 @@ export type { HydrationSectionKey }
 
 export const NON_BOOK_SOURCES = new Set(["datagolf"])
 
+/**
+ * Sportsbooks a typical US bettor can actually place a wager at. The DataGolf
+ * feed also returns offshore / UK books (Bovada, BetOnline, Pinnacle, SkyBet,
+ * Unibet, William Hill, Betway) whose lines surface "edges" the operator can't
+ * realistically bet. We default the board to this set so the picks shown are
+ * actionable; the Filters panel still lets the user opt into any other book.
+ * Keep in sync with `SUPPORTED_BOOKS` in `src/config.py`.
+ */
+export const DEFAULT_US_BOOKS: readonly string[] = [
+  "draftkings",
+  "fanduel",
+  "betmgm",
+  "caesars",
+  "bet365",
+  "espnbet",
+  "fanatics",
+  "betrivers",
+  "pointsbet",
+]
+
 export function normalizeSportsbook(value?: string | null): string {
   return String(value ?? "")
     .trim()

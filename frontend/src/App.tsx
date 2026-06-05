@@ -19,6 +19,7 @@ import { formatDateTime } from "@/lib/format"
 import {
   buildHydratedPredictionRun,
   collectAvailableBooks,
+  DEFAULT_US_BOOKS,
   flattenSecondaryBets,
   NON_BOOK_SOURCES,
   normalizeSportsbook,
@@ -90,9 +91,17 @@ function filterValueBet<T extends FlattenedSecondaryBet>(bet: T, minEdge: number
   return betBook ? selectedBookSet.has(betBook) : false
 }
 
+/**
+ * The custom "motion cursor" hid the native pointer and tracked every
+ * mousemove to render a following ring — a common source of perceived lag.
+ * It is disabled by default; set VITE_MOTION_CURSOR=1 at build time to
+ * re-enable it. (Still respects prefers-reduced-motion when enabled.)
+ */
+const MOTION_CURSOR_ENABLED = import.meta.env.VITE_MOTION_CURSOR === "1"
+
 function AppMotionCursor() {
   const { reduceMotion } = useInteraction()
-  if (reduceMotion) return null
+  if (!MOTION_CURSOR_ENABLED || reduceMotion) return null
   return <MotionCursor />
 }
 
@@ -134,7 +143,15 @@ function AppContent({
   )
   const [matchupSearch, setMatchupSearch] = useLocalStorageState("golf-model.matchup-search", "")
   const [minEdge, setMinEdge] = useLocalStorageState("golf-model.min-edge", 0.02)
-  const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>("golf-model.selected-books", [])
+  // Default to mainstream US-bettable books so the board doesn't surface
+  // "edges" at offshore/UK books the operator can't place. The ".v2" key
+  // migrates existing users (who had the old empty = "all books" default)
+  // onto this filtered default exactly once. Selecting no books still means
+  // "all books" for power users who clear the filter.
+  const [selectedBooks, setSelectedBooks] = useLocalStorageState<string[]>(
+    "golf-model.selected-books.v2",
+    [...DEFAULT_US_BOOKS],
+  )
   const [selectedPlayerKey, setSelectedPlayerKey] = useLocalStorageState("golf-model.selected-player", "")
   const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null)
   const [refreshElapsedSec, setRefreshElapsedSec] = useState<number | null>(null)
