@@ -1,9 +1,12 @@
+import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { CircleAlert, History, Radar, ShieldAlert } from "lucide-react"
 import { useMemo } from "react"
 
+import { FeedItem } from "@/components/monitoring/feed-item"
+import { FeedList } from "@/components/monitoring/feed-list"
+import { HeroDataGrid } from "@/components/monitoring/hero-data-grid"
 import { MetricTile } from "@/components/shell"
 import { PanelChrome } from "@/components/ui/panel-chrome"
-import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { buildLeaderboardColumns } from "@/lib/cockpit-columns"
 import { COCKPIT_METRIC_TOOLTIPS } from "@/lib/metric-tooltips"
 import type {
@@ -23,6 +26,8 @@ export function CourseWeatherFeedPanel({
   metrics: CockpitMetricModel[]
   feedItems: CockpitFeedItemModel[]
 }) {
+  const [feedParent] = useAutoAnimate()
+
   return (
     <PanelChrome
       title="Course & weather"
@@ -30,13 +35,15 @@ export function CourseWeatherFeedPanel({
       className="panel-chrome--course-weather"
     >
       {metrics.length > 0 ? <MetricGrid metrics={metrics} columns={3} /> : null}
-      <div>
-        {feedItems.map((item) => (
-          <div key={`${item.label}-${item.detail}`} className="term-row">
-            <span className="term-row-eye">{item.label}</span>
-            <span className="term-row-det">{item.detail}</span>
-          </div>
-        ))}
+      <div ref={feedParent}>
+        <FeedList testId="course-weather-feed-list">
+          {feedItems.map((item) => (
+            <FeedItem key={`${item.label}-${item.detail}`} testId={`course-feed-${item.label}`}>
+              <span className="term-row-eye">{item.label}</span>
+              <span className="term-row-det">{item.detail}</span>
+            </FeedItem>
+          ))}
+        </FeedList>
       </div>
     </PanelChrome>
   )
@@ -73,7 +80,7 @@ export function LeaderboardPanel({
           Tournament scoring view: Pos / Start pos / Pos Δ track movement alongside the model board.
         </div>
       )}
-      <ProDataGrid
+      <HeroDataGrid
         data={rows}
         columns={columns}
         density="compact"

@@ -1,0 +1,57 @@
+# Frontend Overhaul / Monitoring V3 Verification — 2026-06-05
+
+**Branch:** `feat/monitoring-v3-complete`
+
+## Python gates (PASS)
+- `python3 -m pytest tests/ -v --tb=short` — **483 passed**
+
+## Frontend gates (PASS)
+- `cd frontend && npm run typecheck` — pass
+- `cd frontend && npm run test` — **119 tests passed**
+- `cd frontend && npm run build` — pass
+- `cd frontend && npm run bundle:budget` — pass (CI job `frontend-bundle-budget`)
+
+## CI jobs (expected green on PR)
+- `test` (Python 3.11 / 3.12 matrix)
+- `lint` (ruff)
+- `frontend` (lint, typecheck, test, build)
+- `frontend-bundle-budget`
+- `frontend-a11y` (Playwright + axe on `/`, `/lab`)
+- `frontend-visual-diff` (v3 matrix capture vs `docs/screenshots/ui-overhaul-v3/`)
+- `backend-smoke`
+
+## Monitoring V3 evidence
+- Design system: `docs/frontend-overhaul/11-monitoring-design-system.md`
+- Deslop signed: `docs/frontend-overhaul/12-deslop-checklist.md` (2026-06-05)
+- Grading trust: `docs/frontend-overhaul/14-grading-trust-contract.md`
+- Screenshot command: `cd frontend && npm run screenshots:matrix:v3` → `docs/screenshots/ui-overhaul-v3/`
+- Interaction / perf: `docs/frontend-overhaul/13-interaction-and-performance.md`
+
+## Historical baselines
+- V1 (pre-overhaul): `docs/screenshots/ui-overhaul-v1/` — commit `371d194`
+- V2 (terminal visual): `docs/screenshots/ui-overhaul-v2/` — 40 PNGs @ 375/1280
+- V3 (monitoring): `docs/screenshots/ui-overhaul-v3/` — 60 PNGs @ 375/1280/1920 (baseline committed on merge)
+
+## Command transcripts (local re-verify 2026-06-05)
+
+```text
+$ python3 -m pytest tests/ -q --tb=no
+483 passed, 1 skipped, 8 warnings in 18.74s
+
+$ cd frontend && npm run test -- --run
+ Test Files  34 passed (34)
+      Tests  119 passed (119)
+
+$ cd frontend && npm run typecheck
+> tsc -b --noEmit
+(exit 0)
+
+$ cd frontend && npm run build
+✓ built in 1.68s
+
+$ cd frontend && npm run bundle:budget
+Main chunk: index-CEVIle_m.js
+Raw: 259428 bytes | gzip: 71022 bytes
+Baseline gzip: 71022 | max allowed (+5%): 74574
+Bundle budget OK.
+```

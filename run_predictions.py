@@ -223,45 +223,16 @@ def _store_displayed_picks_for_grading(
             "reasoning": bet.get("why"),
         })
 
-    for cand in matchup_failed_candidates or []:
-        pick_key = (cand.get("pick_key") or "").strip() or normalize_name(str(cand.get("pick", "")))
-        if not pick_key:
-            continue
-        opponent_key = (cand.get("opponent_key") or "").strip() or normalize_name(str(cand.get("opponent", "")))
-        comp = comp_lookup.get(pick_key, {})
-        odds_val = cand.get("odds")
-        odds_text = None
-        if isinstance(odds_val, (int, float)):
-            odds_int = int(odds_val)
-            odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
-        elif odds_val is not None:
-            odds_text = str(odds_val)
-        pick_rows.append({
-            "tournament_id": tournament_id,
-            "model_variant": model_variant,
-            "source": "ui_candidate",
-            "bet_type": "matchup",
-            "player_key": pick_key,
-            "player_display": cand.get("pick") or display_name(pick_key),
-            "opponent_key": opponent_key,
-            "opponent_display": cand.get("opponent") or display_name(opponent_key),
-            "composite_score": comp.get("composite"),
-            "course_fit_score": comp.get("course_fit"),
-            "form_score": comp.get("form"),
-            "momentum_score": comp.get("momentum"),
-            "model_prob": cand.get("model_win_prob"),
-            "market_odds": odds_text,
-            "market_book": cand.get("book") or "",
-            "market_implied_prob": cand.get("implied_prob"),
-            "ev": cand.get("ev"),
-            "confidence": cand.get("tier"),
-            "reasoning": cand.get("reason_code"),
-        })
+    # matchup_failed_candidates are diagnostics-only; not stored for grading.
 
-    if not pick_rows:
+    positive_ev_rows = [
+        row for row in pick_rows
+        if row.get("ev") is not None and row.get("ev") > 0
+    ]
+    if not positive_ev_rows:
         return 0
-    db.store_picks(pick_rows)
-    return len(pick_rows)
+    db.store_picks(positive_ev_rows)
+    return len(positive_ev_rows)
 
 
 def _check_and_run_post_review(skip_tournament_id: int = None):

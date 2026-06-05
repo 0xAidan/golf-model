@@ -228,11 +228,6 @@ export function buildLiveRankingsColumns({
   ]
 }
 
-/** @deprecated Use buildUpcomingRankingsColumns or buildLiveRankingsColumns */
-export function buildRankingsColumns(options: RankingsColumnOptions): ColumnDef<CompositePlayer, unknown>[] {
-  return buildLiveRankingsColumns(options)
-}
-
 export type PickColumnOptions = {
   isPast: boolean
   renderResult?: (matchup: MatchupBet) => ReactNode

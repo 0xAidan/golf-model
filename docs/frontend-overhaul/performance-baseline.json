@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-06-04",
+  "notes": "Main chunk = largest entry JS under frontend/dist/assets/index-*.js after `npm run build`. CI fails when gzip size exceeds baseline.mainChunkGzipBytes * 1.05.",
+  "before": {
+    "label": "pre-monitoring-v3 (PR #141 / main estimate)",
+    "capturedAt": "2026-05-28",
+    "mainChunkFile": "index-n1QYONd9.js",
+    "mainChunkBytes": 892416,
+    "mainChunkGzipBytes": 84720,
+    "cssGzipBytes": 25500,
+    "snapshotTtfbMs": 180,
+    "rankingsPaintMs": 420,
+    "pollLongTaskMsMax": 95
+  },
+  "after": {
+    "label": "feat/monitoring-v3-complete",
+    "capturedAt": "2026-06-04",
+    "mainChunkFile": "index-9_BxMr64.js",
+    "mainChunkBytes": 259428,
+    "mainChunkGzipBytes": 71022,
+    "cssGzipBytes": 26680,
+    "snapshotTtfbMs": 165,
+    "rankingsPaintMs": 380,
+    "pollLongTaskMsMax": 88
+  },
+  "budget": {
+    "mainChunkGrowthMaxRatio": 1.05,
+    "metricRegressionMaxRatio": 1.1
+  }
+}

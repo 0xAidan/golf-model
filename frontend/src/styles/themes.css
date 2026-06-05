@@ -58,9 +58,9 @@
   --line-flash-up: rgba(5, 150, 105, 0.35);
   --line-flash-down: rgba(220, 38, 38, 0.35);
 
-  --font-display: "Cabinet Grotesk", system-ui, sans-serif;
-  --font-body: "Satoshi", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Zodiak", system-ui, sans-serif;
+  --font-body: "Switzer", system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, monospace;
 
   --text-2xs: 10px;
   --text-xs: 11px;

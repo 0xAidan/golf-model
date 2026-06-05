@@ -1,0 +1,22 @@
+[
+  {
+    "player_key": "player_a",
+    "player_display": "Player A",
+    "rank": 1,
+    "composite": 82.4,
+    "form": 80.1,
+    "course_fit": 78.5,
+    "momentum_trend": 0.35,
+    "momentum_direction": "hot"
+  },
+  {
+    "player_key": "player_b",
+    "player_display": "Player B",
+    "rank": 2,
+    "composite": 81.2,
+    "form": 79.4,
+    "course_fit": 77.0,
+    "momentum_trend": -0.12,
+    "momentum_direction": "cold"
+  }
+]

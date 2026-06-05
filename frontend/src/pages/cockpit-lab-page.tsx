@@ -32,7 +32,12 @@ export function CockpitLabPage({
     <div className="cockpit-lab-root lane-lab">
       <div className="cockpit-lab-main">
         <div className="cockpit-lab-banner-wrap" data-testid="lab-board-banner-wrap">
-          <div className="term-notice cockpit-lab-banner" data-testid="lab-board-banner">
+          <div
+            className="term-notice cockpit-lab-banner"
+            data-testid="lab-board-banner"
+            role="status"
+            aria-live="polite"
+          >
             <strong>Lab</strong> — matchup-lab champion (Optuna trial 327) via{" "}
             <strong>lab_live_tournament</strong> / <strong>lab_upcoming_tournament</strong> when{" "}
             <code className="lab-code-inline">live_refresh.lab_profile_enabled</code> is on. Main{" "}
@@ -40,12 +45,12 @@ export function CockpitLabPage({
               Dashboard
             </Link>{" "}
             and{" "}
-            <Link to="/matchups" aria-label="Leave Lab: open main picks (matchups)">
+            <Link to="/?tab=full-picks" aria-label="Leave Lab: open main picks (matchups)">
               Picks
             </Link>{" "}
             stay on the main snapshot only.
             Lab-only picks logging:{" "}
-            <Link to="/lab/picks" aria-label="Open Lab picks within this workspace">
+            <Link to="/lab?tab=full-picks" aria-label="Open Lab picks within this workspace">
               Lab picks
             </Link>
           </div>
@@ -53,6 +58,7 @@ export function CockpitLabPage({
             <div
               className="term-notice amber cockpit-lab-banner"
               data-testid="lab-board-prod-fallback-banner"
+              role="alert"
             >
               <strong>Lab lane off.</strong> Boards below mirror the main snapshot until the server enables the lab
               profile and the next recompute fills <code className="lab-code-inline">lab_*</code> sections.
@@ -62,6 +68,7 @@ export function CockpitLabPage({
             <div
               className="term-notice amber cockpit-lab-banner"
               data-testid="lab-board-partial-sections-banner"
+              role="alert"
             >
               <strong>Partial lab snapshot.</strong> Only one of <code className="lab-code-inline">lab_live_tournament</code>{" "}
               / <code className="lab-code-inline">lab_upcoming_tournament</code> is populated — the missing side still uses

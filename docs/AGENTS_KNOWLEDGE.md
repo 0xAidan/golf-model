@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-06-01. `pytest tests/ -v --tb=short` passes (465 collected tests). app.py: ~2940 lines. Frontend: React + Vite + TypeScript.
+**Last verified:** 2026-06-05 on `feat/monitoring-v3-complete`. `python3 -m pytest tests/ -v --tb=short` — 483 passed. Frontend: `npm run test` — 119 passed; `typecheck` / `build` / `bundle:budget` green. app.py: ~2940 lines. React 19 + Vite + TypeScript + Monitoring V3 shell.
 
 **Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
@@ -15,7 +15,7 @@
 - **What it is:** Quantitative golf betting system. Data Golf API → round-level SG data, predictions, odds. Composite model (course fit + form + momentum) scores players; value layer compares model vs market for EV; AI layer does qualitative analysis and persistent memory. Post-tournament: grade picks, calibration, weight nudges, AI learnings. Autoresearch system proposes, backtests, and promotes strategy changes autonomously.
 - **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` and served by FastAPI at `/` — the React SPA is the sole UI.
 - **Key constraints:** Walk-forward backtesting only (no future data). Bootstrap phases (shadow → paper → cautious live → full live). Stopping rules and go-live gates in project charter. See section 8.
-- **CI:** GitHub Actions at `.github/workflows/ci.yml`.
+- **CI:** GitHub Actions at `.github/workflows/ci.yml` — `test`, `lint`, `frontend`, `frontend-bundle-budget`, `frontend-a11y` (Playwright + axe on `/` and `/lab`), `frontend-visual-diff` (v3 screenshot matrix vs `docs/screenshots/ui-overhaul-v3/`), `backend-smoke`.
 
 ---
 
@@ -159,7 +159,7 @@ golf-model/
 │   └── run_autoresearch_holdout.py
 │
 │ ── tests/ (PYTEST SUITE) ─────────────────────────────────────
-├── tests/                   # Pytest suite (~370 tests across 63 modules)
+├── tests/                   # Pytest suite (483 tests across 60+ modules)
 │   ├── conftest.py          # Fixtures: tmp_db, sample_tournament, sample_metrics
 │   ├── test_value.py
 │   ├── test_form.py
@@ -207,15 +207,25 @@ golf-model/
 │   ├── index.html            # Vite entry HTML
 │   └── src/
 │       ├── main.tsx          # React root mount
-│       ├── App.tsx           # Main app: dashboard, players, matchups, track record pages
+│       ├── App.tsx           # Routes, MonitoringShell, LiveSnapshotProvider, lane switcher
+│       ├── providers/
+│       │   ├── live-snapshot-provider.tsx  # Snapshot context; keepPreviousData on poll
+│       │   └── interaction-provider.tsx      # prefers-reduced-motion for MotionCursor / NumberFlow
+│       ├── styles/
+│       │   ├── fonts.css                  # Self-hosted Zodiak / Switzer / Fragment Mono @font-face
+│       │   ├── terminal-monitoring-v3.css   # Turf palette + bento shell (after terminal-visual-v2)
+│       │   └── themes.css                 # --font-display / --font-body / --font-mono tokens
+│       ├── public/fonts/     # woff2 assets (no Fontshare / Google Fonts CDN)
 │       ├── lib/
 │       │   ├── api.ts        # API client (fetch wrappers for /api/* endpoints)
 │       │   ├── types.ts      # TypeScript types for all API responses and domain models
+│       │   ├── grading-trust.ts  # buildGradingTrustMetrics() for /grading trust strip
 │       │   ├── utils.ts      # shadcn cn() utility
 │       │   ├── format.ts     # Number/date formatting helpers
 │       │   └── storage.ts    # useLocalStorageState hook
 │       ├── components/
-│       │   ├── shell.tsx     # App shell layout (sidebar, header, nav)
+│       │   ├── monitoring/   # MonitoringShell, HeroBand, MacroKpiStrip, BentoGrid, HeroDataGrid, …
+│       │   ├── shell.tsx     # Legacy SuiteShell (tests); production uses MonitoringShell
 │       │   ├── charts.tsx    # Chart components (ECharts wrappers)
 │       │   └── ui/           # shadcn/ui primitives (button, etc.)
 │       └── data/
@@ -244,6 +254,7 @@ golf-model/
 │   ├── AGENTS_KNOWLEDGE.md  # THIS FILE
 │   ├── MASTERS_COCKPIT_FREEZE.md  # Operator / vs Lab model split (COCKPIT_SNAPSHOT_MODEL_VARIANT)
 │   ├── research/            # Data Golf index + lab experiment docs (LAB_EXPERIMENT_BASELINE.md, LAB_PROMOTION_GATES.md); URLs: datagolf_build_article_index.py; LLM: datagolf_llm_extract.py
+│   ├── frontend-overhaul/   # Monitoring V3 evidence: DoD, 09 index, 11–14 design/grading/perf
 │   ├── plans/               # 4 implementation plans
 │   ├── autoresearch/        # pilot_contract.json, evaluation_contract.md
 │   ├── sportsbook_strategy.md
@@ -281,7 +292,10 @@ golf-model/
 | Performance dashboard | `python dashboard.py` | View cumulative performance. `--retune` suggests new weights; `--dry` for preview. |
 | Course profile extraction | `python course.py --screenshots data/course_images/ --course "Name"` | AI vision extraction from screenshots. Needs `ANTHROPIC_API_KEY`. |
 | Results grading | `python results.py` | Score/grade tournament results. |
-| Run tests | `pytest` or `python -m pytest` | 465 tests (as of 2026-06-01). Key fixtures in `tests/conftest.py`: `tmp_db`, `sample_tournament`, `sample_metrics`. |
+| Run tests | `pytest` or `python3 -m pytest tests/` | 483 tests (as of 2026-06-05). Key fixtures in `tests/conftest.py`: `tmp_db`, `sample_tournament`, `sample_metrics`. |
+| Frontend tests | `cd frontend && npm run test` | Vitest — 119 tests (monitoring, grading-trust, cockpit, fixtures). |
+| Frontend screenshots (v3) | `cd frontend && npm run screenshots:matrix:v3` | Requires backend on :8000; writes `docs/screenshots/ui-overhaul-v3/` (375/1280/1920 × light/dark). |
+| Frontend bundle budget | `cd frontend && npm run bundle:budget` | After `npm run build`; CI job `frontend-bundle-budget`. |
 
 ### Pipeline Flow (High Level)
 
@@ -340,10 +354,12 @@ Before treating the Lab board as broken or “same as production”, verify on t
 - **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`). Live rows are enriched with movement/baseline fields used by Dashboard + Lab parity UI: `start_rank`, `current_rank`, `rank_delta`, `start_composite`, `start_leaderboard_position`, `leaderboard_delta`, `leaderboard_baseline_source`, plus section-level `frozen_pre_teeoff_rankings`, `live_player_board`, `live_opportunity_alerts`, and `ranking_fallback_reason`.
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed&source=dashboard|lab` merges the final pre-teeoff board with the latest stored `live` leaderboard for that event. `source=dashboard` uses the main `upcoming`/frozen lane; `source=lab` uses the independent `lab_upcoming` lane.
-- **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses a fixed **CSS grid** (no drag resize handles). Center column: **segment tabs** (`CockpitResizableStack` / `CockpitSegmentTabs`) for Top picks, Rankings, Markets, Leaderboard — desktop defaults to Top picks; click **Rankings** for power rankings. Left rail uses the same tab pattern. See `docs/frontend-overhaul/` for rankings contract and verification commands (`cd frontend && npm run screenshots:matrix`).
+- **Shell (Monitoring V3):** `MonitoringShell` (`frontend/src/components/monitoring/monitoring-shell.tsx`) wraps the SPA — `100dvh`, drawer nav on narrow viewports, **monitor lanes** (Dashboard / Lab / Players / Research / Grading). `LiveSnapshotProvider` (`frontend/src/providers/live-snapshot-provider.tsx`) owns live-refresh snapshot queries with `keepPreviousData` so 10s polls do not flash the full app. Typography: self-hosted **Zodiak** (display), **Switzer** (body), **Fragment Mono** (`.num` / KPI / table numerics only) — see `docs/frontend-overhaul/11-monitoring-design-system.md` and `12-deslop-checklist.md`.
+- **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses a fixed **CSS grid** (no drag resize handles). Center column: **segment tabs** (`CockpitResizableStack` / `CockpitSegmentTabs`) for Top picks, Rankings, Markets, Leaderboard — desktop defaults to Top picks; click **Rankings** for power rankings. Left rail uses the same tab pattern. Visual regression: `cd frontend && npm run screenshots:matrix:v3` → `docs/screenshots/ui-overhaul-v3/`; v2 matrix remains at `screenshots:matrix` for historical comparison.
 - **Rankings columns:** `buildUpcomingRankingsColumns` (upcoming + past) vs `buildLiveRankingsColumns` (live only) in `frontend/src/lib/cockpit-columns.tsx`. Hydration rules in `frontend/src/lib/prediction-board.ts` (`hydration_section`, upcoming never uses `live_player_board`).
 - **Lab — `/lab`:** Hydrates boards from **`lab_live_tournament` / `lab_upcoming_tournament`** on the snapshot (same JSON shape as production) when the worker has computed them. **Default is on:** `live_refresh.lab_profile_enabled` defaults **true** in `src/live_refresh_policy.py`; **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** in `.env` overrides persisted JSON when set (`1`/`true` on, `0`/`false` off). **`live_refresh.lab_profile_name`** maps to `profiles.yaml` (e.g. `lab_sandbox`). **`scripts/deploy-update-steps.sh`** appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` on deploy if the key is absent so existing hosts pick up the lab lane without manual toggles. **CPU:** each enabled tick runs extra `run_snapshot_analysis` passes for the lab model variant — set env to `0` on very small VPS if needed. Parallel rows in **`market_prediction_rows`** use **`section` `lab_live` / `lab_upcoming`** so AB / v5 pairing ignores them. Lab Past requests `source=lab` and never mixes Dashboard `upcoming` rows into Lab generated picks. **`/cockpit-lab`** redirects to **`/lab`** (bookmarks).
 - **Lab picks — `/lab/picks`:** Same pick tables as `/matchups` but sourced from lab snapshot sections; **POST `/api/lab/log-displayed-picks`** writes `picks` with **`source=lab_sandbox`** (and `lab_sandbox_candidate` for failed-line candidates). The SPA **auto-syncs** displayed lab matchups/value rows when the snapshot changes (deduped via DB unique index); manual **Log** still available. Production (Dashboard) logging uses **`source=cockpit`** (legacy `ui_display` rows are still read by grading filters under the `cockpit` pick source). **`GET /api/grading/history?pick_source=cockpit|lab|all`** filters the pick list.
+- **Grading trust (+EV-only):** Only picks with **`ev > 0`** are shown in pick tables, persisted to `picks`, or graded (`src/learning.py` skips `ev <= 0`). `/grading` and `/track-record` render `GradingTrustStrip` (last graded, +EV picks, ungraded +EV). Policy: `docs/frontend-overhaul/14-grading-trust-contract.md`.
 
 ---
 
@@ -705,9 +721,15 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
 | Frontend dashboard (React SPA) | `frontend/src/App.tsx` |
+| Monitoring shell / bento primitives | `frontend/src/components/monitoring/` |
+| Live snapshot context (poll without flash) | `frontend/src/providers/live-snapshot-provider.tsx` |
+| Monitoring V3 typography + turf CSS | `frontend/src/styles/fonts.css`, `terminal-monitoring-v3.css`, `public/fonts/` |
+| Grading trust strip (+EV metrics) | `frontend/src/components/monitoring/grading-trust-strip.tsx`, `frontend/src/lib/grading-trust.ts` |
 | Lab board route + research deck | `frontend/src/pages/cockpit-lab-page.tsx` (URL **`/lab`**; **`/cockpit-lab`** → redirect), `frontend/src/components/cockpit/research-instrumentation-deck.tsx` (opt out with `VITE_COCKPIT_LAB=0` at build) |
 | Frontend API client / types | `frontend/src/lib/api.ts`, `frontend/src/lib/types.ts` |
 | Frontend UI components | `frontend/src/components/` |
+| Frontend overhaul evidence / DoD | `docs/frontend-overhaul/` (DEFINITION_OF_DONE.md, 09-evidence-packet-index.md) |
+| V3 screenshot baseline | `docs/screenshots/ui-overhaul-v3/` |
 | Frontend build config | `frontend/vite.config.ts`, `frontend/tailwind.config.ts` |
 | Backtest strategy replay | `backtester/strategy.py`, `backtester/pit_models.py` |
 | Experiment tracking / promotion | `backtester/experiments.py` |

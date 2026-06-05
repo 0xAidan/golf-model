@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-06-04T16:00:00Z",
+  "live_tournament": {
+    "event_name": "Zurich Classic",
+    "event_format": "team",
+    "active": true,
+    "diagnostics": { "state": "team_event" },
+    "leaderboard": [],
+    "frozen_pre_teeoff_rankings": []
+  }
+}

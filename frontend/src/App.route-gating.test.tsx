@@ -63,17 +63,14 @@ describe("App legacy route replay gating", () => {
     vi.clearAllMocks()
   })
 
-  // /players was intentionally un-gated in commit da76a05 (standalone profile
-  // page no longer depends on tournament_id), so it is no longer in the gated
-  // set. /matchups remains gated until the dashboard home route covers the
-  // replay-aware variant.
-  it.each([
-    ["/matchups", "Legacy matchups route unavailable in replay mode"],
-  ])("shows replay-safe messaging on %s", async (route: string, title: string) => {
-    renderAppAtRoute(route)
+  // /matchups redirects to dashboard ?tab=full-picks (Phase 4 lane merge).
+  it("redirects /matchups to the dashboard home route", async () => {
+    renderAppAtRoute("/matchups")
 
-    expect(await screen.findByText(title)).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /return to dashboard home/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("monitoring-shell-main")).toBeInTheDocument()
+    })
+    expect(screen.queryByText("Legacy matchups route unavailable in replay mode")).not.toBeInTheDocument()
   })
 
   it("keeps dashboard and lab grading records on separate sources", async () => {

@@ -13,6 +13,10 @@ Execution program for the golf-model SPA rebuild. **Do not mark complete without
 | 07 QA gates | [07-test-strategy-and-quality-gates.md](./07-test-strategy-and-quality-gates.md) |
 | 08 Rollout | [08-rollout-and-rollback-plan.md](./08-rollout-and-rollback-plan.md) |
 | 09 Evidence | [09-evidence-packet-index.md](./09-evidence-packet-index.md) |
+| 11 Monitoring V3 design | [11-monitoring-design-system.md](./11-monitoring-design-system.md) |
+| 12 Deslop checklist | [12-deslop-checklist.md](./12-deslop-checklist.md) (signed 2026-06-05) |
+| 13 Interaction / perf | [13-interaction-and-performance.md](./13-interaction-and-performance.md) |
+| 14 Grading trust | [14-grading-trust-contract.md](./14-grading-trust-contract.md) |
 | Prompts | [EXECUTION_PROMPTS.md](./EXECUTION_PROMPTS.md) |
 | DoD checklist | [DEFINITION_OF_DONE.md](./DEFINITION_OF_DONE.md) |
 
@@ -22,6 +26,9 @@ Execution program for the golf-model SPA rebuild. **Do not mark complete without
 cd frontend && npm run typecheck
 cd frontend && npm run test
 cd frontend && npm run build
-cd frontend && npm run screenshots:matrix   # requires backend at :8000
+cd frontend && npm run bundle:budget
+SCREENSHOT_MATRIX_VERSION=v3 SCREENSHOT_BASE_URL=http://127.0.0.1:8000 npm run screenshots:matrix:v3   # backend :8000
 python3 -m pytest tests/ -v --tb=short
 ```
+
+Gate log: [verification-2026-06-05.log](./verification-2026-06-05.log) (`feat/monitoring-v3-complete`).

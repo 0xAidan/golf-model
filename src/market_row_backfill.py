@@ -40,13 +40,18 @@ def backfill_completed_market_rows_into_picks(
         return 0
 
     before = _pick_count(tid, pick_source)
-    db.store_picks(
-        [
-            _row_to_pick(row, tournament_id=tid, source=pick_source, default_model_variant=default_model_variant)
-            for row in rows
-            if row.get("player_key") or row.get("player_display")
-        ]
-    )
+    pick_rows = [
+        _row_to_pick(row, tournament_id=tid, source=pick_source, default_model_variant=default_model_variant)
+        for row in rows
+        if row.get("player_key") or row.get("player_display")
+    ]
+    positive_ev_rows = [
+        row for row in pick_rows
+        if row.get("ev") is not None and row.get("ev") > 0
+    ]
+    if not positive_ev_rows:
+        return 0
+    db.store_picks(positive_ev_rows)
     after = _pick_count(tid, pick_source)
     return max(0, after - before)
 
