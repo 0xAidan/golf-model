@@ -2799,3 +2799,97 @@ body {
   border-left: 1px solid var(--border);
   background: var(--bg-raised);
 }
+
+/* ─────────────────────────────────────────────────────
+   DENSITY & LAYOUT CLEANUP  (feat/ui-cleanup-density-availability)
+   Tightens the spacing scale, removes the chunky left-rail
+   tab strip, narrows the side rails, and shrinks the segment
+   tabs on desktop so the actual data boards get more room.
+   ───────────────────────────────────────────────────── */
+
+/* The --space-* tokens previously fell back to their inline
+   defaults (8 / 12 / 16 / 24). Defining a tighter scale here
+   compresses gaps and padding consistently across the app. */
+:root {
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 14px;
+  --space-6: 16px;
+}
+
+/* Left rail: stacked sections instead of the Context/Filters/Results
+   tab strip. Scrolls within its column. */
+.cockpit-left-rail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+.cockpit-left-rail-stack::-webkit-scrollbar {
+  width: 3px;
+}
+.cockpit-left-rail-stack::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 2px;
+}
+
+.cockpit-left-rail-stack > .card {
+  flex: 0 0 auto;
+}
+
+.left-rail-filter-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* Narrower side rails → more width for picks/rankings/markets. */
+.cockpit-grid-columns--desktop {
+  grid-template-columns: minmax(180px, 14%) minmax(0, 1fr) minmax(240px, 22%);
+}
+
+.cockpit-grid-columns {
+  padding: 4px;
+}
+
+/* Desktop: shorter segment tabs (mobile keeps 44px touch targets). */
+@media (min-width: 768px) {
+  .cockpit-segment-tabs {
+    padding: 4px 6px;
+    gap: 3px;
+  }
+
+  .cockpit-segment-tab {
+    min-height: 30px;
+    padding: 5px 9px;
+  }
+}
+
+/* Tighter cards across the board. */
+.card-header {
+  height: 26px;
+  padding: 0 9px;
+}
+
+.card-body {
+  padding: 8px;
+}
+
+/* Compact macro KPI strip (was 52px). */
+.kpi-strip {
+  height: 42px;
+}
+
+.kpi-cell {
+  padding: 0 12px;
+}
+
+.kpi-cell-value {
+  font-size: 15px;
+}
