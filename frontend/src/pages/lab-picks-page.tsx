@@ -32,6 +32,8 @@ export type LabPicksPageProps = {
   tournamentId: number | null | undefined
   profileName?: string
   predictionRun: PredictionRunResponse | null
+  /** Embedded in lab dashboard Full lab picks tab — hides page chrome. */
+  embedded?: boolean
 }
 
 const buildMatchupsPayload = (matchups: MatchupBet[]) =>
@@ -77,6 +79,7 @@ export const LabPicksPage = ({
   tournamentId,
   profileName = "lab_sandbox",
   predictionRun,
+  embedded = false,
 }: LabPicksPageProps) => {
   const [logMessage, setLogMessage] = useState<string | null>(null)
   const lastSyncedFingerprint = useRef<string>("")
@@ -163,17 +166,26 @@ export const LabPicksPage = ({
   }, [tournamentId, matchups.length])
 
   return (
-    <div className="lane-lab lab-picks-root">
-      <TerminalPageHeader
-        eyebrow="Lab lane"
-        title="Lab picks"
-        description="Parallel lab snapshot matchups — logged to grading with source=lab_sandbox."
-      />
-      <div className="term-notice cockpit-lab-banner" data-testid="lab-picks-banner">
-        <strong>Lab picks</strong> — uses the parallel lab snapshot lane. Displayed matchups and value markets sync to
-        the database automatically (deduped); <code className="lab-code-inline">source=lab_sandbox</code>. Production{" "}
-        <strong>/matchups</strong> is unchanged.
-      </div>
+    <div className={embedded ? "lab-picks-embed lane-lab" : "lane-lab lab-picks-root"}>
+      {!embedded ? (
+        <TerminalPageHeader
+          eyebrow="Lab lane"
+          title="Lab picks"
+          description="Parallel lab snapshot matchups — logged to grading with source=lab_sandbox."
+        />
+      ) : null}
+      {!embedded ? (
+        <div
+          className="term-notice cockpit-lab-banner"
+          data-testid="lab-picks-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <strong>Lab picks</strong> — uses the parallel lab snapshot lane. Displayed matchups and value markets sync to
+          the database automatically (deduped); <code className="lab-code-inline">source=lab_sandbox</code>. Production{" "}
+          <strong>/matchups</strong> is unchanged.
+        </div>
+      ) : null}
       <FilterSheet title="Lab picks" description="Log displayed picks to the lab grading lane">
       <div className="lab-picks-toolbar">
         <button
@@ -193,6 +205,7 @@ export const LabPicksPage = ({
       </FilterSheet>
       <div className="lab-picks-body">
         <PicksPage
+          embedded={embedded}
           lane="lab"
           matchups={matchups}
           matchupsEmptyMessage={matchupsEmptyMessage}

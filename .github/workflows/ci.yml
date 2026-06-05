@@ -56,6 +56,125 @@ jobs:
       - run: npm run build
         working-directory: frontend
 
+  frontend-bundle-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: npm run bundle:budget
+        working-directory: frontend
+
+  frontend-a11y:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install chromium --with-deps
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Start backend for a11y tests
+        run: |
+          export DATAGOLF_API_KEY="a11y-test-placeholder"
+          python app.py > a11y-app.log 2>&1 &
+          echo $! > a11y-app.pid
+      - name: Wait for backend
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          url = "http://127.0.0.1:8000/"
+          for _ in range(30):
+            try:
+              with urllib.request.urlopen(url, timeout=3) as r:
+                if r.status == 200:
+                  print("ready")
+                  raise SystemExit(0)
+            except Exception:
+              time.sleep(2)
+          raise SystemExit("backend not ready")
+          PY
+      - run: npm run test:a11y
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f a11y-app.pid ]; then kill "$(cat a11y-app.pid)" || true; fi
+
+  frontend-visual-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install chromium --with-deps
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Start backend for screenshots
+        run: |
+          export DATAGOLF_API_KEY="visual-diff-placeholder"
+          python app.py > visual-app.log 2>&1 &
+          echo $! > visual-app.pid
+      - name: Wait for backend
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          for _ in range(30):
+            try:
+              with urllib.request.urlopen("http://127.0.0.1:8000/", timeout=3) as r:
+                if r.status == 200:
+                  raise SystemExit(0)
+            except Exception:
+              time.sleep(2)
+          raise SystemExit("backend not ready")
+          PY
+      - name: Capture PR screenshot matrix (v3)
+        run: |
+          mkdir -p docs/screenshots/ui-overhaul-v3-pr
+          SCREENSHOT_MATRIX_VERSION=v3 \
+          SCREENSHOT_BASE_URL=http://127.0.0.1:8000 \
+          node scripts/capture-screenshot-matrix.mjs
+        working-directory: frontend
+      - name: Compare to ui-overhaul-v3 baseline
+        run: |
+          VISUAL_CANDIDATE_DIR=docs/screenshots/ui-overhaul-v3-pr npm run visual:diff
+        working-directory: frontend
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f visual-app.pid ]; then kill "$(cat visual-app.pid)" || true; fi
+
   backend-smoke:
     runs-on: ubuntu-latest
     steps:

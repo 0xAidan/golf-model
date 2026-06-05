@@ -7,12 +7,16 @@ type CockpitBoardStackProps = {
   topPicks: ReactNode
   secondary: ReactNode
   leaderboard?: ReactNode
+  fullPicks?: ReactNode
+  fullPicksTabLabel?: string
   /** Live / past: show leaderboard panel. Upcoming: omit fourth panel. */
   showLeaderboard: boolean
   /** Narrow viewports: vertical scroll stack instead of tabs. */
   layout?: "panels" | "stack"
   /** When set with compact layout, render only one pane (used by mobile dashboard tabs). */
-  compactView?: "picks" | "rankings" | "secondary" | "leaderboard"
+  compactView?: "picks" | "rankings" | "secondary" | "leaderboard" | "full-picks"
+  /** Deep-link support e.g. ?tab=full-picks */
+  defaultTabId?: string
 }
 
 /** Tabbed center column — deterministic board switching (no drag handles). */
@@ -21,9 +25,12 @@ export function CockpitResizableStack({
   topPicks,
   secondary,
   leaderboard,
+  fullPicks,
+  fullPicksTabLabel = "Full picks",
   showLeaderboard,
   layout = "panels",
   compactView,
+  defaultTabId,
 }: CockpitBoardStackProps) {
   const tabs: CockpitTabOption[] = [
     { id: "picks", label: "Top picks", content: topPicks },
@@ -32,6 +39,9 @@ export function CockpitResizableStack({
   ]
   if (showLeaderboard && leaderboard != null) {
     tabs.push({ id: "board", label: "Leaderboard", content: leaderboard })
+  }
+  if (fullPicks != null) {
+    tabs.push({ id: "full-picks", label: fullPicksTabLabel, content: fullPicks })
   }
 
   if (compactView) {
@@ -42,12 +52,23 @@ export function CockpitResizableStack({
           ? rankings
           : compactView === "secondary"
             ? secondary
-            : leaderboard
+            : compactView === "full-picks"
+              ? fullPicks
+              : leaderboard
     if (compactView === "leaderboard" && (!showLeaderboard || leaderboard == null)) {
       return (
         <div className="cockpit-mobile-panel-scroll">
           <div className="empty-state" style={{ padding: 24 }}>
             <div className="empty-state-title">Leaderboard appears when the event is live or in replay.</div>
+          </div>
+        </div>
+      )
+    }
+    if (compactView === "full-picks" && fullPicks == null) {
+      return (
+        <div className="cockpit-mobile-panel-scroll">
+          <div className="empty-state" style={{ padding: 24 }}>
+            <div className="empty-state-title">Full picks load when event data is available.</div>
           </div>
         </div>
       )
@@ -62,6 +83,7 @@ export function CockpitResizableStack({
         {rankings}
         {secondary}
         {showLeaderboard && leaderboard != null ? leaderboard : null}
+        {fullPicks != null ? fullPicks : null}
       </div>
     )
   }
@@ -70,7 +92,7 @@ export function CockpitResizableStack({
     <CockpitTabbedStack
       className="cockpit-center-tabbed-stack"
       tabs={tabs}
-      defaultTabId="picks"
+      defaultTabId={defaultTabId ?? "picks"}
       ariaLabel="Dashboard boards"
     />
   )

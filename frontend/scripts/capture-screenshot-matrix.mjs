@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, "../..")
-const outDir = path.join(repoRoot, "docs/screenshots/ui-overhaul-v2")
+const matrixVersion = process.env.SCREENSHOT_MATRIX_VERSION ?? "v2"
+const outDir = path.join(repoRoot, `docs/screenshots/ui-overhaul-${matrixVersion}`)
 const baseUrl = process.env.SCREENSHOT_BASE_URL ?? "http://127.0.0.1:8000"
 
 const routes = [
@@ -29,6 +30,9 @@ const routes = [
 const viewports = [
   { label: "375", width: 375, height: 812 },
   { label: "1280", width: 1280, height: 900 },
+  ...(matrixVersion === "v3"
+    ? [{ label: "1920", width: 1920, height: 1080 }]
+    : []),
 ]
 
 const themes = ["dark", "light"]
@@ -47,7 +51,8 @@ async function main() {
       await context.addInitScript((t) => {
         localStorage.setItem("golf-model.theme", t)
       }, theme)
-      await context.route(/fontshare|fonts\.googleapis|fonts\.gstatic/, (route) => route.abort())
+      // Block legacy CDN fonts only — allow self-hosted /fonts/*.woff2
+      await context.route(/fontshare|fonts\.googleapis|fonts\.gstatic/i, (route) => route.abort())
       const page = await context.newPage()
       for (const route of routes) {
         const url = `${baseUrl.replace(/\/$/, "")}${route.hash.startsWith("#") ? route.hash : `#${route.hash}`}`
@@ -83,7 +88,7 @@ async function main() {
 
   await writeFile(
     path.join(outDir, "README.md"),
-    `# UI Overhaul V2 screenshot matrix\n\nCaptured: ${new Date().toISOString()}\n\nTotal: ${pngFiles.length} images on disk (${index.length} captured this run)\n\n| Route | 375 dark | 375 light | 1280 dark | 1280 light |\n|-------|----------|-----------|-----------|------------|\n${routes.map((r) => `| ${r.name} | ${hasShot(r.name, "375", "dark") ? "yes" : "—"} | ${hasShot(r.name, "375", "light") ? "yes" : "—"} | ${hasShot(r.name, "1280", "dark") ? "yes" : "—"} | ${hasShot(r.name, "1280", "light") ? "yes" : "—"} |`).join("\n")}\n`,
+    `# UI Overhaul ${matrixVersion.toUpperCase()} screenshot matrix\n\nCaptured: ${new Date().toISOString()}\n\nTotal: ${pngFiles.length} images on disk (${index.length} captured this run)\n\n| Route | 375 dark | 375 light | 1280 dark | 1280 light | 1920 dark | 1920 light |\n|-------|----------|-----------|-----------|------------|-----------|------------|\n${routes.map((r) => `| ${r.name} | ${hasShot(r.name, "375", "dark") ? "yes" : "—"} | ${hasShot(r.name, "375", "light") ? "yes" : "—"} | ${hasShot(r.name, "1280", "dark") ? "yes" : "—"} | ${hasShot(r.name, "1280", "light") ? "yes" : "—"} | ${hasShot(r.name, "1920", "dark") ? "yes" : "—"} | ${hasShot(r.name, "1920", "light") ? "yes" : "—"} |`).join("\n")}\n`,
   )
   console.log(`Done: ${index.length} screenshots`)
 }

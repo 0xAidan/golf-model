@@ -258,6 +258,23 @@ describe("PredictionWorkspacePage live UX", () => {
     expect(screen.getByTestId("hydration-fallback-banner")).toHaveTextContent(/upcoming view is showing live/i)
   })
 
+  it("shows team event notice in live mode for team-format snapshots", () => {
+    const props = buildProps()
+    props.liveSnapshot = {
+      ...props.liveSnapshot!,
+      live_tournament: {
+        ...props.liveSnapshot!.live_tournament!,
+        event_name: "Zurich Classic",
+        event_format: "team",
+        diagnostics: { state: "team_event" },
+      },
+    }
+    renderPage(props)
+
+    expect(screen.getByTestId("team-event-notice")).toBeInTheDocument()
+    expect(screen.getByTestId("team-event-notice")).toHaveTextContent(/team/i)
+  })
+
   it("shows eligibility warning banner when rankings withheld", () => {
     const props = buildProps()
     props.predictionTab = "upcoming"

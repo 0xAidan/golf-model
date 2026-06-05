@@ -2,7 +2,7 @@ import { Link } from "react-router-dom"
 
 import { DataHealthPanel } from "@/components/data-health-panel"
 import { DiagnosticsGradingPanel } from "@/components/cockpit/event-modules"
-import { PageHeader } from "@/components/ui/page-header"
+import { BentoGrid, BentoPanel, HeroBand } from "@/components/monitoring"
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { buildDiagnosticsModel } from "@/lib/cockpit-event-models"
 import type {
@@ -49,13 +49,12 @@ export function DiagnosticsPage({
   })
 
   return (
-    <div className="research-page">
-      <main aria-labelledby="diagnostics-page-h1">
-        <PageHeader
-          titleId="diagnostics-page-h1"
-          eyebrow="Research"
+    <div className="monitor-research-page monitor-scroll-region" data-testid="diagnostics-page">
+      <main aria-label="Diagnostics research">
+        <HeroBand
           title="Diagnostics"
-          description="Runtime health and pipeline state for the cockpit snapshot."
+          eyebrow="Research"
+          meta="Runtime health and pipeline state for the cockpit snapshot."
           action={
             <Link to="/" className="btn btn-ghost btn-sm">
               Back to cockpit
@@ -63,16 +62,12 @@ export function DiagnosticsPage({
           }
         />
 
-        <DataHealthPanel />
+        <BentoGrid columns={2} testId="diagnostics-bento">
+          <BentoPanel title="Data health" span={6}>
+            <DataHealthPanel />
+          </BentoPanel>
 
-        <div className="card research-card">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Snapshot diagnostics</h2>
-              <div className="card-desc">Grading counters, model warnings, and event context.</div>
-            </div>
-          </div>
-          <div className="card-body research-card-body">
+          <BentoPanel title="Snapshot diagnostics" span={6}>
             {predictionTab === "past" ? (
               <div className="term-notice" role="note">
                 Past replay diagnostics are tied to the selected replay event on the cockpit page.{" "}
@@ -99,8 +94,8 @@ export function DiagnosticsPage({
                 selectedEventSummary={diagnosticsModel.selectedEventSummary}
               />
             </section>
-          </div>
-        </div>
+          </BentoPanel>
+        </BentoGrid>
       </main>
     </div>
   )

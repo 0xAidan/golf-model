@@ -118,21 +118,24 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
     result_map = {r["player_key"]: dict(r) for r in results}
     all_results_list = [dict(r) for r in results]
 
-    def _grade_model_hit(*, ev: float | None, bet_hit: int, is_push: bool) -> int:
+    def _grade_model_hit(*, bet_hit: int, is_push: bool) -> int:
         if is_push:
             return 0
-        if ev is not None and ev < 0:
-            return 0 if bet_hit else 1
         return 1 if bet_hit else 0
 
     scored = 0
     model_hits = 0
     bet_hits = 0
     resolved = 0
+    skipped_non_positive_ev = 0
     total_profit = 0.0
 
     for raw_pick in picks:
         pick = dict(raw_pick)
+        ev = pick.get("ev")
+        if ev is None or ev <= 0:
+            skipped_non_positive_ev += 1
+            continue
         pk = pick["player_key"]
         bt = pick["bet_type"]
         r = result_map.get(pk)
@@ -161,7 +164,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         hit = outcome["hit"]
         fraction = outcome["fraction"]
         is_push = outcome["is_push"]
-        model_hit = _grade_model_hit(ev=pick.get("ev"), bet_hit=hit, is_push=is_push)
+        model_hit = _grade_model_hit(bet_hit=hit, is_push=is_push)
 
         # Calculate profit
         odds_decimal = parse_odds_to_decimal(pick["market_odds"])
@@ -205,12 +208,20 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
             if hit:
                 bet_hits += 1
 
+    if skipped_non_positive_ev:
+        logger.info(
+            "Scoring skipped %d pick(s) with ev missing or <= 0 for tournament %s",
+            skipped_non_positive_ev,
+            tournament_id,
+        )
+
     conn.commit()
     conn.close()
 
     return {
         "status": "ok",
         "result_source": result_source,
+        "skipped_non_positive_ev": skipped_non_positive_ev,
         "scored": scored,
         "hits": model_hits,
         "misses": resolved - model_hits,

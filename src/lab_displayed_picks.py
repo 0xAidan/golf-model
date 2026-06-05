@@ -9,7 +9,6 @@ from src.lab_profile import resolve_lab_model_variant
 from src.player_normalizer import display_name, normalize_name
 
 _LAB_SOURCE = "lab_sandbox"
-_LAB_CANDIDATE_SOURCE = "lab_sandbox_candidate"
 
 
 def persist_lab_logged_picks(body: dict[str, Any]) -> int:
@@ -17,7 +16,7 @@ def persist_lab_logged_picks(body: dict[str, Any]) -> int:
     Accepts JSON:
     ``tournament_id`` (int), ``profile_name`` (str, maps to ``profiles.yaml``),
     ``composite_results`` (list), ``matchups`` (list), optional ``value_bets`` (dict),
-    optional ``matchup_failed_candidates`` (list).
+    optional ``matchup_failed_candidates`` (list, diagnostics only — not stored).
     """
     tid = int(body.get("tournament_id") or 0)
     if tid <= 0:
@@ -113,46 +112,13 @@ def persist_lab_logged_picks(body: dict[str, Any]) -> int:
                 "reasoning": bet.get("why"),
             })
 
-    failed = body.get("matchup_failed_candidates") or []
-    if isinstance(failed, list):
-        for cand in failed:
-            if not isinstance(cand, dict):
-                continue
-            pick_key = (cand.get("pick_key") or "").strip() or normalize_name(str(cand.get("pick", "")))
-            if not pick_key:
-                continue
-            opponent_key = (cand.get("opponent_key") or "").strip() or normalize_name(str(cand.get("opponent", "")))
-            comp = comp_lookup.get(pick_key, {})
-            odds_val = cand.get("odds")
-            odds_text = None
-            if isinstance(odds_val, (int, float)):
-                odds_int = int(odds_val)
-                odds_text = f"+{odds_int}" if odds_int > 0 else str(odds_int)
-            elif odds_val is not None:
-                odds_text = str(odds_val)
-            pick_rows.append({
-                "tournament_id": tid,
-                "model_variant": lab_mv,
-                "source": _LAB_CANDIDATE_SOURCE,
-                "bet_type": "matchup",
-                "player_key": pick_key,
-                "player_display": cand.get("pick") or display_name(pick_key),
-                "opponent_key": opponent_key,
-                "opponent_display": cand.get("opponent") or display_name(opponent_key),
-                "composite_score": comp.get("composite"),
-                "course_fit_score": comp.get("course_fit"),
-                "form_score": comp.get("form"),
-                "momentum_score": comp.get("momentum"),
-                "model_prob": cand.get("model_win_prob"),
-                "market_odds": odds_text,
-                "market_book": cand.get("book") or "",
-                "market_implied_prob": cand.get("implied_prob"),
-                "ev": cand.get("ev"),
-                "confidence": cand.get("tier"),
-                "reasoning": cand.get("reason_code"),
-            })
+    # matchup_failed_candidates are diagnostics-only; not stored for grading.
 
-    if not pick_rows:
+    positive_ev_rows = [
+        row for row in pick_rows
+        if row.get("ev") is not None and row.get("ev") > 0
+    ]
+    if not positive_ev_rows:
         return 0
-    db.store_picks(pick_rows)
-    return len(pick_rows)
+    db.store_picks(positive_ev_rows)
+    return len(positive_ev_rows)

@@ -2,8 +2,7 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 
-import { ProDataGrid } from "@/components/ui/pro-data-grid"
-import { PageHeader } from "@/components/ui/page-header"
+import { BentoGrid, BentoPanel, HeroBand, HeroDataGrid } from "@/components/monitoring"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
 import { CHAMPION_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
@@ -42,36 +41,36 @@ export function ChampionChallengerPage() {
       {
         accessorKey: "model_name",
         header: "Model",
-        meta: { align: "left" },
+        meta: { label: "Model", align: "left" },
       },
       {
         id: "brier30",
         header: "Brier (30d)",
-        meta: { align: "right" },
+        meta: { label: "Brier (30d)", align: "right", title: CHAMPION_TABLE_TOOLTIPS.brier30 },
         cell: ({ row }) => formatNumber(modelWindow(row.original, "30")?.brier?.brier),
       },
       {
         id: "n",
         header: "N",
-        meta: { align: "right" },
+        meta: { label: "N", align: "right" },
         cell: ({ row }) => modelWindow(row.original, "30")?.brier?.n ?? 0,
       },
       {
         id: "roi14",
         header: "ROI 14d",
-        meta: { align: "right" },
+        meta: { label: "ROI 14d", align: "right", title: CHAMPION_TABLE_TOOLTIPS.roi14 },
         cell: ({ row }) => formatPct(modelWindow(row.original, "14")?.matchup_roi?.roi_pct),
       },
       {
         id: "roi30",
         header: "ROI 30d",
-        meta: { align: "right" },
+        meta: { label: "ROI 30d", align: "right", title: CHAMPION_TABLE_TOOLTIPS.roi30 },
         cell: ({ row }) => formatPct(modelWindow(row.original, "30")?.matchup_roi?.roi_pct),
       },
       {
         id: "clv30",
         header: "CLV 30d",
-        meta: { align: "right" },
+        meta: { label: "CLV 30d", align: "right", title: CHAMPION_TABLE_TOOLTIPS.clv30 },
         cell: ({ row }) => formatBps(modelWindow(row.original, "30")?.clv?.clv_bps),
       },
     ],
@@ -86,11 +85,11 @@ export function ChampionChallengerPage() {
   )
 
   return (
-    <div className="research-page" data-testid="champion-challenger-page">
-      <PageHeader
+    <div className="monitor-research-page monitor-scroll-region" data-testid="champion-challenger-page">
+      <HeroBand
         eyebrow="Research"
         title="Champion / Challenger"
-        description="Shadow-mode evaluation. Challengers never price live bets. Trailing Brier, matchup ROI, and CLV."
+        meta="Shadow-mode evaluation. Challengers never price live bets. Trailing Brier, matchup ROI, and CLV."
       />
 
       {summaryQuery.isLoading && (
@@ -107,26 +106,28 @@ export function ChampionChallengerPage() {
       )}
 
       {data && (
-        <div className="research-page-body">
-          <p className="research-page-meta">
-            Champion: <strong>{data.champion}</strong>
-            {data.challengers.length > 0 ? (
-              <>
-                {" · "}Challengers: {data.challengers.join(", ")}
-              </>
-            ) : (
-              <> · No active challengers</>
-            )}
-          </p>
-          <ProDataGrid
-            data={data.models}
-            columns={columns}
-            columnVisibility={columnVisibility}
-            testId="champion-challenger-table"
-            getRowTestId={(row) => `champion-challenger-row-${row.model_name}`}
-            emptyMessage="No models in summary"
-          />
-        </div>
+        <BentoGrid columns={1} testId="champion-challenger-bento">
+          <BentoPanel title="Model roster" span={12}>
+            <p className="research-page-meta">
+              Champion: <strong>{data.champion}</strong>
+              {data.challengers.length > 0 ? (
+                <>
+                  {" · "}Challengers: {data.challengers.join(", ")}
+                </>
+              ) : (
+                <> · No active challengers</>
+              )}
+            </p>
+            <HeroDataGrid
+              data={data.models}
+              columns={columns}
+              columnVisibility={columnVisibility}
+              testId="champion-challenger-table"
+              getRowTestId={(row) => `champion-challenger-row-${row.model_name}`}
+              emptyMessage="No models in summary"
+            />
+          </BentoPanel>
+        </BentoGrid>
       )}
     </div>
   )

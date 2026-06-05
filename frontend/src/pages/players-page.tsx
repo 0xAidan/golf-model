@@ -18,8 +18,7 @@ import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } fro
 import { PlayersKpiCell } from "@/components/players-kpi-cell"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { EmptyState } from "@/components/ui/empty-state"
-import { ProDataGrid } from "@/components/ui/pro-data-grid"
-import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
+import { HeroBand, HeroDataGrid } from "@/components/monitoring"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
@@ -190,7 +189,7 @@ function PlayerSearchSidebar({
           </div>
         ) : (
           <div className="players-field-grid-wrap" data-testid="players-field-grid">
-            <ProDataGrid
+            <HeroDataGrid
               data={displayList}
               columns={fieldColumns}
               density="compact"
@@ -471,7 +470,7 @@ function PlayerProfileView({
         {rollingGridRows.length > 0 ? (
           <CollapsibleSection title="Rolling windows grid" description="L10 / L25 / L50 by SG category">
             <div className="profile-panel-body profile-panel-body--scroll" data-testid="players-profile-rolling-windows">
-              <ProDataGrid
+              <HeroDataGrid
                 data={rollingGridRows}
                 columns={rollingColumns}
                 density="compact"
@@ -499,7 +498,7 @@ function PlayerProfileView({
         {courseFitRows.length > 0 ? (
           <CollapsibleSection title="Course rollups" description="Most tracked courses by rounds played">
             <div className="profile-panel-body profile-panel-body--scroll" data-testid="players-profile-course-rollups">
-              <ProDataGrid
+              <HeroDataGrid
                 data={courseFitRows}
                 columns={courseColumns}
                 density="compact"
@@ -513,7 +512,7 @@ function PlayerProfileView({
         {recentRoundRows.length > 0 ? (
           <CollapsibleSection title="Round log" description="Recent rounds with SG splits">
             <div className="profile-panel-body profile-panel-body--scroll" data-testid="players-profile-round-log">
-              <ProDataGrid
+              <HeroDataGrid
                 data={recentRoundRows}
                 columns={roundColumns}
                 density="compact"
@@ -635,28 +634,26 @@ export function PlayersPage({
   }, [effectiveKey])
 
   return (
-    <div className="players-page-shell">
-      <TerminalPageHeader
+    <div className="players-page-shell monitor-players-page" data-testid="players-page">
+      <HeroBand
         eyebrow="Field intelligence"
         title="Players"
-        description="Deep-dive profiles independent of active tournament context."
-        kpis={
-          <div className="terminal-kpi-strip">
-            <span className="terminal-kpi">
-              <span className="terminal-kpi-label">Field</span>
-              <span className="terminal-kpi-value">{players.length}</span>
+        meta="Deep-dive profiles independent of active tournament context."
+      >
+        <div className="terminal-kpi-strip monitoring-macro-kpi-strip players-page-kpis">
+          <span className="terminal-kpi monitoring-macro-kpi-cell">
+            <span className="terminal-kpi-label monitoring-macro-kpi-label">Field</span>
+            <span className="terminal-kpi-value monitoring-macro-kpi-value num">{players.length}</span>
+          </span>
+          {effectiveKey ? (
+            <span className="terminal-kpi monitoring-macro-kpi-cell">
+              <span className="terminal-kpi-label monitoring-macro-kpi-label">Selected</span>
+              <span className="terminal-kpi-value monitoring-macro-kpi-value">{effectiveDisplay}</span>
             </span>
-            {effectiveKey ? (
-              <span className="terminal-kpi">
-                <span className="terminal-kpi-label">Selected</span>
-                <span className="terminal-kpi-value">{effectiveDisplay}</span>
-              </span>
-            ) : null}
-          </div>
-        }
-        className="players-page-header"
-      />
-      <div className="players-layout">
+          ) : null}
+        </div>
+      </HeroBand>
+      <div className="players-layout players-layout--full-width">
       <PlayerSearchSidebar
         activePlayers={players}
         selectedKey={effectiveKey}

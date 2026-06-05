@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it } from "vitest"
@@ -5,22 +6,28 @@ import { describe, expect, it } from "vitest"
 import { ThemeProvider } from "@/components/theme-provider"
 import { SuiteShell } from "@/components/shell"
 import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
+import { InteractionProvider } from "@/providers/interaction-provider"
 
 describe("SuiteShell", () => {
   it("keeps the mode switch visible alongside suite navigation", () => {
+    const queryClient = new QueryClient()
     render(
       <ThemeProvider>
-        <MemoryRouter>
-        <SuiteShell
-          headline="RBC Heritage"
-          subheadline="One dashboard for live, upcoming, and replay context."
-          modeSwitcher={<div>Live / Upcoming / Past</div>}
-          frameStatus={<div>Runtime active · 12s old</div>}
-          actions={<button type="button">Refresh now</button>}
-        >
-          <div>Dashboard body</div>
-        </SuiteShell>
-        </MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <InteractionProvider>
+            <MemoryRouter>
+              <SuiteShell
+                headline="RBC Heritage"
+                subheadline="One dashboard for live, upcoming, and replay context."
+                modeSwitcher={<div>Live / Upcoming / Past</div>}
+                frameStatus={<div>Runtime active · 12s old</div>}
+                actions={<button type="button">Refresh now</button>}
+              >
+                <div>Dashboard body</div>
+              </SuiteShell>
+            </MemoryRouter>
+          </InteractionProvider>
+        </QueryClientProvider>
       </ThemeProvider>,
     )
 

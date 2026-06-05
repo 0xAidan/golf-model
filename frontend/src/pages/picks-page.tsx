@@ -64,6 +64,8 @@ type PicksPageProps = {
   marketRowsError?: string
   /** When set to lab, shows research-lane chip in header. */
   lane?: "production" | "lab"
+  /** Embedded in dashboard Full picks tab — hides page chrome. */
+  embedded?: boolean
 }
 
 type AvailabilityFilter = "all" | "available" | "unavailable"
@@ -527,6 +529,7 @@ export function PicksPage({
   marketRowsLoading = false,
   marketRowsError,
   lane = "production",
+  embedded = false,
 }: PicksPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab: PicksTab = searchParams.get("tab") === "secondary" ? "secondary" : "matchups"
@@ -596,31 +599,33 @@ export function PicksPage({
       : `${secondarySource.length} tracked secondary lines across top-finish, make-cut & outright markets`
 
   return (
-    <div className="page-shell picks-page-shell">
-      <TerminalPageHeader
-        eyebrow={lane === "lab" ? "Lab lane" : "Matchups workspace"}
-        title="Picks"
-        description={description}
-        action={lane === "lab" ? <span className="lane-chip">Lab lane</span> : undefined}
-        kpis={
-          <div className="terminal-kpi-strip">
-            <span className="terminal-kpi">
-              <span className="terminal-kpi-label">Matchups</span>
-              <span className="terminal-kpi-value">{matchupSource.length}</span>
-            </span>
-            <span className="terminal-kpi">
-              <span className="terminal-kpi-label">Secondary</span>
-              <span className="terminal-kpi-value">{secondarySource.length}</span>
-            </span>
-            <span className="terminal-kpi">
-              <span className="terminal-kpi-label">Min edge</span>
-              <span className="terminal-kpi-value">{minEdgePct}%</span>
-            </span>
-          </div>
-        }
-      />
+    <div className={embedded ? "picks-page-embed" : "page-shell picks-page-shell"}>
+      {!embedded ? (
+        <TerminalPageHeader
+          eyebrow={lane === "lab" ? "Lab lane" : "Matchups workspace"}
+          title="Picks"
+          description={description}
+          action={lane === "lab" ? <span className="lane-chip">Lab lane</span> : undefined}
+          kpis={
+            <div className="terminal-kpi-strip">
+              <span className="terminal-kpi">
+                <span className="terminal-kpi-label">Matchups</span>
+                <span className="terminal-kpi-value">{matchupSource.length}</span>
+              </span>
+              <span className="terminal-kpi">
+                <span className="terminal-kpi-label">Secondary</span>
+                <span className="terminal-kpi-value">{secondarySource.length}</span>
+              </span>
+              <span className="terminal-kpi">
+                <span className="terminal-kpi-label">Min edge</span>
+                <span className="terminal-kpi-value">{minEdgePct}%</span>
+              </span>
+            </div>
+          }
+        />
+      ) : null}
 
-      <div className="picks-page-filters-sticky">
+      <div className={embedded ? "picks-page-filters-sticky picks-page-filters-sticky--embed" : "picks-page-filters-sticky"}>
       <PicksTabSwitcher
         value={tab}
         onChange={setTab}

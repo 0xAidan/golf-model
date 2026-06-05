@@ -197,6 +197,89 @@ def test_store_results_upserts_existing_rows(tmp_db):
     assert row["finish_text"] == "T8"
 
 
+def test_score_skips_non_positive_ev_picks(tmp_db):
+    """Only +EV picks are scored; zero/negative/missing EV are skipped."""
+    from src.learning import score_picks_for_tournament
+
+    tid = tmp_db.get_or_create_tournament("EV Filter Open", year=2026, event_id="601")
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "winner",
+                "player_display": "Winner",
+                "finish_position": 1,
+                "finish_text": "1",
+                "made_cut": 1,
+            },
+            {
+                "player_key": "also_ran",
+                "player_display": "Also Ran",
+                "finish_position": 20,
+                "finish_text": "T20",
+                "made_cut": 1,
+            },
+        ],
+    )
+    tmp_db.store_picks(
+        [
+            _pick_row(tid, "winner", "also_ran", ev=0.05),
+            _pick_row(tid, "also_ran", "winner", ev=0.0),
+            _pick_row(tid, "player_neg", "also_ran", ev=-0.02),
+            _pick_row(tid, "player_none", "also_ran", ev=None),
+        ]
+    )
+
+    result = score_picks_for_tournament(tid)
+
+    assert result["status"] == "ok"
+    assert result["skipped_non_positive_ev"] == 3
+    assert result["scored"] == 1
+
+    conn = tmp_db.get_conn()
+    outcome_count = conn.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM pick_outcomes po
+        JOIN picks p ON p.id = po.pick_id
+        WHERE p.tournament_id = ?
+        """,
+        (tid,),
+    ).fetchone()
+    conn.close()
+    assert outcome_count["c"] == 1
+
+
+def _pick_row(
+    tournament_id: int,
+    player_key: str,
+    opponent_key: str,
+    *,
+    ev: float | None,
+) -> dict:
+    return {
+        "tournament_id": tournament_id,
+        "model_variant": "baseline",
+        "source": "cockpit",
+        "bet_type": "matchup",
+        "player_key": player_key,
+        "player_display": player_key.replace("_", " ").title(),
+        "opponent_key": opponent_key,
+        "opponent_display": opponent_key.replace("_", " ").title(),
+        "composite_score": None,
+        "course_fit_score": None,
+        "form_score": None,
+        "momentum_score": None,
+        "model_prob": 0.55,
+        "market_odds": "-110",
+        "market_book": "fanduel",
+        "market_implied_prob": 0.52,
+        "ev": ev,
+        "confidence": "medium",
+        "reasoning": "test",
+    }
+
+
 def test_update_prediction_outcomes_skips_unresolved_players(tmp_db):
     """Do not stamp missing-result predictions as forced losses."""
     from src.learning import update_prediction_outcomes
