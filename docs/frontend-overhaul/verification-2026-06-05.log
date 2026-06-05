@@ -55,3 +55,16 @@ Raw: 259428 bytes | gzip: 71022 bytes
 Baseline gzip: 71022 | max allowed (+5%): 74574
 Bundle budget OK.
 ```
+
+=== 10-min production soak 2026-06-05T02:04:28Z ===
+round 1 02:04:28 PASS root=200 snap=200 stat=200 dash=active live=active
+round 2 02:05:28 PASS root=200 snap=200 stat=200 dash=active live=active
+round 3 02:06:28 PASS root=200 snap=200 stat=200 dash=active live=active
+round 4 02:07:29 PASS root=200 snap=200 stat=200 dash=active live=active
+round 5 02:08:29 PASS root=200 snap=200 stat=200 dash=active live=active
+round 6 02:09:30 PASS root=200 snap=200 stat=200 dash=active live=active
+round 7 02:10:30 PASS root=200 snap=200 stat=200 dash=active live=active
+round 8 02:11:31 PASS root=200 snap=200 stat=200 dash=active live=active
+round 9 02:12:32 PASS root=200 snap=200 stat=200 dash=active live=active
+round 10 02:13:32 PASS root=200 snap=200 stat=200 dash=active live=active
+SOAK SUMMARY: 10/10 PASS, 0 FAIL
