@@ -689,6 +689,38 @@ function AppContent({
     ],
   )
 
+  const playersWorkspaceProps = useMemo(
+    () => ({
+      players,
+      liveSnapshot,
+      snapshotNotice,
+      snapshotAgeSeconds,
+      predictionTab,
+      tournamentId: profileTournamentId,
+      courseNum: profileCourseNum,
+      selectedPlayerKey,
+      onPlayerSelect: setSelectedPlayerKey,
+      filteredMatchups,
+      secondaryBets,
+      minEdge,
+      richProfilesEnabled: RICH_PLAYER_PROFILES_ENABLED,
+    }),
+    [
+      players,
+      liveSnapshot,
+      snapshotNotice,
+      snapshotAgeSeconds,
+      predictionTab,
+      profileTournamentId,
+      profileCourseNum,
+      selectedPlayerKey,
+      setSelectedPlayerKey,
+      filteredMatchups,
+      secondaryBets,
+      minEdge,
+    ],
+  )
+
   const labPowerRankingsSubtitle = useMemo(() => {
     if (!isLabBoardRoute) return null
     if (!labSnapshotMerged) {
@@ -921,7 +953,7 @@ function AppContent({
           element={
             <div className="route-page-shell">
               <Suspense fallback={<RouteFallback />}>
-                <PlayersPage players={players} />
+                <PlayersPage {...playersWorkspaceProps} />
               </Suspense>
             </div>
           }
