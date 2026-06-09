@@ -1,0 +1,18 @@
+[Unit]
+Description=Golf Model Research Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/golf-model
+Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+EnvironmentFile=-/opt/golf-model/.env
+ExecStart=/opt/golf-model/venv/bin/python start.py agent
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

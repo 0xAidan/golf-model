@@ -168,11 +168,17 @@ Type=simple
 User=root
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
 Environment=LIVE_REFRESH_EMBEDDED_AUTOSTART=0
+Environment=LIVE_REFRESH_WORKER_OWNED=1
 EnvironmentFile=-/opt/golf-model/.env
+ExecStartPre=/bin/bash /opt/golf-model/scripts/ensure_port_owner.sh
 ExecStart=/opt/golf-model/venv/bin/python start.py dashboard --port 8000
 Restart=always
 RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target
@@ -189,6 +195,8 @@ Type=simple
 User=root
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
 EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python start.py agent
 Restart=always
@@ -209,10 +217,14 @@ Type=simple
 User=root
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
 EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python -m workers.live_refresh_worker
 Restart=always
 RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target

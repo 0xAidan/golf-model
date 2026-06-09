@@ -36,6 +36,9 @@ export type LiveSnapshotContextValue = {
   labUpcomingTournament: LiveTournamentSnapshot | null | undefined
   isLiveActive: boolean
   ageSeconds: number | null
+  dataState?: string | null
+  operatorMessage?: string | null
+  splitBrainSuspected?: boolean
   isLoading: boolean
   isFetching: boolean
   isError: boolean
@@ -101,9 +104,14 @@ export function LiveSnapshotProvider({
   })
 
   const envelope = liveSnapshotQuery.data
-  const snapshot = envelope?.snapshot ?? null
+  const snapshot = envelope?.ok === false ? null : envelope?.snapshot ?? null
   const warmSnapshot = warmEnvelope?.snapshot ?? null
-  const displaySnapshot = snapshot ?? warmSnapshot
+  const displaySnapshot = snapshot
+  const dataState = envelope?.data_state ?? null
+  const operatorMessage = envelope?.operator_message ?? null
+  const splitBrainSuspected = Boolean(
+    envelope?.split_brain_suspected || envelope?.data_state === "split_brain",
+  )
 
   useEffect(() => {
     if (!liveSnapshotQuery.data?.snapshot) return
@@ -121,8 +129,14 @@ export function LiveSnapshotProvider({
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
 
   const runtimeStatus = useMemo<RuntimeStatus>(() => {
+    if (splitBrainSuspected) {
+      return { label: "Path mismatch", tone: "bad" }
+    }
     if (statusSustainedFailure || snapshotSustainedFailure) {
       return { label: "Runtime error", tone: "bad" }
+    }
+    if (envelope?.ok === false && dataState === "stale") {
+      return { label: "Stale data", tone: "warn" }
     }
     if (!liveRuntimeRunning) {
       return { label: "Offline", tone: "warn" }
@@ -132,16 +146,22 @@ export function LiveSnapshotProvider({
     }
     return { label: "Live", tone: "good" }
   }, [
+    splitBrainSuspected,
     statusSustainedFailure,
     snapshotSustainedFailure,
+    envelope?.ok,
+    dataState,
     liveRuntimeRunning,
     envelope?.stale_reason,
   ])
 
   const snapshotNoticeBase =
-    snapshotSustainedFailure
-      ? "Live snapshot request failed. Retry after checking API health."
-      : envelope?.stale_reason ?? envelope?.fallback_reason ?? uiAlert
+    splitBrainSuspected
+      ? operatorMessage ??
+        "Dashboard and refresh worker may be using different data folders. Rankings are hidden."
+      : snapshotSustainedFailure
+        ? "Live snapshot request failed. Retry after checking API health."
+        : operatorMessage ?? envelope?.stale_reason ?? envelope?.fallback_reason ?? uiAlert
 
   const value = useMemo<LiveSnapshotContextValue>(
     () => ({
@@ -156,6 +176,9 @@ export function LiveSnapshotProvider({
       labUpcomingTournament: displaySnapshot?.lab_upcoming_tournament,
       isLiveActive: Boolean(displaySnapshot?.live_tournament?.active),
       ageSeconds: envelope?.age_seconds ?? null,
+      dataState,
+      operatorMessage,
+      splitBrainSuspected,
       isLoading: liveSnapshotQuery.isLoading,
       isFetching: liveSnapshotQuery.isFetching,
       isError: liveSnapshotQuery.isError,
@@ -183,6 +206,9 @@ export function LiveSnapshotProvider({
       liveRuntimeRunning,
       liveRefreshStatusQuery.data,
       snapshotNoticeBase,
+      dataState,
+      operatorMessage,
+      splitBrainSuspected,
     ],
   )
 

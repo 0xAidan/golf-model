@@ -187,8 +187,8 @@ function AppContent({
   /** When the parallel lab lane is off, lab routes still hydrate from production snapshot so the UI is usable. */
   const labDisplaySnapshot = useMemo(() => {
     if (!labRouteActive) return null
-    return labSnapshotMerged ?? liveSnapshot ?? warmSnapshot ?? null
-  }, [labRouteActive, labSnapshotMerged, liveSnapshot, warmSnapshot])
+    return labSnapshotMerged ?? liveSnapshot ?? null
+  }, [labRouteActive, labSnapshotMerged, liveSnapshot])
   const labUsingProdSnapshotFallback = Boolean(labRouteActive && !labSnapshotMerged && liveSnapshot)
   /** Only one of lab_live / lab_upcoming populated — merged board mixes lab + production for the missing side. */
   const labLanePartialSections = Boolean(
@@ -327,17 +327,30 @@ function AppContent({
       setRefreshElapsedSec(null)
     },
     onSuccess: (payload) => {
-      if (payload.ok) {
+      if (payload.accepted) {
+        const msg =
+          payload.operator_message ??
+          payload.stale_reason ??
+          "Refresh queued. Data will update when the worker finishes."
+        setUiAlert(msg)
+        toast.message(msg)
+      } else if (payload.ok) {
         const generated = payload.generated_at ? formatDateTime(payload.generated_at) : "just now"
         const msg = `Snapshot refreshed (${generated}).`
         setUiAlert(msg)
         toast.success(msg)
       } else if (payload.busy) {
-        const msg = payload.stale_reason ?? "A snapshot refresh is already running."
+        const msg =
+          payload.operator_message ??
+          payload.stale_reason ??
+          "A snapshot refresh is already running."
         setUiAlert(msg)
         toast.message(msg)
       } else {
-        const msg = payload.stale_reason ?? "Manual refresh did not return a snapshot."
+        const msg =
+          payload.operator_message ??
+          payload.stale_reason ??
+          "Manual refresh did not return a snapshot."
         setUiAlert(msg)
         toast.warning(msg)
       }

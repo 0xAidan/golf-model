@@ -134,6 +134,13 @@ def _with_live_refresh_worker_status(raw_status: dict) -> dict:
         status["runtime_owner"] = "embedded"
     else:
         status["runtime_owner"] = "stopped"
+    from src.runtime_paths import detect_split_brain, get_runtime_identity
+
+    status["runtime_identity"] = get_runtime_identity()
+    split = detect_split_brain()
+    status["split_brain_suspected"] = split["split_brain_suspected"]
+    status["split_brain_reasons"] = split["reasons"]
+    status["heartbeat_age_seconds"] = split["heartbeat_age_seconds"]
     return status
 
 
@@ -217,6 +224,45 @@ app.include_router(research_router)
 app.include_router(model_registry_router)
 app.include_router(champion_challenger_router)
 app.include_router(data_health_router)
+
+
+@app.get("/api/ops/health")
+async def get_ops_health():
+    """Production identity, worker heartbeat, and split-brain diagnostics (non-secret)."""
+    from src.db import ensure_initialized
+    from src.runtime_paths import detect_split_brain, get_runtime_identity, read_heartbeat
+    from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
+
+    ensure_initialized()
+    identity = get_runtime_identity()
+    heartbeat = read_heartbeat()
+    split = detect_split_brain(heartbeat=heartbeat)
+    snapshot = read_snapshot()
+    status = get_live_refresh_status()
+    generated_at = snapshot.get("generated_at") if isinstance(snapshot, dict) else None
+    ok = not split["split_brain_suspected"]
+    summary = "healthy" if ok else "split_brain_suspected"
+    if not heartbeat and identity.get("production"):
+        ok = False
+        summary = "worker_heartbeat_missing"
+    return {
+        "ok": ok,
+        "summary": summary,
+        "identity": identity,
+        "heartbeat": heartbeat,
+        "split_brain_suspected": split["split_brain_suspected"],
+        "split_brain_reasons": split["reasons"],
+        "heartbeat_age_seconds": split["heartbeat_age_seconds"],
+        "live_refresh": {
+            "running": bool(status.get("running")),
+            "refresh_state": (status.get("progress") or {}).get("refresh_state"),
+            "phase": status.get("phase"),
+            "last_error": status.get("last_error"),
+            "snapshot_generated_at": generated_at,
+            "snapshot_age_seconds": status.get("snapshot_age_seconds"),
+        },
+    }
+
 
 # Store last analysis in memory for the card page
 _last_analysis = {}
@@ -2432,6 +2478,7 @@ async def get_live_refresh_snapshot():
     from src.autoresearch_settings import get_settings
     from src.live_refresh_policy import resolve_cadence
     from backtester.dashboard_runtime import (
+        build_current_board_contract,
         generate_snapshot_once,
         get_live_refresh_status,
         read_snapshot,
@@ -2492,101 +2539,19 @@ async def get_live_refresh_snapshot():
             age_seconds = None
     live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
     upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
-    live_state = (live_section.get("diagnostics") or {}).get("state")
-    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
-    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
-    fallback_sources = {
-        "live_fallback",
-        "verified_snapshot_fallback",
-    }
-    active_section = live_section if live_section.get("active") else upcoming_section
-    fallback_active = active_section.get("ranking_source") in fallback_sources
-    # Trust guard: never serve stale snapshot payloads as current rankings.
-    # Returning stale rows can leak invalid players from prior events.
-    if age_seconds is not None and age_seconds > stale_after_seconds:
-        refreshed = {}
-        # Avoid request-path stalls when the live refresh runtime is already running.
-        # In that case, background recompute remains the source of truth.
-        #
-        # If the snapshot is *extremely* stale while the worker still reports healthy,
-        # the dedicated process may be hung inside recompute, wedged on I/O, or stuck
-        # without advancing `generated_at`. Allow a bounded on-demand cycle from this
-        # API process so the dashboard can self-heal without operator SSH.
-        runtime_claims_healthy = bool(status.get("running"))
-        extreme_stale_floor = max(int(stale_after_seconds) * 3, 45 * 60)
-        force_bypass_runtime_wait = (
-            runtime_claims_healthy
-            and age_seconds is not None
-            and age_seconds >= extreme_stale_floor
-        )
-        worker_running = bool(status.get("worker_running"))
-        if (not runtime_claims_healthy or force_bypass_runtime_wait) and not worker_running:
-            # Never block the HTTP worker on a full recompute (lab lane doubles CPU time).
-            # When the systemd worker owns refresh, return the on-disk snapshot and let it recompute.
-            if force_bypass_runtime_wait:
-                global _snapshot_heal_in_progress
-                if not _snapshot_heal_in_progress:
-                    _snapshot_heal_in_progress = True
-
-                    async def _heal_extremely_stale_snapshot() -> None:
-                        global _snapshot_heal_in_progress
-                        try:
-                            await asyncio.to_thread(generate_snapshot_once, tour=tour)
-                            _logger.warning(
-                                "Background heal finished for extremely stale snapshot "
-                                "(age=%ss, floor=%ss).",
-                                age_seconds,
-                                extreme_stale_floor,
-                            )
-                        except Exception as exc:
-                            _logger.warning("Background snapshot heal failed: %s", exc)
-                        finally:
-                            _snapshot_heal_in_progress = False
-
-                    asyncio.create_task(_heal_extremely_stale_snapshot())
-                    _logger.warning(
-                        "Live snapshot extremely stale (age=%ss); scheduled background recompute "
-                        "(not blocking API).",
-                        age_seconds,
-                    )
-                refreshed = {}
-            else:
-                refreshed = await _attempt_fresh_snapshot(timeout_seconds=8.0)
-        elif force_bypass_runtime_wait and worker_running:
-            _logger.warning(
-                "Extremely stale snapshot (age=%ss) but live-refresh worker is running; "
-                "serving last snapshot without API recompute.",
-                age_seconds,
-            )
-        if refreshed:
-            snapshot = refreshed
-            generated_at = snapshot.get("generated_at")
-            age_seconds = None
-            if generated_at:
-                try:
-                    age_seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()))
-                except ValueError:
-                    age_seconds = None
-            live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
-            upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
-            live_state = (live_section.get("diagnostics") or {}).get("state")
-            upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
-            has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {"pipeline_error", "eligibility_failed"}
-            active_section = live_section if live_section.get("active") else upcoming_section
-            fallback_active = active_section.get("ranking_source") in fallback_sources
-        elif (fallback_active or has_pipeline_degradation) and not status.get("running"):
-            return {
-                "ok": False,
-                "snapshot": None,
-                "generated_at": generated_at,
-                "age_seconds": age_seconds,
-                "stale_after_seconds": stale_after_seconds,
-                "stale_reason": (
-                    f"Snapshot is stale (>{stale_after_seconds // 60} minutes); "
-                    "waiting for a fresh recompute."
-                ),
-                "fallback_reason": None,
-            }
+    split_brain_suspected = bool(status.get("split_brain_suspected"))
+    split_brain_reasons = status.get("split_brain_reasons") or []
+    contract = build_current_board_contract(
+        snapshot if snapshot else None,
+        age_seconds=age_seconds,
+        stale_after_seconds=stale_after_seconds,
+        split_brain_suspected=split_brain_suspected,
+        split_brain_reasons=split_brain_reasons,
+    )
+    if not contract.get("ok"):
+        return contract
+    live_section = contract["snapshot"].get("live_tournament", {}) if contract.get("snapshot") else {}
+    upcoming_section = contract["snapshot"].get("upcoming_tournament", {}) if contract.get("snapshot") else {}
     verification_messages: list[str] = []
     for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
         eligibility = (section or {}).get("eligibility") or {}
@@ -2594,34 +2559,9 @@ async def get_live_refresh_snapshot():
             summary = str(eligibility.get("summary") or "Field verification failed").strip()
             action = str(eligibility.get("action") or "").strip()
             verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
-    return {
-        "ok": True,
-        "snapshot": snapshot,
-        "generated_at": generated_at,
-        "age_seconds": age_seconds,
-        "stale_after_seconds": stale_after_seconds,
-        "stale_reason": (
-            " | ".join(verification_messages)
-            if verification_messages
-            else (
-                (
-                    f"Snapshot is stale (>{stale_after_seconds // 60} minutes); "
-                    "runtime is recomputing in the background."
-                )
-                if (age_seconds is not None and age_seconds > stale_after_seconds)
-                else (
-                    "Live snapshot indicates a degraded pipeline state."
-                    if has_pipeline_degradation
-                    else None
-                )
-            )
-        ),
-        "fallback_reason": (
-            "Showing fallback rankings source."
-            if fallback_active
-            else None
-        ),
-    }
+    if verification_messages and contract.get("stale_reason") is None:
+        contract["stale_reason"] = " | ".join(verification_messages)
+    return contract
 
 
 @app.post("/api/live-refresh/refresh")
@@ -2630,16 +2570,81 @@ async def refresh_live_refresh_snapshot():
     from src.db import ensure_initialized
     ensure_initialized()
     from src.autoresearch_settings import get_settings
+    from src.runtime_paths import live_refresh_worker_owned
     from backtester.dashboard_runtime import (
         LiveRefreshRecomputeBusy,
+        cycle_lock_is_held,
         generate_snapshot_once,
         get_live_refresh_status,
+        manual_trigger_pending,
+        request_manual_refresh,
         start_live_refresh,
+        worker_is_available,
     )
 
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
+
+    if live_refresh_worker_owned():
+        if not worker_is_available() and not status.get("worker_running"):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "ok": False,
+                    "snapshot": None,
+                    "stale_reason": (
+                        "Live-refresh worker is not available. "
+                        "On the server, run: systemctl status golf-live-refresh"
+                    ),
+                    "operator_message": (
+                        "The background refresh service is offline. Start golf-live-refresh.service "
+                        "on the server, then try again."
+                    ),
+                    "status": status,
+                },
+            )
+        progress = status.get("progress") or {}
+        refresh_state = progress.get("refresh_state") or status.get("refresh_state")
+        if (
+            manual_trigger_pending()
+            or cycle_lock_is_held()
+            or refresh_state in {"running", "busy"}
+            or status.get("phase")
+        ):
+            merged = _with_live_refresh_worker_status(get_live_refresh_status())
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "ok": False,
+                    "busy": True,
+                    "snapshot": None,
+                    "stale_reason": (
+                        "A refresh is already running. Data stays unchanged until it finishes."
+                    ),
+                    "operator_message": "Refresh already in progress — please wait.",
+                    "fallback_reason": None,
+                    "status": merged,
+                },
+            )
+        trigger = request_manual_refresh(requested_by="api")
+        merged = _with_live_refresh_worker_status(get_live_refresh_status())
+        return JSONResponse(
+            status_code=202,
+            content={
+                "ok": True,
+                "accepted": True,
+                "snapshot": None,
+                "stale_reason": None,
+                "operator_message": (
+                    "Refresh queued. The live-refresh worker will recompute shortly; "
+                    "this page updates when the new snapshot is ready."
+                ),
+                "trigger": trigger,
+                "status": merged,
+            },
+        )
+
     if (
         _embedded_live_refresh_autostart_allowed()
         and not status.get("running")
@@ -2661,7 +2666,11 @@ async def refresh_live_refresh_snapshot():
                 "ok": False,
                 "busy": True,
                 "snapshot": None,
-                "stale_reason": "Another snapshot recompute is already running.",
+                "stale_reason": (
+                    "Another snapshot recompute is already running. "
+                    "Wait for the current cycle to finish, then try again."
+                ),
+                "operator_message": "Refresh already in progress — please wait.",
                 "fallback_reason": None,
                 "status": merged,
             },

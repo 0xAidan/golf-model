@@ -96,11 +96,27 @@ fi
 SERVICES_STOPPED=0
 restart_services() {
     if [ "$SERVICES_STOPPED" -eq 1 ]; then
-        systemctl restart golf-dashboard golf-agent golf-live-refresh || true
+        systemctl restart golf-dashboard golf-agent golf-live-refresh
         SERVICES_STOPPED=0
     fi
 }
 trap restart_services EXIT
+
+install_systemd_units() {
+    if [ ! -d "${DEPLOY_PATH}/deploy/systemd" ]; then
+        echo "[deploy] deploy/systemd missing; skipping unit sync"
+        return 0
+    fi
+    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service; do
+        if [ -f "${DEPLOY_PATH}/deploy/systemd/${unit}" ]; then
+            cp "${DEPLOY_PATH}/deploy/systemd/${unit}" "/etc/systemd/system/${unit}"
+            echo "[deploy] synced ${unit}"
+        fi
+    done
+    systemctl daemon-reload
+}
+
+install_systemd_units
 
 systemctl stop golf-live-refresh golf-agent golf-dashboard || true
 SERVICES_STOPPED=1
@@ -130,5 +146,13 @@ PY
 
 restart_services
 trap - EXIT
+
+if [ -x "${DEPLOY_PATH}/scripts/ops_verify_production.sh" ] && [ "${DEPLOY_PATH}" = "/opt/golf-model" ]; then
+    echo "[deploy] running post-update production verification"
+    DEPLOY_PATH="${DEPLOY_PATH}" "${DEPLOY_PATH}/scripts/ops_verify_production.sh" || {
+        echo "[deploy] ERROR: post-update verification failed" >&2
+        exit 1
+    }
+fi
 
 echo "Update complete."

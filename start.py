@@ -83,7 +83,8 @@ def cmd_dashboard(args):
         cmd.append("--reload")
     if quiet_logs:
         cmd.extend(["--no-access-log"])
-    subprocess.run(cmd, cwd=ROOT)
+    completed = subprocess.run(cmd, cwd=ROOT)
+    raise SystemExit(completed.returncode)
 
 
 def cmd_ui(args):
