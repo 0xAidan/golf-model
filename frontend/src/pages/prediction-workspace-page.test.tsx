@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
@@ -116,7 +115,7 @@ function buildProps(): PredictionWorkspacePageProps {
       matchup_bets: [],
       value_bets: {},
     },
-    selectedPlayerKey: "player_a",
+    selectedPlayerKey: "",
     onPlayerSelect: vi.fn(),
     selectedPlayerProfile: undefined,
     playerProfileState: "unavailable",
@@ -155,10 +154,7 @@ function renderPage(props: PredictionWorkspacePageProps) {
 
 describe("PredictionWorkspacePage live UX", () => {
   it("renders dual model/scoring ranking columns in live mode", async () => {
-    const user = userEvent.setup()
     renderPage(buildProps())
-
-    await user.click(screen.getByTestId("cockpit-tab-rankings"))
 
     expect(screen.getByText("Model now")).toBeInTheDocument()
     expect(screen.getByText("Start (model)")).toBeInTheDocument()
@@ -170,7 +166,6 @@ describe("PredictionWorkspacePage live UX", () => {
   })
 
   it("renders model-centric ranking columns in upcoming mode", async () => {
-    const user = userEvent.setup()
     const props = buildProps()
     props.predictionTab = "upcoming"
     props.players = [
@@ -187,8 +182,6 @@ describe("PredictionWorkspacePage live UX", () => {
       },
     ]
     renderPage(props)
-
-    await user.click(screen.getByTestId("cockpit-tab-rankings"))
 
     expect(screen.getByText("Form")).toBeInTheDocument()
     expect(screen.getByText("Course")).toBeInTheDocument()
@@ -207,7 +200,6 @@ describe("PredictionWorkspacePage live UX", () => {
   })
 
   it("renders model-centric columns in past mode", async () => {
-    const user = userEvent.setup()
     apiMock.getLiveRefreshPastSnapshot.mockResolvedValue({
       ok: true,
       snapshot: {
@@ -239,8 +231,6 @@ describe("PredictionWorkspacePage live UX", () => {
       },
     ]
     renderPage(props)
-
-    await user.click(screen.getByTestId("cockpit-tab-rankings"))
 
     const grid = await screen.findByTestId("cockpit-rankings-grid")
     expect(grid).toHaveTextContent("Form")

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react"
 import { Link } from "react-router-dom"
 
 import { LabResearchInstrumentationPanel } from "@/components/cockpit/lab-research-instrumentation-panel"
+import { ModelLaneBadge, TrustStatusBanner } from "@/components/product"
 import {
   persistLabResearchInstrumentationExpanded,
   readLabResearchInstrumentationExpanded,
@@ -29,53 +30,50 @@ export function CockpitLabPage({
   }, [])
 
   return (
-    <div className="cockpit-lab-root lane-lab">
+    <div className="cockpit-lab-root lane-lab" data-testid="lab-command-center">
       <div className="cockpit-lab-main">
-        <div className="cockpit-lab-banner-wrap" data-testid="lab-board-banner-wrap">
+        <div className="model-command-center pt-5 pb-0" data-testid="lab-board-banner-wrap">
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <ModelLaneBadge lane="lab" />
+            <p className="text-sm text-[var(--text-secondary)] max-w-3xl">
+              Research model via <code className="lab-code-inline">lab_live_tournament</code> /{" "}
+              <code className="lab-code-inline">lab_upcoming_tournament</code>.{" "}
+              <Link to="/" className="link-subtle">
+                Dashboard
+              </Link>{" "}
+              uses the production snapshot only.
+            </p>
+          </div>
+
+          {usingProdSnapshotFallback ? (
+            <TrustStatusBanner
+              tone="warn"
+              title="Lab lane off"
+              message="Boards below mirror the main snapshot until the server enables the lab profile and the next recompute fills lab_* sections."
+              testId="lab-board-prod-fallback-banner"
+            />
+          ) : null}
+          {!usingProdSnapshotFallback && labLanePartialSections ? (
+            <TrustStatusBanner
+              tone="warn"
+              title="Partial lab snapshot"
+              message="Only one lab section is populated — the missing side still uses the production board until both sections fill."
+              testId="lab-board-partial-sections-banner"
+            />
+          ) : null}
+
           <div
             className="term-notice cockpit-lab-banner"
             data-testid="lab-board-banner"
             role="status"
             aria-live="polite"
           >
-            <strong>Lab</strong> — matchup-lab champion (Optuna trial 327) via{" "}
+            <strong>Lab</strong> — matchup-lab champion via{" "}
             <strong>lab_live_tournament</strong> / <strong>lab_upcoming_tournament</strong> when{" "}
-            <code className="lab-code-inline">live_refresh.lab_profile_enabled</code> is on. Main{" "}
-            <Link to="/" aria-label="Leave Lab: open main dashboard">
-              Dashboard
-            </Link>{" "}
-            and{" "}
-            <Link to="/?tab=full-picks" aria-label="Leave Lab: open main picks (matchups)">
-              Picks
-            </Link>{" "}
-            stay on the main snapshot only.
-            Lab-only picks logging:{" "}
-            <Link to="/lab?tab=full-picks" aria-label="Open Lab picks within this workspace">
-              Lab picks
-            </Link>
+            <code className="lab-code-inline">live_refresh.lab_profile_enabled</code> is on.
           </div>
-          {usingProdSnapshotFallback ? (
-            <div
-              className="term-notice amber cockpit-lab-banner"
-              data-testid="lab-board-prod-fallback-banner"
-              role="alert"
-            >
-              <strong>Lab lane off.</strong> Boards below mirror the main snapshot until the server enables the lab
-              profile and the next recompute fills <code className="lab-code-inline">lab_*</code> sections.
-            </div>
-          ) : null}
-          {!usingProdSnapshotFallback && labLanePartialSections ? (
-            <div
-              className="term-notice amber cockpit-lab-banner"
-              data-testid="lab-board-partial-sections-banner"
-              role="alert"
-            >
-              <strong>Partial lab snapshot.</strong> Only one of <code className="lab-code-inline">lab_live_tournament</code>{" "}
-              / <code className="lab-code-inline">lab_upcoming_tournament</code> is populated — the missing side still uses
-              the production board until both sections fill.
-            </div>
-          ) : null}
         </div>
+
         <div className="cockpit-lab-workspace">
           <PredictionWorkspacePage {...cockpitWorkspaceProps} />
         </div>

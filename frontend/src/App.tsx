@@ -57,6 +57,12 @@ const LegacyModelPage = lazy(() =>
 const DiagnosticsPage = lazy(() =>
   import("@/pages/diagnostics-page").then((mod) => ({ default: mod.DiagnosticsPage })),
 )
+const ResultsPage = lazy(() =>
+  import("@/pages/results-page").then((mod) => ({ default: mod.ResultsPage })),
+)
+const SystemPage = lazy(() =>
+  import("@/pages/system-page").then((mod) => ({ default: mod.SystemPage })),
+)
 
 function RouteFallback() {
   return (
@@ -807,6 +813,8 @@ function AppContent({
       "/lab/picks": "Lab picks",
       "/players": "Players",
       "/matchups": "Picks",
+      "/results": "Results",
+      "/system": "System",
       "/grading": "Grading",
       "/track-record": "Track record",
       "/research/legacy-model": "Legacy model",
@@ -920,18 +928,28 @@ function AppContent({
         />
         <Route path="/matchups" element={<Navigate to="/?tab=full-picks" replace />} />
         <Route
-          path="/grading"
+          path="/results"
           element={
             <Suspense fallback={<RouteFallback />}>
-              <GradingPage />
+              <ResultsPage />
             </Suspense>
           }
         />
+        <Route path="/grading" element={<Navigate to="/results" replace />} />
+        <Route path="/track-record" element={<Navigate to="/results?tab=track-record" replace />} />
         <Route
-          path="/track-record"
+          path="/system"
           element={
             <Suspense fallback={<RouteFallback />}>
-              <TrackRecordPage />
+              <SystemPage
+                dashboard={dashboard}
+                liveSnapshot={liveSnapshot}
+                predictionTab={predictionTab}
+                isLiveActive={isLiveActive}
+                gradingHistory={gradingHistory}
+                predictionRun={effectivePredictionRun}
+                secondaryBets={secondaryBets}
+              />
             </Suspense>
           }
         />
@@ -951,8 +969,9 @@ function AppContent({
             </Suspense>
           }
         />
+        <Route path="/research/diagnostics" element={<Navigate to="/system" replace />} />
         <Route
-          path="/research/diagnostics"
+          path="/research/diagnostics-legacy"
           element={
             <Suspense fallback={<RouteFallback />}>
               <DiagnosticsPage
