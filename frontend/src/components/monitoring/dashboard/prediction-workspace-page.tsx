@@ -575,8 +575,8 @@ export function PredictionWorkspacePage({
     <div
       className={
         isNarrow
-          ? "prediction-workspace prediction-workspace--narrow prediction-workspace-root"
-          : "prediction-workspace prediction-workspace-root"
+          ? "prediction-workspace prediction-workspace--narrow prediction-workspace-root monitor-scroll-region"
+          : "prediction-workspace prediction-workspace-root monitor-scroll-region"
       }
     >
       <WorkspaceAlerts

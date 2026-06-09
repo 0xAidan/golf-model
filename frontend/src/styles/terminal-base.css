@@ -2791,7 +2791,8 @@ body {
 .cockpit-lab-workspace {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .cockpit-lab-research-aside {
