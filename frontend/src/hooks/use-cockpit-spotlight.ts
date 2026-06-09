@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { buildCockpitSpotlight } from "@/lib/cockpit-spotlight"
@@ -100,17 +100,6 @@ export function useCockpitSpotlight({
 
     return [...keys]
   }, [hasLiveContext, leaderboardRows, playerKeyByName, players, rawGeneratedMatchups, rawGeneratedSecondaryBets, topPlays])
-
-  useEffect(() => {
-    const nextKey = spotlightCandidateKeys[0]
-    if (!nextKey) {
-      return
-    }
-    if (selectedPlayerKey && spotlightCandidateKeys.includes(selectedPlayerKey)) {
-      return
-    }
-    onPlayerSelect(nextKey)
-  }, [onPlayerSelect, selectedPlayerKey, spotlightCandidateKeys])
 
   const selectedPlayer = useMemo(
     () => players.find((player) => player.player_key === selectedPlayerKey) ?? null,

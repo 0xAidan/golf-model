@@ -39,7 +39,7 @@ describe("useCockpitSpotlight", () => {
     expect(onPlayerSelect).not.toHaveBeenCalled()
   })
 
-  it("auto-selects a player surfaced only through generated secondary picks when a stable key exists", () => {
+  it("does not auto-select when only secondary picks exist (drawer opens on user click)", () => {
     const onPlayerSelect = vi.fn()
     const secondaryOnly: FlattenedSecondaryBet = {
       market: "Top 10",
@@ -66,10 +66,10 @@ describe("useCockpitSpotlight", () => {
       }),
     )
 
-    expect(onPlayerSelect).toHaveBeenCalledWith("akshay_bhatia")
+    expect(onPlayerSelect).not.toHaveBeenCalled()
   })
 
-  it("falls back from secondary-pick name matching when a stable key is not present", () => {
+  it("does not auto-select from secondary-pick name matching when key is absent", () => {
     const onPlayerSelect = vi.fn()
     const secondaryOnly: FlattenedSecondaryBet = {
       market: "Top 20",
@@ -102,10 +102,10 @@ describe("useCockpitSpotlight", () => {
       }),
     )
 
-    expect(onPlayerSelect).toHaveBeenCalledWith("akshay_bhatia")
+    expect(onPlayerSelect).not.toHaveBeenCalled()
   })
 
-  it("auto-selects a player surfaced only through raw generated matchup inventory", () => {
+  it("does not auto-select from raw generated matchup inventory", () => {
     const onPlayerSelect = vi.fn()
 
     renderHook(() =>
@@ -139,6 +139,6 @@ describe("useCockpitSpotlight", () => {
       }),
     )
 
-    expect(onPlayerSelect).toHaveBeenCalledWith("akshay_bhatia")
+    expect(onPlayerSelect).not.toHaveBeenCalled()
   })
 })
