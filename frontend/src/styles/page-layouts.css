@@ -1062,8 +1062,8 @@
 
 /* Route motion */
 .route-motion-panel {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -1149,11 +1149,9 @@
 .prediction-workspace-root {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .expand-col {

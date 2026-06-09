@@ -1881,14 +1881,14 @@ body {
 .players-page-shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .players-page-shell .players-layout {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: auto;
 }
 
 .players-page-header {
@@ -2732,9 +2732,9 @@ body {
 }
 
 .route-page-shell {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -2765,17 +2765,17 @@ body {
 }
 
 .cockpit-lab-root {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .cockpit-lab-main {
   min-width: 0;
-  min-height: 0;
+  min-height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .cockpit-lab-banner-wrap {
@@ -2789,10 +2789,9 @@ body {
 }
 
 .cockpit-lab-workspace {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .cockpit-lab-research-aside {

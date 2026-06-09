@@ -61,7 +61,7 @@ export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTa
           </Link>
         </p>
       </header>
-      <div role="tabpanel" className="min-h-0 flex-1">
+      <div role="tabpanel" className="flex-1">
         {tab === "grading" ? <GradingPage /> : <TrackRecordPage />}
       </div>
     </div>

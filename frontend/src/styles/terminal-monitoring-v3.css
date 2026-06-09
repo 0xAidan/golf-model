@@ -54,11 +54,11 @@
   overflow: hidden;
 }
 
+/* Page-level content grows naturally; shell main column scrolls */
 .monitor-scroll-region {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .monitor-panel-scroll {
@@ -116,7 +116,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 767px) {
@@ -640,11 +643,11 @@ html.motion-cursor-active * {
 
 /* Phase 5 — players, records, research routes */
 .monitor-players-page {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   width: 100%;
   max-width: none;
 }
@@ -665,14 +668,15 @@ html.motion-cursor-active * {
 
 .monitor-records-page,
 .monitor-research-page {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
   gap: var(--monitor-bento-gap);
   padding: 8px 12px 16px;
   width: 100%;
   max-width: none;
+  overflow: visible;
 }
 
 .monitor-records-page .monitoring-bento-grid {
