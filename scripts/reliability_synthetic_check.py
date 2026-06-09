@@ -259,6 +259,7 @@ def main() -> int:
         action="store_true",
         help="CI/local mode: skip fresh snapshot envelope check (no production data required).",
     )
+    parser.add_argument("--output-json", default="", help="Optional path to write machine-readable results.")
     args = parser.parse_args()
 
     results = run_checks(
