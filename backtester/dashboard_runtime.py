@@ -11,6 +11,7 @@ import re
 import threading
 import time
 import uuid
+import fcntl
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,19 @@ from src.disk_guard import warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
 from src.live_refresh_policy import resolve_cadence
 from src.player_normalizer import normalize_name
+from src.runtime_paths import (
+    detect_split_brain,
+    get_app_root,
+    get_cycle_lock_path,
+    get_data_dir,
+    get_heartbeat_path,
+    get_manual_trigger_path,
+    get_runtime_identity,
+    get_snapshot_path,
+    heartbeat_age_seconds,
+    live_refresh_worker_owned,
+    read_heartbeat,
+)
 from src.services.live_snapshot_service import run_lab_snapshot_analysis, run_snapshot_analysis
 
 _logger = logging.getLogger("dashboard.runtime")
@@ -32,8 +46,8 @@ _stop_event = threading.Event()
 _thread: threading.Thread | None = None
 _last_snapshot_prune_at: float = 0.0
 
-_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "live_refresh_snapshot.json"
-_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+_SNAPSHOT_PATH = get_snapshot_path()
+_OUTPUT_DIR = get_app_root() / "output"
 _DOWNLOADS_DIR = Path.home() / "Downloads"
 
 
@@ -76,6 +90,108 @@ def _iso_now() -> str:
 
 class LiveRefreshRecomputeBusy(RuntimeError):
     """Non-blocking recompute could not start because another thread holds the recompute lock."""
+
+
+class _CrossProcessCycleLock:
+    """fcntl lock spanning dashboard + worker processes for one ingest+recompute cycle."""
+
+    def __init__(self) -> None:
+        self._fd: int | None = None
+
+    def acquire(self, *, blocking: bool = False) -> bool:
+        path = get_cycle_lock_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(path), os.O_CREAT | os.O_RDWR)
+        flags = fcntl.LOCK_EX
+        if not blocking:
+            flags |= fcntl.LOCK_NB
+        try:
+            fcntl.flock(fd, flags)
+        except BlockingIOError:
+            os.close(fd)
+            return False
+        self._fd = fd
+        return True
+
+    def release(self) -> None:
+        if self._fd is None:
+            return
+        try:
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
+        finally:
+            os.close(self._fd)
+            self._fd = None
+
+
+_cross_process_cycle_lock = _CrossProcessCycleLock()
+
+
+def _snapshot_path() -> Path:
+    return get_snapshot_path()
+
+
+def _write_heartbeat(**extra: Any) -> None:
+    with _state_lock:
+        running = bool(_state.get("running"))
+        phase = _state.get("phase")
+        refresh_state = _state.get("refresh_state")
+        last_error = _state.get("last_error")
+    payload = {
+        **get_runtime_identity(),
+        "updated_at": _iso_now(),
+        "running": running,
+        "worker_pid": os.getpid(),
+        "phase": phase,
+        "refresh_state": refresh_state,
+        "last_error": last_error,
+        **extra,
+    }
+    atomic_write_json(get_heartbeat_path(), payload)
+
+
+def request_manual_refresh(*, requested_by: str = "api") -> dict[str, Any]:
+    path = get_manual_trigger_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "request_id": str(uuid.uuid4()),
+        "requested_at": _iso_now(),
+        "requested_by": requested_by,
+    }
+    atomic_write_json(path, payload)
+    return payload
+
+
+def manual_trigger_pending() -> bool:
+    return get_manual_trigger_path().is_file()
+
+
+def consume_manual_trigger() -> dict[str, Any] | None:
+    path = get_manual_trigger_path()
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        path.unlink(missing_ok=True)
+        return payload if isinstance(payload, dict) else None
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def worker_is_available(*, max_heartbeat_age_seconds: int = 900) -> bool:
+    heartbeat = read_heartbeat()
+    if not heartbeat:
+        return False
+    age = heartbeat_age_seconds(heartbeat)
+    if age is None or age > max_heartbeat_age_seconds:
+        return False
+    return bool(heartbeat.get("running"))
+
+
+def cycle_lock_is_held() -> bool:
+    if not _cross_process_cycle_lock.acquire(blocking=False):
+        return True
+    _cross_process_cycle_lock.release()
+    return False
 
 
 def _touch_progress(
@@ -138,7 +254,8 @@ def _resolve_data_source() -> str:
 
 
 def _write_snapshot(payload: dict[str, Any]) -> None:
-    atomic_write_json(_SNAPSHOT_PATH, payload)
+    atomic_write_json(_snapshot_path(), payload)
+    _write_heartbeat(last_snapshot_generated_at=payload.get("generated_at"))
 
 
 def _cap_list_rows(rows: Any, *, max_rows: int) -> list[Any]:
@@ -193,10 +310,11 @@ def _maybe_prune_snapshot_history_tables(snapshot: dict[str, Any]) -> None:
 
 
 def read_snapshot() -> dict[str, Any]:
-    if not _SNAPSHOT_PATH.exists():
+    path = _snapshot_path()
+    if not path.exists():
         return {}
     try:
-        return json.loads(_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -1622,7 +1740,7 @@ def _classify_matchup_state(
 
 
 def _run_ingest(tour: str) -> dict[str, Any]:
-    warn_if_low_disk(str(_SNAPSHOT_PATH.parent), context="live_refresh_ingest_start")
+    warn_if_low_disk(str(get_data_dir()), context="live_refresh_ingest_start")
     from src.datagolf import (
         fetch_matchup_odds_with_diagnostics,
         fetch_schedule,
@@ -3090,9 +3208,12 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
 
 def generate_snapshot_once(*, tour: str = "pga") -> dict[str, Any]:
     """Run one ingest+recompute cycle synchronously and return the snapshot."""
-    warn_if_low_disk(str(_SNAPSHOT_PATH.parent), context="live_refresh_manual_cycle")
+    warn_if_low_disk(str(get_data_dir()), context="live_refresh_manual_cycle")
     if not _recompute_lock.acquire(blocking=False):
         raise LiveRefreshRecomputeBusy("Live refresh recompute is already in progress")
+    if not _cross_process_cycle_lock.acquire(blocking=False):
+        _recompute_lock.release()
+        raise LiveRefreshRecomputeBusy("Live refresh cycle lock is held by another process")
     err: BaseException | None = None
     try:
         _touch_progress(refresh_state="running", phase="ingest", phase_detail="ingest: schedule + markets")
@@ -3119,6 +3240,7 @@ def generate_snapshot_once(*, tour: str = "pga") -> dict[str, Any]:
         raise
     finally:
         _recompute_lock.release()
+        _cross_process_cycle_lock.release()
         if err is None:
             _touch_progress(idle=True)
 
@@ -3139,6 +3261,10 @@ def _run_loop(tour: str) -> None:
             continue
         cadence = resolve_cadence(settings)
         now_epoch = time.time()
+        manual_trigger = consume_manual_trigger()
+        if manual_trigger:
+            next_recompute = now_epoch
+            _logger.info("Manual refresh trigger consumed: %s", manual_trigger.get("request_id"))
         with _state_lock:
             _state["cadence_mode"] = cadence.mode
             _state["ingest_seconds"] = cadence.ingest_seconds
@@ -3157,6 +3283,10 @@ def _run_loop(tour: str) -> None:
                     _state["last_started_at"] = started_at
                     _state["last_error"] = None
                 if not _recompute_lock.acquire(blocking=False):
+                    next_recompute = now_epoch + 15.0
+                    continue
+                if not _cross_process_cycle_lock.acquire(blocking=False):
+                    _recompute_lock.release()
                     next_recompute = now_epoch + 15.0
                     continue
                 slot_err: BaseException | None = None
@@ -3178,6 +3308,7 @@ def _run_loop(tour: str) -> None:
                     raise
                 finally:
                     _recompute_lock.release()
+                    _cross_process_cycle_lock.release()
                     if slot_err is None:
                         _touch_progress(idle=True)
                 finished_at = _iso_now()
@@ -3221,6 +3352,7 @@ def start_live_refresh(*, tour: str = "pga") -> dict[str, Any]:
         _state["running"] = True
         _state["tour"] = tour
         _state["last_error"] = None
+    _write_heartbeat()
     _thread = threading.Thread(target=_run_loop, args=(tour,), daemon=True, name="live-refresh-runtime")
     _thread.start()
     return get_live_refresh_status()
@@ -3234,6 +3366,7 @@ def stop_live_refresh() -> dict[str, Any]:
     _thread = None
     with _state_lock:
         _state["running"] = False
+    _write_heartbeat(running=False)
     return get_live_refresh_status()
 
 
@@ -3260,5 +3393,100 @@ def get_live_refresh_status() -> dict[str, Any]:
         "percent": status.get("recompute_percent"),
         "last_error": status.get("last_error"),
     }
+    identity = get_runtime_identity()
+    split = detect_split_brain()
+    status["runtime_identity"] = identity
+    status["split_brain_suspected"] = split["split_brain_suspected"]
+    status["split_brain_reasons"] = split["reasons"]
+    status["heartbeat_age_seconds"] = split["heartbeat_age_seconds"]
     return status
+
+
+def build_current_board_contract(
+    snapshot: dict[str, Any] | None,
+    *,
+    age_seconds: int | None,
+    stale_after_seconds: int,
+    split_brain_suspected: bool = False,
+    split_brain_reasons: list[str] | None = None,
+) -> dict[str, Any]:
+    """Fail-closed envelope for current live/upcoming boards (never serve stale rows as healthy)."""
+    reasons = list(split_brain_reasons or [])
+    if split_brain_suspected:
+        return {
+            "ok": False,
+            "data_state": "split_brain",
+            "snapshot": None,
+            "stale_reason": (
+                "Dashboard and live-refresh worker may be reading different data folders. "
+                + " ".join(reasons)
+            ).strip(),
+            "operator_message": (
+                "Data path mismatch detected. Rankings and picks are hidden until the server "
+                "uses one canonical data folder (/opt/golf-model/data)."
+            ),
+        }
+    if not snapshot:
+        return {
+            "ok": False,
+            "data_state": "missing",
+            "snapshot": None,
+            "stale_reason": "No snapshot generated yet.",
+            "operator_message": "No live data snapshot is available yet.",
+        }
+    if age_seconds is not None and age_seconds > stale_after_seconds:
+        return {
+            "ok": False,
+            "data_state": "stale",
+            "snapshot": None,
+            "generated_at": snapshot.get("generated_at"),
+            "age_seconds": age_seconds,
+            "stale_after_seconds": stale_after_seconds,
+            "stale_reason": (
+                f"Snapshot is too old ({age_seconds // 60} minutes). "
+                "Current rankings and picks are hidden until a fresh recompute finishes."
+            ),
+            "operator_message": (
+                "Live data is stale. The board stays empty until the live-refresh worker "
+                "writes a fresh snapshot."
+            ),
+        }
+    live_section = snapshot.get("live_tournament", {}) if isinstance(snapshot, dict) else {}
+    upcoming_section = snapshot.get("upcoming_tournament", {}) if isinstance(snapshot, dict) else {}
+    live_state = (live_section.get("diagnostics") or {}).get("state")
+    upcoming_state = (upcoming_section.get("diagnostics") or {}).get("state")
+    has_pipeline_degradation = live_state in {"pipeline_error", "eligibility_failed"} or upcoming_state in {
+        "pipeline_error",
+        "eligibility_failed",
+    }
+    fallback_sources = {"live_fallback", "verified_snapshot_fallback"}
+    active_section = live_section if live_section.get("active") else upcoming_section
+    fallback_active = active_section.get("ranking_source") in fallback_sources
+    verification_messages: list[str] = []
+    for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
+        eligibility = (section or {}).get("eligibility") or {}
+        if eligibility.get("verified") is False:
+            summary = str(eligibility.get("summary") or "Field verification failed").strip()
+            action = str(eligibility.get("action") or "").strip()
+            verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
+    stale_reason = (
+        " | ".join(verification_messages)
+        if verification_messages
+        else (
+            "Live snapshot indicates a degraded pipeline state."
+            if has_pipeline_degradation
+            else None
+        )
+    )
+    return {
+        "ok": True,
+        "data_state": "fresh",
+        "snapshot": snapshot,
+        "generated_at": snapshot.get("generated_at"),
+        "age_seconds": age_seconds,
+        "stale_after_seconds": stale_after_seconds,
+        "stale_reason": stale_reason,
+        "fallback_reason": ("Showing fallback rankings source." if fallback_active else None),
+        "operator_message": None,
+    }
 

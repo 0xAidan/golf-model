@@ -64,7 +64,18 @@ def _resolve_db_path() -> str:
     """
     Use project data/golf.db unless the project appears to be in a cloud-synced folder,
     in which case use ~/.golf-model/data/golf.db and copy from project once if needed.
+
+    Explicit overrides (production):
+      GOLF_DB_PATH — full SQLite file path
+      GOLF_DATA_DIR — directory containing golf.db
     """
+    explicit_db = os.environ.get("GOLF_DB_PATH", "").strip()
+    if explicit_db:
+        return os.path.abspath(explicit_db)
+    data_dir = os.environ.get("GOLF_DATA_DIR", "").strip()
+    if data_dir:
+        return os.path.join(os.path.abspath(data_dir), "golf.db")
+
     project_path = os.path.abspath(_PROJECT_DB_PATH)
     if not _is_likely_synced(project_path):
         return project_path

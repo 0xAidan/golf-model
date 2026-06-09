@@ -383,6 +383,10 @@ export type LiveRefreshSnapshotResponse = {
   stale_after_seconds?: number | null
   stale_reason?: string | null
   fallback_reason?: string | null
+  data_state?: string | null
+  operator_message?: string | null
+  split_brain_suspected?: boolean
+  accepted?: boolean
   /** Present on 409 busy responses — merged live-refresh status snapshot. */
   status?: LiveRefreshRuntimeStatus
 }

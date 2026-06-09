@@ -662,7 +662,26 @@ Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac
 4. `cd frontend && npm ci && npm run build`
 5. Runs DB migrations (`init_db()`)
 6. Ensures `.env` contains `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` when not already set (lab snapshot lane)
-7. `systemctl restart golf-dashboard golf-agent golf-live-refresh`
+7. Sync systemd unit files from `deploy/systemd/` and `systemctl daemon-reload`
+8. `systemctl restart golf-dashboard golf-agent golf-live-refresh`
+9. On `/opt/golf-model`, run `scripts/ops_verify_production.sh` (port audit, ops health, synthetic checks)
+
+**Never bind port 8000 outside `/opt/golf-model` on the VPS.** Orphan processes from `/root/golf-model` cause split-brain (stale snapshots). See `docs/runbooks/live-refresh-incident.md`.
+
+### Runtime path env (systemd)
+
+| Variable | Production value |
+|----------|------------------|
+| `GOLF_APP_ROOT` | `/opt/golf-model` |
+| `GOLF_DATA_DIR` | `/opt/golf-model/data` |
+| `LIVE_REFRESH_WORKER_OWNED` | `1` on dashboard (manual refresh queues worker trigger) |
+| `LIVE_REFRESH_EMBEDDED_AUTOSTART` | `0` on dashboard |
+
+Shared artifacts under `GOLF_DATA_DIR`: `live_refresh_snapshot.json`, `live_refresh_heartbeat.json`, `live_refresh_cycle.lock`, `live_refresh_manual_trigger.json`.
+
+Ops endpoint: `GET /api/ops/health` — identity, heartbeat age, split-brain reasons (non-secret).
+
+Port guard: `scripts/ensure_port_owner.sh` / `scripts/port_8000_audit.py` — run before dashboard bind (`ExecStartPre`) and after deploy.
 
 ### Systemd Services
 

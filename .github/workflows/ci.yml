@@ -79,7 +79,7 @@ jobs:
 
           deadline = time.time() + 45
           root_url = "http://127.0.0.1:8000/"
-          status_url = "http://127.0.0.1:8000/api/live-refresh/status"
+          ops_url = "http://127.0.0.1:8000/api/ops/health"
 
           def get(url):
             with urllib.request.urlopen(url, timeout=5) as response:
@@ -90,20 +90,20 @@ jobs:
           while time.time() < deadline:
             try:
               root_status, _ = get(root_url)
-              status_code, status_body = get(status_url)
-              payload = json.loads(status_body)
-              status_payload = payload.get("status") if isinstance(payload.get("status"), dict) else payload
-              has_running = isinstance(status_payload, dict) and "running" in status_payload
-              if root_status == 200 and status_code == 200 and has_running:
+              status_code, ops_body = get(ops_url)
+              payload = json.loads(ops_body)
+              if root_status == 200 and status_code == 200 and payload.get("ok") is True:
                 print("Smoke checks passed.")
                 raise SystemExit(0)
-              last_error = f"unexpected status root={root_status} api={status_code}"
+              last_error = f"unexpected status root={root_status} ops={status_code} ok={payload.get('ok')}"
             except Exception as exc:
               last_error = str(exc)
             time.sleep(2)
 
           raise SystemExit(f"Backend smoke checks failed: {last_error}")
           PY
+      - name: Run local synthetic reliability check
+        run: python scripts/reliability_synthetic_check.py --base-url http://127.0.0.1:8000 --smoke-local
       - name: Dump backend log on failure
         if: failure()
         run: python - <<'PY'

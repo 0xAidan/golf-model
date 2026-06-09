@@ -111,8 +111,8 @@ def test_live_refresh_snapshot_endpoint_generates_snapshot_on_demand(monkeypatch
     assert body["snapshot"]["live_tournament"]["event_name"] == "Future Open"
 
 
-def test_live_refresh_snapshot_extremely_stale_serves_stale_when_worker_running(monkeypatch):
-    """When the dedicated worker is running, API must not block on on-demand recompute."""
+def test_live_refresh_snapshot_extremely_stale_fails_closed_when_worker_running(monkeypatch):
+    """Stale current-board data must not be served as healthy when worker is running."""
     import app as app_module
 
     calls = {"generate": 0}
@@ -124,19 +124,10 @@ def test_live_refresh_snapshot_extremely_stale_serves_stale_when_worker_running(
         },
         "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
     }
-    fresh_snapshot = {
-        "generated_at": "2099-06-01T12:00:00+00:00",
-        "live_tournament": {
-            "active": True,
-            "event_name": "Recovered Open",
-            "diagnostics": {"state": "edges_available"},
-        },
-        "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
-    }
 
     def fake_generate(*, tour: str = "pga"):
         calls["generate"] += 1
-        return fresh_snapshot
+        return stale_snapshot
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr(
@@ -164,16 +155,15 @@ def test_live_refresh_snapshot_extremely_stale_serves_stale_when_worker_running(
     assert response.status_code == 200
     body = response.json()
     assert calls["generate"] == 0
-    assert body["ok"] is True
-    assert body["snapshot"]["generated_at"] == "2000-01-01T00:00:00+00:00"
-    assert "event_name" not in (body["snapshot"].get("live_tournament") or {})
+    assert body["ok"] is False
+    assert body["snapshot"] is None
+    assert body["data_state"] == "stale"
 
 
-def test_live_refresh_snapshot_extremely_stale_schedules_background_heal_without_worker(monkeypatch):
-    """Extremely stale snapshot with no worker should schedule background heal (non-blocking)."""
+def test_live_refresh_snapshot_stale_fails_closed_without_worker(monkeypatch):
+    """Stale current-board data is withheld even when no worker is attached."""
     import app as app_module
 
-    calls = {"generate": 0}
     stale_snapshot = {
         "generated_at": "2000-01-01T00:00:00+00:00",
         "live_tournament": {
@@ -182,19 +172,6 @@ def test_live_refresh_snapshot_extremely_stale_schedules_background_heal_without
         },
         "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
     }
-    fresh_snapshot = {
-        "generated_at": "2099-06-01T12:00:00+00:00",
-        "live_tournament": {
-            "active": True,
-            "event_name": "Recovered Open",
-            "diagnostics": {"state": "edges_available"},
-        },
-        "upcoming_tournament": {"diagnostics": {"state": "edges_available"}},
-    }
-
-    def fake_generate(*, tour: str = "pga"):
-        calls["generate"] += 1
-        return fresh_snapshot
 
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr(
@@ -210,7 +187,6 @@ def test_live_refresh_snapshot_extremely_stale_schedules_background_heal_without
     )
     monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: stale_snapshot)
-    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", fake_generate)
     monkeypatch.setattr(
         app_module,
         "_with_live_refresh_worker_status",
@@ -221,15 +197,38 @@ def test_live_refresh_snapshot_extremely_stale_schedules_background_heal_without
     response = client.get("/api/live-refresh/snapshot")
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is True
-    assert body["snapshot"]["generated_at"] == "2000-01-01T00:00:00+00:00"
-    import time
+    assert body["ok"] is False
+    assert body["snapshot"] is None
+    assert body["data_state"] == "stale"
 
-    deadline = time.time() + 2.0
-    while time.time() < deadline and calls["generate"] == 0:
-        time.sleep(0.05)
-    assert calls["generate"] >= 1
-    app_module._snapshot_heal_in_progress = False
+
+def test_live_refresh_refresh_worker_owned_accepts_trigger(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("src.runtime_paths.live_refresh_worker_owned", lambda: True)
+    monkeypatch.setattr("backtester.dashboard_runtime.worker_is_available", lambda **kwargs: True)
+    monkeypatch.setattr("backtester.dashboard_runtime.manual_trigger_pending", lambda: False)
+    monkeypatch.setattr("backtester.dashboard_runtime.cycle_lock_is_held", lambda: False)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.request_manual_refresh",
+        lambda **kwargs: {"request_id": "req-1", "requested_at": "2099-01-01T00:00:00+00:00"},
+    )
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.get_live_refresh_status",
+        lambda: {"running": True, "refresh_state": "idle", "progress": {"refresh_state": "idle"}},
+    )
+    monkeypatch.setattr(
+        "src.autoresearch_settings.get_settings",
+        lambda: {"live_refresh": {"enabled": True, "tour": "pga"}},
+    )
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/live-refresh/refresh")
+    assert response.status_code == 202
+    body = response.json()
+    assert body["ok"] is True
+    assert body.get("accepted") is True
 
 
 def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):
@@ -241,6 +240,7 @@ def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):
         "upcoming_tournament": {"event_name": "Force Refresh Open", "diagnostics": {"state": "edges_available"}},
     }
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("src.runtime_paths.live_refresh_worker_owned", lambda: False)
     monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": generated_snapshot)
 

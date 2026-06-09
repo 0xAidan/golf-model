@@ -24,6 +24,7 @@ jobs:
         run: |
           python scripts/reliability_synthetic_check.py \
             --base-url "https://golf.ancc.blog" \
+            --expected-app-root "/opt/golf-model" \
             --timeout-seconds 10 \
             --max-root-ms 5000 \
             --max-api-ms 8000 \

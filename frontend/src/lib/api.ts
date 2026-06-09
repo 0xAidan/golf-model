@@ -177,6 +177,12 @@ export const api = {
       if (response.status === 409) {
         return { ...body, ok: false, busy: true }
       }
+      if (response.status === 202) {
+        return { ...body, ok: true, accepted: true }
+      }
+      if (response.status === 503) {
+        return { ...body, ok: false }
+      }
       if (!response.ok) {
         throw new Error(text || `Request failed: ${response.status}`)
       }

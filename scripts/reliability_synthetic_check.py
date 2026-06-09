@@ -60,11 +60,13 @@ def run_checks(
     max_root_ms: int,
     max_api_ms: int,
     max_snapshot_age_seconds: int,
+    expected_app_root: str,
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
     root_url = f"{base_url.rstrip('/')}/"
     status_url = f"{base_url.rstrip('/')}/api/live-refresh/status"
     snapshot_url = f"{base_url.rstrip('/')}/api/live-refresh/snapshot"
+    ops_health_url = f"{base_url.rstrip('/')}/api/ops/health"
 
     try:
         status_code, elapsed_ms = _http_get_status(root_url, timeout_seconds)
@@ -93,6 +95,50 @@ def run_checks(
                 elapsed_ms=int(timeout_seconds * 1000),
                 ok=False,
                 message=f"root request failed: {exc}",
+            )
+        )
+
+    try:
+        status_code, elapsed_ms, payload = _http_get_json(ops_health_url, timeout_seconds)
+        identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+        app_root = str(identity.get("app_root") or "")
+        split_brain = bool(payload.get("split_brain_suspected"))
+        ok = (
+            status_code == 200
+            and elapsed_ms <= max_api_ms
+            and payload.get("ok") is True
+            and not split_brain
+            and (not expected_app_root or app_root == expected_app_root)
+        )
+        message = (
+            f"ops_health returned {status_code} in {elapsed_ms}ms app_root={app_root} split_brain={split_brain}"
+            if ok
+            else (
+                "ops_health unhealthy: "
+                f"status={status_code} elapsed_ms={elapsed_ms} ok={payload.get('ok')} "
+                f"split_brain={split_brain} app_root={app_root} expected={expected_app_root}"
+            )
+        )
+        results.append(
+            CheckResult(
+                name="ops_health",
+                url=ops_health_url,
+                status_code=status_code,
+                elapsed_ms=elapsed_ms,
+                ok=ok,
+                message=message,
+                payload=payload,
+            )
+        )
+    except (error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+        results.append(
+            CheckResult(
+                name="ops_health",
+                url=ops_health_url,
+                status_code=None,
+                elapsed_ms=int(timeout_seconds * 1000),
+                ok=False,
+                message=f"ops_health request failed: {exc}",
             )
         )
 
@@ -135,17 +181,29 @@ def run_checks(
 
     try:
         status_code, elapsed_ms, payload = _http_get_json(snapshot_url, timeout_seconds)
-        age_seconds = _parse_generated_age_seconds(payload)
+        envelope_ok = payload.get("ok") is True
+        age_seconds = payload.get("age_seconds")
+        if age_seconds is None and isinstance(payload.get("snapshot"), dict):
+            age_seconds = _parse_generated_age_seconds(payload["snapshot"])
         age_ok = age_seconds is not None and age_seconds <= max_snapshot_age_seconds
         stale_reason = payload.get("stale_reason")
-        ok = status_code == 200 and elapsed_ms <= max_api_ms and age_ok
+        data_state = payload.get("data_state")
+        split_brain = data_state == "split_brain" or bool(payload.get("split_brain_suspected"))
+        ok = (
+            status_code == 200
+            and elapsed_ms <= max_api_ms
+            and envelope_ok
+            and age_ok
+            and not split_brain
+        )
         message = (
-            f"snapshot returned {status_code} in {elapsed_ms}ms (age_seconds={age_seconds})"
+            f"snapshot returned {status_code} in {elapsed_ms}ms (ok={envelope_ok}, age_seconds={age_seconds})"
             if ok
             else (
                 "snapshot unhealthy: "
                 f"status={status_code} elapsed_ms={elapsed_ms} threshold_ms={max_api_ms} "
-                f"age_seconds={age_seconds} max_age_seconds={max_snapshot_age_seconds} stale_reason={stale_reason}"
+                f"envelope_ok={envelope_ok} age_seconds={age_seconds} max_age_seconds={max_snapshot_age_seconds} "
+                f"data_state={data_state} stale_reason={stale_reason}"
             )
         )
         results.append(
@@ -156,7 +214,13 @@ def run_checks(
                 elapsed_ms=elapsed_ms,
                 ok=ok,
                 message=message,
-                payload={"generated_at": payload.get("generated_at"), "stale_reason": stale_reason},
+                payload={
+                    "ok": envelope_ok,
+                    "generated_at": payload.get("generated_at"),
+                    "age_seconds": age_seconds,
+                    "data_state": data_state,
+                    "stale_reason": stale_reason,
+                },
             )
         )
     except (error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
@@ -185,7 +249,16 @@ def main() -> int:
         default=2700,
         help="Max allowed snapshot staleness.",
     )
-    parser.add_argument("--output-json", default="", help="Optional path to write machine-readable results.")
+    parser.add_argument(
+        "--expected-app-root",
+        default="",
+        help="When set, ops health must report this app_root (e.g. /opt/golf-model).",
+    )
+    parser.add_argument(
+        "--smoke-local",
+        action="store_true",
+        help="CI/local mode: skip fresh snapshot envelope check (no production data required).",
+    )
     args = parser.parse_args()
 
     results = run_checks(
@@ -194,7 +267,10 @@ def main() -> int:
         max_root_ms=args.max_root_ms,
         max_api_ms=args.max_api_ms,
         max_snapshot_age_seconds=args.max_snapshot_age_seconds,
+        expected_app_root=args.expected_app_root.strip(),
     )
+    if args.smoke_local:
+        results = [r for r in results if r.name != "live_refresh_snapshot"]
     failures = [r for r in results if not r.ok]
     for result in results:
         marker = "OK" if result.ok else "FAIL"
