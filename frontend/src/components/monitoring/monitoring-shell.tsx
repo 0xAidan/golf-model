@@ -5,12 +5,10 @@ import {
   Activity,
   Beaker,
   FlaskConical,
-  GraduationCap,
   History,
   LayoutDashboard,
-  ListChecks,
   Menu,
-  Swords,
+  Settings2,
   Trophy,
   Users,
   X,
@@ -25,7 +23,7 @@ import type { WorkspaceId } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
-  id: WorkspaceId | "lab-picks"
+  id: WorkspaceId | "lab-picks" | "diagnostics-legacy"
   label: string
   href: string
   icon: ElementType
@@ -36,25 +34,18 @@ const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
 const PRIMARY_NAV: NavItem[] = [
   { id: "prediction", label: "Dashboard", href: "/", icon: LayoutDashboard, prefetch: true },
-  { id: "matchups", label: "Picks", href: "/matchups", icon: Swords },
   ...(COCKPIT_LAB_ENABLED
-    ? ([
-        { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true },
-        { id: "lab-picks", label: "Lab picks", href: "/lab/picks", icon: ListChecks },
-      ] as NavItem[])
+    ? ([{ id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true }] as NavItem[])
     : []),
   { id: "players", label: "Players", href: "/players", icon: Users, prefetch: true },
-]
-
-const RECORDS_NAV: NavItem[] = [
-  { id: "grading", label: "Grading", href: "/grading", icon: GraduationCap },
-  { id: "track-record", label: "Track Record", href: "/track-record", icon: Trophy },
+  { id: "grading", label: "Results", href: "/results", icon: Trophy, prefetch: true },
+  { id: "diagnostics", label: "System", href: "/system", icon: Settings2 },
 ]
 
 const RESEARCH_NAV: NavItem[] = [
   { id: "legacy-model", label: "Legacy Model", href: "/research/legacy-model", icon: History },
   { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
-  { id: "diagnostics", label: "Diagnostics", href: "/research/diagnostics", icon: Activity },
+  { id: "diagnostics-legacy", label: "Diagnostics (legacy)", href: "/research/diagnostics", icon: Activity },
 ]
 
 function LogoMark({ size = 28 }: { size?: number }) {
@@ -77,7 +68,7 @@ function LogoMark({ size = 28 }: { size?: number }) {
 
 function navTestId(id: NavItem["id"]) {
   if (id === "lab-board") return "nav-lab-board"
-  if (id === "lab-picks") return "nav-lab-picks"
+  if (id === "diagnostics-legacy") return "nav-diagnostics"
   return `nav-${id}`
 }
 
@@ -122,17 +113,12 @@ function MonitoringDrawerNav({
         <LogoMark />
         <div className="sidebar-logo-text">
           <span className="sidebar-logo-name">Golf Model</span>
-          <span className="sidebar-logo-sub">Monitoring</span>
+          <span className="sidebar-logo-sub">Golf Model</span>
         </div>
       </div>
 
-      <div className="sidebar-section-label">Workspace</div>
+      <div className="sidebar-section-label">Product</div>
       {PRIMARY_NAV.map((item) => (
-        <NavItemLink key={item.href} {...item} onPrefetch={onPrefetch} />
-      ))}
-
-      <div className="sidebar-section-label sidebar-section-label--spaced">Records</div>
-      {RECORDS_NAV.map((item) => (
         <NavItemLink key={item.href} {...item} onPrefetch={onPrefetch} />
       ))}
 

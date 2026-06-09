@@ -73,6 +73,22 @@ describe("App legacy route replay gating", () => {
     expect(screen.queryByText("Legacy matchups route unavailable in replay mode")).not.toBeInTheDocument()
   })
 
+  it("redirects /grading to /results", async () => {
+    renderAppAtRoute("/grading")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("results-page")).toBeInTheDocument()
+    })
+  })
+
+  it("renders /system health page", async () => {
+    renderAppAtRoute("/system")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-page")).toBeInTheDocument()
+    })
+  })
+
   it("keeps dashboard and lab grading records on separate sources", async () => {
     renderAppAtRoute("/lab")
 

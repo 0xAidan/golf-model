@@ -8,15 +8,16 @@ import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
   { id: "prediction", label: "Dashboard", path: "/" },
-  { id: "matchups", label: "Picks", path: "/matchups" },
   { id: "lab-board", label: "Lab", path: "/lab" },
-  { id: "lab-picks", label: "Lab picks", path: "/lab/picks" },
   { id: "players", label: "Players", path: "/players" },
-  { id: "grading", label: "Grading", path: "/grading" },
-  { id: "track-record", label: "Track record", path: "/track-record" },
+  { id: "grading", label: "Results", path: "/results" },
+  { id: "diagnostics", label: "System", path: "/system" },
+  { id: "matchups", label: "Picks (legacy)", path: "/matchups" },
+  { id: "lab-picks", label: "Lab picks (legacy)", path: "/lab/picks" },
+  { id: "track-record", label: "Track record (legacy)", path: "/track-record" },
   { id: "legacy-model", label: "Legacy model", path: "/research/legacy-model" },
   { id: "champion-challenger", label: "Champ / challenger", path: "/research/champion-challenger" },
-  { id: "diagnostics", label: "Diagnostics", path: "/research/diagnostics" },
+  { id: "diagnostics-legacy", label: "Diagnostics (legacy)", path: "/research/diagnostics" },
 ] as const
 
 export function CommandMenu({

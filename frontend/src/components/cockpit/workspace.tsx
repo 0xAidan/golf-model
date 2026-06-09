@@ -5,9 +5,12 @@ import { useViewportTier } from "@/hooks/use-viewport"
 import { cn } from "@/lib/utils"
 
 /* ── Three-column dashboard workspace — fixed grid, no drag handles.
-    Center uses CockpitResizableStack (tabbed boards); left rail uses vertical tabs. */
+    Center uses CockpitResizableStack (tabbed boards); left rail uses vertical tabs.
+    @deprecated Product command centers use ModelCommandLayout (`frontend/src/components/product/`).
+    Retained for unit tests and gradual migration only. */
 export type CockpitWorkspaceLayout = "columns" | "stack"
 
+/** @deprecated Use ModelCommandLayout for operator surfaces. */
 export function CockpitWorkspace({
   leftRail,
   center,

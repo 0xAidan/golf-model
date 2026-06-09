@@ -4,7 +4,17 @@ import { useSearchParams } from "react-router-dom"
 
 import { PlayerSpotlightPanel } from "@/components/cockpit/player-spotlight"
 import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
-import { CockpitModule, CockpitWorkspace } from "@/components/cockpit/workspace"
+import {
+  DiagnosticsFunnel,
+  EventCommandHeader,
+  ModelCommandLayout,
+  ModelCommandSection,
+  ModelFilterToolbar,
+  PlayerInsightDrawer,
+  ResultsPreview,
+  TrustStatusBanner,
+} from "@/components/product"
+import { buildLaneTrustState } from "@/features/model-workspace/use-lane-trust"
 import {
   buildCourseFeedModel,
   buildLeaderboardModel,
@@ -37,8 +47,8 @@ import {
 } from "./workspace-center-board"
 import { WorkspaceFullPicksPanel } from "./workspace-full-picks-panel"
 import { WorkspaceLeftRail } from "./workspace-left-rail"
-import { WorkspaceMacroKpis } from "./workspace-macro-kpis"
 import { HIGH_EV_FLOOR, LIVE_OPPORTUNITY_PIN_MS } from "./workspace-constants"
+import { TopPicksPipelineHint } from "./workspace-pipeline-hint"
 import type { PredictionWorkspacePageProps } from "./workspace-types"
 
 export function PredictionWorkspacePage({
@@ -416,41 +426,150 @@ export function PredictionWorkspacePage({
     />
   )
 
-  const leftRail = (
-    <WorkspaceLeftRail
-      predictionTab={predictionTab}
-      isNarrow={isNarrow}
-      pastReplay={pastReplay}
-      courseFeedMetrics={courseFeedModel.metrics}
-      courseFeedItems={courseFeedModel.feedItems}
-      displayAvailableBooks={pastReplay.displayAvailableBooks}
-      selectedBooks={selectedBooks}
-      onSelectedBooksChange={onSelectedBooksChange}
-      matchupSearch={matchupSearch}
-      onMatchupSearchChange={onMatchupSearchChange}
-      minEdge={minEdge}
-      onMinEdgeChange={onMinEdgeChange}
-    />
+  const lane = fullPicks?.mode === "lab" ? "lab" : "dashboard"
+  const laneTrust = buildLaneTrustState({
+    snapshotNotice,
+    displayPredictionRun,
+    diagnosticsState: activeSection?.diagnostics?.state,
+  })
+
+  const eventMeta = [
+    courseName,
+    fieldSize != null ? `${fieldSize} players` : null,
+    predictionTab === "live" ? "Live" : predictionTab === "upcoming" ? "Upcoming" : "Past replay",
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
+  const latestGradedEvent = gradingHistory[0] ?? null
+
+  const contextSection = (
+    <ModelCommandSection
+      id="context"
+      title="Context & filters"
+      description="Event replay, books, search, and course intel."
+    >
+      <ModelFilterToolbar
+        predictionTab={predictionTab}
+        selectedBooks={selectedBooks}
+        matchupSearch={matchupSearch}
+        minEdge={minEdge}
+      />
+      <div className="mt-4">
+        <WorkspaceLeftRail
+          predictionTab={predictionTab}
+          isNarrow={isNarrow}
+          pastReplay={pastReplay}
+          courseFeedMetrics={courseFeedModel.metrics}
+          courseFeedItems={courseFeedModel.feedItems}
+          displayAvailableBooks={pastReplay.displayAvailableBooks}
+          selectedBooks={selectedBooks}
+          onSelectedBooksChange={onSelectedBooksChange}
+          matchupSearch={matchupSearch}
+          onMatchupSearchChange={onMatchupSearchChange}
+          minEdge={minEdge}
+          onMinEdgeChange={onMinEdgeChange}
+        />
+      </div>
+    </ModelCommandSection>
   )
 
-  const rightRail = (
-    <CockpitModule
-      flex={3}
-      title="Player spotlight"
-      tone="accent"
-      emptyState={selectedPlayerKey ? undefined : "Click any player to open spotlight."}
+  const picksSection = (
+    <ModelCommandSection
+      id="picks"
+      title="Actionable plays"
+      description="+EV matchup picks and secondary markets for the active event."
+      variant="picks"
+      testId="model-section-picks"
     >
-      <PlayerSpotlightPanel
-        spotlight={spotlight}
-        player={selectedPlayer}
-        profile={selectedPlayerProfile}
-        profileState={playerProfileState}
-        profileErrorMessage={playerProfileErrorMessage}
-        onRetryProfile={onPlayerProfileRetry}
-        richProfilesEnabled={richProfilesEnabled}
-      />
-    </CockpitModule>
+      {renderCenterBoard("picks")}
+    </ModelCommandSection>
   )
+
+  const rankingsSection = (
+    <ModelCommandSection
+      id="rankings"
+      title={predictionTab === "past" ? "Pre-tee-off rankings" : "Power rankings"}
+      description={`${displayPlayers.length} players ranked by model`}
+      testId="model-section-rankings"
+    >
+      {renderCenterBoard("rankings")}
+    </ModelCommandSection>
+  )
+
+  const marketsSection = (
+    <ModelCommandSection
+      id="markets"
+      title="Secondary markets"
+      description="Top 10, top 20, and other +EV opportunities."
+      testId="model-section-markets"
+    >
+      {renderCenterBoard("secondary")}
+    </ModelCommandSection>
+  )
+
+  const leaderboardSection =
+    predictionTab !== "upcoming" ? (
+      <ModelCommandSection id="leaderboard" title="Leaderboard" description="Live scoring board.">
+        {renderCenterBoard("leaderboard")}
+      </ModelCommandSection>
+    ) : null
+
+  const fullPicksSection = (
+    <ModelCommandSection id="full-picks" title={fullPicksTabLabel} description="Full card export and logging.">
+      {renderCenterBoard("full-picks")}
+    </ModelCommandSection>
+  )
+
+  const diagnosticsSection = (
+    <ModelCommandSection
+      id="diagnostics"
+      title="Market diagnostics"
+      description="Why picks may be empty or filtered."
+    >
+      <TopPicksPipelineHint
+        diagnostics={activeSection?.diagnostics}
+        predictionTab={predictionTab}
+        minEdge={minEdge}
+        selectedBooksLength={selectedBooks.length}
+        matchupSearchTrimmed={matchupSearch.trim()}
+      />
+      <DiagnosticsFunnel
+        diagnostics={activeSection?.diagnostics}
+        emptyMessage={filteredTopPlays.length === 0 ? topPicksEmptyMessage : undefined}
+      />
+    </ModelCommandSection>
+  )
+
+  const resultsSection = (
+    <ModelCommandSection id="results" title="Results preview" description="Latest graded performance.">
+      <ResultsPreview
+        latestEvent={latestGradedEvent}
+        pickSourceLabel={lane === "lab" ? "Lab" : "Dashboard"}
+      />
+    </ModelCommandSection>
+  )
+
+  const mobileSections = [
+    { id: "picks", label: "Plays", badge: filteredTopPlays.length, content: picksSection },
+    { id: "rankings", label: "Rankings", content: rankingsSection },
+    { id: "markets", label: "Markets", badge: displaySecondaryBets.length || undefined, content: marketsSection },
+    ...(leaderboardSection
+      ? [{ id: "leaderboard", label: "Board", content: leaderboardSection }]
+      : []),
+    { id: "context", label: "Filters", content: contextSection, desktopOnly: false },
+  ]
+
+  const desktopSections = [
+    picksSection,
+    rankingsSection,
+    marketsSection,
+    ...(leaderboardSection ? [leaderboardSection] : []),
+    fullPicksSection,
+    diagnosticsSection,
+    contextSection,
+    resultsSection,
+  ]
 
   return (
     <div
@@ -482,108 +601,78 @@ export function PredictionWorkspacePage({
         pastReplayErrorMessage={pastReplay.pastReplayErrorMessage ?? "Replay API request failed."}
       />
 
-      <WorkspaceMacroKpis
-        eventName={eventName}
-        courseName={courseName}
-        fieldSize={fieldSize}
-        recordSummary={pastReplay.recordSummary}
-        isNarrow={isNarrow}
-      />
+      <div className="model-command-center">
+        <EventCommandHeader
+          lane={lane}
+          eventName={eventName}
+          meta={eventMeta}
+          kpis={[
+            {
+              id: "combined",
+              label: "Combined P&L",
+              value: String(pastReplay.recordSummary.combined.profit),
+              tone: pastReplay.recordSummary.combined.profit >= 0 ? "positive" : "negative",
+            },
+            {
+              id: "picks",
+              label: "+EV picks",
+              value: String(filteredTopPlays.length),
+            },
+            {
+              id: "field",
+              label: "Field",
+              value: fieldSize != null ? String(fieldSize) : "—",
+            },
+          ]}
+        />
 
-      {isNarrow ? (
-        <div className="workspace-filter-summary-row">
-          <span className="filter-summary-chip" data-testid="filter-summary-chip">
-            {selectedBooks.length > 0
-              ? `${selectedBooks.length} book${selectedBooks.length === 1 ? "" : "s"}`
-              : "All books"}
-            {" · "}
-            {(minEdge * 100).toFixed(0)}% min edge
-            {matchupSearch.trim() ? ` · “${matchupSearch.trim()}”` : ""}
-          </span>
-        </div>
-      ) : null}
+        {laneTrust ? (
+          <TrustStatusBanner tone={laneTrust.tone} title={laneTrust.title} message={laneTrust.message} />
+        ) : null}
 
-      <CockpitWorkspace
-        className="cockpit-fill"
-        layout={isNarrow ? "stack" : "columns"}
-        mobilePanels={
-          isNarrow
-            ? [
-                {
-                  id: "picks",
-                  label: "Picks",
-                  badge: filteredTopPlays.length,
-                  content: renderCenterBoard("picks"),
-                },
-                {
-                  id: "rankings",
-                  label: "Rankings",
-                  content: renderCenterBoard("rankings"),
-                },
-                {
-                  id: "markets",
-                  label: "Markets",
-                  badge: displaySecondaryBets.length || undefined,
-                  content: renderCenterBoard("secondary"),
-                },
-                ...(predictionTab !== "upcoming"
-                  ? [
-                      {
-                        id: "board",
-                        label: "Board",
-                        content: renderCenterBoard("leaderboard"),
-                      },
-                    ]
-                  : []),
-                {
-                  id: "full-picks",
-                  label: fullPicksTabLabel,
-                  content: renderCenterBoard("full-picks"),
-                },
-                {
-                  id: "intel",
-                  label: "Intel",
-                  content: leftRail,
-                },
-                {
-                  id: "player",
-                  label: "Player",
-                  content: rightRail,
-                },
-              ]
-            : undefined
-        }
-        leftRail={isNarrow ? null : leftRail}
-        center={
-          isNarrow ? (
-            showTeamEventNotice ? (
-              <div className="workspace-scroll-pane">
-                <TeamEventNotice
-                  eventName={eventName}
-                  courseName={courseName}
-                  mode={predictionTab === "live" ? "live" : "upcoming"}
-                />
-              </div>
-            ) : null
-          ) : (
-            <>
-              {showTeamEventNotice && (
-                <div className="workspace-scroll-pane">
-                  <TeamEventNotice
-                    eventName={eventName}
-                    courseName={courseName}
-                    mode={predictionTab === "live" ? "live" : "upcoming"}
-                  />
-                </div>
-              )}
-              {!showTeamEventNotice && (
-                <div className="cockpit-center-stack">{renderCenterBoard()}</div>
-              )}
-            </>
-          )
-        }
-        rightRail={isNarrow ? null : rightRail}
-      />
+        {showTeamEventNotice ? (
+          <TeamEventNotice
+            eventName={eventName}
+            courseName={courseName}
+            mode={predictionTab === "live" ? "live" : "upcoming"}
+          />
+        ) : null}
+
+        <ModelCommandLayout
+          defaultMobileSectionId="picks"
+          sections={
+            isNarrow
+              ? mobileSections.map((section) =>
+                  section.id === "rankings"
+                    ? { ...section, content: rankingsSection }
+                    : section,
+                )
+              : desktopSections.map((content, index) => ({
+                  id: `desktop-${index}`,
+                  label: "",
+                  content,
+                }))
+          }
+        />
+      </div>
+
+      <PlayerInsightDrawer
+        open={Boolean(selectedPlayerKey)}
+        onOpenChange={(open) => {
+          if (!open) onPlayerSelect("")
+        }}
+        playerName={selectedPlayer?.player_display}
+      >
+        <PlayerSpotlightPanel
+          spotlight={spotlight}
+          player={selectedPlayer}
+          profile={selectedPlayerProfile}
+          profileState={playerProfileState}
+          profileErrorMessage={playerProfileErrorMessage}
+          onRetryProfile={onPlayerProfileRetry}
+          richProfilesEnabled={richProfilesEnabled}
+        />
+      </PlayerInsightDrawer>
     </div>
   )
 }
