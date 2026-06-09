@@ -1,1 +1,0 @@
-import{lt as e,y as t}from"./macro-kpi-strip-H-8lb641.js";var n=e();function r({className:e,...r}){return(0,n.jsx)(`div`,{"data-slot":`skeleton`,className:t(`animate-pulse rounded-md bg-muted`,e),...r})}export{r as t};
