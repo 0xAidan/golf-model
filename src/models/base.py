@@ -138,16 +138,33 @@ def get_champion() -> BaseModel:
     return champion
 
 
+# Known challenger factories — lazily registered the first time they're requested via
+# config.CHALLENGERS, so callers don't need an explicit register_model() bootstrap.
+def _lazy_register_known(name: str) -> None:
+    if name in MODELS:
+        return
+    try:
+        if name == "lab_trial327":
+            from src.models.lab_challenger import LabChallengerModel
+
+            register_model(LabChallengerModel())
+    except Exception:
+        # Best-effort: a challenger that can't be constructed is simply skipped.
+        pass
+
+
 def iter_active_challengers() -> list[BaseModel]:
     """Return the BaseModel instances for every name in config.CHALLENGERS.
 
-    Names that are not registered are silently skipped (never break the
-    pipeline). Shadow evaluation is best-effort.
+    Names not yet registered are lazily registered from known factories, then any still
+    missing are silently skipped (never break the pipeline). Shadow eval is best-effort.
     """
     from src import config
 
     out: list[BaseModel] = []
     for name in config.CHALLENGERS:
+        if name not in MODELS:
+            _lazy_register_known(name)
         model = MODELS.get(name)
         if model is not None:
             out.append(model)
