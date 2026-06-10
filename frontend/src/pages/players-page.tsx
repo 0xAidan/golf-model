@@ -16,6 +16,7 @@ import {
 } from "@/components/charts-v2"
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
 import { PlayersKpiCell } from "@/components/players-kpi-cell"
+import { FieldBoardPanel } from "@/components/players/field-board-panel"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { EmptyState } from "@/components/ui/empty-state"
 import { HeroBand, HeroDataGrid } from "@/components/monitoring"
@@ -597,16 +598,19 @@ function PlayersEmptyPrompt() {
 
 export function PlayersPage({
   players,
+  initialPlayerKey,
 }: {
   players: CompositePlayer[]
+  initialPlayerKey?: string | null
   selectedPlayerProfile?: unknown
   onPlayerSelect?: (key: string) => void
   richProfilesEnabled?: boolean
 }) {
   const initialFromUrl =
-    typeof window !== "undefined"
+    initialPlayerKey ??
+    (typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("player")
-      : null
+      : null)
   const [selectedKey, setSelectedKey] = useState<string | null>(initialFromUrl)
   const [selectedDisplay, setSelectedDisplay] = useState<string>("")
   const trajectoryBounds = useMemo(() => computeSgTrajectoryBounds(players), [players])
@@ -653,6 +657,9 @@ export function PlayersPage({
           ) : null}
         </div>
       </HeroBand>
+      <div className="mb-4">
+        <FieldBoardPanel onSelect={handleSelect} />
+      </div>
       <div className="players-layout players-layout--full-width">
       <PlayerSearchSidebar
         activePlayers={players}

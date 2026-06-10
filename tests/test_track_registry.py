@@ -58,3 +58,57 @@ def test_get_tracks_endpoint(tmp_db):
     assert "tracks" in body
     assert "effective_config_hash" in body
     assert "history" in body
+
+
+def test_promote_and_rollback_round_trip(tmp_db):
+    """Promotion writes an auditable dashboard row with a parent; rollback restores it."""
+    track_registry.seed_default_tracks()
+    from src import db
+
+    # Promote with gates bypassed (gates require live graded data we don't have in the fixture).
+    result = track_registry.promote_track(from_track="lab", reason="unit test", require_gates=False)
+    assert result["ok"] is True
+    new_id = result["new_dashboard_id"]
+    parent_id = result["rolled_back_to_id_on_revert"]
+    assert parent_id is not None
+
+    conn = db.get_conn()
+    active = conn.execute(
+        "SELECT id, parent_id, activation_reason FROM track_configs WHERE track='dashboard' AND status='active'"
+    ).fetchone()
+    conn.close()
+    assert active["id"] == new_id
+    assert active["parent_id"] == parent_id
+    assert active["activation_reason"] == "unit test"
+
+    rollback = track_registry.rollback_track("dashboard")
+    assert rollback["ok"] is True
+    assert rollback["restored_id"] == parent_id
+
+    conn = db.get_conn()
+    active2 = conn.execute(
+        "SELECT id FROM track_configs WHERE track='dashboard' AND status='active'"
+    ).fetchone()
+    conn.close()
+    assert active2["id"] == parent_id
+
+
+def test_promote_endpoint_disabled_by_default(tmp_db, monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.config.TRACK_PROMOTION_ENABLED", False)
+    client = TestClient(app_module.app)
+    resp = client.post("/api/tracks/promote", json={"reason": "x"})
+    assert resp.status_code == 403
+
+
+def test_promotion_readiness_endpoint(tmp_db):
+    import app as app_module
+
+    client = TestClient(app_module.app)
+    resp = client.get("/api/tracks/promotion-readiness")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "gates" in body
+    assert "promotion_enabled" in body
+    assert body["passed"] is False  # no live/lab graded data in the fixture

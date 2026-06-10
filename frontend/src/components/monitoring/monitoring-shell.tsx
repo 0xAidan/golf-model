@@ -24,7 +24,7 @@ import type { WorkspaceId } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
-  id: WorkspaceId | "lab-picks" | "diagnostics-legacy" | "compare"
+  id: WorkspaceId | "lab-picks" | "diagnostics-legacy" | "compare" | "eval"
   label: string
   href: string
   icon: ElementType
@@ -39,6 +39,7 @@ const PRIMARY_NAV: NavItem[] = [
     ? ([
         { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true },
         { id: "compare", label: "Compare", href: "/compare", icon: GitCompare },
+        { id: "eval", label: "Eval", href: "/eval", icon: FlaskConical },
       ] as NavItem[])
     : []),
   { id: "players", label: "Players", href: "/players", icon: Users, prefetch: true },
