@@ -48,6 +48,48 @@ def _remove_pidfile(path: str) -> None:
         )
 
 
+def _pid_alive(pid: int) -> bool:
+    """True if a process with this pid exists (signal 0 probe)."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _clear_stale_pidfile(path: str) -> None:
+    """If a prior worker was SIGKILLed, its pidfile survives and would otherwise block the
+    dashboard's embedded-autostart guard / port-owner checks. Detect a pidfile pointing at a
+    dead process on startup and clear it (the finally-block handles clean/exception exits)."""
+    log = logging.getLogger("live_refresh_worker")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            existing = int((fh.read().strip() or "0"))
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError):
+        log.warning("Unreadable pidfile %s; clearing", path)
+        _remove_pidfile(path)
+        return
+    if existing == os.getpid():
+        return
+    if _pid_alive(existing):
+        log.warning(
+            "Pidfile %s points at a live process (pid %s); another worker may be running.",
+            path,
+            existing,
+        )
+        return
+    log.warning("Clearing stale pidfile %s (pid %s not alive)", path, existing)
+    _remove_pidfile(path)
+
+
 def _handle_signal(signum, _frame):
     global _shutdown
     _shutdown = True
@@ -70,6 +112,7 @@ def main() -> int:
     tour = str(live_cfg.get("tour", "pga"))
 
     pidfile = _pidfile_path()
+    _clear_stale_pidfile(pidfile)
     _write_pidfile(pidfile)
     try:
         start_live_refresh(tour=tour)
