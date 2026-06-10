@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-06-05 on `feat/monitoring-v3-complete`. `python3 -m pytest tests/ -v --tb=short` — 483 passed. Frontend: `npm run test` — 119 passed; `typecheck` / `build` / `bundle:budget` green. app.py: ~2940 lines. React 19 + Vite + TypeScript + Monitoring V3 shell.
+**Last verified:** 2026-06-10 on `program/engine-scale-wave-1`. `python3 -m pytest tests/` — 492 passed, 1 skipped. Frontend: `npm run test` — 121 passed (34 files); `typecheck` / `build` / `bundle:budget` / `test:a11y` green. app.py: ~4260 lines (decomposition into `src/routes/` tracked under the engine-scale program). React 19 + Vite + TypeScript + product command-center shell (PR #145).
 
 **Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
@@ -15,7 +15,7 @@
 - **What it is:** Quantitative golf betting system. Data Golf API → round-level SG data, predictions, odds. Composite model (course fit + form + momentum) scores players; value layer compares model vs market for EV; AI layer does qualitative analysis and persistent memory. Post-tournament: grade picks, calibration, weight nudges, AI learnings. Autoresearch system proposes, backtests, and promotes strategy changes autonomously.
 - **Stack:** Python 3.11+, SQLite (`data/golf.db`, gitignored, auto-created at runtime by `setup_wizard.py` or first pipeline run), FastAPI for API. Frontend: React 19 + Vite + TypeScript + Tailwind CSS + shadcn/ui (`frontend/`). Built to `frontend/dist/` and served by FastAPI at `/` — the React SPA is the sole UI.
 - **Key constraints:** Walk-forward backtesting only (no future data). Bootstrap phases (shadow → paper → cautious live → full live). Stopping rules and go-live gates in project charter. See section 8.
-- **CI:** GitHub Actions at `.github/workflows/ci.yml` — `test`, `lint`, `frontend`, `frontend-bundle-budget`, `frontend-a11y` (Playwright + axe on `/` and `/lab`), `frontend-visual-diff` (v3 screenshot matrix vs `docs/screenshots/ui-overhaul-v3/`), `backend-smoke`.
+- **CI:** GitHub Actions at `.github/workflows/ci.yml` — `test`, `lint`, `frontend`, `frontend-bundle-budget`, `frontend-a11y` (Playwright + axe on `/` and `/lab`), `frontend-visual-diff` (screenshot matrix vs `docs/screenshots/engine-scale-v1/` baseline — skips gracefully until that real-data baseline is captured; legacy `ui-overhaul-v3/` retained for history), `backend-smoke`. (The a11y/visual-diff/bundle-budget jobs were briefly removed in commit `f68d397` and restored in the engine-scale Wave 1 program.)
 
 ---
 

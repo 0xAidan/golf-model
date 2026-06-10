@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 
 import optuna
 from fastapi.testclient import TestClient
@@ -239,12 +240,17 @@ def test_output_latest_not_found(monkeypatch):
 def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
     import app as app_module
 
+    # Use a recent timestamp so the fail-closed staleness contract treats the
+    # snapshot as fresh; this test asserts that a *fresh* snapshot carrying a
+    # degraded pipeline state still surfaces a stale_reason while staying ok.
+    # (Previously hardcoded to 2026-04-06, which rotted into staleness.)
+    recent = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr(
         "backtester.dashboard_runtime.read_snapshot",
         lambda: {
-            "generated_at": "2026-04-06T00:00:00+00:00",
+            "generated_at": recent,
             "live_tournament": {
                 "ranking_source": "current_event_model_fallback",
                 "diagnostics": {"state": "pipeline_error"},
