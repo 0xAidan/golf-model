@@ -219,11 +219,13 @@ from src.routes.research import router as research_router
 from src.routes.model_registry import router as model_registry_router
 from src.routes.champion_challenger import router as champion_challenger_router
 from src.routes.data_health import router as data_health_router
+from src.routes.tracks import router as tracks_router
 
 app.include_router(research_router)
 app.include_router(model_registry_router)
 app.include_router(champion_challenger_router)
 app.include_router(data_health_router)
+app.include_router(tracks_router)
 
 
 @app.get("/api/ops/health")

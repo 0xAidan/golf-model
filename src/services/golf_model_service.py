@@ -1194,6 +1194,12 @@ class GolfModelService:
     ):
         """Persist every UI-displayed pick so grading has complete coverage."""
         comp_lookup = {row.get("player_key"): row for row in (composite or [])}
+        try:
+            from src.track_registry import compute_config_hash
+
+            config_hash = compute_config_hash(self.model_variant, self.strategy_config)
+        except Exception:
+            config_hash = None
         pick_rows: list[dict] = []
 
         for bet_type, bets in (value_bets or {}).items():
@@ -1235,6 +1241,7 @@ class GolfModelService:
                     "ev": bet.get("ev"),
                     "confidence": bet.get("confidence") or bet.get("tier"),
                     "reasoning": "; ".join(reasoning_parts) or None,
+                    "model_config_hash": config_hash,
                 })
 
         for bet in matchup_bets or []:
@@ -1270,6 +1277,7 @@ class GolfModelService:
                 "ev": bet.get("ev"),
                 "confidence": bet.get("tier"),
                 "reasoning": bet.get("why"),
+                "model_config_hash": config_hash,
             })
 
         # matchup_failed_candidates are diagnostics-only; not stored for grading.
