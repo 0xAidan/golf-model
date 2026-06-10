@@ -1027,3 +1027,75 @@ export type TracksResponse = {
   effective_config_hash: Partial<Record<"dashboard" | "lab", string | null>>
   history: TrackConfigRow[]
 }
+
+export type FieldBoardPlayer = {
+  player_key: string
+  player: string
+  champion_rank: number | null
+  challenger_rank: number | null
+  rank_delta: number | null
+  composite: number | null
+  course_fit: number | null
+  form: number | null
+  momentum: number | null
+  momentum_direction?: string | null
+  momentum_trend?: number | null
+  course_confidence?: number | null
+  finish_state?: string | null
+  leaderboard_position?: string | null
+  leaderboard_delta?: number | null
+  total_to_par?: number | null
+  form_flags?: string[]
+  matchup_count: number
+  in_positive_ev: boolean
+  sg?: Record<string, number | null> | null
+  has_sg: boolean
+}
+
+export type FieldBoardResponse = {
+  section: "live" | "upcoming" | string
+  event_name?: string | null
+  tournament_id?: number | null
+  generated_at?: string | null
+  snapshot_id?: string | null
+  lab_available: boolean
+  player_count: number
+  players: FieldBoardPlayer[]
+}
+
+export type PromotionGate = {
+  id: string
+  passed: boolean
+  detail: string
+}
+
+export type PromotionReadinessResponse = {
+  promotion_enabled: boolean
+  passed: boolean
+  gates: PromotionGate[]
+  metrics?: Record<string, unknown>
+  lab_graded_positive_ev?: number
+}
+
+export type TrackMetrics = {
+  n: number
+  graded_with_odds: number
+  wins: number
+  hit_rate_pct: number | null
+  roi_pct: number | null
+  pnl_units: number | null
+  brier: number | null
+  low_sample: boolean
+}
+
+export type TrackComparisonResponse = {
+  window: string
+  window_days: number
+  market?: string | null
+  book?: string | null
+  tracks: { cockpit: TrackMetrics; lab: TrackMetrics }
+  overlap: { both: number; cockpit_only: number; lab_only: number }
+  by_market: Record<string, Record<string, TrackMetrics>>
+  data_kind: string
+  note: string
+}

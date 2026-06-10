@@ -3,6 +3,9 @@ import type {
   ChampionChallengerSummary,
   ClvSummaryResponse,
   DashboardState,
+  FieldBoardResponse,
+  PromotionReadinessResponse,
+  TrackComparisonResponse,
   EventSummary,
   GradingHistoryResponse,
   LiveRefreshSnapshotResponse,
@@ -57,6 +60,24 @@ export const api = {
   getChampionChallengerSummary: () =>
     request<ChampionChallengerSummary>("/api/champion-challenger/summary"),
   getTracks: () => request<TracksResponse>("/api/tracks"),
+  getFieldBoard: (section: "auto" | "live" | "upcoming" = "auto") =>
+    request<FieldBoardResponse>(`/api/players/field-board?section=${section}`),
+  getPromotionReadiness: () =>
+    request<PromotionReadinessResponse>("/api/tracks/promotion-readiness"),
+  getTrackComparison: (window: "30d" | "90d" | "season" = "30d") =>
+    request<TrackComparisonResponse>(`/api/eval/track-comparison?window=${window}`),
+  promoteTrack: (body: { reason: string; from_track?: string }) =>
+    request<Record<string, unknown>>("/api/tracks/promote", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }),
+  rollbackTrack: (body: { track?: string } = {}) =>
+    request<Record<string, unknown>>("/api/tracks/rollback", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }),
   getDataHealth: (year = 2026) =>
     request<Record<string, unknown>>(`/api/data-health?year=${year}`),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
