@@ -5,6 +5,7 @@ import type {
   DashboardState,
   FieldBoardResponse,
   PromotionReadinessResponse,
+  TrackComparisonResponse,
   EventSummary,
   GradingHistoryResponse,
   LiveRefreshSnapshotResponse,
@@ -63,6 +64,8 @@ export const api = {
     request<FieldBoardResponse>(`/api/players/field-board?section=${section}`),
   getPromotionReadiness: () =>
     request<PromotionReadinessResponse>("/api/tracks/promotion-readiness"),
+  getTrackComparison: (window: "30d" | "90d" | "season" = "30d") =>
+    request<TrackComparisonResponse>(`/api/eval/track-comparison?window=${window}`),
   promoteTrack: (body: { reason: string; from_track?: string }) =>
     request<Record<string, unknown>>("/api/tracks/promote", {
       method: "POST",

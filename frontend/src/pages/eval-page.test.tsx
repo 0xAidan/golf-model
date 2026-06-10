@@ -9,6 +9,18 @@ const { apiMock } = vi.hoisted(() => ({
     getPromotionReadiness: vi.fn(),
     promoteTrack: vi.fn(),
     rollbackTrack: vi.fn(),
+    getTrackComparison: vi.fn(async () => ({
+      window: "30d",
+      window_days: 30,
+      tracks: {
+        cockpit: { n: 0, graded_with_odds: 0, wins: 0, hit_rate_pct: null, roi_pct: null, pnl_units: null, brier: null, low_sample: true },
+        lab: { n: 0, graded_with_odds: 0, wins: 0, hit_rate_pct: null, roi_pct: null, pnl_units: null, brier: null, low_sample: true },
+      },
+      overlap: { both: 0, cockpit_only: 0, lab_only: 0 },
+      by_market: {},
+      data_kind: "live_graded",
+      note: "Live graded only.",
+    })),
   },
 }))
 
@@ -31,6 +43,7 @@ describe("EvalPage promotion tab", () => {
       gates: [{ id: "charter_live_gates", passed: false, detail: "minimum_bets_not_met" }],
     })
     renderPage()
+    fireEvent.click(screen.getByTestId("eval-tab-promotion"))
     await waitFor(() =>
       expect(screen.getByTestId("promotion-gate-charter_live_gates")).toBeInTheDocument(),
     )
@@ -48,6 +61,7 @@ describe("EvalPage promotion tab", () => {
       ],
     })
     renderPage()
+    fireEvent.click(screen.getByTestId("eval-tab-promotion"))
     await waitFor(() => expect(screen.getByTestId("promotion-promote-btn")).toBeInTheDocument())
     // Still disabled with no reason/confirm.
     expect(screen.getByTestId("promotion-promote-btn")).toBeDisabled()
