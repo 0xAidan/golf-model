@@ -1076,3 +1076,26 @@ export type PromotionReadinessResponse = {
   metrics?: Record<string, unknown>
   lab_graded_positive_ev?: number
 }
+
+export type TrackMetrics = {
+  n: number
+  graded_with_odds: number
+  wins: number
+  hit_rate_pct: number | null
+  roi_pct: number | null
+  pnl_units: number | null
+  brier: number | null
+  low_sample: boolean
+}
+
+export type TrackComparisonResponse = {
+  window: string
+  window_days: number
+  market?: string | null
+  book?: string | null
+  tracks: { cockpit: TrackMetrics; lab: TrackMetrics }
+  overlap: { both: number; cockpit_only: number; lab_only: number }
+  by_market: Record<string, Record<string, TrackMetrics>>
+  data_kind: string
+  note: string
+}

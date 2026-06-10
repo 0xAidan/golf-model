@@ -488,4 +488,11 @@ def get_blend_weights(bet_type: str) -> tuple[float, float]:
 # logic. Default is empty: no challengers in main, so pipeline output is
 # byte-identical to the pre-rails baseline.
 CHAMPION: str = "v4.2"
-CHALLENGERS: list[str] = []
+# Engine-scale H-6: shadow-evaluate the promoted lab champion (trial 327) as a challenger
+# when LAB_CHALLENGER_SHADOW_ENABLED is set. Default empty so pipeline output stays
+# byte-identical to the pre-rails baseline (challenger output is never read by live code).
+CHALLENGERS: list[str] = (
+    ["lab_trial327"]
+    if os.environ.get("LAB_CHALLENGER_SHADOW_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    else []
+)

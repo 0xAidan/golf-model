@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, XCircle } from "lucide-react"
 
 import { HeroBand } from "@/components/monitoring"
+import { TrackBadge } from "@/components/product/track-badge"
 import { api } from "@/lib/api"
+import type { TrackMetrics } from "@/lib/types"
 
 const CONFIRM_PHRASE = "PROMOTE"
 
@@ -152,12 +154,90 @@ function PromotionTab() {
   )
 }
 
+function MetricCell({ label, value, suffix = "" }: { label: string; value: number | null; suffix?: string }) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">{label}</div>
+      <div className="num text-lg text-[var(--text-primary)]">
+        {value == null ? "—" : `${value}${suffix}`}
+      </div>
+    </div>
+  )
+}
+
+function TrackMetricsCard({ track, metrics }: { track: "dashboard" | "lab"; metrics?: TrackMetrics }) {
+  return (
+    <section className="card" data-testid={`track-metrics-${track}`}>
+      <div className="card-header flex items-center gap-2">
+        <TrackBadge track={track} />
+        {metrics?.low_sample ? (
+          <span className="text-xs text-[var(--amber,#d97706)]" data-testid={`low-sample-${track}`}>
+            low sample (n&lt;30)
+          </span>
+        ) : null}
+      </div>
+      <div className="card-body grid grid-cols-3 gap-3">
+        <MetricCell label="Bets" value={metrics?.n ?? null} />
+        <MetricCell label="Hit rate" value={metrics?.hit_rate_pct ?? null} suffix="%" />
+        <MetricCell label="ROI (1u)" value={metrics?.roi_pct ?? null} suffix="%" />
+        <MetricCell label="P/L (u)" value={metrics?.pnl_units ?? null} />
+        <MetricCell label="Brier" value={metrics?.brier ?? null} />
+        <MetricCell label="Wins" value={metrics?.wins ?? null} />
+      </div>
+    </section>
+  )
+}
+
+function TrackCompareTab() {
+  const [window, setWindow] = useState<"30d" | "90d" | "season">("30d")
+  const query = useQuery({
+    queryKey: ["track-comparison", window],
+    queryFn: () => api.getTrackComparison(window),
+    refetchInterval: 60_000,
+  })
+  const data = query.data
+  return (
+    <div className="flex flex-col gap-4" data-testid="eval-track-compare-tab">
+      <div className="flex items-center gap-2">
+        {(["30d", "90d", "season"] as const).map((w) => (
+          <button
+            key={w}
+            type="button"
+            className={`filter-chip${window === w ? " active" : ""}`}
+            onClick={() => setWindow(w)}
+            data-testid={`compare-window-${w}`}
+            aria-pressed={window === w}
+          >
+            {w}
+          </button>
+        ))}
+      </div>
+      <p className="text-sm text-[var(--text-secondary)]">{data?.note}</p>
+      <div className="grid gap-4 md:grid-cols-2">
+        <TrackMetricsCard track="dashboard" metrics={data?.tracks?.cockpit} />
+        <TrackMetricsCard track="lab" metrics={data?.tracks?.lab} />
+      </div>
+      <section className="card" data-testid="eval-overlap">
+        <div className="card-header">
+          <div className="card-title">Pick overlap</div>
+        </div>
+        <div className="card-body grid grid-cols-3 gap-3 text-center">
+          <MetricCell label="Both" value={data?.overlap?.both ?? null} />
+          <MetricCell label="Champion only" value={data?.overlap?.cockpit_only ?? null} />
+          <MetricCell label="Challenger only" value={data?.overlap?.lab_only ?? null} />
+        </div>
+      </section>
+    </div>
+  )
+}
+
 const TABS = [
+  { id: "compare", label: "Track compare" },
   { id: "promotion", label: "Promotion" },
 ] as const
 
 export function EvalPage() {
-  const [tab] = useState<(typeof TABS)[number]["id"]>("promotion")
+  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("compare")
   return (
     <div className="product-page" data-testid="eval-page">
       <HeroBand
@@ -165,7 +245,25 @@ export function EvalPage() {
         title="Eval"
         meta="Prove the challenger before promoting it. Champion vs challenger evidence and gated promotion."
       />
-      <div className="mt-4">{tab === "promotion" ? <PromotionTab /> : null}</div>
+      <div className="mt-4 flex gap-2" role="tablist" aria-label="Eval sections">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`filter-chip${tab === t.id ? " active" : ""}`}
+            onClick={() => setTab(t.id)}
+            data-testid={`eval-tab-${t.id}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4">
+        {tab === "promotion" ? <PromotionTab /> : null}
+        {tab === "compare" ? <TrackCompareTab /> : null}
+      </div>
     </div>
   )
 }
