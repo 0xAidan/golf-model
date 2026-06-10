@@ -222,6 +222,7 @@ from src.routes.data_health import router as data_health_router
 from src.routes.tracks import router as tracks_router
 from src.routes.field_board import router as field_board_router
 from src.routes.eval import router as eval_router
+from src.routes.ops import router as ops_router
 
 app.include_router(research_router)
 app.include_router(model_registry_router)
@@ -230,52 +231,7 @@ app.include_router(data_health_router)
 app.include_router(tracks_router)
 app.include_router(field_board_router)
 app.include_router(eval_router)
-
-
-@app.get("/api/ops/health")
-async def get_ops_health():
-    """Production identity, worker heartbeat, and split-brain diagnostics (non-secret)."""
-    from src.db import ensure_initialized
-    from src.runtime_paths import detect_split_brain, get_runtime_identity, read_heartbeat
-    from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
-
-    from src.runtime_health import recent_strategy_config_errors
-
-    ensure_initialized()
-    identity = get_runtime_identity()
-    heartbeat = read_heartbeat()
-    split = detect_split_brain(heartbeat=heartbeat)
-    snapshot = read_snapshot()
-    status = get_live_refresh_status()
-    generated_at = snapshot.get("generated_at") if isinstance(snapshot, dict) else None
-    strategy_config_errors = recent_strategy_config_errors()
-    ok = not split["split_brain_suspected"]
-    summary = "healthy" if ok else "split_brain_suspected"
-    if not heartbeat and identity.get("production"):
-        ok = False
-        summary = "worker_heartbeat_missing"
-    # Non-fatal but trust-relevant: a corrupt configured strategy silently fell back to
-    # default. Keep ok=True (the system still serves a safe strategy) but surface it.
-    if strategy_config_errors and summary == "healthy":
-        summary = "strategy_config_fallback"
-    return {
-        "ok": ok,
-        "summary": summary,
-        "identity": identity,
-        "heartbeat": heartbeat,
-        "split_brain_suspected": split["split_brain_suspected"],
-        "split_brain_reasons": split["reasons"],
-        "heartbeat_age_seconds": split["heartbeat_age_seconds"],
-        "strategy_config_errors": strategy_config_errors,
-        "live_refresh": {
-            "running": bool(status.get("running")),
-            "refresh_state": (status.get("progress") or {}).get("refresh_state"),
-            "phase": status.get("phase"),
-            "last_error": status.get("last_error"),
-            "snapshot_generated_at": generated_at,
-            "snapshot_age_seconds": status.get("snapshot_age_seconds"),
-        },
-    }
+app.include_router(ops_router)
 
 
 # Store last analysis in memory for the card page
