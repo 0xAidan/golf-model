@@ -63,6 +63,9 @@ const ResultsPage = lazy(() =>
 const SystemPage = lazy(() =>
   import("@/pages/system-page").then((mod) => ({ default: mod.SystemPage })),
 )
+const ComparePage = lazy(() =>
+  import("@/pages/compare-page").then((mod) => ({ default: mod.ComparePage })),
+)
 
 function RouteFallback() {
   return (
@@ -822,6 +825,7 @@ function AppContent({
       "/lab": "Lab",
       "/lab/picks": "Lab picks",
       "/players": "Players",
+      "/compare": "Track comparison",
       "/matchups": "Picks",
       "/results": "Results",
       "/system": "System",
@@ -937,6 +941,16 @@ function AppContent({
           }
         />
         <Route path="/matchups" element={<Navigate to="/?tab=full-picks" replace />} />
+        <Route
+          path="/compare"
+          element={
+            <div className="route-page-shell">
+              <Suspense fallback={<RouteFallback />}>
+                <ComparePage />
+              </Suspense>
+            </div>
+          }
+        />
         <Route
           path="/results"
           element={

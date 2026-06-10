@@ -18,6 +18,7 @@ import type {
   ResearchProposal,
   StandalonePlayerProfile,
   TrackRecordResponse,
+  TracksResponse,
 } from "@/lib/types"
 
 const JSON_HEADERS = {
@@ -55,6 +56,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 12000): 
 export const api = {
   getChampionChallengerSummary: () =>
     request<ChampionChallengerSummary>("/api/champion-challenger/summary"),
+  getTracks: () => request<TracksResponse>("/api/tracks"),
   getDataHealth: (year = 2026) =>
     request<Record<string, unknown>>(`/api/data-health?year=${year}`),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
