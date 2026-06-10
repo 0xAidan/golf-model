@@ -3,6 +3,7 @@ import type {
   ChampionChallengerSummary,
   ClvSummaryResponse,
   DashboardState,
+  FieldBoardResponse,
   EventSummary,
   GradingHistoryResponse,
   LiveRefreshSnapshotResponse,
@@ -57,6 +58,8 @@ export const api = {
   getChampionChallengerSummary: () =>
     request<ChampionChallengerSummary>("/api/champion-challenger/summary"),
   getTracks: () => request<TracksResponse>("/api/tracks"),
+  getFieldBoard: (section: "auto" | "live" | "upcoming" = "auto") =>
+    request<FieldBoardResponse>(`/api/players/field-board?section=${section}`),
   getDataHealth: (year = 2026) =>
     request<Record<string, unknown>>(`/api/data-health?year=${year}`),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),

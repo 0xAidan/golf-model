@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Route, Routes, Navigate, useLocation } from "react-router-dom"
+import { Route, Routes, Navigate, useLocation, useParams } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
 import { toast } from "sonner"
 
@@ -25,7 +25,7 @@ import {
 } from "@/lib/prediction-board"
 import { POLLING } from "@/lib/query-polling"
 import { useLocalStorageState } from "@/lib/storage"
-import type { FlattenedSecondaryBet, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
+import type { CompositePlayer, FlattenedSecondaryBet, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
 import { InteractionProvider, useInteraction } from "@/providers/interaction-provider"
 import { LiveSnapshotProvider, useLiveSnapshot } from "@/providers/live-snapshot-provider"
 import { CockpitLabPage } from "@/pages/cockpit-lab-page"
@@ -66,6 +66,12 @@ const SystemPage = lazy(() =>
 const ComparePage = lazy(() =>
   import("@/pages/compare-page").then((mod) => ({ default: mod.ComparePage })),
 )
+
+/** Deep-link wrapper: /players/:playerKey renders PlayersPage focused on that player. */
+function PlayersDeepLink({ players }: { players: CompositePlayer[] }) {
+  const { playerKey } = useParams<{ playerKey: string }>()
+  return <PlayersPage key={playerKey} players={players} initialPlayerKey={playerKey ?? null} />
+}
 
 function RouteFallback() {
   return (
@@ -836,7 +842,12 @@ function AppContent({
       "/research/diagnostics": "Diagnostics",
     }
     const primary =
-      routePrimary[path] ?? (path.startsWith("/cockpit-lab") ? "Lab" : suffix)
+      routePrimary[path] ??
+      (path.startsWith("/players/")
+        ? "Player profile"
+        : path.startsWith("/cockpit-lab")
+            ? "Lab"
+            : suffix)
     document.title = primary === suffix ? suffix : `${primary} · ${suffix}`
   }, [location.pathname, shellEventName])
 
@@ -936,6 +947,16 @@ function AppContent({
             <div className="route-page-shell">
               <Suspense fallback={<RouteFallback />}>
                 <PlayersPage players={players} />
+              </Suspense>
+            </div>
+          }
+        />
+        <Route
+          path="/players/:playerKey"
+          element={
+            <div className="route-page-shell">
+              <Suspense fallback={<RouteFallback />}>
+                <PlayersDeepLink players={players} />
               </Suspense>
             </div>
           }

@@ -1027,3 +1027,38 @@ export type TracksResponse = {
   effective_config_hash: Partial<Record<"dashboard" | "lab", string | null>>
   history: TrackConfigRow[]
 }
+
+export type FieldBoardPlayer = {
+  player_key: string
+  player: string
+  champion_rank: number | null
+  challenger_rank: number | null
+  rank_delta: number | null
+  composite: number | null
+  course_fit: number | null
+  form: number | null
+  momentum: number | null
+  momentum_direction?: string | null
+  momentum_trend?: number | null
+  course_confidence?: number | null
+  finish_state?: string | null
+  leaderboard_position?: string | null
+  leaderboard_delta?: number | null
+  total_to_par?: number | null
+  form_flags?: string[]
+  matchup_count: number
+  in_positive_ev: boolean
+  sg?: Record<string, number | null> | null
+  has_sg: boolean
+}
+
+export type FieldBoardResponse = {
+  section: "live" | "upcoming" | string
+  event_name?: string | null
+  tournament_id?: number | null
+  generated_at?: string | null
+  snapshot_id?: string | null
+  lab_available: boolean
+  player_count: number
+  players: FieldBoardPlayer[]
+}
