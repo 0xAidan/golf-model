@@ -39,6 +39,20 @@ PAIR_MATCHUP_V1: bool = os.environ.get("PAIR_MATCHUP_V1", "").strip().lower() in
 )
 
 # ---------------------------------------------------------------------------
+# Track promotion (engine-scale): gate the challenger->champion promotion workflow.
+# Default OFF. When off, the promotion/rollback API records intent only if explicitly
+# called, but the endpoints are disabled to prevent accidental dashboard changes during
+# soak. Flipping a promotion live still requires the documented COCKPIT_SNAPSHOT_MODEL_VARIANT
+# / profile change per docs/research/LAB_PROMOTION_GATES.md.
+# ---------------------------------------------------------------------------
+TRACK_PROMOTION_ENABLED: bool = os.environ.get("TRACK_PROMOTION_ENABLED", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+# ---------------------------------------------------------------------------
 # Value / EV / blend (from value.py)
 # ---------------------------------------------------------------------------
 # Default EV threshold; override via env EV_THRESHOLD

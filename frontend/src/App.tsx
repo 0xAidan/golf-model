@@ -66,6 +66,9 @@ const SystemPage = lazy(() =>
 const ComparePage = lazy(() =>
   import("@/pages/compare-page").then((mod) => ({ default: mod.ComparePage })),
 )
+const EvalPage = lazy(() =>
+  import("@/pages/eval-page").then((mod) => ({ default: mod.EvalPage })),
+)
 
 /** Deep-link wrapper: /players/:playerKey renders PlayersPage focused on that player. */
 function PlayersDeepLink({ players }: { players: CompositePlayer[] }) {
@@ -832,6 +835,7 @@ function AppContent({
       "/lab/picks": "Lab picks",
       "/players": "Players",
       "/compare": "Track comparison",
+      "/eval": "Eval",
       "/matchups": "Picks",
       "/results": "Results",
       "/system": "System",
@@ -968,6 +972,16 @@ function AppContent({
             <div className="route-page-shell">
               <Suspense fallback={<RouteFallback />}>
                 <ComparePage />
+              </Suspense>
+            </div>
+          }
+        />
+        <Route
+          path="/eval"
+          element={
+            <div className="route-page-shell">
+              <Suspense fallback={<RouteFallback />}>
+                <EvalPage />
               </Suspense>
             </div>
           }

@@ -4,6 +4,7 @@ import type {
   ClvSummaryResponse,
   DashboardState,
   FieldBoardResponse,
+  PromotionReadinessResponse,
   EventSummary,
   GradingHistoryResponse,
   LiveRefreshSnapshotResponse,
@@ -60,6 +61,20 @@ export const api = {
   getTracks: () => request<TracksResponse>("/api/tracks"),
   getFieldBoard: (section: "auto" | "live" | "upcoming" = "auto") =>
     request<FieldBoardResponse>(`/api/players/field-board?section=${section}`),
+  getPromotionReadiness: () =>
+    request<PromotionReadinessResponse>("/api/tracks/promotion-readiness"),
+  promoteTrack: (body: { reason: string; from_track?: string }) =>
+    request<Record<string, unknown>>("/api/tracks/promote", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }),
+  rollbackTrack: (body: { track?: string } = {}) =>
+    request<Record<string, unknown>>("/api/tracks/rollback", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }),
   getDataHealth: (year = 2026) =>
     request<Record<string, unknown>>(`/api/data-health?year=${year}`),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),

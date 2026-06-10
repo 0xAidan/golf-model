@@ -1062,3 +1062,17 @@ export type FieldBoardResponse = {
   player_count: number
   players: FieldBoardPlayer[]
 }
+
+export type PromotionGate = {
+  id: string
+  passed: boolean
+  detail: string
+}
+
+export type PromotionReadinessResponse = {
+  promotion_enabled: boolean
+  passed: boolean
+  gates: PromotionGate[]
+  metrics?: Record<string, unknown>
+  lab_graded_positive_ev?: number
+}
