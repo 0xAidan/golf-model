@@ -1,6 +1,6 @@
 # Golf Model Recovery Defect Register
 
-Last updated: 2026-04-28
+Last updated: 2026-06-10 (engine-scale Wave 1 PR 1b defect burn-down)
 
 This register captures the full-codebase unknown-issue sweep for the recovery program.
 Priorities are scoped to this project's trust goals (correct picks, reliable live runtime, safe deploy).
@@ -22,21 +22,32 @@ Priorities are scoped to this project's trust goals (correct picks, reliable liv
 
 ## P1 (high)
 
-1. Silent fallback to default strategy when active strategy JSON parsing fails. **OPEN**
-   - Files: `backtester/experiments.py`, `backtester/model_registry.py`
+1. **FIXED** (Wave 1 PR 1b) — Silent fallback to default strategy when active strategy JSON parsing fails.
+   - Files: `backtester/experiments.py`, `backtester/model_registry.py`, `src/runtime_health.py`, `app.py`
+   - Resolution: both parse-failure sites (`experiments.get_active_strategy`, `model_registry._strategy_from_json`) now record a non-fatal degradation into `src/runtime_health.py`. `GET /api/ops/health` surfaces `strategy_config_errors` and flips its summary to `strategy_config_fallback` (still `ok=True` — a safe default strategy is served, but the fallback is no longer invisible). Test: `tests/test_runtime_health.py`.
 2. **FIXED** — Non-atomic live snapshot writes could produce torn JSON reads (defect 2.3.6; PR `fix/atomic-snapshot-writes`).
    - Files: `backtester/dashboard_runtime.py`, `src/atomic_io.py`
    - Resolution: snapshot writes go through `src.atomic_io.atomic_write_json`, which writes to a sibling temp file in the same directory, fsyncs, then `os.replace`s onto the final path and fsyncs the parent directory. A mid-write crash leaves either the previous file or no file — never a partial/corrupt one. Tests in `tests/test_atomic_io.py` cover happy path, mid-write failure preservation, and concurrent writers.
-3. Dashboard runtime launched with `--reload` in production. **OPEN**
-   - Files: `start.py`, `deploy.sh`
-4. Picks insert path can violate unique constraint on reruns. **OPEN**
-   - Files: `app.py`, `src/db.py`
-5. Critical run metadata logging failures swallowed silently. **OPEN**
-   - Files: `src/services/golf_model_service.py`
-6. Live rankings field enforcement still allows invalid rows and permissive fallbacks. **OPEN**
+3. **FIXED** (Wave 1 PR 1b) — Dashboard runtime could launch with `--reload` in production.
+   - Files: `start.py`, `tests/test_start_research.py`
+   - Resolution: `cmd_dashboard` (the production systemd path) already defaulted reload OFF (opt-in via `UVICORN_RELOAD`). Added a production guard that suppresses `--reload` even if `UVICORN_RELOAD=1` leaks into a prod `.env`, detected via `LIVE_REFRESH_WORKER_OWNED=1` / `GOLF_APP_ROOT=/opt/golf-model`. Tests: `test_cmd_dashboard_suppresses_reload_in_production`, `test_cmd_dashboard_allows_reload_in_dev`.
+4. **FIXED** (Wave 1 PR 1b) — Picks insert path could violate unique constraint on reruns.
+   - Files: `src/db.py`, `tests/test_db.py`
+   - Resolution: verified-closed. Both pick writers (`GolfModelService._store_displayed_picks`, `persist_lab_logged_picks`) route through `db.store_picks`, which uses `INSERT OR IGNORE` against `idx_picks_unique`. Extended `test_store_picks_dedupes_within_lane_but_allows_cross_lane` to assert repeated separate-call reruns stay idempotent and never raise.
+5. **FIXED** (Wave 1 PR 1b) — Critical run metadata logging failures swallowed silently.
+   - Files: `src/services/golf_model_service.py`, `src/runtime_health.py`
+   - Resolution: `_log_run` now attaches `result["run_logging_error"]` (visible to API callers) and records a `run_logging_error` degradation in `runtime_health`, instead of only emitting a log line.
+6. Live rankings field enforcement still allows invalid rows and permissive fallbacks. **OPEN — deferred from Wave 1 PR 1b (deliberate).**
    - Files: `src/db.py`, `src/field_selection.py`
-7. Frontend hides query failures and stale/fallback snapshot state. **PARTIAL** (Q5 snapshot-age chip landed; per-query error surfacing still pending).
+   - Note: tightening field enforcement to fail-closed risks emptying live boards if mis-scoped, which conflicts with the "do not break live boards" non-negotiable. Deferred to a dedicated change with a representative-field regression fixture rather than a blind tightening.
+7. Frontend hides query failures and stale/fallback snapshot state. **PARTIAL** (Q5 snapshot-age chip landed; per-query error surfacing still pending — carried forward, not addressed in PR 1b).
    - Files: `frontend/src/App.tsx`, `frontend/src/lib/types.ts`
+8. **FIXED** (Wave 1 PR 1b) — Book filter (restrict visible plays to selected sportsbooks) regressed out of reach in the PR #145 rebuild (operator-reported).
+   - Files: `frontend/src/components/product/model-filter-toolbar.tsx`, `frontend/src/lib/prediction-board.ts`, `frontend/src/components/monitoring/dashboard/prediction-workspace-page.tsx`, `frontend/src/App.tsx`
+   - Resolution: `ModelFilterToolbar` is now interactive (book chips + min-edge + player search) and renders directly with the Actionable plays section on `/` and `/lab`, not buried in a non-default tab. Available books are sourced via `collectBooksForFilter` (union of run rows + snapshot `diagnostics.books_seen`, falling back to `SUPPORTED_BOOKS`) so chips render even with zero qualifying edges. Filtering logic was already intact. Tests: `frontend/src/components/product/model-filter-toolbar.test.tsx`.
+9. **FIXED** (Wave 1 PR 1b) — Two API routes (`/api/players/{key}/standalone-profile`, `/api/players/search`) and the startup cache warmer were defined *after* the `if __name__ == "__main__"` block in `app.py`, so they never registered under `python3 app.py` (the documented dev entry) — silently 404ing.
+   - Files: `app.py`, `tests/test_simple_dashboard.py`
+   - Resolution: moved the `__main__`/`uvicorn.run` block to the end of the module. Guard test `test_late_registered_player_routes_are_registered` asserts both routes are registered.
 
 ## P2 (medium)
 

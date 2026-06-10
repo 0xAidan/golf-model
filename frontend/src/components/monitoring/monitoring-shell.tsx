@@ -5,6 +5,7 @@ import {
   Activity,
   Beaker,
   FlaskConical,
+  GitCompare,
   History,
   LayoutDashboard,
   Menu,
@@ -23,7 +24,7 @@ import type { WorkspaceId } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
-  id: WorkspaceId | "lab-picks" | "diagnostics-legacy"
+  id: WorkspaceId | "lab-picks" | "diagnostics-legacy" | "compare"
   label: string
   href: string
   icon: ElementType
@@ -35,7 +36,10 @@ const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 const PRIMARY_NAV: NavItem[] = [
   { id: "prediction", label: "Dashboard", href: "/", icon: LayoutDashboard, prefetch: true },
   ...(COCKPIT_LAB_ENABLED
-    ? ([{ id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true }] as NavItem[])
+    ? ([
+        { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true },
+        { id: "compare", label: "Compare", href: "/compare", icon: GitCompare },
+      ] as NavItem[])
     : []),
   { id: "players", label: "Players", href: "/players", icon: Users, prefetch: true },
   { id: "grading", label: "Results", href: "/results", icon: Trophy, prefetch: true },

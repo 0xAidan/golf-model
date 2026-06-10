@@ -51,11 +51,15 @@ def run_lab_snapshot_analysis(
     except TypeError:
         service = GolfModelService(tour=_sanitize_tour(tour), strategy_config=pipeline_cfg)
 
+    from src.track_registry import compute_config_hash
+
     strategy_meta = {
         "strategy_source": "lab_champion",
         "strategy_name": strategy.name or "lab_champion",
         "strategy_record_id": None,
         "model_variant": resolved_variant,
+        "track": "lab",
+        "config_hash": compute_config_hash(resolved_variant, pipeline_cfg),
         **lab_champion_meta(path=champion_path),
     }
     result = service.run_analysis(
@@ -98,6 +102,8 @@ def run_snapshot_analysis(
     if resolved_variant not in config.ALLOWED_MODEL_VARIANTS:
         resolved_variant = config.DEFAULT_MODEL_VARIANT
 
+    from src.track_registry import compute_config_hash
+
     strategy, strategy_meta = resolve_runtime_strategy("global")
     pipeline_cfg = build_pipeline_strategy_config(strategy)
     try:
@@ -111,6 +117,8 @@ def run_snapshot_analysis(
         service = GolfModelService(tour=_sanitize_tour(tour), strategy_config=pipeline_cfg)
     strategy_meta = dict(strategy_meta or {})
     strategy_meta["model_variant"] = resolved_variant
+    strategy_meta["track"] = "dashboard"
+    strategy_meta["config_hash"] = compute_config_hash(resolved_variant, pipeline_cfg)
     result = service.run_analysis(
         event_id=event_id,
         tournament_name=tournament_name,

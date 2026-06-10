@@ -443,6 +443,8 @@ export function PredictionWorkspacePage({
 
   const latestGradedEvent = gradingHistory[0] ?? null
 
+  const toolbarBooks = predictionTab === "past" ? pastReplay.displayAvailableBooks : availableBooks
+
   const contextSection = (
     <ModelCommandSection
       id="context"
@@ -451,6 +453,7 @@ export function PredictionWorkspacePage({
     >
       <ModelFilterToolbar
         predictionTab={predictionTab}
+        availableBooks={toolbarBooks}
         selectedBooks={selectedBooks}
         matchupSearch={matchupSearch}
         minEdge={minEdge}
@@ -482,6 +485,18 @@ export function PredictionWorkspacePage({
       variant="picks"
       testId="model-section-picks"
     >
+      <div className="mb-3">
+        <ModelFilterToolbar
+          predictionTab={predictionTab}
+          availableBooks={toolbarBooks}
+          selectedBooks={selectedBooks}
+          onSelectedBooksChange={onSelectedBooksChange}
+          matchupSearch={matchupSearch}
+          onMatchupSearchChange={onMatchupSearchChange}
+          minEdge={minEdge}
+          onMinEdgeChange={onMinEdgeChange}
+        />
+      </div>
       {renderCenterBoard("picks")}
     </ModelCommandSection>
   )

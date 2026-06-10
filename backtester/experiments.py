@@ -334,8 +334,18 @@ def get_active_strategy(scope: str = "global") -> Optional[StrategyConfig]:
         if row and row[0]:
             try:
                 return StrategyConfig.from_json(row[0])
-            except Exception:
+            except Exception as exc:
                 logger.warning("Failed to parse active strategy JSON for scope=%s", scope, exc_info=True)
+                try:
+                    from src.runtime_health import record_strategy_config_error
+
+                    record_strategy_config_error(
+                        scope=scope,
+                        source="active_strategy",
+                        message=f"Active strategy JSON failed to parse; using default strategy. {exc}",
+                    )
+                except Exception:
+                    pass
         return StrategyConfig()  # Return default
     finally:
         conn.close()

@@ -711,6 +711,25 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        -- Engine-scale: one row per active config for each model track (dashboard champion,
+        -- lab challenger). Read-only/provenance in Wave 1; the promotion/rollback workflow
+        -- (parent_id chain, evidence_json) is wired in a later wave. config_hash gives stable
+        -- per-epoch attribution joined from picks.model_config_hash.
+        CREATE TABLE IF NOT EXISTS track_configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track TEXT NOT NULL,                       -- 'dashboard' | 'lab'
+            strategy_bundle_json TEXT NOT NULL,
+            model_variant TEXT,
+            config_hash TEXT NOT NULL,
+            label TEXT,
+            status TEXT NOT NULL DEFAULT 'active',     -- 'active' | 'retired'
+            parent_id INTEGER REFERENCES track_configs(id),
+            evidence_json TEXT,
+            activated_by TEXT DEFAULT 'seed',
+            activation_reason TEXT,
+            activated_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS live_model_registry (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             scope TEXT NOT NULL DEFAULT 'global',
@@ -1001,6 +1020,12 @@ def _run_migrations(conn: sqlite3.Connection):
         conn.execute("SELECT market_book FROM picks LIMIT 1")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE picks ADD COLUMN market_book TEXT")
+        conn.commit()
+    # Engine-scale: per-pick config provenance (which track config epoch produced it).
+    try:
+        conn.execute("SELECT model_config_hash FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN model_config_hash TEXT")
         conn.commit()
     conn.execute("UPDATE picks SET model_variant = 'baseline' WHERE model_variant IS NULL OR TRIM(model_variant) = ''")
     conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
@@ -1615,6 +1640,7 @@ def store_picks(picks: list[dict]):
             "ev": pick.get("ev"),
             "confidence": pick.get("confidence"),
             "reasoning": pick.get("reasoning"),
+            "model_config_hash": pick.get("model_config_hash"),
         })
     conn = get_conn()
     conn.executemany(
@@ -1623,12 +1649,12 @@ def store_picks(picks: list[dict]):
             opponent_key, opponent_display,
             composite_score, course_fit_score, form_score, momentum_score,
             model_prob, market_odds, market_book, market_implied_prob, ev,
-            confidence, reasoning)
+            confidence, reasoning, model_config_hash)
            VALUES (:tournament_id, :model_variant, :source, :bet_type, :player_key, :player_display,
                     :opponent_key, :opponent_display,
                     :composite_score, :course_fit_score, :form_score, :momentum_score,
                     :model_prob, :market_odds, :market_book, :market_implied_prob, :ev,
-                    :confidence, :reasoning)""",
+                    :confidence, :reasoning, :model_config_hash)""",
         normalized_rows,
     )
     conn.commit()

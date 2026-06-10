@@ -1194,6 +1194,12 @@ class GolfModelService:
     ):
         """Persist every UI-displayed pick so grading has complete coverage."""
         comp_lookup = {row.get("player_key"): row for row in (composite or [])}
+        try:
+            from src.track_registry import compute_config_hash
+
+            config_hash = compute_config_hash(self.model_variant, self.strategy_config)
+        except Exception:
+            config_hash = None
         pick_rows: list[dict] = []
 
         for bet_type, bets in (value_bets or {}).items():
@@ -1235,6 +1241,7 @@ class GolfModelService:
                     "ev": bet.get("ev"),
                     "confidence": bet.get("confidence") or bet.get("tier"),
                     "reasoning": "; ".join(reasoning_parts) or None,
+                    "model_config_hash": config_hash,
                 })
 
         for bet in matchup_bets or []:
@@ -1270,6 +1277,7 @@ class GolfModelService:
                 "ev": bet.get("ev"),
                 "confidence": bet.get("tier"),
                 "reasoning": bet.get("why"),
+                "model_config_hash": config_hash,
             })
 
         # matchup_failed_candidates are diagnostics-only; not stored for grading.
@@ -1416,8 +1424,18 @@ class GolfModelService:
                 )
                 conn.commit()
             conn.close()
-        except Exception:
+        except Exception as exc:
             logger.warning("Run metadata logging failed", exc_info=True)
+            # Defect P1-5: don't swallow silently. Surface on the result dict (visible to
+            # API callers) and in the runtime-health buffer so it isn't invisible.
+            if isinstance(result, dict):
+                result["run_logging_error"] = str(exc)
+            try:
+                from src.runtime_health import record_run_logging_error
+
+                record_run_logging_error(source="runs_table", message=str(exc))
+            except Exception:
+                pass
 
     def _resolve_strategy(self) -> tuple | None:
         """Resolve strategy using shared registry chain (live -> research -> active -> default)."""

@@ -18,7 +18,7 @@ import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { formatDateTime } from "@/lib/format"
 import {
   buildHydratedPredictionRun,
-  collectAvailableBooks,
+  collectBooksForFilter,
   flattenSecondaryBets,
   NON_BOOK_SOURCES,
   normalizeSportsbook,
@@ -62,6 +62,9 @@ const ResultsPage = lazy(() =>
 )
 const SystemPage = lazy(() =>
   import("@/pages/system-page").then((mod) => ({ default: mod.SystemPage })),
+)
+const ComparePage = lazy(() =>
+  import("@/pages/compare-page").then((mod) => ({ default: mod.ComparePage })),
 )
 
 function RouteFallback() {
@@ -222,13 +225,16 @@ function AppContent({
     [selectedBooks],
   )
   const selectedBookSet = useMemo(() => new Set(normalizedSelectedBooks), [normalizedSelectedBooks])
-  const availableBooks = useMemo(() => collectAvailableBooks(visiblePredictionRun), [visiblePredictionRun])
   const prodProfileSection =
     predictionTab === "upcoming"
       ? liveSnapshot?.upcoming_tournament
       : predictionTab === "live"
           ? liveSnapshot?.live_tournament
           : null
+  const availableBooks = useMemo(
+    () => collectBooksForFilter(visiblePredictionRun, prodProfileSection?.diagnostics?.books_seen),
+    [visiblePredictionRun, prodProfileSection?.diagnostics?.books_seen],
+  )
   const profileSection =
     labRouteActive && labDisplaySnapshot
       ? predictionTab === "upcoming"
@@ -708,7 +714,14 @@ function AppContent({
       snapshotAgeSeconds,
       predictionTab,
       onPredictionTabChange: setPredictionTab,
-      availableBooks: collectAvailableBooks(labVisiblePredictionRun),
+      availableBooks: collectBooksForFilter(
+        labVisiblePredictionRun,
+        (predictionTab === "upcoming"
+          ? labDisplaySnapshot?.upcoming_tournament
+          : predictionTab === "live"
+              ? labDisplaySnapshot?.live_tournament
+              : null)?.diagnostics?.books_seen,
+      ),
       selectedBooks: normalizedSelectedBooks,
       onSelectedBooksChange: setSelectedBooks,
       matchupSearch,
@@ -812,6 +825,7 @@ function AppContent({
       "/lab": "Lab",
       "/lab/picks": "Lab picks",
       "/players": "Players",
+      "/compare": "Track comparison",
       "/matchups": "Picks",
       "/results": "Results",
       "/system": "System",
@@ -927,6 +941,16 @@ function AppContent({
           }
         />
         <Route path="/matchups" element={<Navigate to="/?tab=full-picks" replace />} />
+        <Route
+          path="/compare"
+          element={
+            <div className="route-page-shell">
+              <Suspense fallback={<RouteFallback />}>
+                <ComparePage />
+              </Suspense>
+            </div>
+          }
+        />
         <Route
           path="/results"
           element={

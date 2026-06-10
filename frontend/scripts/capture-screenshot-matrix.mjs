@@ -11,7 +11,15 @@ import { fileURLToPath } from "node:url"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, "../..")
 const matrixVersion = process.env.SCREENSHOT_MATRIX_VERSION ?? "v2"
-const outDir = path.join(repoRoot, `docs/screenshots/ui-overhaul-${matrixVersion}`)
+// SCREENSHOT_OUT_DIR (relative to repo root or absolute) overrides the default
+// docs/screenshots/ui-overhaul-<version> path so the engine-scale baseline can
+// live under docs/screenshots/engine-scale-v1 without renaming historic matrices.
+const outDir = process.env.SCREENSHOT_OUT_DIR
+  ? (path.isAbsolute(process.env.SCREENSHOT_OUT_DIR)
+      ? process.env.SCREENSHOT_OUT_DIR
+      : path.join(repoRoot, process.env.SCREENSHOT_OUT_DIR))
+  : path.join(repoRoot, `docs/screenshots/ui-overhaul-${matrixVersion}`)
+const includeWideViewport = matrixVersion === "v3" || /engine-scale/i.test(matrixVersion)
 const baseUrl = process.env.SCREENSHOT_BASE_URL ?? "http://127.0.0.1:8000"
 
 const routes = [
@@ -30,7 +38,7 @@ const routes = [
 const viewports = [
   { label: "375", width: 375, height: 812 },
   { label: "1280", width: 1280, height: 900 },
-  ...(matrixVersion === "v3"
+  ...(includeWideViewport
     ? [{ label: "1920", width: 1920, height: 1080 }]
     : []),
 ]

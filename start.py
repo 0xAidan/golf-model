@@ -74,6 +74,17 @@ def cmd_dashboard(args):
         print("Quiet access logs enabled (QUIET_DEV_ACCESS_LOGS=1).")
     print("Press Ctrl+C to stop\n")
     reload_enabled = os.environ.get("UVICORN_RELOAD", "0").strip().lower() in {"1", "true", "yes", "on"}
+    # Defense-in-depth (defect P1-3): auto-reload must never run under the production
+    # systemd service. It spawns a reloader subprocess that breaks the single-owner
+    # live-refresh pidfile coordination and the port-8000 ownership guard. Even if a
+    # production .env accidentally carries UVICORN_RELOAD=1, suppress it here.
+    is_production = (
+        os.environ.get("LIVE_REFRESH_WORKER_OWNED", "").strip().lower() in {"1", "true", "yes", "on"}
+        or "/opt/golf-model" in os.environ.get("GOLF_APP_ROOT", "")
+    )
+    if reload_enabled and is_production:
+        print("WARNING: UVICORN_RELOAD ignored in production (auto-reload must not run under systemd).")
+        reload_enabled = False
     cmd = [
         sys.executable, "-m", "uvicorn", "app:app",
         "--host", "0.0.0.0",

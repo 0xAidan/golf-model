@@ -13,12 +13,14 @@ Both services must run simultaneously for full-stack development. Start the back
 
 ### Quick reference
 
-- **Python tests:** `python3 -m pytest tests/ -v --tb=short` (405 tests, ~6s)
+- **Python tests:** `python3 -m pytest tests/ -v --tb=short` (~493 tests; full run ~5–6 min on this box)
 - **Python lint:** `ruff check .` (pre-existing lint issues in `app.py` and `run_predictions.py` are known; do not fix unless explicitly asked)
 - **Frontend lint:** `cd frontend && npm run lint` (pre-existing ESLint errors in `legacy-routes.tsx` are known)
 - **Frontend typecheck:** `cd frontend && npm run typecheck`
-- **Frontend tests:** `cd frontend && npm run test` (22 files, 77 tests)
+- **Frontend tests:** `cd frontend && npm run test` (34 files, 121 tests)
 - **Frontend build:** `cd frontend && npm run build` (outputs to `frontend/dist/`)
+- **Frontend a11y (Playwright):** `cd frontend && npm run test:a11y` (axe on `/` and `/lab`, 0 critical)
+- **Frontend bundle budget:** `cd frontend && npm run build && npm run bundle:budget`
 
 ### Gotchas
 

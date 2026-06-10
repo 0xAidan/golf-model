@@ -1008,3 +1008,22 @@ export type ResearchAbReportResponse = {
   truncated_paired_samples?: boolean
   artifact_paths?: { json?: string; markdown?: string }
 }
+
+export type TrackConfigRow = {
+  id?: number
+  track: "dashboard" | "lab" | string
+  model_variant?: string | null
+  config_hash?: string | null
+  label?: string | null
+  status?: string | null
+  activated_by?: string | null
+  activation_reason?: string | null
+  activated_at?: string | null
+  strategy_bundle?: Record<string, unknown> | null
+}
+
+export type TracksResponse = {
+  tracks: Partial<Record<"dashboard" | "lab", TrackConfigRow>>
+  effective_config_hash: Partial<Record<"dashboard" | "lab", string | null>>
+  history: TrackConfigRow[]
+}

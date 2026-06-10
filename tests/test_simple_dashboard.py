@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 
 import optuna
 from fastapi.testclient import TestClient
@@ -236,15 +237,34 @@ def test_output_latest_not_found(monkeypatch):
     assert r.json().get("not_found") is True
 
 
+def test_late_registered_player_routes_are_registered():
+    """Guard against routes defined after the `if __name__ == "__main__"` block.
+
+    uvicorn.run() blocks, so any route defined below the guard would never register
+    when running `python3 app.py` directly (the documented dev entry point). These
+    two routes previously lived below the guard and silently 404'd.
+    """
+    import app as app_module
+
+    paths = {getattr(route, "path", None) for route in app_module.app.routes}
+    assert "/api/players/{player_key}/standalone-profile" in paths
+    assert "/api/players/search" in paths
+
+
 def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
     import app as app_module
 
+    # Use a recent timestamp so the fail-closed staleness contract treats the
+    # snapshot as fresh; this test asserts that a *fresh* snapshot carrying a
+    # degraded pipeline state still surfaces a stale_reason while staying ok.
+    # (Previously hardcoded to 2026-04-06, which rotted into staleness.)
+    recent = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr(
         "backtester.dashboard_runtime.read_snapshot",
         lambda: {
-            "generated_at": "2026-04-06T00:00:00+00:00",
+            "generated_at": recent,
             "live_tournament": {
                 "ranking_source": "current_event_model_fallback",
                 "diagnostics": {"state": "pipeline_error"},

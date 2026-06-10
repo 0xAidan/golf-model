@@ -23,6 +23,13 @@ def persist_lab_logged_picks(body: dict[str, Any]) -> int:
         raise ValueError("tournament_id is required")
     profile_name = str(body.get("profile_name") or "lab_sandbox").strip()
     lab_mv = resolve_lab_model_variant(profile_name)
+    try:
+        from src.lab_champion import build_lab_pipeline_config, load_lab_champion_strategy
+        from src.track_registry import compute_config_hash
+
+        lab_config_hash = compute_config_hash(lab_mv, build_lab_pipeline_config(load_lab_champion_strategy()))
+    except Exception:
+        lab_config_hash = None
     composite = body.get("composite_results") or []
     if not isinstance(composite, list):
         composite = []
@@ -71,6 +78,7 @@ def persist_lab_logged_picks(body: dict[str, Any]) -> int:
                     "ev": bet.get("ev"),
                     "confidence": bet.get("confidence") or bet.get("tier"),
                     "reasoning": "; ".join(reasoning_parts) or None,
+                    "model_config_hash": lab_config_hash,
                 })
 
     matchups = body.get("matchups") or []
@@ -110,6 +118,7 @@ def persist_lab_logged_picks(body: dict[str, Any]) -> int:
                 "ev": bet.get("ev"),
                 "confidence": bet.get("tier"),
                 "reasoning": bet.get("why"),
+                "model_config_hash": lab_config_hash,
             })
 
     # matchup_failed_candidates are diagnostics-only; not stored for grading.

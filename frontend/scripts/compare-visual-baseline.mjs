@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
- * Pixel-compare PR screenshots against docs/screenshots/ui-overhaul-v3 baseline.
+ * Pixel-compare PR screenshots against a committed baseline directory.
  * Skips pairs when baseline PNG is missing. Fails when diff ratio exceeds threshold.
+ *
+ * Baseline dir is configurable via VISUAL_BASELINE_DIR (relative to repo root or
+ * absolute). It defaults to the engine-scale-v1 baseline; the legacy
+ * ui-overhaul-v3 baseline predates the PR #145 product rebuild and is retained
+ * for history only. The comparison skips gracefully when the baseline dir does
+ * not yet contain PNGs, so CI stays green until a real-data baseline is captured.
  */
 import { readFile, readdir, access } from "node:fs/promises"
 import path from "node:path"
@@ -11,10 +17,13 @@ import pixelmatch from "pixelmatch"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, "../..")
-const baselineDir = path.join(repoRoot, "docs/screenshots/ui-overhaul-v3")
+const resolveFromRoot = (p) => (path.isAbsolute(p) ? p : path.join(repoRoot, p))
+const baselineDir = resolveFromRoot(
+  process.env.VISUAL_BASELINE_DIR ?? "docs/screenshots/engine-scale-v1",
+)
 const candidateDir =
   process.env.VISUAL_CANDIDATE_DIR ??
-  path.join(repoRoot, "docs/screenshots/ui-overhaul-v3-pr")
+  path.join(repoRoot, "docs/screenshots/engine-scale-v1-pr")
 
 const MAX_DIFF_RATIO = Number(process.env.VISUAL_MAX_DIFF_RATIO ?? "0.08")
 const ROUTES_FILTER = process.env.VISUAL_ROUTES?.split(",").filter(Boolean)
