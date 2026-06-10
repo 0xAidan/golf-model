@@ -26,6 +26,48 @@ def test_main_dispatches_research_run(monkeypatch):
     assert called["max_candidates"] == 2
 
 
+def _capture_dashboard_cmd(monkeypatch):
+    import start
+
+    captured = {}
+
+    def fake_run(command, cwd=None, **kwargs):
+        captured["command"] = command
+
+        class _Completed:
+            returncode = 0
+
+        return _Completed()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    class Args:
+        port = 8000
+
+    try:
+        start.cmd_dashboard(Args())
+    except SystemExit:
+        pass
+    return captured.get("command", [])
+
+
+def test_cmd_dashboard_suppresses_reload_in_production(monkeypatch):
+    """Auto-reload must never run under the production systemd service (defect P1-3)."""
+    monkeypatch.setenv("UVICORN_RELOAD", "1")
+    monkeypatch.setenv("LIVE_REFRESH_WORKER_OWNED", "1")
+    command = _capture_dashboard_cmd(monkeypatch)
+    assert "--reload" not in command
+
+
+def test_cmd_dashboard_allows_reload_in_dev(monkeypatch):
+    """Outside production, UVICORN_RELOAD still enables auto-reload for local dev."""
+    monkeypatch.setenv("UVICORN_RELOAD", "1")
+    monkeypatch.delenv("LIVE_REFRESH_WORKER_OWNED", raising=False)
+    monkeypatch.delenv("GOLF_APP_ROOT", raising=False)
+    command = _capture_dashboard_cmd(monkeypatch)
+    assert "--reload" in command
+
+
 def test_main_dispatches_ui(monkeypatch):
     """The unified launcher should route ui to the one-command dashboard handler."""
     import start

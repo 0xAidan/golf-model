@@ -39,8 +39,18 @@ def _strategy_from_json(strategy_config_json: str | None) -> StrategyConfig | No
         return None
     try:
         return StrategyConfig.from_json(strategy_config_json)
-    except Exception:
+    except Exception as exc:
         logger.warning("Failed to parse strategy_config_json from model registry", exc_info=True)
+        try:
+            from src.runtime_health import record_strategy_config_error
+
+            record_strategy_config_error(
+                scope="global",
+                source="model_registry",
+                message=f"Model-registry strategy JSON failed to parse; falling back. {exc}",
+            )
+        except Exception:
+            pass
         return None
 
 

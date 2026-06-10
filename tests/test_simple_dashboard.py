@@ -237,6 +237,20 @@ def test_output_latest_not_found(monkeypatch):
     assert r.json().get("not_found") is True
 
 
+def test_late_registered_player_routes_are_registered():
+    """Guard against routes defined after the `if __name__ == "__main__"` block.
+
+    uvicorn.run() blocks, so any route defined below the guard would never register
+    when running `python3 app.py` directly (the documented dev entry point). These
+    two routes previously lived below the guard and silently 404'd.
+    """
+    import app as app_module
+
+    paths = {getattr(route, "path", None) for route in app_module.app.routes}
+    assert "/api/players/{player_key}/standalone-profile" in paths
+    assert "/api/players/search" in paths
+
+
 def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
     import app as app_module
 

@@ -218,6 +218,47 @@ export function collectAvailableBooks(predictionRun: PredictionRunResponse | nul
   return Array.from(names).sort()
 }
 
+/**
+ * Books the pipeline supports, mirroring `src/config.py::SUPPORTED_BOOKS`. Used as
+ * the final fallback so the book filter chips always render even when the current
+ * board has zero qualifying edges (the regression fixed in the engine-scale Wave 1).
+ */
+export const SUPPORTED_BOOKS = [
+  "draftkings",
+  "fanduel",
+  "betmgm",
+  "caesars",
+  "bet365",
+  "pointsbet",
+  "betrivers",
+  "fanatics",
+] as const
+
+/**
+ * Books offered in the filter UI. Unions books actually present on the run with the
+ * snapshot's `diagnostics.books_seen` (every book the pipeline saw this tick, even
+ * when no edge qualified), then falls back to SUPPORTED_BOOKS so the control never
+ * disappears. `extraBooksSeen` is typically `section.diagnostics.books_seen`.
+ */
+export function collectBooksForFilter(
+  predictionRun: PredictionRunResponse | null,
+  extraBooksSeen?: string[] | null,
+): string[] {
+  const names = new Set<string>(collectAvailableBooks(predictionRun))
+  for (const book of extraBooksSeen ?? []) {
+    const normalized = normalizeSportsbook(book)
+    if (normalized && !NON_BOOK_SOURCES.has(normalized)) {
+      names.add(normalized)
+    }
+  }
+  if (names.size === 0) {
+    for (const book of SUPPORTED_BOOKS) {
+      names.add(book)
+    }
+  }
+  return Array.from(names).sort()
+}
+
 export function flattenSecondaryBets(predictionRun: PredictionRunResponse | null): FlattenedSecondaryBet[] {
   const entries = Object.entries(predictionRun?.value_bets ?? {})
   return entries

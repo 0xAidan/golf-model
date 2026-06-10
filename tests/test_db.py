@@ -155,6 +155,12 @@ def test_store_picks_dedupes_within_lane_but_allows_cross_lane():
     v5_pick["model_prob"] = 0.55
     db.store_picks([v5_pick])
 
+    # Defect P1-4: re-running the pick persistence path (e.g. a re-displayed snapshot
+    # tick or a second pipeline run for the same event) must NOT raise a unique-constraint
+    # violation and must stay idempotent (INSERT OR IGNORE against idx_picks_unique).
+    db.store_picks([dict(base_pick)])
+    db.store_picks([dict(base_pick), dict(v5_pick)])
+
     conn = db.get_conn()
     rows = conn.execute(
         "SELECT model_variant, COUNT(*) AS c FROM picks WHERE tournament_id = ? GROUP BY model_variant",

@@ -233,6 +233,8 @@ async def get_ops_health():
     from src.runtime_paths import detect_split_brain, get_runtime_identity, read_heartbeat
     from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
 
+    from src.runtime_health import recent_strategy_config_errors
+
     ensure_initialized()
     identity = get_runtime_identity()
     heartbeat = read_heartbeat()
@@ -240,11 +242,16 @@ async def get_ops_health():
     snapshot = read_snapshot()
     status = get_live_refresh_status()
     generated_at = snapshot.get("generated_at") if isinstance(snapshot, dict) else None
+    strategy_config_errors = recent_strategy_config_errors()
     ok = not split["split_brain_suspected"]
     summary = "healthy" if ok else "split_brain_suspected"
     if not heartbeat and identity.get("production"):
         ok = False
         summary = "worker_heartbeat_missing"
+    # Non-fatal but trust-relevant: a corrupt configured strategy silently fell back to
+    # default. Keep ok=True (the system still serves a safe strategy) but surface it.
+    if strategy_config_errors and summary == "healthy":
+        summary = "strategy_config_fallback"
     return {
         "ok": ok,
         "summary": summary,
@@ -253,6 +260,7 @@ async def get_ops_health():
         "split_brain_suspected": split["split_brain_suspected"],
         "split_brain_reasons": split["reasons"],
         "heartbeat_age_seconds": split["heartbeat_age_seconds"],
+        "strategy_config_errors": strategy_config_errors,
         "live_refresh": {
             "running": bool(status.get("running")),
             "refresh_state": (status.get("progress") or {}).get("refresh_state"),
@@ -3894,19 +3902,6 @@ async def list_outlier_investigations():
 
 
 
-if __name__ == "__main__":
-    init_db()
-    print("\\n  Golf Betting Model — Web UI")
-    print("  Open in browser: http://localhost:8000\\n")
-    quiet_logs = os.environ.get("QUIET_DEV_ACCESS_LOGS", "0").strip().lower() in {"1", "true", "yes", "on"}
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="warning",
-        access_log=not quiet_logs,
-    )
-
 # ── Standalone Player Profile (no tournament_id required) ───────────────
 
 @app.get("/api/players/{player_key}/standalone-profile")
@@ -4257,4 +4252,22 @@ async def search_players(q: str = ""):
 async def _warm_dashboard_state_cache() -> None:
     """Populate dashboard state cache in a worker thread so first UI poll is fast."""
     asyncio.create_task(asyncio.to_thread(_build_dashboard_state_sync, "global"))
+
+
+# NOTE: keep this block LAST in the module. uvicorn.run() blocks, so any route or
+# startup handler defined after it would never register when running `python3 app.py`
+# directly (the documented dev entry point). The standalone-profile and player-search
+# routes used to live below the guard and silently 404'd under `python3 app.py`.
+if __name__ == "__main__":
+    init_db()
+    print("\\n  Golf Betting Model — Web UI")
+    print("  Open in browser: http://localhost:8000\\n")
+    quiet_logs = os.environ.get("QUIET_DEV_ACCESS_LOGS", "0").strip().lower() in {"1", "true", "yes", "on"}
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="warning",
+        access_log=not quiet_logs,
+    )
 

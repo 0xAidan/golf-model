@@ -1416,8 +1416,18 @@ class GolfModelService:
                 )
                 conn.commit()
             conn.close()
-        except Exception:
+        except Exception as exc:
             logger.warning("Run metadata logging failed", exc_info=True)
+            # Defect P1-5: don't swallow silently. Surface on the result dict (visible to
+            # API callers) and in the runtime-health buffer so it isn't invisible.
+            if isinstance(result, dict):
+                result["run_logging_error"] = str(exc)
+            try:
+                from src.runtime_health import record_run_logging_error
+
+                record_run_logging_error(source="runs_table", message=str(exc))
+            except Exception:
+                pass
 
     def _resolve_strategy(self) -> tuple | None:
         """Resolve strategy using shared registry chain (live -> research -> active -> default)."""
