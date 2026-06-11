@@ -8,6 +8,28 @@ Use this when production shows stale data, empty boards with no explanation, or 
 - `GET /api/live-refresh/snapshot` returns very high `age_seconds`
 - `golf-dashboard.service` restart counter (`NRestarts`) climbs rapidly
 - Manual refresh returns generic errors or never updates the board
+- `GET /api/ops/health` shows `summary: snapshot_stale` or `worker_heartbeat_stale`
+- Heartbeat file shows `phase: shadow_mc` (or other phase) with age > 15 minutes while `running: true`
+
+## Stuck worker (shadow_mc / long recompute)
+
+If the worker process is alive but snapshot age keeps climbing:
+
+1. Check heartbeat phase:
+   ```bash
+   cat /opt/golf-model/data/live_refresh_heartbeat.json | python3 -m json.tool
+   journalctl -u golf-live-refresh -n 120 --no-pager | rg -i "shadow|timeout|error"
+   ```
+2. Restart the worker (releases cycle lock):
+   ```bash
+   systemctl restart golf-live-refresh
+   ```
+3. Confirm recovery:
+   ```bash
+   curl -s http://127.0.0.1:8000/api/live-refresh/snapshot | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('ok'), d.get('age_seconds'))"
+   ```
+
+**Prevention (post 2026-06 fix):** snapshot is published **before** shadow MC / SQLite tail work; worker heartbeat refreshes during long phases; `golf-live-refresh-watchdog.timer` restarts hung workers every 5 minutes.
 
 ## Diagnosis order
 
@@ -80,6 +102,7 @@ Or revert the bad commit on `main` and redeploy. Do **not** bind port 8000 from 
 - `GOLF_APP_ROOT=/opt/golf-model` and `GOLF_DATA_DIR=/opt/golf-model/data` in systemd units
 - `ExecStartPre` runs `scripts/ensure_port_owner.sh` before dashboard bind
 - Monitor `scripts/reliability_synthetic_check.py` (GitHub `reliability-monitor` workflow)
+- `golf-live-refresh-watchdog.timer` runs `scripts/live_refresh_watchdog.py --restart` every 5 minutes on production
 
 ## Integrity
 

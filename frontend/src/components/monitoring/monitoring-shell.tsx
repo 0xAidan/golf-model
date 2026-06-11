@@ -228,8 +228,12 @@ export function MonitoringShell({
               {drawerOpen ? <X size={18} /> : <Menu size={18} />}
             </Button>
 
-            <div className="header-event">
-              <div className="header-event-name" data-testid="header-event-name">
+            <div className="header-event min-w-0 flex-1">
+              <div
+                className="header-event-name"
+                data-testid="header-event-name"
+                title={headline || undefined}
+              >
                 {headline || "No event loaded"}
               </div>
               {subheadline ? (

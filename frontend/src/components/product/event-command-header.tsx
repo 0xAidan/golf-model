@@ -30,7 +30,9 @@ export const EventCommandHeader = ({
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <ModelLaneBadge lane={lane} />
       </div>
-      <h1 className="event-command-header__event">{eventName}</h1>
+      <h1 className="event-command-header__event" title={eventName}>
+        {eventName}
+      </h1>
       {meta ? <p className="event-command-header__meta">{meta}</p> : null}
     </div>
     {kpis.length > 0 ? (

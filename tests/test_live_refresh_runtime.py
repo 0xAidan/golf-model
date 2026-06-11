@@ -1992,3 +1992,94 @@ def test_run_recompute_upcoming_team_event_surfaces_team_event_state(monkeypatch
     assert upcoming["skipped_reason"] == "team_event"
     assert upcoming["diagnostics"]["state"] == "team_event"
     assert upcoming["diagnostics"]["state"] not in {"pipeline_error", "eligibility_failed"}
+
+
+def test_touch_progress_refreshes_heartbeat_while_running(monkeypatch, tmp_path):
+    from backtester import dashboard_runtime as runtime
+
+    hb_path = tmp_path / "live_refresh_heartbeat.json"
+    monkeypatch.setattr(runtime, "get_heartbeat_path", lambda: hb_path)
+    monkeypatch.setattr(
+        runtime,
+        "get_runtime_identity",
+        lambda: {"app_root": str(tmp_path), "data_dir": str(tmp_path)},
+    )
+    runtime._last_heartbeat_touch = 0.0
+    with runtime._state_lock:
+        runtime._state["running"] = True
+        runtime._state["refresh_state"] = "running"
+        runtime._state["phase"] = "recompute"
+
+    runtime._touch_progress(phase="persist", phase_detail="test")
+    assert hb_path.is_file()
+    payload = json.loads(hb_path.read_text(encoding="utf-8"))
+    assert payload.get("running") is True
+    assert payload.get("phase") == "persist"
+
+
+def test_ops_health_snapshot_stale_marks_unhealthy(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.get_live_refresh_status",
+        lambda: {"running": True, "snapshot_age_seconds": 99999},
+    )
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {"generated_at": "2000-01-01T00:00:00+00:00"},
+    )
+    monkeypatch.setattr(
+        "src.runtime_paths.detect_split_brain",
+        lambda **kwargs: {
+            "split_brain_suspected": False,
+            "reasons": [],
+            "heartbeat_age_seconds": 10,
+        },
+    )
+    monkeypatch.setattr("src.runtime_paths.read_heartbeat", lambda: {"running": True, "updated_at": "2099-01-01T00:00:00+00:00"})
+    monkeypatch.setattr("src.runtime_health.recent_strategy_config_errors", lambda: [])
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/ops/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert body["summary"] == "snapshot_stale"
+
+
+def test_live_refresh_refresh_worker_stuck_returns_503(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("src.runtime_paths.live_refresh_worker_owned", lambda: True)
+    monkeypatch.setattr(
+        "src.runtime_paths.read_heartbeat",
+        lambda: {
+            "running": True,
+            "refresh_state": "running",
+            "phase": "shadow_mc",
+            "updated_at": "2000-01-01T00:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr("src.runtime_paths.heartbeat_age_seconds", lambda hb: 5000)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.get_live_refresh_status",
+        lambda: {"running": True, "worker_running": True, "progress": {"refresh_state": "running"}},
+    )
+    monkeypatch.setattr(
+        "src.autoresearch_settings.get_settings",
+        lambda: {"live_refresh": {"enabled": True, "tour": "pga"}},
+    )
+    monkeypatch.setattr(
+        app_module,
+        "_with_live_refresh_worker_status",
+        lambda raw: {**raw, "running": True, "worker_running": True},
+    )
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/live-refresh/refresh")
+    assert response.status_code == 503
+    body = response.json()
+    assert "stuck" in body.get("stale_reason", "").lower()
+
