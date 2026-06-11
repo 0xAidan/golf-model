@@ -172,17 +172,19 @@
   border-bottom: var(--monitor-hairline);
   background: var(--bg);
   overflow-x: auto;
+  scroll-padding-inline: 12px;
+  padding-right: 12px;
 }
 
 .monitoring-macro-kpi-cell {
   flex: 1 1 auto;
-  min-width: 88px;
-  padding: 6px 12px;
+  min-width: 104px;
+  padding: 8px 14px;
   border-right: var(--monitor-hairline);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 .monitoring-macro-kpi-cell:last-child {
@@ -210,8 +212,9 @@
   gap: var(--monitor-bento-gap);
   background: var(--border);
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  overflow: hidden;
+  grid-auto-rows: minmax(min-content, auto);
+  align-content: start;
+  overflow: visible;
 }
 
 .monitoring-bento-grid--cols-1 {
@@ -235,7 +238,7 @@
 .monitoring-bento-panel {
   background: var(--monitor-panel-bg);
   border: none;
-  min-height: 0;
+  min-height: min(280px, 40vh);
   min-width: 0;
   display: flex;
   flex-direction: column;

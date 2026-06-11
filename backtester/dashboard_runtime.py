@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 import fcntl
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,8 @@ _recompute_lock = threading.Lock()
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
 _last_snapshot_prune_at: float = 0.0
+_last_heartbeat_touch: float = 0.0
+_HEARTBEAT_TOUCH_INTERVAL_SECONDS = 60.0
 
 _SNAPSHOT_PATH = get_snapshot_path()
 _OUTPUT_DIR = get_app_root() / "output"
@@ -231,6 +234,63 @@ def _touch_progress(
         if last_error is not None:
             _state["last_error"] = last_error
         _state["progress_updated_at"] = _iso_now()
+    _maybe_refresh_heartbeat()
+
+
+def _maybe_refresh_heartbeat() -> None:
+    """Keep worker heartbeat fresh during long recompute phases (cross-process liveness)."""
+    global _last_heartbeat_touch
+    with _state_lock:
+        if _state.get("refresh_state") != "running":
+            return
+    now_ts = time.time()
+    if _last_heartbeat_touch and (now_ts - _last_heartbeat_touch) < _HEARTBEAT_TOUCH_INTERVAL_SECONDS:
+        return
+    _write_heartbeat()
+    _last_heartbeat_touch = now_ts
+
+
+def _recompute_timeout_seconds() -> float:
+    raw = os.environ.get("LIVE_REFRESH_RECOMPUTE_TIMEOUT_S", "2700")
+    try:
+        return max(300.0, float(raw))
+    except (TypeError, ValueError):
+        return 2700.0
+
+
+def _shadow_mc_timeout_seconds() -> float:
+    raw = os.environ.get("LIVE_REFRESH_SHADOW_MC_TIMEOUT_S", "300")
+    try:
+        return max(30.0, float(raw))
+    except (TypeError, ValueError):
+        return 300.0
+
+
+def _run_recompute_with_timeout(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Run _run_recompute in a helper thread so the loop can enforce a hard ceiling."""
+    timeout_s = _recompute_timeout_seconds()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-refresh-recompute") as pool:
+        future = pool.submit(_run_recompute, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout_s)
+        except FuturesTimeoutError as exc:
+            raise TimeoutError(
+                f"Live refresh recompute exceeded {int(timeout_s)}s timeout"
+            ) from exc
+
+
+def _run_shadow_monte_carlo_with_timeout(**kwargs: Any) -> int:
+    timeout_s = _shadow_mc_timeout_seconds()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-refresh-shadow-mc") as pool:
+        future = pool.submit(_run_shadow_monte_carlo_v1, **kwargs)
+        try:
+            return int(future.result(timeout=timeout_s) or 0)
+        except FuturesTimeoutError:
+            _logger.warning(
+                "shadow Monte Carlo batch exceeded %ss timeout; skipping (snapshot already published)",
+                int(timeout_s),
+            )
+            return 0
 
 
 _DATA_SOURCE_VALUES = {"live", "replay", "fixture"}
@@ -3111,6 +3171,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         section_payload = snapshot.get(section_key)
         if isinstance(section_payload, dict):
             snapshot[section_key] = _trim_snapshot_section_for_memory(section_payload)
+    _touch_progress(phase="publish", phase_detail="writing live snapshot")
+    _write_snapshot(snapshot)
     try:
         _touch_progress(phase="persist", phase_detail="sqlite history + market rows")
         history_count = db.store_live_snapshot_sections(
@@ -3192,7 +3254,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     _maybe_prune_snapshot_history_tables(snapshot)
     try:
         _touch_progress(phase="shadow_mc", phase_detail="shadow monte carlo batch")
-        shadow_n = _run_shadow_monte_carlo_v1(
+        shadow_n = _run_shadow_monte_carlo_with_timeout(
             snapshot_id=snapshot_id,
             generated_at=generated_at,
             tour=tour,
@@ -3202,7 +3264,6 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     except Exception as exc:
         _logger.warning("shadow Monte Carlo v1 batch failed: %s", exc)
         snapshot.setdefault("diagnostics", {})["shadow_mc_rows_written"] = 0
-    _write_snapshot(snapshot)
     return snapshot
 
 
@@ -3221,7 +3282,7 @@ def generate_snapshot_once(*, tour: str = "pga") -> dict[str, Any]:
         cadence = resolve_cadence(settings)
         ingest_summary = _run_ingest(tour)
         _touch_progress(refresh_state="running", phase="recompute", phase_detail="snapshot pipeline")
-        snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
+        snapshot = _run_recompute_with_timeout(tour, cadence.mode, ingest_summary)
         with _state_lock:
             _state["tour"] = tour
             _state["cadence_mode"] = cadence.mode
@@ -3301,7 +3362,7 @@ def _run_loop(tour: str) -> None:
                         ingest_summary = _run_ingest(tour)
                         with _state_lock:
                             _state["last_ingest_summary"] = ingest_summary
-                    snapshot = _run_recompute(tour, cadence.mode, ingest_summary)
+                    snapshot = _run_recompute_with_timeout(tour, cadence.mode, ingest_summary)
                 except BaseException as exc:
                     slot_err = exc
                     _touch_progress(idle=True, last_error=str(exc))

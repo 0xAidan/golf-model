@@ -467,9 +467,14 @@ body {
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.01em;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .header-actions {
@@ -1391,6 +1396,7 @@ body {
 
 .rankings-table {
   table-layout: fixed;
+  width: 100%;
 }
 
 .rankings-table th:nth-child(1),
@@ -1400,7 +1406,8 @@ body {
 
 .rankings-table th:nth-child(2),
 .rankings-table td:nth-child(2) {
-  width: 170px;
+  width: 22%;
+  max-width: 220px;
 }
 
 .rankings-table th:nth-child(6),
@@ -1409,7 +1416,7 @@ body {
 }
 
 .rankings-player-name button {
-  max-width: 160px;
+  max-width: 100%;
   display: inline-block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2252,11 +2259,24 @@ body {
   overflow-x: auto;
   width: 100%;
   -webkit-overflow-scrolling: touch;
+  padding-right: var(--layout-table-edge-pad, 12px);
+  padding-bottom: var(--layout-table-edge-pad, 8px);
+  scroll-padding-inline: var(--layout-table-edge-pad, 12px);
+}
+
+.data-table.terminal-table th,
+.data-table.terminal-table td {
+  padding: 0.5rem 0.75rem;
+}
+
+.data-table.terminal-table th:last-child,
+.data-table.terminal-table td:last-child {
+  padding-right: calc(0.75rem + var(--layout-table-edge-pad, 8px));
 }
 
 @media (max-width: 767px) {
   .cockpit-lab-research-aside {
-    max-height: min(38vh, 280px);
+    max-height: min(48vh, 360px);
     overflow-y: auto;
   }
 
@@ -2737,12 +2757,14 @@ body {
   overflow: visible;
   display: flex;
   flex-direction: column;
+  padding: var(--layout-page-pad-y, 12px) var(--layout-page-pad-x, 16px);
+  gap: var(--layout-section-gap, 20px);
 }
 
 .route-scroll-page {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: var(--layout-page-pad-y, 12px) var(--layout-page-pad-x, 16px);
 }
 
 .records-page {

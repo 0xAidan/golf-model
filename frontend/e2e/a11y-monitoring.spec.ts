@@ -30,4 +30,22 @@ test.describe("monitoring a11y (critical = 0)", () => {
     const critical = results.violations.filter((v) => v.impact === "critical")
     expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
   })
+
+  test("players /players has no critical axe violations", async ({ page }) => {
+    const results = await runAxe(page, "/players")
+    const critical = results.violations.filter((v) => v.impact === "critical")
+    expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
+  })
+
+  test("results /results has no critical axe violations", async ({ page }) => {
+    const results = await runAxe(page, "/results")
+    const critical = results.violations.filter((v) => v.impact === "critical")
+    expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
+  })
+
+  test("compare /compare has no critical axe violations", async ({ page }) => {
+    const results = await runAxe(page, "/compare")
+    const critical = results.violations.filter((v) => v.impact === "critical")
+    expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
+  })
 })

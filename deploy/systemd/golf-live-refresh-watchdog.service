@@ -1,0 +1,14 @@
+[Unit]
+Description=Golf Model Live Refresh Watchdog
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+EnvironmentFile=-/opt/golf-model/.env
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/live_refresh_watchdog.py --restart --json
+
+[Install]
+WantedBy=multi-user.target

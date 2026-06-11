@@ -31,7 +31,7 @@ export const PlayerInsightDrawer = ({
         data-testid="player-insight-drawer"
       >
         <SheetHeader className="border-b border-[var(--border)] px-5 py-4 pr-14 text-left">
-          <SheetTitle className="font-display text-lg">
+          <SheetTitle className="truncate font-display text-lg" title={playerName}>
             {playerName ?? "Player insight"}
           </SheetTitle>
           <SheetDescription className="text-sm text-[var(--text-secondary)]">

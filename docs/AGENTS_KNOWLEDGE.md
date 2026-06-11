@@ -699,6 +699,7 @@ Port guard: `scripts/ensure_port_owner.sh` / `scripts/port_8000_audit.py` — ru
 | `golf-dashboard` | `start.py dashboard --port 8000` | 8000 |
 | `golf-agent` | `start.py agent` | — |
 | `golf-live-refresh` | `workers/live_refresh_worker.py` | — |
+| `golf-live-refresh-watchdog.timer` | `scripts/live_refresh_watchdog.py --restart` (every 5 min) | — |
 | `golf-backup.timer` | Nightly DB backup at 03:00 UTC | — |
 
 Useful commands on the server:
@@ -714,6 +715,14 @@ systemctl restart golf-live-refresh
 - The FastAPI dashboard (`app.py`) will **not** start an embedded live-refresh loop by default. Embedded autostart is opt-in via `LIVE_REFRESH_EMBEDDED_AUTOSTART=1` (useful only for local/dev environments where the worker is not running). When opt-in is enabled, the dashboard emits a LOUD `WARNING` log on startup.
 - **Pidfile coordination:** the worker writes its PID to `/tmp/golf_live_refresh.pid` (override via env var `LIVE_REFRESH_PIDFILE`) and removes it on clean shutdown. If `LIVE_REFRESH_EMBEDDED_AUTOSTART=1` is set but the pidfile points to a live process, the dashboard lifespan hook refuses to start a second loop and logs a WARNING.
 - `deploy.sh` sets `LIVE_REFRESH_EMBEDDED_AUTOSTART=0` on `golf-dashboard.service` as defense-in-depth; the repo default is now also `0`.
+
+- **Snapshot publish order:** `_run_recompute()` writes `live_refresh_snapshot.json` immediately after the in-memory snapshot is built (before SQLite history, market rows, prune, and shadow MC). Shadow MC and tail persistence are best-effort and must not block live boards.
+- **Ops health:** `GET /api/ops/health` returns `ok: false` with `summary: snapshot_stale` or `worker_heartbeat_stale` when data is too old (not only on path mismatch).
+- **Watchdog:** `golf-live-refresh-watchdog.timer` restarts the worker when heartbeat or snapshot exceeds configured thresholds.
+
+### Frontend layout conventions
+
+Shared spacing tokens live in `frontend/src/styles/page-layouts.css` (`--layout-page-pad-x`, `--layout-table-edge-pad`, etc.). Tables use `.table-scroll-region` edge padding; bento grids use `grid-auto-rows: minmax(min-content, auto)` to avoid vertical squashing. Screenshot matrix routes: `frontend/scripts/capture-screenshot-matrix.mjs` (includes `/compare`, `/eval`, `/results`, `/system`).
 
 ### Frontend Build
 

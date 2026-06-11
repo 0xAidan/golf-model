@@ -8,6 +8,17 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["ops"])
 
+_HEARTBEAT_STALE_SECONDS = 900
+
+
+def _snapshot_stale_after_seconds() -> int:
+    from src.autoresearch_settings import get_settings
+    from src.live_refresh_policy import resolve_cadence
+
+    settings = get_settings().get("live_refresh") or {}
+    cadence = resolve_cadence(settings)
+    return max(900, int(cadence.recompute_seconds) + 120)
+
 
 @router.get("/api/ops/health")
 async def get_ops_health():
@@ -25,6 +36,10 @@ async def get_ops_health():
     status = get_live_refresh_status()
     generated_at = snapshot.get("generated_at") if isinstance(snapshot, dict) else None
     strategy_config_errors = recent_strategy_config_errors()
+    snapshot_age_seconds = status.get("snapshot_age_seconds")
+    stale_after_seconds = _snapshot_stale_after_seconds()
+    heartbeat_age_seconds = split.get("heartbeat_age_seconds")
+    heartbeat_running = bool((heartbeat or {}).get("running"))
 
     # Track-registry state (active config hashes per track) for incident triage without SSH.
     track_state: dict = {}
@@ -47,6 +62,16 @@ async def get_ops_health():
     if not heartbeat and identity.get("production"):
         ok = False
         summary = "worker_heartbeat_missing"
+    elif (
+        heartbeat_age_seconds is not None
+        and heartbeat_age_seconds > _HEARTBEAT_STALE_SECONDS
+        and heartbeat_running
+    ):
+        ok = False
+        summary = "worker_heartbeat_stale"
+    elif snapshot_age_seconds is not None and snapshot_age_seconds > stale_after_seconds:
+        ok = False
+        summary = "snapshot_stale"
     # Non-fatal but trust-relevant: a corrupt configured strategy silently fell back to
     # default. Keep ok=True (the system still serves a safe strategy) but surface it.
     if strategy_config_errors and summary == "healthy":
@@ -58,7 +83,7 @@ async def get_ops_health():
         "heartbeat": heartbeat,
         "split_brain_suspected": split["split_brain_suspected"],
         "split_brain_reasons": split["reasons"],
-        "heartbeat_age_seconds": split["heartbeat_age_seconds"],
+        "heartbeat_age_seconds": heartbeat_age_seconds,
         "strategy_config_errors": strategy_config_errors,
         "tracks": track_state,
         "live_refresh": {
@@ -67,6 +92,7 @@ async def get_ops_health():
             "phase": status.get("phase"),
             "last_error": status.get("last_error"),
             "snapshot_generated_at": generated_at,
-            "snapshot_age_seconds": status.get("snapshot_age_seconds"),
+            "snapshot_age_seconds": snapshot_age_seconds,
+            "stale_after_seconds": stale_after_seconds,
         },
     }

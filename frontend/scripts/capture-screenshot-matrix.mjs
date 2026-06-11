@@ -24,15 +24,18 @@ const baseUrl = process.env.SCREENSHOT_BASE_URL ?? "http://127.0.0.1:8000"
 
 const routes = [
   { name: "dashboard", hash: "#/" },
-  { name: "picks", hash: "#/matchups" },
-  { name: "players", hash: "#/players" },
   { name: "lab", hash: "#/lab" },
-  { name: "lab-picks", hash: "#/lab/picks" },
-  { name: "grading", hash: "#/grading" },
-  { name: "track-record", hash: "#/track-record" },
+  { name: "compare", hash: "#/compare" },
+  { name: "eval", hash: "#/eval" },
+  { name: "players", hash: "#/players" },
+  { name: "results-grading", hash: "#/results" },
+  { name: "results-track-record", hash: "#/results?tab=track-record" },
+  { name: "system", hash: "#/system" },
   { name: "legacy-model", hash: "#/research/legacy-model" },
   { name: "champion-challenger", hash: "#/research/champion-challenger" },
-  { name: "diagnostics", hash: "#/research/diagnostics" },
+  { name: "diagnostics-legacy", hash: "#/research/diagnostics-legacy" },
+  { name: "picks-redirect", hash: "#/matchups" },
+  { name: "grading-redirect", hash: "#/grading" },
 ]
 
 const viewports = [

@@ -2551,12 +2551,41 @@ async def refresh_live_refresh_snapshot():
         start_live_refresh,
         worker_is_available,
     )
+    from src.runtime_paths import heartbeat_age_seconds, read_heartbeat
 
     settings = (get_settings().get("live_refresh") or {})
     tour = str(settings.get("tour", "pga"))
     status = _with_live_refresh_worker_status(get_live_refresh_status())
 
     if live_refresh_worker_owned():
+        heartbeat = read_heartbeat()
+        hb_age = heartbeat_age_seconds(heartbeat)
+        hb_running = bool((heartbeat or {}).get("running"))
+        hb_refresh_state = str((heartbeat or {}).get("refresh_state") or "")
+        worker_stuck = (
+            hb_running
+            and hb_age is not None
+            and hb_age > 900
+            and (hb_refresh_state == "running" or bool((heartbeat or {}).get("phase")))
+        )
+        if worker_stuck:
+            merged = _with_live_refresh_worker_status(get_live_refresh_status())
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "ok": False,
+                    "snapshot": None,
+                    "stale_reason": (
+                        f"Live-refresh worker appears stuck (heartbeat {hb_age}s old, "
+                        f"phase={heartbeat.get('phase')!r}). Restart golf-live-refresh.service on the server."
+                    ),
+                    "operator_message": (
+                        "The background refresh service has not made progress in over 15 minutes. "
+                        "On the server run: systemctl restart golf-live-refresh"
+                    ),
+                    "status": merged,
+                },
+            )
         if not worker_is_available() and not status.get("worker_running"):
             return JSONResponse(
                 status_code=503,

@@ -139,7 +139,7 @@ export function ComparePage() {
             <div className="card-header">
               <div className="card-title">Pick overlap (matchups)</div>
             </div>
-            <div className="card-body grid grid-cols-3 gap-3 text-center">
+            <div className="card-body grid grid-cols-1 gap-4 text-center sm:grid-cols-3 sm:gap-3">
               <div>
                 <div className="text-2xl font-semibold text-[var(--text-primary)]">{overlap.both.length}</div>
                 <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">Both tracks</div>
@@ -164,25 +164,30 @@ export function ComparePage() {
               <div className="card-title">Biggest ranking disagreements</div>
               <div className="text-xs text-[var(--text-faint)]">Top {RANK_LIMIT} by |Δ rank|</div>
             </div>
-            <div className="card-body overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="card-body overflow-x-auto pb-2 pr-2">
+              <table className="compare-rank-table w-full min-w-[480px] text-sm">
                 <thead>
                   <tr className="text-left text-[var(--text-faint)]">
-                    <th className="py-1 pr-3 font-medium">Player</th>
-                    <th className="py-1 pr-3 font-medium num">Champion #</th>
-                    <th className="py-1 pr-3 font-medium num">Challenger #</th>
-                    <th className="py-1 font-medium num">Δ</th>
+                    <th className="min-w-[140px] py-2 pr-4 font-medium">Player</th>
+                    <th className="min-w-[88px] py-2 pr-4 font-medium num">Champion #</th>
+                    <th className="min-w-[88px] py-2 pr-4 font-medium num">Challenger #</th>
+                    <th className="min-w-[56px] py-2 pr-2 font-medium num">Δ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rankDeltas.map((row) => (
                     <tr key={row.playerKey} className="border-t border-[var(--border)]">
-                      <td className="py-1 pr-3 text-[var(--text-secondary)]">{row.player}</td>
-                      <td className="py-1 pr-3 num">{row.championRank ?? "—"}</td>
-                      <td className="py-1 pr-3 num">{row.challengerRank ?? "—"}</td>
+                      <td
+                        className="max-w-[220px] truncate py-2 pr-4 text-[var(--text-secondary)]"
+                        title={row.player}
+                      >
+                        {row.player}
+                      </td>
+                      <td className="py-2 pr-4 num">{row.championRank ?? "—"}</td>
+                      <td className="py-2 pr-4 num">{row.challengerRank ?? "—"}</td>
                       <td
                         className={
-                          "py-1 num " +
+                          "py-2 pr-2 num " +
                           (row.delta && row.delta > 0
                             ? "text-[var(--green)]"
                             : row.delta && row.delta < 0
