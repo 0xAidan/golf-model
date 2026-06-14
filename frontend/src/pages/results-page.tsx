@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 
 import { GradingPage, TrackRecordPage } from "@/pages/legacy-routes"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { cn } from "@/lib/utils"
 
 type ResultsTab = "grading" | "track-record"
@@ -16,16 +17,14 @@ export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTa
   }, [urlTab])
 
   return (
-    <div className="monitor-research-page monitor-scroll-region" data-testid="results-page">
-      <header className="px-5 pt-5 pb-3 border-b border-[var(--border)] bg-[var(--surface)]">
-        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
-          Records
-        </p>
-        <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Results</h1>
-        <p className="mt-1 max-w-2xl text-sm text-[var(--text-secondary)]">
-          Grade tournament picks and review track record by model lane (Dashboard vs Lab).
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Results views">
+    <div className="monitor-research-page monitor-scroll-region product-page--satellite" data-testid="results-page">
+      <TerminalPageHeader
+        eyebrow="Records"
+        title="Results"
+        description="Grade tournament picks and review track record by model lane (Dashboard vs Lab)."
+      />
+      <div className="px-5 pb-3">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Results views">
           {(
             [
               { id: "grading" as const, label: "Grading" },
@@ -60,7 +59,7 @@ export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTa
             /track-record
           </Link>
         </p>
-      </header>
+      </div>
       <div role="tabpanel" className="flex-1">
         {tab === "grading" ? <GradingPage /> : <TrackRecordPage />}
       </div>

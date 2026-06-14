@@ -10,6 +10,12 @@ clv_tracking: true
 dead_heat_adjustment: true
 3ball: true
 
+# GTM live hardening — shadow-first secondary markets (E15/E16).
+live_groups_shadow: true
+live_groups_display_enabled: false
+live_player_markets_shadow: true
+live_player_markets_display_enabled: false
+
 # Safe defaults for existing behavior
 use_confirmed_field_only: true
 

@@ -2,7 +2,7 @@ import { useCallback, useState } from "react"
 import { Link } from "react-router-dom"
 
 import { LabResearchInstrumentationPanel } from "@/components/cockpit/lab-research-instrumentation-panel"
-import { ModelLaneBadge, TrustStatusBanner } from "@/components/product"
+import { ModelLaneBadge } from "@/components/product"
 import {
   persistLabResearchInstrumentationExpanded,
   readLabResearchInstrumentationExpanded,
@@ -29,6 +29,12 @@ export function CockpitLabPage({
     persistLabResearchInstrumentationExpanded(open)
   }, [])
 
+  const workspaceProps: PredictionWorkspacePageProps = {
+    ...cockpitWorkspaceProps,
+    usingProdSnapshotFallback,
+    labLanePartialSections,
+  }
+
   return (
     <div className="cockpit-lab-root lane-lab" data-testid="lab-command-center">
       <div className="cockpit-lab-main">
@@ -44,38 +50,10 @@ export function CockpitLabPage({
               uses the production snapshot only.
             </p>
           </div>
-
-          {usingProdSnapshotFallback ? (
-            <TrustStatusBanner
-              tone="warn"
-              title="Lab lane off"
-              message="Boards below mirror the main snapshot until the server enables the lab profile and the next recompute fills lab_* sections."
-              testId="lab-board-prod-fallback-banner"
-            />
-          ) : null}
-          {!usingProdSnapshotFallback && labLanePartialSections ? (
-            <TrustStatusBanner
-              tone="warn"
-              title="Partial lab snapshot"
-              message="Only one lab section is populated — the missing side still uses the production board until both sections fill."
-              testId="lab-board-partial-sections-banner"
-            />
-          ) : null}
-
-          <div
-            className="term-notice cockpit-lab-banner"
-            data-testid="lab-board-banner"
-            role="status"
-            aria-live="polite"
-          >
-            <strong>Lab</strong> — matchup-lab champion via{" "}
-            <strong>lab_live_tournament</strong> / <strong>lab_upcoming_tournament</strong> when{" "}
-            <code className="lab-code-inline">live_refresh.lab_profile_enabled</code> is on.
-          </div>
         </div>
 
         <div className="cockpit-lab-workspace">
-          <PredictionWorkspacePage {...cockpitWorkspaceProps} />
+          <PredictionWorkspacePage {...workspaceProps} />
         </div>
       </div>
       <aside

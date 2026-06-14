@@ -17,7 +17,9 @@ import shutil
 import glob
 import gzip
 import sqlite3
+import tempfile
 from datetime import datetime
+from typing import Any
 
 from src import db
 from src.disk_guard import warn_if_low_disk
@@ -73,6 +75,50 @@ def _sorted_backup_paths() -> list[str]:
         paths.extend(glob.glob(pattern))
     paths = list(set(paths))
     return sorted(paths, key=lambda p: os.path.getmtime(p))
+
+
+def verify_backup_integrity(backup_path: str) -> dict[str, Any]:
+    """Run SQLite ``quick_check`` on a backup file (plain or gzip)."""
+    if not os.path.isfile(backup_path):
+        return {"ok": False, "error": "backup file not found", "path": backup_path}
+
+    check_path = backup_path
+    temp_path: str | None = None
+    try:
+        if backup_path.endswith(".gz"):
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
+            os.close(temp_fd)
+            with gzip.open(backup_path, "rb") as gz, open(temp_path, "wb") as out:
+                shutil.copyfileobj(gz, out)
+            check_path = temp_path
+
+        conn = sqlite3.connect(f"file:{check_path}?mode=ro", uri=True, timeout=120.0)
+        try:
+            row = conn.execute("PRAGMA quick_check").fetchone()
+            result = str(row[0]) if row else "unknown"
+        finally:
+            conn.close()
+
+        ok = result == "ok"
+        return {
+            "ok": ok,
+            "quick_check": result,
+            "path": backup_path,
+            "checked_at": datetime.now().isoformat(),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "path": backup_path,
+            "checked_at": datetime.now().isoformat(),
+        }
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
@@ -146,8 +192,13 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
 
     size_mb = os.path.getsize(final_path) / (1024 * 1024)
     retained = len(_sorted_backup_paths())
+    integrity = verify_backup_integrity(final_path)
     print(f"  Backup created: {final_path} ({size_mb:.1f} MB)")
     print(f"  Backups retained: {retained}")
+    if integrity.get("ok"):
+        print("  Backup integrity: quick_check ok")
+    else:
+        print(f"  Backup integrity FAILED: {integrity.get('quick_check') or integrity.get('error')}")
 
     return final_path
 

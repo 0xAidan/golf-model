@@ -106,13 +106,14 @@ describe("LabBoardPage (CockpitLabPage)", () => {
     window.localStorage.removeItem(LEGACY_LAB_RESEARCH_INSTRUMENTATION_EXPANDED_KEY)
   })
 
-  it("renders banner and collapsible research deck (expand to see cards)", async () => {
+  it("renders lab header and collapsible research deck (expand to see cards)", async () => {
     const user = userEvent.setup()
     renderLab()
 
-    expect(screen.getByTestId("lab-board-banner")).toHaveTextContent(/lab_live_tournament/i)
-    expect(screen.getByTestId("lab-board-banner")).toHaveTextContent(/lab_profile_enabled/i)
+    expect(screen.getByTestId("lab-board-banner-wrap")).toHaveTextContent(/lab_live_tournament/i)
     expect(screen.getByTestId("lab-board-workspace-stub")).toBeInTheDocument()
+    expect(screen.queryByTestId("lab-board-banner")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("lab-board-partial-sections-banner")).not.toBeInTheDocument()
 
     expect(screen.getByTestId("lab-board-research-toggle")).toHaveTextContent(/research instrumentation/i)
     expect(screen.queryByText(/calibration \(by market\)/i)).not.toBeInTheDocument()
@@ -137,12 +138,9 @@ describe("LabBoardPage (CockpitLabPage)", () => {
     expect(apiMock.getResearchAbReport).not.toHaveBeenCalled()
   })
 
-  it("shows partial-lab warning when only one lab section is populated", async () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
+  it("does not render duplicate external partial-lab banner (workspace owns lane trust)", () => {
     render(
-      <QueryClientProvider client={client}>
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <MemoryRouter>
           <CockpitLabPage
             cockpitWorkspaceProps={buildMinimalCockpitProps()}
@@ -153,8 +151,7 @@ describe("LabBoardPage (CockpitLabPage)", () => {
       </QueryClientProvider>,
     )
 
-    expect(screen.getByTestId("lab-board-partial-sections-banner")).toHaveTextContent(
-      /partial lab snapshot/i,
-    )
+    expect(screen.queryByTestId("lab-board-partial-sections-banner")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("lab-board-prod-fallback-banner")).not.toBeInTheDocument()
   })
 })

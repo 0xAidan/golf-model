@@ -131,7 +131,7 @@ body {
 }
 
 .data-grid--compact tbody tr {
-  height: 30px;
+  height: 32px;
 }
 
 .pro-data-grid .data-table tbody tr.row-edge-positive td:first-child {

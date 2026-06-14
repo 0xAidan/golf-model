@@ -7,7 +7,6 @@ export { GradingTrustStrip, type GradingTrustStripProps } from "./grading-trust-
 export { HeroDataGrid, type HeroDataGridProps } from "./hero-data-grid"
 export { KpiSparkBar, type KpiSparkBarProps } from "./kpi-spark-bar"
 export { MacroKpiStrip, type MacroKpiItem, type MacroKpiStripProps } from "./macro-kpi-strip"
-export { MotionCursor } from "./motion-cursor"
 export { MonitoringShell, type MonitoringShellProps } from "./monitoring-shell"
 export { MonitoringTicker, type MonitoringTickerItem, type MonitoringTickerProps } from "./monitoring-ticker"
 export { PanelBackfill, type PanelBackfillProps } from "./panel-backfill"

@@ -180,13 +180,6 @@ export function buildCourseFeedModel({
     })
   }
 
-  if (snapshotNotice) {
-    feedItems.push({
-      label: "Snapshot status",
-      detail: snapshotNotice,
-    })
-  }
-
   if (diagnosticsState) {
     feedItems.push({
       label: mode === "past" ? "Replay state" : "Pipeline state",

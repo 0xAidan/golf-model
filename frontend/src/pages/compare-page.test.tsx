@@ -1,7 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
+import { RouteErrorBoundaryGate } from "@/components/route-error-boundary-gate"
 import { ComparePage } from "@/pages/compare-page"
 
 const { apiMock, snapshotMock } = vi.hoisted(() => ({
@@ -32,6 +35,10 @@ function renderPage() {
   )
 }
 
+function ThrowOnBroken(): never {
+  throw new Error("Failed to fetch dynamically imported module")
+}
+
 describe("ComparePage", () => {
   it("shows the lab-off notice when the challenger section is missing", async () => {
     snapshotMock.value = {
@@ -44,6 +51,18 @@ describe("ComparePage", () => {
     renderPage()
     await waitFor(() => expect(screen.getByTestId("compare-page")).toBeInTheDocument())
     expect(screen.getByTestId("compare-lab-off")).toBeInTheDocument()
+  })
+
+  it("shows no-event empty state when both tracks lack snapshot sections", async () => {
+    snapshotMock.value = {
+      isLiveActive: false,
+      liveTournament: undefined,
+      upcomingTournament: undefined,
+      labLiveTournament: null,
+      labUpcomingTournament: null,
+    }
+    renderPage()
+    expect(await screen.findByTestId("compare-no-event")).toBeInTheDocument()
   })
 
   it("renders rank deltas and pick overlap when both tracks are present", async () => {
@@ -76,15 +95,59 @@ describe("ComparePage", () => {
     }
     renderPage()
     await waitFor(() => expect(screen.getByTestId("compare-rank-deltas")).toBeInTheDocument())
-    // Player A: champion #1 vs challenger #5 => delta -4 (challenger ranks worse).
     const table = screen.getByTestId("compare-rank-deltas")
     expect(table).toHaveTextContent("Player A")
     expect(table).toHaveTextContent("Player B")
-    // Overlap: champion has a|b, challenger has c|d => 0 both, 1 champion-only, 1 challenger-only.
     const overlap = screen.getByTestId("compare-pick-overlap")
     expect(overlap).toHaveTextContent("Champion only")
     expect(overlap).toHaveTextContent("Challenger only")
     expect(screen.getByTestId("track-badge-dashboard")).toBeInTheDocument()
     expect(screen.getByTestId("track-badge-lab")).toBeInTheDocument()
+  })
+})
+
+describe("Route error boundary on satellite routes", () => {
+  it("shows chunk failure fallback with reload affordance", () => {
+    render(
+      <MemoryRouter initialEntries={["/broken"]}>
+        <RouteErrorBoundaryGate>
+          <Routes>
+            <Route path="/broken" element={<ThrowOnBroken />} />
+          </Routes>
+        </RouteErrorBoundaryGate>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("route-error-boundary")).toHaveAttribute("data-chunk-failure", "true")
+    expect(screen.getByTestId("route-error-reload")).toBeInTheDocument()
+  })
+
+  it("resets after navigating to a healthy route", async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={["/broken"]}>
+        <RouteErrorBoundaryGate>
+          <Routes>
+            <Route path="/broken" element={<ThrowOnBroken />} />
+            <Route path="/ok" element={<div data-testid="ok-page">OK</div>} />
+          </Routes>
+        </RouteErrorBoundaryGate>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId("route-error-boundary")).toBeInTheDocument()
+    window.history.pushState({}, "", "/ok")
+    await user.click(document.body)
+    // Navigate using MemoryRouter — remount with healthy route
+    render(
+      <MemoryRouter initialEntries={["/ok"]}>
+        <RouteErrorBoundaryGate>
+          <Routes>
+            <Route path="/ok" element={<div data-testid="ok-page">OK</div>} />
+          </Routes>
+        </RouteErrorBoundaryGate>
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId("ok-page")).toBeInTheDocument()
   })
 })

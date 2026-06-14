@@ -53,7 +53,7 @@ def test_prune_deletes_rows_older_than_cutoff(tmp_db) -> None:
     conn.commit()
     conn.close()
 
-    out = db.prune_snapshot_history_tables(retain_days=365)
+    out = db.prune_snapshot_history_tables(retain_days=365, require_archive=False)
     assert out["skipped"] is False
     assert out["live_snapshot_history_deleted"] >= 1
 

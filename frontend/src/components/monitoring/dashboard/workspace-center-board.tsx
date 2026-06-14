@@ -97,8 +97,8 @@ export function WorkspaceCenterBoard({
 }: WorkspaceCenterBoardProps) {
   const rankings = (
     <div className="card cockpit-stack-card">
-      <div className="card-header">
-        <div>
+      <div className="card-header card-header--stacked">
+        <div className="card-header-main">
           <div className="card-title">
             {predictionTab === "past" ? "Pre-tee-off rankings" : "Power rankings"}
           </div>
@@ -106,17 +106,22 @@ export function WorkspaceCenterBoard({
             {predictionTab === "past"
               ? `${displayPlayers.length} players — last rankings before tee off`
               : `${displayPlayers.length} players ranked by model`}
-            {predictionTab === "live" && modelBaselineLabel ? (
-              <span className="card-desc-accent">{modelBaselineLabel}</span>
-            ) : null}
-            {predictionTab === "live" && scoringBaselineLabel ? (
-              <span className="card-desc-accent">{scoringBaselineLabel}</span>
-            ) : null}
-            {powerRankingsSubtitle ? (
-              <span className="card-desc-accent">{powerRankingsSubtitle}</span>
-            ) : null}
           </div>
         </div>
+        {(predictionTab === "live" && (modelBaselineLabel || scoringBaselineLabel)) ||
+        powerRankingsSubtitle ? (
+          <div className="card-header-meta" data-testid="rankings-header-meta">
+            {predictionTab === "live" && modelBaselineLabel ? (
+              <span className="card-meta-chip">{modelBaselineLabel}</span>
+            ) : null}
+            {predictionTab === "live" && scoringBaselineLabel ? (
+              <span className="card-meta-chip">{scoringBaselineLabel}</span>
+            ) : null}
+            {powerRankingsSubtitle ? (
+              <span className="card-meta-chip card-meta-chip--subtle">{powerRankingsSubtitle}</span>
+            ) : null}
+          </div>
+        ) : null}
         <Link to="/players" className="card-header-link">
           All <ExternalLink size={11} />
         </Link>

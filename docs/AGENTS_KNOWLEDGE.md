@@ -395,6 +395,10 @@ Before treating the Lab board as broken or “same as production”, verify on t
 | `LIVE_REFRESH_LAB_PROFILE_ENABLED` | No | *(unset)* | When set, forces parallel lab snapshot lane on/off for `get_settings()` / worker (overrides `data/autoresearch_settings.json`). Deploy appends `=1` if missing. Use `0`/`false` on tiny VPS to save CPU. |
 | `SNAPSHOT_HISTORY_RETAIN_DAYS` | No | `210` | Retention window for append-heavy live-refresh history tables (`live_snapshot_history`, `market_prediction_rows`). Worker now prunes automatically at this cadence floor (>= 6 months by default). |
 | `SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS` | No | `21600` | Minimum interval between automatic retention prune runs in live-refresh runtime (default every 6 hours). |
+| `SNAPSHOT_PRUNE_REQUIRE_ARCHIVE` | No | `1` | When truthy, `prune_snapshot_history_tables` refuses DELETE until a verified cold archive exists for the cutoff (`src/cold_archive.py`, `data/exports/`). |
+| `SNAPSHOT_ARCHIVE_EXPORTS_DIR` | No | `data/exports` | Override cold-archive directory for prune verification (tests/ops). |
+| `MARKET_PREDICTION_SLIM_PAYLOAD` | No | *(off)* | When `1`/`true`, `store_market_prediction_rows` keeps full `payload_json` only on the first row per `snapshot_id` (slim tick logging). |
+| `DISK_RECLAIM_MIN_FREE_MB` | No | *(auto)* | Minimum free MiB required before `db.reclaim_database_disk()` runs VACUUM / VACUUM INTO. |
 | `SNAPSHOT_MATCHUPS_ALL_BOOKS_MAX_ROWS` | No | `600` | Caps `matchup_bets_all_books` rows stored in in-memory/API snapshot sections to prevent oversized payloads. |
 | `SNAPSHOT_FAILED_CANDIDATES_MAX_ROWS` | No | `300` | Caps `diagnostics.failed_candidates` rows stored in in-memory/API snapshot sections to prevent oversized payloads. |
 | `COCKPIT_SNAPSHOT_MODEL_VARIANT` | No | `baseline` | **`live_tournament` / `upcoming_tournament`** model variant in live-refresh (`backtester/dashboard_runtime.py`). Default **baseline** = Masters-era operator Dashboard; set **`v5`** to put research stack back on `/`. |
@@ -754,6 +758,9 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | AI prompts | `src/prompts.py` |
 | AI analysis logic | `src/ai_brain.py` |
 | DB schema/migrations | `src/db.py` |
+| Storage retention / prune / reclaim | `docs/storage-retention.md`, `src/db.py`, `src/cold_archive.py`, `scripts/export_tournament_archive.py` |
+| Data platform health API | `src/data_health.py`, `GET /api/data-health`, `frontend/src/components/data-health-panel.tsx` |
+| DB backups + integrity | `src/backup.py`, `backups/` |
 | Pipeline orchestration | `src/services/golf_model_service.py` |
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |

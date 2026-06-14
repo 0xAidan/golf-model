@@ -1,9 +1,6 @@
-import { Radar } from "lucide-react"
-
 import type { LiveRefreshSnapshot, PredictionRunResponse } from "@/lib/types"
 
 export function WorkspaceAlerts({
-  snapshotNotice,
   displayPredictionRun,
   shouldShowOpportunityAlertStrip,
   liveOpportunityAlerts,
@@ -13,8 +10,8 @@ export function WorkspaceAlerts({
   pastEventName,
   predictionTabPastError,
   pastReplayErrorMessage,
+  predictionTabPastNoEvent,
 }: {
-  snapshotNotice: string | null
   displayPredictionRun: PredictionRunResponse | null
   shouldShowOpportunityAlertStrip: boolean
   liveOpportunityAlerts: NonNullable<
@@ -26,13 +23,19 @@ export function WorkspaceAlerts({
   pastEventName?: string
   predictionTabPastError: boolean
   pastReplayErrorMessage: string
+  predictionTabPastNoEvent?: boolean
 }) {
   return (
     <>
-      {snapshotNotice ? (
-        <div className="alert-banner" role="status" aria-live="polite">
-          <Radar size={11} style={{ flexShrink: 0 }} />
-          {snapshotNotice}
+      {predictionTabPastNoEvent ? (
+        <div
+          className="alert-banner alert-banner--warn"
+          role="status"
+          data-testid="past-replay-empty"
+        >
+          Select a completed event in the replay panel to load pre-tee-off rankings, picks, and
+          market history. Use the lane buttons to switch between completed, live, and upcoming
+          snapshots.
         </div>
       ) : null}
       {displayPredictionRun?.hydration_section === "upcoming_fallback_live" ||

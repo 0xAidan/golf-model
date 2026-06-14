@@ -453,6 +453,29 @@ API_SLEEP_SECONDS = 2.0
 PIPELINE_LOCK_STALE_SECONDS = 7200
 PLATT_CACHE_TTL = 300
 
+# Live model / market gating (GTM hardening E14–E17).
+LIVE_STATS_MODEL_REFRESH_ENABLED: bool = os.environ.get(
+    "LIVE_STATS_MODEL_REFRESH_ENABLED", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+LIVE_STATS_FRESHNESS_TTL_SECONDS: float = float(
+    os.environ.get("LIVE_STATS_FRESHNESS_TTL_SECONDS", "300")
+)
+LIVE_MARKET_AVAILABILITY_GATING: bool = os.environ.get(
+    "LIVE_MARKET_AVAILABILITY_GATING", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+LIVE_GROUPS_SHADOW: bool = os.environ.get(
+    "LIVE_GROUPS_SHADOW", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+LIVE_GROUPS_DISPLAY_ENABLED: bool = os.environ.get(
+    "LIVE_GROUPS_DISPLAY_ENABLED", ""
+).strip().lower() in ("1", "true", "yes", "on")
+LIVE_PLAYER_MARKETS_SHADOW: bool = os.environ.get(
+    "LIVE_PLAYER_MARKETS_SHADOW", "true"
+).strip().lower() in ("1", "true", "yes", "on")
+LIVE_PLAYER_MARKETS_DISPLAY_ENABLED: bool = os.environ.get(
+    "LIVE_PLAYER_MARKETS_DISPLAY_ENABLED", ""
+).strip().lower() in ("1", "true", "yes", "on")
+
 # Live-refresh memory/retention guardrails.
 # Keep at least 6 months of data online by default while preventing unbounded growth.
 SNAPSHOT_HISTORY_RETAIN_DAYS = int(os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "210"))

@@ -126,7 +126,8 @@ export function buildUpcomingRankingsColumns({
 /** Live tournament — dual model/scoring movement columns. */
 export function buildLiveRankingsColumns({
   onPlayerSelect,
-}: Omit<RankingsColumnOptions, "trajectoryBounds">): ColumnDef<CompositePlayer, unknown>[] {
+  trajectoryBounds = { min: -2, max: 2 },
+}: RankingsColumnOptions): ColumnDef<CompositePlayer, unknown>[] {
   return [
     {
       id: "currentRank",
@@ -214,6 +215,20 @@ export function buildLiveRankingsColumns({
       meta: { label: "To par", align: "right", mono: true },
       enableSorting: true,
       cell: ({ row }) => <span className="num">{formatToPar(row.original.total_to_par)}</span>,
+    },
+    {
+      id: "sgTraj",
+      header: "SG Traj",
+      meta: { label: "SG trajectory", align: "center" },
+      enableSorting: false,
+      cell: ({ row }) => (
+        <SgTrajectoryMeter
+          momentumTrend={row.original.momentum_trend}
+          momentumDirection={row.original.momentum_direction}
+          normMin={trajectoryBounds.min}
+          normMax={trajectoryBounds.max}
+        />
+      ),
     },
     {
       id: "composite",

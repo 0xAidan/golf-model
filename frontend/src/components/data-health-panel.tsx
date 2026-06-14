@@ -1,26 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
+import type { DataHealthReport } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-type DataHealthReport = {
-  status?: string
-  summary?: string
-  file_sizes_human?: Record<string, string>
-  storage_warnings?: string[]
-  gaps?: Array<{ type: string; detail: string }>
-  monthly_coverage?: Record<
-    string,
-    {
-      tournaments?: number
-      picks?: number
-      prediction_log?: number
-      market_prediction_rows?: number
-    }
-  >
-  table_byte_stats?: Array<{ table: string; mb: number; pct_of_top: number }>
-  row_counts?: Record<string, number>
-}
 
 export const DataHealthPanel = () => {
   const { data, isLoading, isError, error } = useQuery({
@@ -31,6 +13,9 @@ export const DataHealthPanel = () => {
 
   const report = (data ?? {}) as DataHealthReport
   const status = report.status ?? "unknown"
+  const backup = report.latest_backup
+  const archive = report.archive_stats?.latest
+  const tableMode = report.table_byte_stats_mode
 
   return (
     <section
@@ -44,7 +29,7 @@ export const DataHealthPanel = () => {
             Data health
           </h2>
           <div className="card-desc">
-            Database size, 2026 history coverage, and storage warnings (read-only audit).
+            Database size, retention policy, backups, archives, and 2026 coverage (read-only audit).
           </div>
         </div>
         <span
@@ -75,6 +60,31 @@ export const DataHealthPanel = () => {
             {report.file_sizes_human.wal ? ` · WAL: ${report.file_sizes_human.wal}` : null}
           </p>
         ) : null}
+        {backup?.name ? (
+          <p className="data-health-muted" data-testid="data-health-backup">
+            Latest backup: <strong>{backup.name}</strong>
+            {backup.size_mb != null ? ` (${backup.size_mb} MB)` : null}
+            {backup.integrity?.ok === true ? " · integrity ok" : null}
+            {backup.integrity?.ok === false ? " · integrity check failed" : null}
+          </p>
+        ) : (
+          <p className="data-health-warn" data-testid="data-health-backup-missing">
+            No database backup found in backups/.
+          </p>
+        )}
+        {report.retention_policy?.snapshot_retain_days != null ? (
+          <p className="data-health-muted">
+            Tick retention: {report.retention_policy.snapshot_retain_days} days
+            {report.retention_policy.prune_require_archive ? " · archive required before prune" : null}
+            {report.retention_policy.slim_market_payload_enabled ? " · slim market payload on" : null}
+          </p>
+        ) : null}
+        {archive ? (
+          <p className="data-health-muted" data-testid="data-health-archive">
+            Latest cold archive: {archive.before_utc ?? "unknown window"}
+            {archive.valid ? " (verified)" : " (checksum mismatch)"}
+          </p>
+        ) : null}
         {(report.storage_warnings ?? []).map((w) => (
           <p key={w} className="data-health-warn" role="status">
             {w}
@@ -82,13 +92,26 @@ export const DataHealthPanel = () => {
         ))}
         {(report.table_byte_stats ?? []).slice(0, 5).length > 0 ? (
           <div>
-            <div className="data-health-section-title">Largest tables</div>
+            <div className="data-health-section-title">
+              Largest tables{tableMode === "approximate" ? " (approximate)" : ""}
+            </div>
             <ul className="data-health-list">
               {(report.table_byte_stats ?? []).slice(0, 5).map((row) => (
                 <li key={row.table}>
-                  {row.table}: {row.mb} MB
+                  {row.table}: {row.mb} MB ({row.pct_of_top}%)
                 </li>
               ))}
+            </ul>
+          </div>
+        ) : null}
+        {report.retention_classifications ? (
+          <div>
+            <div className="data-health-section-title">Retention matrix</div>
+            <ul className="data-health-list">
+              <li>KEEP_FOREVER: {(report.retention_classifications.KEEP_FOREVER ?? []).length} tables</li>
+              <li>ARCHIVE_THEN_PRUNE: {(report.retention_classifications.ARCHIVE_THEN_PRUNE ?? []).join(", ")}</li>
+              <li>SLIM: {(report.retention_classifications.SLIM ?? []).join(", ")}</li>
+              <li>INVESTIGATE: {(report.retention_classifications.INVESTIGATE ?? []).join(", ")}</li>
             </ul>
           </div>
         ) : null}

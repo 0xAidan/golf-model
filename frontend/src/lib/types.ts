@@ -228,6 +228,23 @@ export type LiveTournamentSnapshot = {
   pre_tournament_rankings?: LiveRankingRow[]
   frozen_pre_teeoff_rankings?: LiveRankingRow[]
   live_player_board?: LivePlayerBoardRow[]
+  eliminated_players?: Array<{
+    player_key?: string
+    player?: string
+    finish_state?: string | null
+    pre_tournament_composite?: number | null
+  }>
+  live_stats_by_player?: Record<string, Record<string, unknown>>
+  live_stats_source?: string
+  live_stats_fetched_at?: string
+  live_stats_age_seconds?: number | null
+  live_stats_fresh?: boolean
+  live_model_mode?: "full_live_stats" | "leaderboard_only" | "stale_live_stats" | "no_live_stats" | string
+  live_stats_warning?: string | null
+  live_groups_shadow?: Record<string, unknown>[]
+  live_player_markets_shadow?: Record<string, unknown>[]
+  live_groups_display_enabled?: boolean
+  live_player_markets_display_enabled?: boolean
   live_opportunity_alerts?: LiveOpportunityAlert[]
   scoring_baseline_label?: string
   ranking_fallback_reason?: string | null
@@ -278,6 +295,9 @@ export type LivePlayerBoardRow = {
     composite?: number | null
     start_composite?: number | null
     pre_tournament_composite?: number | null
+    momentum?: number | null
+    momentum_trend?: number | null
+    momentum_direction?: string | null
   }
   scoring?: {
     position_label?: string | null
@@ -287,6 +307,7 @@ export type LivePlayerBoardRow = {
     position_delta?: number | null
     total_to_par?: number | null
     baseline_source?: string | null
+    live_stats?: Record<string, unknown> | null
   }
 }
 
@@ -650,8 +671,14 @@ export type MatchupBet = {
   /** When set (replay payload or upstream), overrides leaderboard-derived grade in Past tab. */
   graded_result?: "win" | "loss" | "push"
   is_new_live_opportunity?: boolean
+  is_new_since_last_snapshot?: boolean
   is_material_ev_increase?: boolean
   first_seen_at?: string
+  live_bettable?: boolean
+  market_provenance?: string
+  availability_reason?: string
+  line_seen_at?: string | null
+  last_seen_tick?: string | null
 }
 
 export type SecondaryBet = {
@@ -734,6 +761,8 @@ export type PredictionRunResponse = {
   errors?: string[]
   /** Which snapshot section hydrated this run (for upcoming vs live correctness). */
   hydration_section?: HydrationSectionKey
+  live_model_mode?: string
+  live_stats_fresh?: boolean
 }
 
 export type HydrationSectionKey =
@@ -1098,4 +1127,69 @@ export type TrackComparisonResponse = {
   by_market: Record<string, Record<string, TrackMetrics>>
   data_kind: string
   note: string
+}
+
+export type DataHealthBackupInfo = {
+  path?: string
+  name?: string
+  size_mb?: number
+  created?: string
+  integrity?: {
+    ok?: boolean
+    quick_check?: string
+    error?: string
+  }
+}
+
+export type DataHealthArchiveInfo = {
+  exports_dir?: string
+  archive_count?: number
+  latest?: {
+    path?: string
+    created_at?: string
+    before_utc?: string
+    valid?: boolean
+    row_counts?: Record<string, number>
+  } | null
+}
+
+export type DataHealthReport = {
+  ok?: boolean
+  status?: string
+  summary?: string
+  file_sizes_human?: Record<string, string>
+  storage_warnings?: string[]
+  gaps?: Array<{ type: string; detail: string }>
+  monthly_coverage?: Record<
+    string,
+    {
+      tournaments?: number
+      picks?: number
+      prediction_log?: number
+      market_prediction_rows?: number
+    }
+  >
+  table_byte_stats?: Array<{
+    table: string
+    mb: number
+    pct_of_top: number
+    approximate?: boolean
+  }>
+  table_byte_stats_mode?: "dbstat" | "approximate"
+  row_counts?: Record<string, number>
+  retention_policy?: {
+    retain_forever?: string[]
+    prunable_tick_tables?: string[]
+    snapshot_retain_days?: number
+    prune_require_archive?: boolean
+    slim_market_payload_enabled?: boolean
+  }
+  retention_classifications?: {
+    KEEP_FOREVER?: string[]
+    ARCHIVE_THEN_PRUNE?: string[]
+    SLIM?: string[]
+    INVESTIGATE?: string[]
+  }
+  latest_backup?: DataHealthBackupInfo | null
+  archive_stats?: DataHealthArchiveInfo
 }
