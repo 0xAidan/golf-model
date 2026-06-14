@@ -50,8 +50,8 @@ export type ProDataGridProps<T> = {
   showDensityToggle?: boolean
 }
 
-const COMPACT_ROW = 30
-const COMFORTABLE_ROW = 38
+const COMPACT_ROW = 32
+const COMFORTABLE_ROW = 40
 
 export function ProDataGrid<T>({
   data,

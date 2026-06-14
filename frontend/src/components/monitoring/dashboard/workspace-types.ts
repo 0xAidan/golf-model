@@ -68,6 +68,8 @@ export type PredictionWorkspacePageProps = {
   powerRankingsSubtitle?: string | null
   pastReplaySource?: PastReplaySource
   onPastEventContextChange?: (context: { eventName: string; courseName?: string } | null) => void
+  usingProdSnapshotFallback?: boolean
+  labLanePartialSections?: boolean
   /** Embedded Full picks / Full lab picks tab content from App.tsx */
   fullPicks?: WorkspaceFullPicksEmbed
   /** Market rows for production full picks (optional; App provides when available) */

@@ -577,71 +577,8 @@
   border-top: var(--monitor-hairline);
 }
 
-/* Motion cursor (desktop fine pointer) */
-html.motion-cursor-active,
-html.motion-cursor-active * {
-  cursor: none !important;
-}
-
-.motion-cursor {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.motion-cursor--visible {
-  opacity: 1;
-}
-
-.motion-cursor__ring {
-  display: block;
-  width: 18px;
-  height: 18px;
-  margin: -9px 0 0 -9px;
-  border: 1.5px solid var(--turf-pin);
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--turf-pin) 12%, transparent);
-}
-
-.motion-cursor--action .motion-cursor__ring {
-  border-color: var(--turf-sand);
-  background: color-mix(in srgb, var(--turf-sand) 16%, transparent);
-  transform: scale(1.35);
-}
-
-.motion-cursor--link .motion-cursor__ring {
-  border-color: var(--turf-fairway);
-  background: color-mix(in srgb, var(--turf-fairway) 14%, transparent);
-}
-
-.motion-cursor__label {
-  position: absolute;
-  top: 14px;
-  left: 12px;
-  padding: 2px 6px;
-  border-radius: var(--r-sm);
-  border: var(--monitor-hairline);
-  background: var(--bg-1);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
 .route-motion-panel--view-transition {
   view-transition-name: route-panel;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .motion-cursor {
-    display: none;
-  }
 }
 
 /* Phase 5 — players, records, research routes */

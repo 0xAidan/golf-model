@@ -282,4 +282,13 @@ describe("PredictionWorkspacePage live UX", () => {
 
     expect(screen.getByTestId("eligibility-warning-banner")).toHaveTextContent(/eligibility not verified/i)
   })
+
+  it("shows snapshot notice once via lane trust banner", () => {
+    const props = buildProps()
+    props.snapshotNotice = "Snapshot is stale — last refresh failed."
+    renderPage(props)
+
+    expect(screen.getByTestId("trust-status-banner")).toHaveTextContent(/snapshot is stale/i)
+    expect(screen.queryAllByText(/snapshot is stale/i)).toHaveLength(1)
+  })
 })

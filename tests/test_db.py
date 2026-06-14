@@ -296,3 +296,34 @@ def _market_row(
         "is_value": 1,
         "payload_json": "{}",
     }
+
+
+def test_slim_market_payload_stores_empty_payload_for_duplicate_snapshots(monkeypatch):
+    monkeypatch.setenv("MARKET_PREDICTION_SLIM_PAYLOAD", "1")
+    rows = [
+        _market_row("snap-slim", "upcoming", "900", "First", "first", generated_at="2026-06-01T10:00:00+00:00"),
+        _market_row("snap-slim", "upcoming", "900", "Second", "second", generated_at="2026-06-01T10:00:00+00:00"),
+    ]
+    rows[0]["payload_json"] = '{"full": true}'
+    rows[1]["payload_json"] = '{"full": true}'
+    db.store_market_prediction_rows(rows)
+
+    conn = db.get_conn()
+    payloads = conn.execute(
+        "SELECT payload_json FROM market_prediction_rows WHERE snapshot_id = ? ORDER BY id",
+        ("snap-slim",),
+    ).fetchall()
+    conn.close()
+    assert payloads[0]["payload_json"] == '{"full": true}'
+    assert payloads[1]["payload_json"] == "{}"
+
+
+def test_reclaim_database_disk_runs_vacuum_on_small_db(monkeypatch):
+    monkeypatch.delenv("DISK_RECLAIM_MIN_FREE_MB", raising=False)
+    conn = db.get_conn()
+    conn.execute("DELETE FROM market_prediction_rows")
+    conn.commit()
+    conn.close()
+    result = db.reclaim_database_disk(min_free_mb=1)
+    assert result["ok"] is True
+    assert result.get("bytes_before", 0) >= 0

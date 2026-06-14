@@ -123,21 +123,34 @@ function normalizeSnapshotMatchupRows(rows: MatchupBet[]): MatchupBet[] {
         opp_momentum: row.opp_momentum != null ? Number(row.opp_momentum) : undefined,
         stake_multiplier: row.stake_multiplier != null ? Number(row.stake_multiplier) : undefined,
         is_new_live_opportunity: Boolean(row.is_new_live_opportunity),
+        is_new_since_last_snapshot: Boolean(row.is_new_since_last_snapshot),
         is_material_ev_increase: Boolean(row.is_material_ev_increase),
         first_seen_at: row.first_seen_at,
+        live_bettable: row.live_bettable,
+        market_provenance: row.market_provenance,
+        availability_reason: row.availability_reason,
+        line_seen_at: row.line_seen_at,
+        last_seen_tick: row.last_seen_tick,
       }
     })
     .sort((left, right) => right.ev - left.ev)
 }
 
-export function hydrateSnapshotMatchups(source: LiveTournamentSnapshot): MatchupBet[] {
+export function hydrateSnapshotMatchups(
+  source: LiveTournamentSnapshot,
+  options?: { liveActionableOnly?: boolean },
+): MatchupBet[] {
   const seededRows = Array.isArray(source.matchup_bets)
     ? source.matchup_bets
     : source.matchup_bets === null
       ? []
       : hydrateLegacyMatchups(source.matchups)
 
-  return normalizeSnapshotMatchupRows(seededRows)
+  const rows = normalizeSnapshotMatchupRows(seededRows)
+  if (options?.liveActionableOnly) {
+    return rows.filter((row) => row.live_bettable === true)
+  }
+  return rows
 }
 
 export function hydrateSnapshotMatchupsAllBooks(source: LiveTournamentSnapshot): MatchupBet[] {
@@ -363,7 +376,9 @@ export function buildPredictionRunFromSection(
   }
 
   const rankings = source.live_rankings ?? source.rankings ?? []
-  const matchupBets = hydrateSnapshotMatchups(source)
+  const liveActionableOnly =
+    options.hydrationSection === "live" || options.hydrationSection === "live_fallback_upcoming"
+  const matchupBets = hydrateSnapshotMatchups(source, { liveActionableOnly })
   const matchupBetsAllBooks = hydrateSnapshotMatchupsAllBooks(source)
   const valueBets = hydrateSnapshotValueBets(source)
 
@@ -381,7 +396,9 @@ export function buildPredictionRunFromSection(
       composite: Number(row.model?.composite ?? 0),
       course_fit: 0,
       form: 0,
-      momentum: 0,
+      momentum: Number(row.model?.momentum ?? 0),
+      momentum_direction: row.model?.momentum_direction ?? undefined,
+      momentum_trend: row.model?.momentum_trend != null ? Number(row.model.momentum_trend) : undefined,
       start_rank: row.model?.start_rank ?? null,
       current_rank: row.model?.current_rank ?? null,
       rank_delta: row.model?.rank_delta ?? null,
@@ -454,7 +471,10 @@ export function buildPredictionRunFromSection(
     warnings: [
       "Hydrated from snapshot history. Manual runs are still required for card export and full provenance details.",
       ...(source.ranking_fallback_reason ? [source.ranking_fallback_reason] : []),
+      ...(source.live_stats_warning ? [String(source.live_stats_warning)] : []),
       ...hydrationWarnings,
     ],
+    live_model_mode: source.live_model_mode,
+    live_stats_fresh: source.live_stats_fresh,
   }
 }

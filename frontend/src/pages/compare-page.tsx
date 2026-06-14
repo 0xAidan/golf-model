@@ -1,7 +1,10 @@
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { GitCompare } from "lucide-react"
 
 import { TrackBadge } from "@/components/product/track-badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { api } from "@/lib/api"
 import { POLLING } from "@/lib/query-polling"
 import { useLiveSnapshot } from "@/providers/live-snapshot-provider"
@@ -97,33 +100,43 @@ export function ComparePage() {
 
   const eventName = championSection?.event_name || challengerSection?.event_name || "current event"
   const labOff = !challengerSection
+  const noEventLoaded = !championSection && !challengerSection
 
   return (
-    <div className="product-page" data-testid="compare-page">
-      <header className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-semibold text-[var(--text-primary)]">Track comparison</h1>
-        <TrackBadge
-          track="dashboard"
-          variant={championSection?.model_variant ?? dashboardTrack?.model_variant}
-          configHash={dashboardTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.dashboard}
-        />
-        <span aria-hidden className="text-[var(--text-tertiary)]">vs</span>
-        <TrackBadge
-          track="lab"
-          variant={challengerSection?.model_variant ?? labTrack?.model_variant}
-          configHash={labTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.lab}
-        />
-        <span className="ml-auto text-sm text-[var(--text-tertiary)]">
-          {eventName} · {usingLive ? "Live" : "Upcoming"}
-        </span>
-      </header>
-
+    <div className="product-page product-page--satellite" data-testid="compare-page">
+      <TerminalPageHeader
+        eyebrow="Research"
+        title="Track comparison"
+        description="Same event, both model tracks. Differences are informational — not a recommendation to switch."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <TrackBadge
+              track="dashboard"
+              variant={championSection?.model_variant ?? dashboardTrack?.model_variant}
+              configHash={dashboardTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.dashboard}
+            />
+            <span aria-hidden className="text-[var(--text-tertiary)]">vs</span>
+            <TrackBadge
+              track="lab"
+              variant={challengerSection?.model_variant ?? labTrack?.model_variant}
+              configHash={labTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.lab}
+            />
+          </div>
+        }
+      />
       <p className="mb-4 text-sm text-[var(--text-secondary)]">
-        Same event, both model tracks. The lab track is a <strong>challenger (validation pending)</strong> —
-        differences below are informational, not a recommendation to switch.
+        {eventName} · {usingLive ? "Live" : "Upcoming"}
       </p>
 
-      {labOff ? (
+      {noEventLoaded ? (
+        <div data-testid="compare-no-event">
+          <EmptyState
+            message="No event loaded"
+            description="Switch the dashboard to Upcoming or Live, or open Lab when the parallel lane is enabled."
+            icon={<GitCompare size={24} aria-hidden />}
+          />
+        </div>
+      ) : labOff ? (
         <div className="card" data-testid="compare-lab-off">
           <div className="card-body">
             <p className="text-sm text-[var(--text-secondary)]">

@@ -160,6 +160,45 @@ describe("buildHydratedPredictionRun", () => {
     expect(flattened[0].player_key).toBe("jj_spaun")
   })
 
+  it("hydrates live-player-board momentum fields when preferLivePlayerBoard is true", () => {
+    const run = buildPredictionRunFromSection(
+      {
+        event_name: "Live Event",
+        live_player_board: [
+          {
+            player_key: "tommy_fleetwood",
+            player: "Tommy Fleetwood",
+            model: {
+              start_rank: 12,
+              current_rank: 4,
+              rank_delta: 8,
+              composite: 79.2,
+              start_composite: 73.8,
+              momentum: 76,
+              momentum_trend: 0.4,
+              momentum_direction: "hot",
+            },
+            scoring: {
+              position_label: "T3",
+              position_rank: 3,
+              start_position: "T15",
+              start_position_rank: 15,
+              position_delta: 12,
+              total_to_par: -8,
+              baseline_source: "frozen_at_tee_off",
+            },
+          },
+        ],
+        rankings: [],
+        value_bets: {},
+      },
+      { preferLivePlayerBoard: true, hydrationSection: "live" },
+    )
+
+    expect(run?.composite_results?.[0]?.momentum_trend).toBe(0.4)
+    expect(run?.composite_results?.[0]?.momentum_direction).toBe("hot")
+  })
+
   it("hydrates live-player-board when preferLivePlayerBoard is true", () => {
     const run = buildPredictionRunFromSection(
       {
@@ -312,5 +351,31 @@ describe("buildHydratedPredictionRun", () => {
     const flattened = flattenSecondaryBets(run)
     expect(flattened[0]?.is_new_live_opportunity).toBe(true)
     expect(flattened[0]?.first_seen_at).toBe("2026-06-04T16:00:00Z")
+  })
+
+  it("live board hydrates momentum_trend from live_player_board", () => {
+    const run = buildPredictionRunFromSection(
+      {
+        event_name: "Live Event",
+        live_player_board: [
+          {
+            player_key: "player_a",
+            player: "Player A",
+            model: {
+              current_rank: 1,
+              composite: 80,
+              momentum_trend: 0.55,
+              momentum_direction: "hot",
+            },
+            scoring: { position_label: "T1", total_to_par: -5 },
+          },
+        ],
+        rankings: [],
+        value_bets: {},
+      },
+      { preferLivePlayerBoard: true, hydrationSection: "live" },
+    )
+    expect(run?.composite_results?.[0]?.momentum_trend).toBe(0.55)
+    expect(run?.composite_results?.[0]?.momentum_direction).toBe("hot")
   })
 })

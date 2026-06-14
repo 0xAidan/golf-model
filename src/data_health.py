@@ -16,8 +16,8 @@ from backtester.autoresearch_data_health import validate_autoresearch_data_healt
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _OUTPUT_DIR = _REPO_ROOT / "output"
 
-# Tables we expect to retain indefinitely (operator / model history).
-_RETAIN_FOREVER = frozenset({
+# Retention classifications (exposed in data-health API).
+KEEP_FOREVER = frozenset({
     "picks",
     "pick_outcomes",
     "prediction_log",
@@ -25,16 +25,46 @@ _RETAIN_FOREVER = frozenset({
     "tournaments",
     "runs",
     "rounds",
+    "metrics",
     "weight_sets",
     "calibration_curve",
     "market_performance",
 })
 
-# Append-heavy tables with explicit prune policy in config.
-_PRUNABLE_TICK_TABLES = frozenset({
+ARCHIVE_THEN_PRUNE = frozenset({
     "live_snapshot_history",
     "market_prediction_rows",
 })
+
+SLIM = frozenset({
+    "market_prediction_rows",
+})
+
+INVESTIGATE = frozenset({
+    "ai_decisions",
+    "intel_events",
+    "shadow_event_simulations",
+    "challenger_predictions",
+})
+
+# Back-compat aliases used internally.
+_RETAIN_FOREVER = KEEP_FOREVER
+_PRUNABLE_TICK_TABLES = ARCHIVE_THEN_PRUNE
+
+# Rough bytes-per-row estimates when dbstat is skipped (large DBs).
+_ESTIMATED_BYTES_PER_ROW: dict[str, int] = {
+    "market_prediction_rows": 2048,
+    "live_snapshot_history": 8192,
+    "picks": 512,
+    "pick_outcomes": 256,
+    "prediction_log": 1024,
+    "rounds": 256,
+    "metrics": 128,
+    "challenger_predictions": 1024,
+    "ai_decisions": 512,
+    "intel_events": 512,
+    "shadow_event_simulations": 4096,
+}
 
 
 def _db_file_sizes(db_path: str) -> dict[str, int | None]:
@@ -93,8 +123,69 @@ def _table_byte_stats(conn: sqlite3.Connection, limit: int = 20) -> list[dict[st
             "bytes": b,
             "mb": round(b / (1024 * 1024), 2),
             "pct_of_top": round(100.0 * b / total, 1) if total else 0.0,
+            "approximate": False,
         })
     return result
+
+
+def _approximate_table_stats(
+    conn: sqlite3.Connection,
+    row_counts: dict[str, int],
+    main_bytes: int,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Fallback sizing when dbstat is too slow on multi-GB databases."""
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0] or 0)
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0] or 4096)
+    db_bytes = page_count * page_size if page_count > 0 else main_bytes
+
+    tables = [row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).fetchall()]
+    estimates: list[tuple[str, int]] = []
+    for table in tables:
+        count = int(row_counts.get(table, _safe_count(conn, table)))
+        per_row = _ESTIMATED_BYTES_PER_ROW.get(table, 256)
+        estimates.append((table, max(count * per_row, 0)))
+
+    total_est = sum(b for _, b in estimates) or 1
+    scale = db_bytes / total_est if total_est > 0 else 1.0
+
+    result: list[dict[str, Any]] = []
+    for table, raw_bytes in sorted(estimates, key=lambda item: item[1], reverse=True)[:limit]:
+        b = int(raw_bytes * scale)
+        result.append({
+            "table": table,
+            "bytes": b,
+            "mb": round(b / (1024 * 1024), 2),
+            "pct_of_top": round(100.0 * b / (db_bytes or 1), 1),
+            "approximate": True,
+        })
+    return result
+
+
+def _latest_backup_info(backup_dir: str | None = None) -> dict[str, Any] | None:
+    path = find_latest_backup(backup_dir)
+    if not path:
+        return None
+    try:
+        size_bytes = os.path.getsize(path)
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {"path": path, "ok": False, "error": "cannot stat backup file"}
+
+    from src.backup import verify_backup_integrity
+
+    integrity = verify_backup_integrity(path)
+    return {
+        "path": path,
+        "name": os.path.basename(path),
+        "size_bytes": size_bytes,
+        "size_mb": round(size_bytes / (1024 * 1024), 2),
+        "created": datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat(),
+        "integrity": integrity,
+    }
 
 
 def _monthly_counts(
@@ -204,22 +295,12 @@ def build_data_health_report(
         storage_warnings: list[str] = []
         # dbstat walks every page — prohibitively slow on multi-GB production DBs.
         use_dbstat = main_bytes < 2 * 1024 ** 3
-        table_stats = _table_byte_stats(conn, limit=25) if use_dbstat else []
-        top_table = table_stats[0]["table"] if table_stats else None
-        top_pct = table_stats[0]["pct_of_top"] if table_stats else 0.0
-        if not use_dbstat:
-            storage_warnings.append(
-                "Table size breakdown skipped (database >2GB). "
-                "Use row_counts and prune tick tables."
-            )
+        table_stats: list[dict[str, Any]] = []
+        table_stats_mode = "dbstat"
         if main_bytes > 5 * 1024 ** 3:
             storage_warnings.append(
                 f"Database file is {main_bytes / (1024**3):.1f} GB — run prune + VACUUM; "
                 "see docs/storage-retention.md."
-            )
-        if top_table in _PRUNABLE_TICK_TABLES and top_pct >= 25:
-            storage_warnings.append(
-                f"Table '{top_table}' dominates storage (~{top_pct}% of measured pages)."
             )
         wal_bytes = sizes.get("wal")
         if wal_bytes and wal_bytes > 500 * 1024 ** 2:
@@ -276,6 +357,23 @@ def build_data_health_report(
             "challenger_predictions": _safe_count(conn, "challenger_predictions"),
         }
 
+        if use_dbstat:
+            table_stats = _table_byte_stats(conn, limit=25)
+        else:
+            table_stats = _approximate_table_stats(conn, row_counts, main_bytes, limit=25)
+            table_stats_mode = "approximate"
+            storage_warnings.append(
+                "Table sizes are approximate (database >2GB; dbstat skipped). "
+                "Estimates use row counts and page_count."
+            )
+
+        top_table = table_stats[0]["table"] if table_stats else None
+        top_pct = table_stats[0]["pct_of_top"] if table_stats else 0.0
+        if top_table in _PRUNABLE_TICK_TABLES and top_pct >= 25:
+            storage_warnings.append(
+                f"Table '{top_table}' dominates storage (~{top_pct}% of measured pages)."
+            )
+
         gaps = _gaps_output_vs_db(conn, year)
         autoresearch = validate_autoresearch_data_health(years=[year])
 
@@ -313,6 +411,14 @@ def build_data_health_report(
         if storage_warnings:
             summary_lines.append(storage_warnings[0])
 
+        from src.cold_archive import list_archive_stats
+
+        latest_backup = _latest_backup_info()
+        archive_stats = list_archive_stats()
+        slim_payload = (os.environ.get("MARKET_PREDICTION_SLIM_PAYLOAD") or "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+
         return {
             "ok": status != "red",
             "status": status,
@@ -328,6 +434,7 @@ def build_data_health_report(
                 for k, v in sizes.items()
             },
             "table_byte_stats": table_stats,
+            "table_byte_stats_mode": table_stats_mode,
             "row_counts": row_counts,
             "retention_policy": {
                 "retain_forever": sorted(_RETAIN_FOREVER),
@@ -335,7 +442,20 @@ def build_data_health_report(
                 "snapshot_retain_days": int(
                     os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "210")
                 ),
+                "prune_require_archive": (
+                    os.environ.get("SNAPSHOT_PRUNE_REQUIRE_ARCHIVE", "1").strip().lower()
+                    not in {"0", "false", "no", "off"}
+                ),
+                "slim_market_payload_enabled": slim_payload,
             },
+            "retention_classifications": {
+                "KEEP_FOREVER": sorted(KEEP_FOREVER),
+                "ARCHIVE_THEN_PRUNE": sorted(ARCHIVE_THEN_PRUNE),
+                "SLIM": sorted(SLIM),
+                "INVESTIGATE": sorted(INVESTIGATE),
+            },
+            "latest_backup": latest_backup,
+            "archive_stats": archive_stats,
             "monthly_coverage": monthly,
             "gaps": gaps,
             "autoresearch_data_health": autoresearch,

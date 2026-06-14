@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, XCircle } from "lucide-react"
 
-import { HeroBand } from "@/components/monitoring"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { TrackBadge } from "@/components/product/track-badge"
 import { api } from "@/lib/api"
 import type { TrackMetrics } from "@/lib/types"
@@ -239,11 +239,11 @@ const TABS = [
 export function EvalPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("compare")
   return (
-    <div className="product-page" data-testid="eval-page">
-      <HeroBand
+    <div className="product-page product-page--satellite" data-testid="eval-page">
+      <TerminalPageHeader
         eyebrow="Model validity"
         title="Eval"
-        meta="Prove the challenger before promoting it. Champion vs challenger evidence and gated promotion."
+        description="Prove the challenger before promoting it. Champion vs challenger evidence and gated promotion."
       />
       <div className="mt-4 flex gap-2" role="tablist" aria-label="Eval sections">
         {TABS.map((t) => (

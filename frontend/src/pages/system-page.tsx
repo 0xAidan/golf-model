@@ -2,7 +2,8 @@ import { Link } from "react-router-dom"
 
 import { DataHealthPanel } from "@/components/data-health-panel"
 import { DiagnosticsGradingPanel } from "@/components/cockpit/event-modules"
-import { BentoGrid, BentoPanel, HeroBand } from "@/components/monitoring"
+import { BentoGrid, BentoPanel } from "@/components/monitoring"
+import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { buildDiagnosticsModel } from "@/lib/cockpit-event-models"
 import type {
   DashboardState,
@@ -49,12 +50,12 @@ export function SystemPage({
   })
 
   return (
-    <div className="monitor-research-page monitor-scroll-region" data-testid="system-page">
-      <main aria-label="System health and diagnostics">
-        <HeroBand
-          title="System"
+    <div className="monitor-research-page monitor-scroll-region product-page--satellite" data-testid="system-page">
+      <main aria-label="System health and diagnostics" className="px-5 pt-5">
+        <TerminalPageHeader
           eyebrow="Health"
-          meta="Snapshot freshness, pipeline diagnostics, and data health for the operator board."
+          title="System"
+          description="Snapshot freshness, pipeline diagnostics, and data health for the operator board."
           action={
             <Link to="/" className="btn btn-ghost btn-sm">
               Back to Dashboard

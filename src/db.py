@@ -2507,6 +2507,24 @@ def store_market_prediction_rows(rows: list[dict]) -> int:
     """Persist matchup/placement rows shown in snapshot surfaces."""
     if not rows:
         return 0
+
+    slim = (os.environ.get("MARKET_PREDICTION_SLIM_PAYLOAD") or "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    if slim:
+        seen_snapshots: set[str] = set()
+        normalized: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            snap = str(item.get("snapshot_id") or "")
+            if snap and snap in seen_snapshots:
+                item["payload_json"] = "{}"
+            elif snap:
+                seen_snapshots.add(snap)
+                # First row per snapshot keeps payload for snapshot-level replay.
+            normalized.append(item)
+        rows = normalized
+
     conn = get_conn()
     conn.executemany(
         """
@@ -2831,7 +2849,83 @@ def get_weights_for_course(course_num: int = None) -> dict:
     return blended
 
 
-def prune_snapshot_history_tables(retain_days: int | None = None) -> dict[str, Any]:
+def reclaim_database_disk(
+    *,
+    min_free_mb: int | None = None,
+    wal_checkpoint: bool = True,
+) -> dict[str, Any]:
+    """Disk-guarded reclaim after large DELETEs. Refuses when free space is insufficient."""
+    import shutil
+
+    from src.disk_guard import warn_if_low_disk
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    warn_if_low_disk(repo_root, context="db_reclaim")
+
+    db_bytes = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+    usage = shutil.disk_usage(repo_root)
+    free_mb = int(usage.free // (1024 * 1024))
+    required_mb = min_free_mb
+    if required_mb is None:
+        raw = (os.environ.get("DISK_RECLAIM_MIN_FREE_MB") or "").strip()
+        if raw:
+            try:
+                required_mb = int(raw)
+            except ValueError:
+                required_mb = None
+    if required_mb is None and db_bytes > 0:
+        # Need roughly one full DB copy free for VACUUM / VACUUM INTO swap headroom.
+        required_mb = max(1024, int((db_bytes * 1.15) // (1024 * 1024)))
+
+    if required_mb and free_mb < required_mb:
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": (
+                f"insufficient free disk: {free_mb} MiB free, need >= {required_mb} MiB"
+            ),
+            "free_mb": free_mb,
+            "required_mb": required_mb,
+        }
+
+    if db_bytes >= 5 * 1024 ** 3:
+        temp_path = DB_PATH + ".vacuum_into"
+        conn = get_conn()
+        try:
+            if wal_checkpoint:
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except sqlite3.OperationalError as exc:
+                    _logger.warning("wal_checkpoint failed: %s", exc)
+            before = db_bytes
+            escaped = temp_path.replace("'", "''")
+            conn.execute(f"VACUUM INTO '{escaped}'")
+            conn.commit()
+        finally:
+            conn.close()
+        if not os.path.isfile(temp_path):
+            return {"ok": False, "skipped": True, "reason": "VACUUM INTO did not produce output"}
+        backup_path = DB_PATH + ".pre_reclaim"
+        shutil.copy2(DB_PATH, backup_path)
+        os.replace(temp_path, DB_PATH)
+        after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+        return {
+            "ok": True,
+            "method": "vacuum_into_swap",
+            "bytes_before": before,
+            "bytes_after": after,
+            "bytes_reclaimed": max(0, before - after),
+            "free_mb": free_mb,
+        }
+
+    return vacuum_database(wal_checkpoint=wal_checkpoint)
+
+
+def prune_snapshot_history_tables(
+    retain_days: int | None = None,
+    *,
+    require_archive: bool | None = None,
+) -> dict[str, Any]:
     """Delete rows older than ``retain_days`` from append-heavy live-refresh tables.
 
     Intended for explicit operator/cron use only — not called from HTTP handlers.
@@ -2866,8 +2960,52 @@ def prune_snapshot_history_tables(retain_days: int | None = None) -> dict[str, A
             "market_prediction_rows_deleted": 0,
         }
 
-    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=int(days))
-    cutoff = cutoff_dt.isoformat()
+    from src.cold_archive import snapshot_history_cutoff_utc, verified_archive_exists_for_cutoff
+
+    cutoff = snapshot_history_cutoff_utc(int(days))
+
+    if require_archive is None:
+        require_archive = (
+            os.environ.get("SNAPSHOT_PRUNE_REQUIRE_ARCHIVE", "1").strip().lower()
+            not in {"0", "false", "no", "off"}
+        )
+
+    conn = get_conn()
+    try:
+        old_live = conn.execute(
+            """
+            SELECT COUNT(*) FROM live_snapshot_history
+            WHERE generated_at IS NOT NULL AND generated_at < ?
+            """,
+            (cutoff,),
+        ).fetchone()[0]
+        old_market = conn.execute(
+            """
+            SELECT COUNT(*) FROM market_prediction_rows
+            WHERE generated_at IS NOT NULL AND generated_at < ?
+            """,
+            (cutoff,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    would_delete = int(old_live) + int(old_market)
+    if require_archive and would_delete > 0:
+        exports_dir = (os.environ.get("SNAPSHOT_ARCHIVE_EXPORTS_DIR") or "").strip() or None
+        if not verified_archive_exists_for_cutoff(cutoff, exports_dir=exports_dir):
+            return {
+                "skipped": True,
+                "reason": (
+                    "no verified cold archive for cutoff; export tick tables before prune"
+                ),
+                "retain_days": int(days),
+                "cutoff_utc": cutoff,
+                "live_snapshot_history_deleted": 0,
+                "market_prediction_rows_deleted": 0,
+                "require_archive": True,
+                "rows_pending_delete": would_delete,
+            }
+
     conn = get_conn()
     try:
         conn.execute(
@@ -2889,6 +3027,7 @@ def prune_snapshot_history_tables(retain_days: int | None = None) -> dict[str, A
         "cutoff_utc": cutoff,
         "live_snapshot_history_deleted": int(n1),
         "market_prediction_rows_deleted": int(n2),
+        "require_archive": bool(require_archive),
     }
 
 

@@ -21,6 +21,7 @@ from src import config, db
 from src.atomic_io import atomic_write_json
 from src.autoresearch_settings import get_settings
 from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
+from src.live_stats_source import live_sg_trajectory_trend, parse_live_stats_from_in_play
 from src.disk_guard import warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
 from src.live_refresh_policy import resolve_cadence
@@ -431,11 +432,30 @@ def _load_finish_state_map(event_id: str | None, *, year: int | None = None) -> 
         conn.close()
 
 
+def _merge_in_play_finish_states(
+    db_states: dict[str, str] | None,
+    leaderboard_rows: list[dict] | None,
+) -> dict[str, str]:
+    from src.datagolf import normalize_in_play_finish_state
+
+    merged = dict(db_states or {})
+    for row in leaderboard_rows or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        finish = row.get("finish_state")
+        if not finish:
+            finish = normalize_in_play_finish_state(
+                row.get("position") or row.get("current_pos") or row.get("dg_position")
+            )
+        if pk and finish:
+            merged[pk] = str(finish).strip().upper()
+    return merged
+
+
 def _is_cut_or_inactive(finish_state: str | None) -> bool:
     if not finish_state:
         return False
     state = str(finish_state).strip().upper()
-    return state in {"CUT", "MDF", "WD", "DQ", "DNS"}
+    return state in {"CUT", "MC", "MDF", "WD", "DQ", "DNS"}
 
 
 def _finish_rank_from_text(finish_state: str | None) -> int | None:
@@ -619,6 +639,8 @@ def _build_live_point_in_time_rankings(
     finish_states: dict[str, str] | None,
     exclude_cut_players: bool,
     dg_win_prob: dict[str, float] | None,
+    live_stats_by_player: dict[str, dict[str, Any]] | None = None,
+    live_stats_fresh: bool = False,
 ) -> tuple[list[dict], str]:
     """
     Re-rank pre-tournament composite scores using current tournament state (DG live or DB leaderboard).
@@ -640,6 +662,7 @@ def _build_live_point_in_time_rankings(
         except (TypeError, ValueError):
             continue
     dg_w = dg_win_prob or {}
+    live_stats = live_stats_by_player or {}
     ttps_list = list(ttp_map.values())
     has_spread = len(ttps_list) >= 2 and len(set(ttps_list)) > 1
     has_win_signal = len(dg_w) > 0
@@ -671,6 +694,20 @@ def _build_live_point_in_time_rankings(
         else:
             gap = median_ttp - float(ttp if ttp is not None else median_ttp)
             adjusted = base + 0.12 * gap
+        if live_stats_fresh:
+            player_stats = live_stats.get(pk) or {}
+            sg_total = player_stats.get("round_sg_total")
+            if sg_total is not None:
+                try:
+                    adjusted += 1.5 * float(sg_total)
+                except (TypeError, ValueError):
+                    pass
+            thru = player_stats.get("thru")
+            if thru is not None:
+                try:
+                    adjusted += 0.02 * float(thru)
+                except (TypeError, ValueError):
+                    pass
         scored.append((adjusted, base, row))
     scored.sort(key=lambda item: item[0], reverse=True)
     rankings: list[dict] = []
@@ -702,11 +739,16 @@ def _build_live_point_in_time_rankings(
         if details:
             entry["details"] = details
         rankings.append(entry)
-    source_used = "live_point_in_time_model_dg_blend" if (
+    if live_stats_fresh and live_stats:
+        source_used = "live_point_in_time_model_live_stats_blend"
+    elif (
         dg_w
         and scored
         and any(str(r.get("player_key") or "").strip().lower() in dg_w for _, _, r in scored)
-    ) else "live_point_in_time_model_tournament_state"
+    ):
+        source_used = "live_point_in_time_model_dg_blend"
+    else:
+        source_used = "live_point_in_time_model_tournament_state"
     return rankings, source_used
 
 
@@ -1084,9 +1126,24 @@ def _enrich_live_rankings(
     return enriched
 
 
-def _build_live_player_board(live_rankings: list[dict]) -> list[dict]:
+def _build_live_player_board(
+    live_rankings: list[dict],
+    *,
+    live_stats_by_player: dict[str, dict[str, Any]] | None = None,
+    live_stats_fresh: bool = False,
+) -> list[dict]:
+    live_stats = live_stats_by_player or {}
     board: list[dict] = []
     for row in live_rankings or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        player_stats = live_stats.get(pk) or {}
+        momentum_trend = row.get("momentum_trend")
+        momentum_direction = row.get("momentum_direction")
+        if live_stats_fresh and player_stats:
+            live_trend = live_sg_trajectory_trend(player_stats)
+            if live_trend is not None:
+                momentum_trend = live_trend
+                momentum_direction = "hot" if live_trend > 0.05 else "cold" if live_trend < -0.05 else "neutral"
         board.append(
             {
                 "player_key": row.get("player_key"),
@@ -1099,6 +1156,9 @@ def _build_live_player_board(live_rankings: list[dict]) -> list[dict]:
                     "composite": row.get("composite"),
                     "start_composite": row.get("start_composite"),
                     "pre_tournament_composite": row.get("pre_tournament_composite"),
+                    "momentum": row.get("momentum"),
+                    "momentum_trend": momentum_trend,
+                    "momentum_direction": momentum_direction,
                 },
                 "scoring": {
                     "position_label": row.get("leaderboard_position"),
@@ -1108,10 +1168,194 @@ def _build_live_player_board(live_rankings: list[dict]) -> list[dict]:
                     "position_delta": row.get("leaderboard_delta"),
                     "total_to_par": row.get("total_to_par"),
                     "baseline_source": row.get("leaderboard_baseline_source"),
+                    "live_stats": player_stats if player_stats else None,
                 },
             }
         )
     return board
+
+
+def _extract_eliminated_players(
+    composite_results: list[dict],
+    *,
+    finish_states: dict[str, str] | None,
+) -> list[dict]:
+    eliminated: list[dict] = []
+    finish_state_map = finish_states or {}
+    for row in composite_results or []:
+        pk = str(row.get("player_key") or "").strip().lower()
+        if not pk:
+            continue
+        finish_state = finish_state_map.get(pk)
+        if not _is_cut_or_inactive(finish_state):
+            continue
+        eliminated.append(
+            {
+                "player_key": row.get("player_key"),
+                "player": row.get("player_display") or row.get("player"),
+                "finish_state": finish_state,
+                "pre_tournament_composite": row.get("composite"),
+            }
+        )
+    eliminated.sort(key=lambda item: (str(item.get("finish_state") or ""), str(item.get("player") or "")))
+    return eliminated
+
+
+_LIVE_ACTIONABLE_MARKET_TYPES = frozenset({"round_matchups", "3_balls"})
+
+
+def _annotate_live_market_row(
+    row: dict[str, Any],
+    *,
+    generated_at: str,
+    last_seen_tick: str,
+    live_is_active: bool,
+) -> None:
+    if not isinstance(row, dict):
+        return
+    market_type = str(row.get("market_type") or "tournament_matchups").strip().lower()
+    book = str(row.get("book") or row.get("bookmaker") or "").strip().lower()
+    odds = str(row.get("odds") or row.get("market_odds") or "").strip()
+    has_line = bool(book and odds and odds not in {"--", "-", ""} and not _is_non_book_source(book))
+
+    if market_type in {"round_matchups", "round"}:
+        provenance = "round_matchups"
+    elif market_type in {"tournament_matchups", "72-hole", "72-hole fallback"}:
+        provenance = "tournament_matchups"
+    elif market_type in {"3_balls", "3ball", "group"}:
+        provenance = "3_balls"
+    elif market_type in {"outright", "win"}:
+        provenance = "outright"
+    elif market_type in {"top5", "top10", "top20", "make_cut", "player_market"}:
+        provenance = "player_market"
+    else:
+        provenance = "unknown"
+
+    gating = bool(getattr(config, "LIVE_MARKET_AVAILABILITY_GATING", True))
+    if not live_is_active:
+        bettable = has_line
+        reason = "Pre-event market row" if bettable else "Missing book line"
+    elif provenance == "tournament_matchups" and gating:
+        bettable = False
+        reason = "72-hole tournament matchup is not a live book market"
+    elif provenance in _LIVE_ACTIONABLE_MARKET_TYPES or provenance == "outright":
+        bettable = has_line
+        reason = "Current live book line on supported market" if bettable else "No current live book line"
+    elif provenance == "player_market":
+        bettable = has_line and bool(row.get("live_model_prob") or row.get("model_prob"))
+        reason = (
+            "Live player market with book line"
+            if bettable
+            else "Player market missing live probability or book line"
+        )
+    else:
+        bettable = has_line
+        reason = "Book line present" if bettable else "Unsupported or missing live market line"
+
+    row["market_provenance"] = provenance
+    row["market_type"] = market_type
+    row["live_bettable"] = bool(bettable)
+    row["availability_reason"] = reason
+    row["line_seen_at"] = generated_at if bettable else row.get("line_seen_at")
+    row["last_seen_tick"] = last_seen_tick if bettable else None
+
+
+def _annotate_live_market_availability(
+    section_payload: dict[str, Any],
+    *,
+    generated_at: str,
+    snapshot_id: str,
+    live_is_active: bool,
+) -> None:
+    if not isinstance(section_payload, dict):
+        return
+    tick = str(snapshot_id or generated_at)
+    for surface_key in ("matchup_bets", "matchup_bets_all_books", "matchups"):
+        for row in section_payload.get(surface_key) or []:
+            if isinstance(row, dict):
+                _annotate_live_market_row(
+                    row,
+                    generated_at=generated_at,
+                    last_seen_tick=tick,
+                    live_is_active=live_is_active,
+                )
+    for market_type, bets in (section_payload.get("value_bets") or {}).items():
+        for row in bets or []:
+            if isinstance(row, dict):
+                if not row.get("market_type"):
+                    row["market_type"] = str(market_type)
+                _annotate_live_market_row(
+                    row,
+                    generated_at=generated_at,
+                    last_seen_tick=tick,
+                    live_is_active=live_is_active,
+                )
+
+
+def _build_live_groups_shadow(
+    *,
+    dg_win_prob: dict[str, float],
+    generated_at: str,
+    snapshot_id: str,
+) -> list[dict[str, Any]]:
+    """Shadow-only live group rows — not actionable until a book posts 3-ball lines."""
+    if not getattr(config, "LIVE_GROUPS_SHADOW", True):
+        return []
+    rows: list[dict[str, Any]] = []
+    keys = sorted(dg_win_prob.keys())[:9]
+    for idx in range(0, max(0, len(keys) - 2), 3):
+        group_keys = keys[idx : idx + 3]
+        if len(group_keys) < 3:
+            break
+        probs = [max(float(dg_win_prob.get(k) or 0.0), 0.0001) for k in group_keys]
+        total = sum(probs)
+        norm = [p / total for p in probs] if total > 0 else probs
+        rows.append(
+            {
+                "market_type": "3_balls",
+                "market_provenance": "3_balls",
+                "players": group_keys,
+                "model_probs": dict(zip(group_keys, norm)),
+                "shadow_only": True,
+                "live_bettable": False,
+                "availability_reason": "Shadow group pricing — no verified live 3-ball book line",
+                "line_seen_at": None,
+                "last_seen_tick": None,
+                "generated_at": generated_at,
+                "snapshot_id": snapshot_id,
+            }
+        )
+    return rows
+
+
+def _build_live_player_markets_shadow(
+    *,
+    dg_win_prob: dict[str, float],
+    generated_at: str,
+    snapshot_id: str,
+) -> list[dict[str, Any]]:
+    """Shadow outright / placement rows using in-play win probability."""
+    if not getattr(config, "LIVE_PLAYER_MARKETS_SHADOW", True):
+        return []
+    rows: list[dict[str, Any]] = []
+    for pk, win_prob in sorted(dg_win_prob.items(), key=lambda item: item[1], reverse=True)[:15]:
+        rows.append(
+            {
+                "bet_type": "outright",
+                "player_key": pk,
+                "market_provenance": "outright",
+                "model_prob": float(win_prob),
+                "live_model_prob": float(win_prob),
+                "shadow_only": True,
+                "live_bettable": False,
+                "availability_reason": "Shadow outright — no verified live book line this tick",
+                "line_seen_at": None,
+                "last_seen_tick": None,
+                "generated_at": generated_at,
+                "snapshot_id": snapshot_id,
+            }
+        )
+    return rows
 
 
 def _market_ev_threshold(market_family: str, market_type: str) -> float:
@@ -1240,15 +1484,20 @@ def _apply_live_opportunity_flags(
             row = item.get("row")
             if not isinstance(row, dict):
                 continue
-            row["is_new_live_opportunity"] = is_new
+            row["is_new_since_last_snapshot"] = is_new
+            row["is_new_live_opportunity"] = bool(is_new and row.get("live_bettable"))
             row["is_material_ev_increase"] = material
             row["first_seen_at"] = first_seen_at
         if not (is_new or material):
             continue
+        best_row = best.get("row") if isinstance(best.get("row"), dict) else {}
+        if best_row.get("live_bettable") is False:
+            continue
         alerts.append(
             {
                 "opportunity_key": key,
-                "is_new_live_opportunity": is_new,
+                "is_new_since_last_snapshot": is_new,
+                "is_new_live_opportunity": bool(is_new and best.get("row", {}).get("live_bettable")),
                 "is_material_ev_increase": material,
                 "first_seen_at": first_seen_at,
                 "ev": best.get("ev"),
@@ -1271,9 +1520,17 @@ def _enrich_live_section(
     previous_section: dict[str, Any] | None,
     frozen_section: dict[str, Any] | None,
     history_section: str,
+    snapshot_id: str | None = None,
+    live_is_active: bool = True,
 ) -> None:
     if not isinstance(section_payload, dict):
         return
+    _annotate_live_market_availability(
+        section_payload,
+        generated_at=generated_at,
+        snapshot_id=str(snapshot_id or generated_at),
+        live_is_active=live_is_active,
+    )
     pre_rows = _enrich_static_rankings(
         section_payload.get("pre_tournament_rankings") or section_payload.get("rankings") or [],
         ranking_source="pre_tournament_model",
@@ -1313,7 +1570,11 @@ def _enrich_live_section(
     section_payload["live_rankings"] = live_rows
     section_payload["rankings"] = live_rows
     section_payload["leaderboard"] = leaderboard_rows
-    section_payload["live_player_board"] = _build_live_player_board(live_rows)
+    section_payload["live_player_board"] = _build_live_player_board(
+        live_rows,
+        live_stats_by_player=section_payload.get("live_stats_by_player"),
+        live_stats_fresh=bool(section_payload.get("live_stats_fresh")),
+    )
     section_payload["scoring_baseline_label"] = scoring_baseline_label
     section_payload["ranking_fallback_reason"] = fallback_reason
     section_payload["live_opportunity_alerts"] = _apply_live_opportunity_flags(
@@ -2901,31 +3162,66 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             errors=live_diag.get("errors"),
         )
     live_eligibility = base_section.get("eligibility") or {}
-    pre_tournament_rankings = _extract_rankings(
-        live_result.get("composite_results") or [],
-        finish_states=finish_states,
-        exclude_cut_players=live_is_active,
-    )
-    live_rankings = pre_tournament_rankings
     live_ranking_source = "current_event_model"
     live_point_in_time_source: str | None = None
     dg_win_prob: dict[str, float] = {}
     leaderboard_source = "rounds_table"
     in_play_parse_note: str | None = None
     dg_leaderboard: list[dict] = []
+    raw_in_play: dict | list | None = None
+    live_stats_by_player: dict[str, dict[str, Any]] = {}
+    live_stats_meta: dict[str, Any] = {
+        "live_stats_source": "datagolf_in_play",
+        "live_stats_fetched_at": generated_at,
+        "live_stats_age_seconds": None,
+        "live_stats_fresh": False,
+        "live_model_mode": "leaderboard_only",
+        "live_stats_warning": None,
+    }
     if live_is_active:
         try:
             raw_in_play = fetch_in_play_predictions(tour=tour)
             dg_leaderboard, dg_win_prob, in_play_parse_note = parse_in_play_leaderboard(raw_in_play)
             if dg_leaderboard:
                 leaderboard_source = "datagolf_in_play"
+            finish_states = _merge_in_play_finish_states(finish_states, dg_leaderboard)
+            if getattr(config, "LIVE_STATS_MODEL_REFRESH_ENABLED", True):
+                from datetime import datetime, timezone
+
+                fetched_at = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+                if fetched_at.tzinfo is None:
+                    fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+                live_stats_by_player, live_stats_meta = parse_live_stats_from_in_play(
+                    raw_in_play,
+                    fetched_at=fetched_at,
+                )
+            elif dg_leaderboard or dg_win_prob:
+                live_stats_meta["live_model_mode"] = "leaderboard_only"
+                live_stats_meta["live_stats_warning"] = (
+                    "Live stats model refresh disabled; using leaderboard and win probability only."
+                )
         except Exception as exc:
             _logger.warning("Data Golf in-play fetch failed: %s", exc)
             in_play_parse_note = str(exc)
+            live_stats_meta["live_model_mode"] = "no_live_stats"
+            live_stats_meta["live_stats_warning"] = str(exc)
     live_leaderboard = dg_leaderboard if dg_leaderboard else _load_event_leaderboard_rows(
         live_source_event_id,
         year=live_source_event_year,
     )
+    pre_tournament_rankings = _extract_rankings(
+        live_result.get("composite_results") or [],
+        finish_states=finish_states,
+        exclude_cut_players=live_is_active,
+    )
+    live_rankings = pre_tournament_rankings
+    eliminated_players = _extract_eliminated_players(
+        live_result.get("composite_results") or [],
+        finish_states=finish_states,
+    )
+    live_stats_fresh = bool(live_stats_meta.get("live_stats_fresh"))
+    if live_stats_meta.get("live_model_mode") == "no_live_stats" and (dg_leaderboard or dg_win_prob):
+        live_stats_meta["live_model_mode"] = "leaderboard_only"
     if (
         live_is_active
         and live_eligibility.get("verified")
@@ -2937,6 +3233,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             finish_states=finish_states,
             exclude_cut_players=live_is_active,
             dg_win_prob=dg_win_prob if dg_win_prob else None,
+            live_stats_by_player=live_stats_by_player if live_stats_fresh else None,
+            live_stats_fresh=live_stats_fresh,
         )
         live_rankings = pit_rankings
         live_point_in_time_source = pit_source
@@ -3026,6 +3324,28 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "pre_tournament_rankings": pre_tournament_rankings,
             "frozen_pre_teeoff_rankings": [],
             "live_point_in_time_source": live_point_in_time_source,
+            "eliminated_players": eliminated_players,
+            "live_stats_by_player": live_stats_by_player,
+            "live_stats_source": live_stats_meta.get("live_stats_source"),
+            "live_stats_fetched_at": live_stats_meta.get("live_stats_fetched_at"),
+            "live_stats_age_seconds": live_stats_meta.get("live_stats_age_seconds"),
+            "live_stats_fresh": live_stats_meta.get("live_stats_fresh"),
+            "live_model_mode": live_stats_meta.get("live_model_mode"),
+            "live_stats_warning": live_stats_meta.get("live_stats_warning"),
+            "live_groups_shadow": _build_live_groups_shadow(
+                dg_win_prob=dg_win_prob,
+                generated_at=generated_at,
+                snapshot_id=snapshot_id,
+            ),
+            "live_player_markets_shadow": _build_live_player_markets_shadow(
+                dg_win_prob=dg_win_prob,
+                generated_at=generated_at,
+                snapshot_id=snapshot_id,
+            ),
+            "live_groups_display_enabled": bool(getattr(config, "LIVE_GROUPS_DISPLAY_ENABLED", False)),
+            "live_player_markets_display_enabled": bool(
+                getattr(config, "LIVE_PLAYER_MARKETS_DISPLAY_ENABLED", False)
+            ),
             "matchups": live_matchups,
             "matchup_bets": live_board_matchup_bets,
             "matchup_bets_all_books": live_board_matchup_bets_all_books,
@@ -3150,6 +3470,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         previous_section=(previous_snapshot or {}).get("live_tournament"),
         frozen_section=frozen_pre_teeoff_section,
         history_section="live",
+        snapshot_id=snapshot_id,
+        live_is_active=live_is_active,
     )
     if isinstance(snapshot.get("lab_live_tournament"), dict):
         _enrich_live_section(
@@ -3159,6 +3481,8 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             previous_section=(previous_snapshot or {}).get("lab_live_tournament"),
             frozen_section=frozen_pre_teeoff_section,
             history_section="live",
+            snapshot_id=snapshot_id,
+            live_is_active=live_is_active,
         )
 
     for section_key in (

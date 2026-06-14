@@ -3,6 +3,7 @@ import type {
   ChampionChallengerSummary,
   ClvSummaryResponse,
   DashboardState,
+  DataHealthReport,
   FieldBoardResponse,
   PromotionReadinessResponse,
   TrackComparisonResponse,
@@ -79,7 +80,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getDataHealth: (year = 2026) =>
-    request<Record<string, unknown>>(`/api/data-health?year=${year}`),
+    request<DataHealthReport>(`/api/data-health?year=${year}`),
   getDashboardState: () => request<DashboardState>("/api/dashboard/state"),
   getLatestCompletedEvent: () => request<EventSummary>("/api/events/latest-completed"),
   getGradingHistory: (options?: { limit?: number; pickSource?: "all" | "cockpit" | "lab" }) => {

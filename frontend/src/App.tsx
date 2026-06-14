@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation, useParams } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
@@ -6,9 +6,8 @@ import { toast } from "sonner"
 
 import { CommandMenu, CommandMenuTrigger } from "@/components/command-menu"
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
-import { MotionCursor } from "@/components/monitoring/motion-cursor"
 import { MonitoringShell } from "@/components/monitoring/monitoring-shell"
-import { RouteErrorBoundary } from "@/components/route-error-boundary"
+import { RouteErrorBoundaryGate } from "@/components/route-error-boundary-gate"
 import { SidebarStatus } from "@/components/shell"
 import { SnapshotChip } from "@/components/snapshot-chip"
 import { useLiveRefreshRuntime } from "@/hooks/use-live-refresh-runtime"
@@ -16,6 +15,7 @@ import { usePredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { formatDateTime } from "@/lib/format"
+import { lazyWithRetry } from "@/lib/lazy-import"
 import {
   buildHydratedPredictionRun,
   collectBooksForFilter,
@@ -26,7 +26,7 @@ import {
 import { POLLING } from "@/lib/query-polling"
 import { useLocalStorageState } from "@/lib/storage"
 import type { CompositePlayer, FlattenedSecondaryBet, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
-import { InteractionProvider, useInteraction } from "@/providers/interaction-provider"
+import { InteractionProvider } from "@/providers/interaction-provider"
 import { LiveSnapshotProvider, useLiveSnapshot } from "@/providers/live-snapshot-provider"
 import { CockpitLabPage } from "@/pages/cockpit-lab-page"
 import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
@@ -37,36 +37,36 @@ import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pa
 // Track Record, and Champion-Challenger are all secondary nav targets — the
 // operator clicks into them, so a single network round-trip on first visit
 // is acceptable and trims ~400-600 kB off the initial bundle.
-const PlayersPage = lazy(() =>
+const PlayersPage = lazyWithRetry(() =>
   import("@/pages/players-page").then((mod) => ({ default: mod.PlayersPage })),
 )
-const GradingPage = lazy(() =>
+const GradingPage = lazyWithRetry(() =>
   import("@/pages/legacy-routes").then((mod) => ({ default: mod.GradingPage })),
 )
-const TrackRecordPage = lazy(() =>
+const TrackRecordPage = lazyWithRetry(() =>
   import("@/pages/legacy-routes").then((mod) => ({ default: mod.TrackRecordPage })),
 )
-const ChampionChallengerPage = lazy(() =>
+const ChampionChallengerPage = lazyWithRetry(() =>
   import("@/pages/champion-challenger-page").then((mod) => ({
     default: mod.ChampionChallengerPage,
   })),
 )
-const LegacyModelPage = lazy(() =>
+const LegacyModelPage = lazyWithRetry(() =>
   import("@/pages/legacy-model-page").then((mod) => ({ default: mod.LegacyModelPage })),
 )
-const DiagnosticsPage = lazy(() =>
+const DiagnosticsPage = lazyWithRetry(() =>
   import("@/pages/diagnostics-page").then((mod) => ({ default: mod.DiagnosticsPage })),
 )
-const ResultsPage = lazy(() =>
+const ResultsPage = lazyWithRetry(() =>
   import("@/pages/results-page").then((mod) => ({ default: mod.ResultsPage })),
 )
-const SystemPage = lazy(() =>
+const SystemPage = lazyWithRetry(() =>
   import("@/pages/system-page").then((mod) => ({ default: mod.SystemPage })),
 )
-const ComparePage = lazy(() =>
+const ComparePage = lazyWithRetry(() =>
   import("@/pages/compare-page").then((mod) => ({ default: mod.ComparePage })),
 )
-const EvalPage = lazy(() =>
+const EvalPage = lazyWithRetry(() =>
   import("@/pages/eval-page").then((mod) => ({ default: mod.EvalPage })),
 )
 
@@ -108,12 +108,6 @@ function filterValueBet<T extends FlattenedSecondaryBet>(bet: T, minEdge: number
   return betBook ? selectedBookSet.has(betBook) : false
 }
 
-function AppMotionCursor() {
-  const { reduceMotion } = useInteraction()
-  if (reduceMotion) return null
-  return <MotionCursor />
-}
-
 export default function App() {
   const [manualRefreshPending, setManualRefreshPending] = useState(false)
   const [uiAlert, setUiAlert] = useState<string | null>(null)
@@ -126,7 +120,6 @@ export default function App() {
           setManualRefreshPending={setManualRefreshPending}
           setUiAlert={setUiAlert}
         />
-        <AppMotionCursor />
       </LiveSnapshotProvider>
     </InteractionProvider>
   )
@@ -920,7 +913,7 @@ function AppContent({
         </>
       }
     >
-      <RouteErrorBoundary>
+      <RouteErrorBoundaryGate>
         <Routes>
         <Route
           path="/"
@@ -1046,7 +1039,7 @@ function AppContent({
           }
         />
       </Routes>
-      </RouteErrorBoundary>
+      </RouteErrorBoundaryGate>
     </MonitoringShell>
     <CommandMenu
       open={commandMenuOpen}

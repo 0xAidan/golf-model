@@ -80,6 +80,8 @@ export function PredictionWorkspacePage({
   powerRankingsSubtitle,
   pastReplaySource = "dashboard",
   onPastEventContextChange,
+  usingProdSnapshotFallback = false,
+  labLanePartialSections = false,
   fullPicks,
 }: PredictionWorkspacePageProps) {
   const isNarrow = useIsNarrowViewport()
@@ -270,7 +272,7 @@ export function PredictionWorkspacePage({
 
   const rankingsColumns = useMemo(() => {
     if (predictionTab === "live") {
-      return buildLiveRankingsColumns({ onPlayerSelect })
+      return buildLiveRankingsColumns({ onPlayerSelect, trajectoryBounds: boardTrajectoryBounds })
     }
     return buildUpcomingRankingsColumns({
       onPlayerSelect,
@@ -431,6 +433,8 @@ export function PredictionWorkspacePage({
     snapshotNotice,
     displayPredictionRun,
     diagnosticsState: activeSection?.diagnostics?.state,
+    usingProdSnapshotFallback,
+    labLanePartialSections,
   })
 
   const eventMeta = [
@@ -595,7 +599,6 @@ export function PredictionWorkspacePage({
       }
     >
       <WorkspaceAlerts
-        snapshotNotice={snapshotNotice}
         displayPredictionRun={displayPredictionRun}
         shouldShowOpportunityAlertStrip={shouldShowOpportunityAlertStrip}
         liveOpportunityAlerts={liveOpportunityAlerts}
@@ -614,6 +617,13 @@ export function PredictionWorkspacePage({
           !pastReplay.pastReplayHasData
         }
         pastReplayErrorMessage={pastReplay.pastReplayErrorMessage ?? "Replay API request failed."}
+        predictionTabPastNoEvent={
+          predictionTab === "past" &&
+          !pastReplay.pastReplayLoading &&
+          !pastReplay.pastReplayHasData &&
+          !pastReplay.pastReplayHasError &&
+          pastReplay.pastEventOptions.length > 0
+        }
       />
 
       <div className="model-command-center">

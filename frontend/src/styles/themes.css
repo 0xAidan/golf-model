@@ -81,6 +81,18 @@
   --r-md: 6px;
   --r-lg: 8px;
 
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --shadow-surface: 0 1px 2px rgba(15, 20, 25, 0.06);
+  --shadow-raised: 0 4px 12px rgba(15, 20, 25, 0.08);
+  --shadow-overlay: 0 12px 32px rgba(15, 20, 25, 0.12);
+
   --ease: 160ms ease;
 
   /* shadcn / Tailwind semantic (neutral) */
@@ -171,6 +183,10 @@
   --destructive: #ef4444;
   --border-input: #1f2426;
   --ring: #5c6b78;
+
+  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-raised: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {

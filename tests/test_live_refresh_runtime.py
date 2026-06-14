@@ -1,7 +1,7 @@
 """Tests for live refresh policy and API endpoints."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
@@ -1133,6 +1133,116 @@ def test_parse_in_play_leaderboard_handles_scratch_api_shape():
     assert win_prob.get("cameron_young") == 0.02
 
 
+def test_parse_in_play_leaderboard_sets_finish_state_for_cut():
+    from src.datagolf import parse_in_play_leaderboard
+
+    sample = {
+        "data": [
+            {
+                "player_name": "Missed Player",
+                "current_score": 4,
+                "current_pos": "CUT",
+                "win": 0.0,
+            }
+        ]
+    }
+    rows, _, note = parse_in_play_leaderboard(sample)
+    assert note is None
+    assert len(rows) == 1
+    assert rows[0]["finish_state"] == "CUT"
+
+
+def test_build_live_point_in_time_rankings_excludes_cut_without_db_finish_state():
+    from backtester import dashboard_runtime as runtime
+
+    composite = [
+        {
+            "player_key": "active",
+            "player_display": "Active",
+            "composite": 70.0,
+            "momentum": 60.0,
+        },
+        {
+            "player_key": "cut_player",
+            "player_display": "Cut Player",
+            "composite": 85.0,
+            "momentum": 60.0,
+        },
+    ]
+    leaderboard = [
+        {"player_key": "active", "total_to_par": -2, "finish_state": None},
+        {"player_key": "cut_player", "total_to_par": 6, "finish_state": "CUT"},
+    ]
+    finish_states = runtime._merge_in_play_finish_states({}, leaderboard)
+    rankings, _ = runtime._build_live_point_in_time_rankings(
+        composite,
+        leaderboard,
+        finish_states=finish_states,
+        exclude_cut_players=True,
+        dg_win_prob=None,
+    )
+    keys = [row["player_key"] for row in rankings]
+    assert keys == ["active"]
+    assert rankings[0]["rank"] == 1
+
+
+def test_build_live_point_in_time_rankings_drops_favorite_after_bad_in_play_score():
+    from backtester import dashboard_runtime as runtime
+
+    composite = [
+        {
+            "player_key": "favorite",
+            "player_display": "Favorite",
+            "composite": 79.0,
+            "momentum": 60.0,
+        },
+        {
+            "player_key": "surger",
+            "player_display": "Surger",
+            "composite": 74.0,
+            "momentum": 60.0,
+        },
+    ]
+    leaderboard = [
+        {"player_key": "favorite", "total_to_par": 5},
+        {"player_key": "surger", "total_to_par": -4},
+    ]
+    dg_win_prob = {"favorite": 0.02, "surger": 0.25}
+    rankings, source = runtime._build_live_point_in_time_rankings(
+        composite,
+        leaderboard,
+        finish_states={},
+        exclude_cut_players=False,
+        dg_win_prob=dg_win_prob,
+    )
+    assert source == "live_point_in_time_model_dg_blend"
+    assert rankings[0]["player_key"] == "surger"
+    assert rankings[0]["rank"] == 1
+    assert rankings[1]["player_key"] == "favorite"
+
+
+def test_build_live_player_board_includes_momentum_fields():
+    from backtester import dashboard_runtime as runtime
+
+    board = runtime._build_live_player_board(
+        [
+            {
+                "player_key": "player_a",
+                "player": "Player A",
+                "momentum": 68.0,
+                "momentum_trend": 0.42,
+                "momentum_direction": "hot",
+                "composite": 79.0,
+                "current_rank": 3,
+                "start_rank": 12,
+                "rank_delta": 9,
+            }
+        ]
+    )
+    assert board[0]["model"]["momentum_trend"] == 0.42
+    assert board[0]["model"]["momentum_direction"] == "hot"
+
+
 def test_build_live_point_in_time_rankings_adjusts_by_leaderboard():
     from backtester import dashboard_runtime as runtime
 
@@ -1168,6 +1278,67 @@ def test_build_live_point_in_time_rankings_adjusts_by_leaderboard():
     assert source == "live_point_in_time_model_tournament_state"
     assert rankings[0]["player_key"] == "leader"
     assert rankings[0]["rank"] == 1
+
+
+def test_cut_player_excluded_when_leaderboard_shows_cut_with_empty_db_finish_state():
+    """In-play API can report current_pos=CUT before DB finish_state is populated."""
+    from backtester import dashboard_runtime as runtime
+
+    composite = [
+        {
+            "player_key": "cut_player",
+            "player_display": "Cut Player",
+            "composite": 74.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+        {
+            "player_key": "active_player",
+            "player_display": "Active Player",
+            "composite": 72.0,
+            "form": 80.0,
+            "course_fit": 75.0,
+            "momentum": 60.0,
+        },
+    ]
+    leaderboard = [
+        {"player_key": "active_player", "total_to_par": -4, "position": "T2"},
+        {"player_key": "cut_player", "total_to_par": 3, "position": "CUT", "current_pos": "CUT"},
+    ]
+    finish_states = runtime._merge_in_play_finish_states({}, leaderboard)
+    rankings, _source = runtime._build_live_point_in_time_rankings(
+        composite,
+        leaderboard,
+        finish_states=finish_states,
+        exclude_cut_players=True,
+        dg_win_prob=None,
+    )
+    ranked_keys = [row["player_key"] for row in rankings]
+    assert "cut_player" not in ranked_keys
+
+
+def test_stale_live_stats_mark_degraded_mode():
+    from src.live_stats_source import parse_live_stats_from_in_play
+
+    fetched = datetime(2026, 6, 14, 16, 0, tzinfo=timezone.utc)
+    stale_ts = (fetched - timedelta(seconds=900)).isoformat()
+    _, meta = parse_live_stats_from_in_play(
+        {
+            "data": [
+                {
+                    "player_name": "Player A",
+                    "thru": 8,
+                    "sg_total": 0.5,
+                    "updated_at": stale_ts,
+                }
+            ]
+        },
+        fetched_at=fetched,
+        max_row_age_seconds=120,
+    )
+    assert meta["live_stats_fresh"] is False
+    assert meta["live_model_mode"] in {"stale_live_stats", "no_live_stats", "leaderboard_only"}
 
 
 def test_build_live_point_in_time_rankings_falls_back_when_no_tournament_signal():
@@ -1354,11 +1525,18 @@ def test_apply_live_opportunity_flags_marks_new_and_material():
                     "odds": "+550",
                     "ev": 0.14,
                     "is_value": True,
+                    "model_prob": 0.22,
                 },
             ]
         },
     }
 
+    runtime._annotate_live_market_availability(
+        current_section,
+        generated_at="2026-06-04T16:00:00+00:00",
+        snapshot_id="snap-test",
+        live_is_active=True,
+    )
     alerts = runtime._apply_live_opportunity_flags(
         current_section,
         previous_section_payload=previous_section,
@@ -1367,10 +1545,14 @@ def test_apply_live_opportunity_flags_marks_new_and_material():
 
     matchup_row = current_section["matchup_bets"][0]
     new_value_row = current_section["value_bets"]["top10"][1]
+    assert matchup_row["is_new_since_last_snapshot"] is False
     assert matchup_row["is_new_live_opportunity"] is False
+    assert matchup_row["live_bettable"] is False
     assert matchup_row["is_material_ev_increase"] is True
+    assert new_value_row["is_new_since_last_snapshot"] is True
     assert new_value_row["is_new_live_opportunity"] is True
-    assert len(alerts) == 2
+    assert len(alerts) == 1
+    assert alerts[0]["market_family"] == "value"
 
 
 def test_enrich_live_section_applies_same_fields_for_lab_snapshot(monkeypatch):

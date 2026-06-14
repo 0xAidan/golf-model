@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import os
-
+import sqlite3
+import tempfile
 import pytest
+from fastapi.testclient import TestClient
 
-from src.data_health import build_data_health_report
+from src.data_health import build_data_health_report, find_latest_backup
 from src.data_views import ensure_analytics_views
 
 
@@ -91,3 +92,55 @@ def test_regression_fixture_db_exists():
         pytest.skip("Run scripts/build_regression_fixture_db.py to create fixture")
     report = build_data_health_report(db_path=path, year=2026)
     assert report["row_counts"]["picks"] >= 1
+
+
+def test_data_health_includes_fake_latest_backup(tmp_db, monkeypatch) -> None:
+    import src.data_health as dh
+
+    backup_dir = tempfile.mkdtemp(prefix="golf_health_backup_")
+    backup_path = os.path.join(backup_dir, "golf_model_20260101_120000.db")
+    source = sqlite3.connect(tmp_db.DB_PATH)
+    dest = sqlite3.connect(backup_path)
+    try:
+        source.backup(dest)
+    finally:
+        dest.close()
+        source.close()
+
+    latest = find_latest_backup(backup_dir)
+    assert latest == backup_path
+
+    monkeypatch.setattr(dh, "find_latest_backup", lambda backup_dir=None: latest)
+    report = build_data_health_report(db_path=tmp_db.DB_PATH, year=2026)
+    assert report["latest_backup"] is not None
+    assert report["latest_backup"]["name"] == os.path.basename(backup_path)
+    assert report["latest_backup"]["integrity"]["ok"] is True
+    assert "KEEP_FOREVER" in report["retention_classifications"]
+    assert "ARCHIVE_THEN_PRUNE" in report["retention_classifications"]
+
+
+def test_data_health_approximate_table_stats_for_large_db_marker(tmp_db, monkeypatch) -> None:
+    import src.data_health as dh
+
+    monkeypatch.setattr(
+        dh,
+        "_db_file_sizes",
+        lambda _path: {"main": 3 * 1024 ** 3, "wal": 0, "shm": None},
+    )
+    report = build_data_health_report(db_path=tmp_db.DB_PATH, year=2026)
+    assert report["table_byte_stats_mode"] == "approximate"
+    assert len(report["table_byte_stats"]) >= 1
+    assert report["table_byte_stats"][0].get("approximate") is True
+
+
+def test_data_health_api_endpoint(tmp_db) -> None:
+    import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/data-health?year=2026")
+    assert response.status_code == 200
+    body = response.json()
+    assert "retention_classifications" in body
+    assert "latest_backup" in body
+    assert "archive_stats" in body
+

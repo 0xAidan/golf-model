@@ -1391,6 +1391,29 @@ def _flatten_in_play_player_rows(raw: Any) -> list[dict]:
     return rows
 
 
+_INACTIVE_FINISH_LABELS = frozenset({"CUT", "MC", "MDF", "WD", "DQ", "DNS"})
+
+
+def normalize_in_play_finish_state(position: Any) -> str | None:
+    """Map in-play position labels to finish_state for cut/inactive players."""
+    if position is None:
+        return None
+    text = str(position).strip().upper()
+    if not text or text in {"?", "N/A", "NA"}:
+        return None
+    if text in _INACTIVE_FINISH_LABELS:
+        return text
+    if "CUT" in text:
+        return "CUT"
+    if text.startswith("MC") or text == "MISSED CUT":
+        return "MC"
+    if text.startswith("T") and text[1:].isdigit():
+        return None
+    if text.isdigit():
+        return None
+    return None
+
+
 def parse_in_play_leaderboard(
     raw: dict | list | None,
     *,
@@ -1474,10 +1497,11 @@ def parse_in_play_leaderboard(
                 except (TypeError, ValueError):
                     latest_round_score = None
         dg_pos = row.get("current_pos") or row.get("position")
+        finish_state = normalize_in_play_finish_state(dg_pos)
         entry = {
             "player_key": pk,
             "player": display,
-            "finish_state": None,
+            "finish_state": finish_state,
             "finish_rank": None,
             "total_to_par": total_to_par,
             "latest_round_num": latest_round_num,

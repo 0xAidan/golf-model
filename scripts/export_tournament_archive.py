@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export one tournament's core tables to JSONL for cold archive (gitignored data/exports/)."""
+"""Export tournament or tick-table rows to JSONL for cold archive (gitignored data/exports/)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -23,9 +24,44 @@ _TABLES = [
 ]
 
 
+def _export_tournament(conn: sqlite3.Connection, tid: int, out_dir: str, db_path: str) -> int:
+    manifest: dict[str, int] = {}
+    for table, where in _TABLES:
+        rows = conn.execute(
+            f"SELECT * FROM {table} WHERE {where}",
+            (tid,),
+        ).fetchall()
+        out_path = os.path.join(out_dir, f"{table}.jsonl")
+        with open(out_path, "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(dict(row)) + "\n")
+        manifest[table] = len(rows)
+
+    manifest_path = os.path.join(out_dir, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "archive_type": "tournament",
+                "tournament_id": tid,
+                "db_path": db_path,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "tables": manifest,
+            },
+            f,
+            indent=2,
+        )
+    print(f"Exported tournament {tid} to {out_dir}: {manifest}")
+    return 0
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Export tournament rows to JSONL files.")
-    parser.add_argument("--tournament-id", type=int, required=True)
+    parser = argparse.ArgumentParser(description="Export rows to JSONL cold archives.")
+    parser.add_argument("--tournament-id", type=int, help="Export one tournament's core tables")
+    parser.add_argument(
+        "--tick-before-days",
+        type=int,
+        help="Export prunable tick rows older than N days (live_snapshot_history, market_prediction_rows)",
+    )
     parser.add_argument(
         "--output-dir",
         default=os.path.join(ROOT, "data", "exports"),
@@ -35,48 +71,40 @@ def main() -> int:
     args = parser.parse_args()
 
     from src import db
+    from src.cold_archive import export_tick_tables_before_cutoff
 
     path = args.db_path.strip() or db.DB_PATH
     if not os.path.isfile(path):
         print(f"DB not found: {path}", file=sys.stderr)
         return 2
 
-    out_dir = os.path.join(
-        args.output_dir,
-        f"tournament_{args.tournament_id}",
-    )
+    if args.tick_before_days is not None:
+        days = int(args.tick_before_days)
+        from src.cold_archive import export_tick_tables_before_cutoff, snapshot_history_cutoff_utc
+
+        cutoff = snapshot_history_cutoff_utc(days)
+        result = export_tick_tables_before_cutoff(
+            db_path=path,
+            cutoff_utc=cutoff,
+            output_dir=args.output_dir,
+            retain_days=days,
+        )
+        print(result)
+        return 0
+
+    if args.tournament_id is None:
+        parser.error("Provide --tournament-id or --tick-before-days")
+        return 2
+
+    out_dir = os.path.join(args.output_dir, f"tournament_{args.tournament_id}")
     os.makedirs(out_dir, exist_ok=True)
 
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    manifest: dict[str, int] = {}
-    tid = args.tournament_id
-
-    for table, where in _TABLES:
-        if "pick_id" in where:
-            params = (tid,)
-        else:
-            params = (tid,)
-        rows = conn.execute(
-            f"SELECT * FROM {table} WHERE {where}",
-            params,
-        ).fetchall()
-        out_path = os.path.join(out_dir, f"{table}.jsonl")
-        with open(out_path, "w", encoding="utf-8") as f:
-            for row in rows:
-                f.write(json.dumps(dict(row)) + "\n")
-        manifest[table] = len(rows)
-
-    conn.close()
-    manifest_path = os.path.join(out_dir, "manifest.json")
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {"tournament_id": tid, "db_path": path, "tables": manifest},
-            f,
-            indent=2,
-        )
-    print(f"Exported to {out_dir}: {manifest}")
-    return 0
+    try:
+        return _export_tournament(conn, args.tournament_id, out_dir, path)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
