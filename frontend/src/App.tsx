@@ -169,6 +169,7 @@ function AppContent({
     labSnapshotMerged,
     isLiveActive,
     ageSeconds: snapshotAgeSeconds,
+    dataState: snapshotDataState,
     runtimeStatus,
     snapshotNoticeBase,
     liveRuntimeRunning,
@@ -384,6 +385,29 @@ function AppContent({
       toast.error(msg)
     },
   })
+
+  const recoverStaleMutation = useMutation({
+    mutationFn: () => api.remediateLiveRefresh(),
+    onSuccess: (payload) => {
+      const recovered = Boolean(payload.ok)
+      const msg = recovered
+        ? "Live data recovered successfully."
+        : "Recovery ran but data is still stale. Check server logs."
+      setUiAlert(msg)
+      toast[recovered ? "success" : "warning"](msg)
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-status"] })
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
+    },
+    onError: () => {
+      const msg = "Recovery failed. An operator may need to restart golf-live-refresh on the server."
+      setUiAlert(msg)
+      toast.error(msg)
+    },
+  })
+
+  const handleRecoverStaleData = useCallback(() => {
+    recoverStaleMutation.mutate()
+  }, [recoverStaleMutation])
 
   const liveProgress = liveRefreshStatus?.status?.progress
   const lrRefreshState = liveProgress?.refresh_state ?? liveRefreshStatus?.status?.refresh_state
@@ -625,6 +649,9 @@ function AppContent({
       liveSnapshot,
       runtimeStatus,
       snapshotNotice,
+      snapshotDataState,
+      onRecoverStaleData: handleRecoverStaleData,
+      recoverStalePending: recoverStaleMutation.isPending,
       snapshotAgeSeconds,
       predictionTab,
       onPredictionTabChange: setPredictionTab,
@@ -671,6 +698,9 @@ function AppContent({
       liveSnapshot,
       runtimeStatus,
       snapshotNotice,
+      snapshotDataState,
+      handleRecoverStaleData,
+      recoverStaleMutation.isPending,
       snapshotAgeSeconds,
       predictionTab,
       setPredictionTab,
@@ -720,6 +750,9 @@ function AppContent({
       liveSnapshot: labDisplaySnapshot,
       runtimeStatus,
       snapshotNotice,
+      snapshotDataState,
+      onRecoverStaleData: handleRecoverStaleData,
+      recoverStalePending: recoverStaleMutation.isPending,
       snapshotAgeSeconds,
       predictionTab,
       onPredictionTabChange: setPredictionTab,
@@ -774,6 +807,9 @@ function AppContent({
       labDisplaySnapshot,
       runtimeStatus,
       snapshotNotice,
+      snapshotDataState,
+      handleRecoverStaleData,
+      recoverStaleMutation.isPending,
       snapshotAgeSeconds,
       predictionTab,
       setPredictionTab,
@@ -808,11 +844,15 @@ function AppContent({
   )
 
   const shellEventName =
-    predictionTab === "past" && pastReplayHeadline?.eventName
-      ? pastReplayHeadline.eventName
-      : labRouteActive && labWorkspaceHydrated?.event_name
-        ? labWorkspaceHydrated.event_name
-        : effectivePredictionRun?.event_name ?? "No event loaded"
+    snapshotDataState === "stale"
+      ? snapshotAgeSeconds != null
+        ? `Live data stale (${Math.max(1, Math.round(snapshotAgeSeconds / 60))}m ago)`
+        : "Live data stale"
+      : predictionTab === "past" && pastReplayHeadline?.eventName
+        ? pastReplayHeadline.eventName
+        : labRouteActive && labWorkspaceHydrated?.event_name
+          ? labWorkspaceHydrated.event_name
+          : effectivePredictionRun?.event_name ?? "No event loaded"
 
   const shellEventMeta = (() => {
     if (predictionTab === "past" && pastReplayHeadline?.courseName) {

@@ -54,6 +54,9 @@ import type { PredictionWorkspacePageProps } from "./workspace-types"
 export function PredictionWorkspacePage({
   liveSnapshot,
   snapshotNotice,
+  snapshotDataState,
+  onRecoverStaleData,
+  recoverStalePending,
   snapshotAgeSeconds,
   predictionTab,
   onPredictionTabChange,
@@ -596,6 +599,9 @@ export function PredictionWorkspacePage({
     >
       <WorkspaceAlerts
         snapshotNotice={snapshotNotice}
+        snapshotDataState={snapshotDataState}
+        onRecoverStaleData={onRecoverStaleData}
+        recoverStalePending={recoverStalePending}
         displayPredictionRun={displayPredictionRun}
         shouldShowOpportunityAlertStrip={shouldShowOpportunityAlertStrip}
         liveOpportunityAlerts={liveOpportunityAlerts}

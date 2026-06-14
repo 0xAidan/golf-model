@@ -2058,14 +2058,19 @@ def test_live_refresh_refresh_worker_stuck_returns_503(monkeypatch):
         lambda: {
             "running": True,
             "refresh_state": "running",
-            "phase": "shadow_mc",
-            "updated_at": "2000-01-01T00:00:00+00:00",
+            "phase": "recompute",
+            "updated_at": "2099-01-01T00:00:00+00:00",
         },
     )
-    monkeypatch.setattr("src.runtime_paths.heartbeat_age_seconds", lambda hb: 5000)
+    monkeypatch.setattr("src.runtime_paths.heartbeat_age_seconds", lambda hb: 30)
     monkeypatch.setattr(
         "backtester.dashboard_runtime.get_live_refresh_status",
-        lambda: {"running": True, "worker_running": True, "progress": {"refresh_state": "running"}},
+        lambda: {
+            "running": True,
+            "worker_running": True,
+            "snapshot_age_seconds": 50_000,
+            "progress": {"refresh_state": "running"},
+        },
     )
     monkeypatch.setattr(
         "src.autoresearch_settings.get_settings",
@@ -2081,5 +2086,5 @@ def test_live_refresh_refresh_worker_stuck_returns_503(monkeypatch):
     response = client.post("/api/live-refresh/refresh")
     assert response.status_code == 503
     body = response.json()
-    assert "stuck" in body.get("stale_reason", "").lower()
+    assert "wedged" in body.get("stale_reason", "").lower() or "stuck" in body.get("stale_reason", "").lower()
 

@@ -13,6 +13,7 @@ export GOLF_APP_ROOT="${GOLF_APP_ROOT:-${DEPLOY_PATH}}"
 echo "[ops-verify] systemd active states"
 systemctl is-active golf-dashboard
 systemctl is-active golf-live-refresh
+systemctl is-active golf-live-refresh-watchdog.timer
 
 echo "[ops-verify] port 8000 audit"
 "${REPO_ROOT}/scripts/ensure_port_owner.sh"
@@ -57,5 +58,11 @@ echo "[ops-verify] synthetic reliability (local + public)"
 "${PYTHON}" "${REPO_ROOT}/scripts/reliability_synthetic_check.py" \
   --base-url "${PUBLIC_URL}" \
   --max-snapshot-age-seconds 7200
+
+echo "[ops-verify] prune snapshot history (retain 90d)"
+SNAPSHOT_HISTORY_RETAIN_DAYS="${SNAPSHOT_HISTORY_RETAIN_DAYS:-90}" \
+  "${PYTHON}" "${REPO_ROOT}/scripts/prune_snapshot_history.py" --vacuum || {
+    echo "[ops-verify] WARN: snapshot history prune failed" >&2
+  }
 
 echo "[ops-verify] all checks passed"
