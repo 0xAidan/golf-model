@@ -115,7 +115,7 @@ install_systemd_units() {
     done
     systemctl daemon-reload
     if systemctl list-unit-files golf-live-refresh-watchdog.timer >/dev/null 2>&1; then
-        systemctl enable --now golf-live-refresh-watchdog.timer || true
+        systemctl enable --now golf-live-refresh-watchdog.timer
         echo "[deploy] enabled golf-live-refresh-watchdog.timer"
     fi
 }

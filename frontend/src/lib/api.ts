@@ -263,4 +263,10 @@ export const api = {
       RESEARCH_INSTRUMENTATION_TIMEOUT_MS,
     )
   },
+  remediateLiveRefresh: () =>
+    request<Record<string, unknown>>(
+      "/api/ops/remediate-live-refresh",
+      { method: "POST", headers: JSON_HEADERS },
+      150_000,
+    ),
 }

@@ -76,6 +76,7 @@ def _default_state() -> dict[str, Any]:
         "phase_detail": None,
         "progress_updated_at": None,
         "progress_started_at": None,
+        "phase_started_at": None,
         "recompute_percent": None,
     }
 
@@ -139,12 +140,14 @@ def _write_heartbeat(**extra: Any) -> None:
         phase = _state.get("phase")
         refresh_state = _state.get("refresh_state")
         last_error = _state.get("last_error")
+        phase_started_at = _state.get("phase_started_at")
     payload = {
         **get_runtime_identity(),
         "updated_at": _iso_now(),
         "running": running,
         "worker_pid": os.getpid(),
         "phase": phase,
+        "phase_started_at": phase_started_at,
         "refresh_state": refresh_state,
         "last_error": last_error,
         **extra,
@@ -219,6 +222,7 @@ def _touch_progress(
             _state["phase_detail"] = None
             _state["recompute_percent"] = None
             _state["progress_started_at"] = None
+            _state["phase_started_at"] = None
             _state["progress_updated_at"] = _iso_now()
             return
         if refresh_state is not None:
@@ -226,6 +230,8 @@ def _touch_progress(
             if refresh_state == "running":
                 _state["progress_started_at"] = _iso_now()
         if phase is not None:
+            if _state.get("phase") != phase:
+                _state["phase_started_at"] = _iso_now()
             _state["phase"] = phase
         if phase_detail is not None:
             _state["phase_detail"] = phase_detail
@@ -353,10 +359,23 @@ def _maybe_prune_snapshot_history_tables(snapshot: dict[str, Any]) -> None:
     global _last_snapshot_prune_at
     interval_seconds = max(60, int(config.SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS))
     now_ts = time.time()
-    if _last_snapshot_prune_at and (now_ts - _last_snapshot_prune_at) < interval_seconds:
+    from src.disk_guard import disk_usage_summary
+
+    disk = disk_usage_summary(str(get_data_dir()))
+    disk_status = str(disk.get("status") or "ok")
+    force_prune = disk_status in {"low", "critical"}
+    if (
+        not force_prune
+        and _last_snapshot_prune_at
+        and (now_ts - _last_snapshot_prune_at) < interval_seconds
+    ):
         return
 
     retain_days = max(1, int(config.SNAPSHOT_HISTORY_RETAIN_DAYS))
+    if disk_status == "critical":
+        retain_days = min(retain_days, 14)
+    elif disk_status == "low":
+        retain_days = min(retain_days, 30)
     try:
         prune_result = db.prune_snapshot_history_tables(retain_days=retain_days)
         _last_snapshot_prune_at = now_ts

@@ -1,9 +1,13 @@
 import { Radar } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import type { LiveRefreshSnapshot, PredictionRunResponse } from "@/lib/types"
 
 export function WorkspaceAlerts({
   snapshotNotice,
+  snapshotDataState,
+  onRecoverStaleData,
+  recoverStalePending = false,
   displayPredictionRun,
   shouldShowOpportunityAlertStrip,
   liveOpportunityAlerts,
@@ -15,6 +19,9 @@ export function WorkspaceAlerts({
   pastReplayErrorMessage,
 }: {
   snapshotNotice: string | null
+  snapshotDataState?: string | null
+  onRecoverStaleData?: () => void
+  recoverStalePending?: boolean
   displayPredictionRun: PredictionRunResponse | null
   shouldShowOpportunityAlertStrip: boolean
   liveOpportunityAlerts: NonNullable<
@@ -32,7 +39,20 @@ export function WorkspaceAlerts({
       {snapshotNotice ? (
         <div className="alert-banner" role="status" aria-live="polite">
           <Radar size={11} style={{ flexShrink: 0 }} />
-          {snapshotNotice}
+          <span className="min-w-0 flex-1">{snapshotNotice}</span>
+          {snapshotDataState === "stale" && onRecoverStaleData ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="secondary"
+              className="shrink-0"
+              disabled={recoverStalePending}
+              onClick={onRecoverStaleData}
+              aria-label="Recover stale live data"
+            >
+              {recoverStalePending ? "Recovering…" : "Recover now"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {displayPredictionRun?.hydration_section === "upcoming_fallback_live" ||

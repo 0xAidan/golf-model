@@ -42,6 +42,9 @@ export type PredictionWorkspacePageProps = {
   liveSnapshot: LiveRefreshSnapshot | null
   runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
   snapshotNotice: string | null
+  snapshotDataState?: string | null
+  onRecoverStaleData?: () => void
+  recoverStalePending?: boolean
   snapshotAgeSeconds: number | null
   predictionTab: PredictionTab
   onPredictionTabChange: (value: PredictionTab) => void

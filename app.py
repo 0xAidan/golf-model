@@ -2558,31 +2558,34 @@ async def refresh_live_refresh_snapshot():
     status = _with_live_refresh_worker_status(get_live_refresh_status())
 
     if live_refresh_worker_owned():
+        from src.live_refresh_health import detect_worker_wedged, snapshot_stale_after_seconds
+
         heartbeat = read_heartbeat()
         hb_age = heartbeat_age_seconds(heartbeat)
-        hb_running = bool((heartbeat or {}).get("running"))
-        hb_refresh_state = str((heartbeat or {}).get("refresh_state") or "")
-        worker_stuck = (
-            hb_running
-            and hb_age is not None
-            and hb_age > 900
-            and (hb_refresh_state == "running" or bool((heartbeat or {}).get("phase")))
+        status_snapshot_age = status.get("snapshot_age_seconds")
+        wedged = detect_worker_wedged(
+            snapshot_age_seconds=status_snapshot_age,
+            stale_after_seconds=snapshot_stale_after_seconds(),
+            heartbeat=heartbeat,
         )
+        worker_stuck = bool(wedged.get("wedged"))
         if worker_stuck:
             merged = _with_live_refresh_worker_status(get_live_refresh_status())
+            reason_text = "; ".join(wedged.get("reasons") or [])
             return JSONResponse(
                 status_code=503,
                 content={
                     "ok": False,
                     "snapshot": None,
                     "stale_reason": (
-                        f"Live-refresh worker appears stuck (heartbeat {hb_age}s old, "
-                        f"phase={heartbeat.get('phase')!r}). Restart golf-live-refresh.service on the server."
+                        f"Live-refresh worker appears wedged ({reason_text}). "
+                        "Try POST /api/ops/remediate-live-refresh or restart golf-live-refresh.service."
                     ),
                     "operator_message": (
-                        "The background refresh service has not made progress in over 15 minutes. "
-                        "On the server run: systemctl restart golf-live-refresh"
+                        "The background refresh service is not producing fresh snapshots. "
+                        "Use Recover on the dashboard or restart golf-live-refresh on the server."
                     ),
+                    "worker_wedged": wedged,
                     "status": merged,
                 },
             )
