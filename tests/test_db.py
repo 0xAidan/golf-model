@@ -264,6 +264,57 @@ def test_completed_market_rows_keep_best_line_per_unique_matchup():
     ]
 
 
+def test_completed_market_rows_skip_sparse_ledger_for_richer_mpr():
+    """Sparse pick_ledger must not block full live-section recovery (event 32 pattern)."""
+    from src.pick_ledger import compute_pick_key, persist_pick_ledger_rows
+
+    event_id = "998832"
+    sparse_ledger = [
+        {
+            "pick_key": compute_pick_key(
+                event_id=event_id,
+                lane="cockpit",
+                section="upcoming",
+                phase="pre_tournament",
+                bet_type="matchup",
+                player_key="player_a",
+                opponent_key="opponent_a",
+                book="fanduel",
+                odds="-110",
+            ),
+            "event_id": event_id,
+            "event_name": "Sparse Ledger Event",
+            "lane": "cockpit",
+            "bet_type": "matchup",
+            "player_key": "player_a",
+            "player_display": "Player A",
+            "opponent_key": "opponent_a",
+            "opponent_display": "Opponent A",
+            "book": "fanduel",
+            "odds": "-110",
+            "model_variant": "baseline",
+            "ev": 0.05,
+            "is_value": 1,
+            "lifecycle": "recovered",
+            "source_origin": "test",
+            "generated_at": "2026-06-10T10:00:00+00:00",
+        },
+    ]
+    persist_pick_ledger_rows(sparse_ledger)
+
+    rich_rows = [
+        _market_row("live-a", "live", event_id, "Player A", "player_a", generated_at="2026-06-10T11:00:00+00:00"),
+        _market_row("live-b", "live", event_id, "Player B", "player_b", generated_at="2026-06-10T11:00:00+00:00"),
+        _market_row("live-c", "live", event_id, "Player C", "player_c", generated_at="2026-06-10T11:00:00+00:00"),
+    ]
+    db.store_market_prediction_rows(rich_rows)
+
+    result = db.get_completed_market_prediction_rows_for_event(event_id, source="dashboard")
+
+    assert len(result) == 3
+    assert result[0].get("recovery_tier") == "recovered_live_mislabeled"
+
+
 def _market_row(
     snapshot_id: str,
     section: str,

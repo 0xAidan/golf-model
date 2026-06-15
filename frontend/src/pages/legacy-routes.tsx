@@ -17,6 +17,8 @@ import { buildGradingPickColumns, buildTrackRecordPickColumns } from "@/lib/reco
 import { api } from "@/lib/api"
 import { formatDateTime, formatUnits } from "@/lib/format"
 import { buildGradingTrustMetrics } from "@/lib/grading-trust"
+import { laneStatusLabel, seasonEventsToGradingHistory, seasonLaneFromPickSource } from "@/lib/grading-season"
+import type { GradingSeasonEvent } from "@/lib/types"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import { GRADING_KPI_STRIP_TOOLTIPS } from "@/lib/metric-tooltips"
 import { cn } from "@/lib/utils"
@@ -34,21 +36,33 @@ const trackRecordPickColumns = buildTrackRecordPickColumns()
 
 export function GradingPage() {
   const [pickSource, setPickSource] = useState<"all" | "cockpit" | "lab">("cockpit")
-  const gradingHistoryQuery = useQuery({
-    queryKey: ["grading-history", pickSource],
-    queryFn: () => api.getGradingHistory({ pickSource }),
+  const seasonQuery = useQuery({
+    queryKey: ["grading-season", pickSource],
+    queryFn: () =>
+      api.getGradingSeason({
+        year: 2026,
+        lane: seasonLaneFromPickSource(pickSource),
+        includePicks: true,
+        limit: 100,
+      }),
   })
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
     queryFn: api.getDashboardState,
     staleTime: 60_000,
   })
+  const gradingHistoryData = useMemo(
+    () => seasonEventsToGradingHistory(seasonQuery.data, pickSource),
+    [seasonQuery.data, pickSource],
+  )
   const trustMetrics = useMemo(
-    () => buildGradingTrustMetrics(gradingHistoryQuery.data, dashboardQuery.data),
-    [gradingHistoryQuery.data, dashboardQuery.data],
+    () => buildGradingTrustMetrics(gradingHistoryData, dashboardQuery.data),
+    [gradingHistoryData, dashboardQuery.data],
   )
 
-  const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
+  const gradingHistory = gradingHistoryData.tournaments ?? []
+  const seasonEvents: GradingSeasonEvent[] = seasonQuery.data?.events ?? []
+  const seasonSummary = seasonQuery.data?.summary
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const labels = gradingHistory
@@ -65,6 +79,33 @@ export function GradingPage() {
   const totalPicks = gradingHistory.reduce((s, t) => s + (t.graded_pick_count ?? 0), 0)
 
   const summaryKpis = useMemo((): MacroKpiItem[] => {
+    if (pickSource === "all" && seasonSummary) {
+      return [
+        {
+          id: "dash-pnl",
+          label: "Dashboard P&L",
+          value: formatUnits(seasonSummary.dashboard.profit),
+          tone: seasonSummary.dashboard.profit >= 0 ? "positive" : "negative",
+        },
+        {
+          id: "lab-pnl",
+          label: "Lab P&L",
+          value: formatUnits(seasonSummary.lab.profit),
+          tone: seasonSummary.lab.profit >= 0 ? "positive" : "negative",
+        },
+        {
+          id: "events",
+          label: "Tournaments",
+          value: String(gradingHistory.length),
+        },
+        {
+          id: "overlap",
+          label: "Overlap matchups",
+          value: String(seasonSummary.comparison.overlap_matchups),
+        },
+      ]
+    }
+
     return [
       {
         id: "pnl",
@@ -92,21 +133,21 @@ export function GradingPage() {
           : undefined,
       },
     ]
-  }, [gradingHistory, totalHits, totalPicks, totalProfit])
+  }, [gradingHistory, pickSource, seasonSummary, totalHits, totalPicks, totalProfit])
 
   return (
     <div className="monitor-records-page monitor-scroll-region" data-testid="grading-page">
       <HeroBand
         eyebrow="Records"
         title="Grading history"
-        meta="Tournament-by-tournament performance tracking (+EV picks only)."
+        meta="2026 season — Dashboard vs Lab (+EV picks only). Use All to compare both models."
       />
 
       <GradingTrustStrip
         metrics={trustMetrics}
         pickSource={pickSource}
         onPickSourceChange={setPickSource}
-        isFetching={gradingHistoryQuery.isFetching}
+        isFetching={seasonQuery.isFetching}
       />
 
       <MacroKpiStrip items={summaryKpis} testId="grading-summary-kpis" />
@@ -120,15 +161,108 @@ export function GradingPage() {
           )}
         </BentoPanel>
 
-        <BentoPanel title="Graded events" span={6} className="monitor-records-events-panel">
+        <BentoPanel title="Season events" span={6} className="monitor-records-events-panel">
           <div className="stack-col-8">
-            {gradingHistory.map((item) => {
+            {(pickSource === "all" ? seasonEvents : gradingHistory).map((item) => {
               const id = `${item.event_id}-${item.year}`
               const isExpanded = expandedId === id
+              const seasonEvent: GradingSeasonEvent | undefined =
+                pickSource === "all"
+                  ? (item as GradingSeasonEvent)
+                  : seasonEvents.find((row) => row.event_id === item.event_id)
+              const showComparison = pickSource === "all" && seasonEvent?.lanes != null
+
+              if (showComparison && seasonEvent?.lanes) {
+                const dash = seasonEvent.lanes.dashboard
+                const lab = seasonEvent.lanes.lab
+                return (
+                  <div key={id} className="tr-event">
+                    <div
+                      className="tr-event-header"
+                      onClick={() => setExpandedId(isExpanded ? null : id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          setExpandedId(isExpanded ? null : id)
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      data-testid={`grading-event-${id}`}
+                    >
+                      <div className="tr-event-meta">
+                        <div className="tr-event-name">{item.name}</div>
+                        <div className="tr-event-sub">
+                          Dashboard {dash.hits ?? 0}/{dash.graded_pick_count} · Lab {lab.hits ?? 0}/{lab.graded_pick_count}
+                          {seasonEvent.picks_detail_missing ? " · Rollup detail missing" : ""}
+                        </div>
+                      </div>
+                      <div className="tr-event-actions">
+                        <span className="tr-event-profit tr-event-profit--pos">
+                          {formatUnits(dash.total_profit ?? 0)}
+                        </span>
+                        <span className="tr-event-profit tr-event-profit--neg ml-2">
+                          {formatUnits(lab.total_profit ?? 0)}
+                        </span>
+                        <ChevronDown
+                          size={13}
+                          className={cn("tr-event-chevron", isExpanded && "tr-event-chevron--open")}
+                        />
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="tr-event-body stack-col-8">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div>
+                            <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">
+                              Dashboard · {laneStatusLabel(dash.status)}
+                            </div>
+                            {(dash.picks?.length ?? 0) > 0 ? (
+                              <HeroDataGrid
+                                data={dash.picks ?? []}
+                                columns={gradingPickColumns}
+                                getRowId={(row) => `dash-${row.player_display}-${row.opponent_display ?? "solo"}`}
+                                density="compact"
+                                testId={`grading-picks-dashboard-${id}`}
+                              />
+                            ) : (
+                              <RecordsEmptyState message="No graded Dashboard picks for this event." />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">
+                              Lab · {laneStatusLabel(lab.status)}
+                            </div>
+                            {(lab.picks?.length ?? 0) > 0 ? (
+                              <HeroDataGrid
+                                data={lab.picks ?? []}
+                                columns={gradingPickColumns}
+                                getRowId={(row) => `lab-${row.player_display}-${row.opponent_display ?? "solo"}`}
+                                density="compact"
+                                testId={`grading-picks-lab-${id}`}
+                              />
+                            ) : (
+                              <RecordsEmptyState message="No graded Lab picks for this event." />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
               const profit = Number(item.total_profit ?? 0)
               const picks = item.graded_pick_count ?? 0
               const hits = item.hits ?? 0
               const hr = picks > 0 ? `${((hits / picks) * 100).toFixed(0)}%` : "—"
+              const laneStatus = seasonEvent
+                ? laneStatusLabel(
+                    pickSource === "lab"
+                      ? seasonEvent.lanes?.lab.status
+                      : seasonEvent.lanes?.dashboard.status,
+                  )
+                : null
 
               return (
                 <div key={id} className="tr-event">
@@ -149,6 +283,8 @@ export function GradingPage() {
                       <div className="tr-event-name">{item.name}</div>
                       <div className="tr-event-sub">
                         {hits}/{picks} hits · {hr}
+                        {laneStatus ? ` · ${laneStatus}` : ""}
+                        {seasonEvent?.picks_detail_missing ? " · Rollup detail missing" : ""}
                       </div>
                     </div>
                     <div className="tr-event-actions">
@@ -200,8 +336,8 @@ export function GradingPage() {
                 </div>
               )
             })}
-            {gradingHistory.length === 0 && (
-              <RecordsEmptyState message="No graded events yet." />
+            {(pickSource === "all" ? seasonEvents : gradingHistory).length === 0 && (
+              <RecordsEmptyState message="No season events with picks yet. Run hydration or grade a tournament." />
             )}
           </div>
         </BentoPanel>
@@ -267,7 +403,7 @@ export function TrackRecordPage() {
       <HeroBand
         eyebrow="Records"
         title="Track record"
-        meta="Full historical model performance across all graded tournaments (+EV picks only)."
+        meta="Official Dashboard betting record (+EV picks). Compare Lab on the Grading tab."
       />
 
       <GradingTrustStrip

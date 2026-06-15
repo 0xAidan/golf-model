@@ -555,6 +555,69 @@ export type GradingHistoryResponse = {
   summary?: RecordSummary
 }
 
+export type GradingSeasonLaneSummary = {
+  inventory_count: number
+  graded_pick_count: number
+  ungraded_positive_ev_count: number
+  status: "graded" | "partial" | "rollup_only"
+  record: RecordBucket
+  market_stats?: RecordSummary
+  picks: TrackRecordPick[]
+  hits?: number
+  total_profit?: number
+}
+
+export type GradingSeasonEvent = {
+  tournament_id?: number | null
+  authority_tier?: string
+  picks_detail_missing?: boolean
+  inventory_count?: number
+  status?: string
+  lanes?: {
+    dashboard: GradingSeasonLaneSummary
+    lab: GradingSeasonLaneSummary
+  }
+  comparison?: {
+    profit_delta: number
+    hit_rate_delta: number
+    picks_only_dashboard: number
+    picks_only_lab: number
+    overlap_matchups: number
+  }
+  id?: number
+  name: string
+  course?: string | null
+  year?: number | null
+  event_id?: string | null
+  results_count?: number
+  picks_count?: number
+  graded_pick_count?: number
+  hits?: number
+  total_profit?: number
+  last_graded_at?: string | null
+  market_stats?: RecordSummary
+  variant_stats?: Record<string, { picks: number; hits: number; profit: number }>
+  picks?: TrackRecordPick[]
+}
+
+export type GradingSeasonResponse = {
+  year: number
+  lane: "all" | "dashboard" | "lab"
+  events: GradingSeasonEvent[]
+  tournaments: GradingSeasonEvent[]
+  summary: {
+    dashboard: RecordBucket
+    lab: RecordBucket
+    comparison: {
+      profit_delta: number
+      hit_rate_delta: number
+      picks_only_dashboard: number
+      picks_only_lab: number
+      overlap_matchups: number
+    }
+  }
+}
+
 export type TrackRecordPick = {
   model_variant?: string
   source?: string | null
