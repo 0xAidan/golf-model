@@ -184,6 +184,7 @@ def _fetch_lane_picks(conn, tournament_id: int | None, lane: str) -> list[dict]:
             p.model_variant,
             p.source,
             p.bet_type,
+            p.market_type,
             p.player_key,
             p.player_display,
             p.opponent_key,

@@ -796,6 +796,7 @@ async def get_grading_history(
                 p.model_variant,
                 p.source,
                 p.bet_type,
+                p.market_type,
                 p.player_key,
                 p.player_display,
                 p.opponent_key,
