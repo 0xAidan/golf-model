@@ -183,6 +183,19 @@ def main() -> int:
         "events": [],
     }
 
+    if not dry_run:
+        from src.card_import import import_cards_from_dirs
+
+        card_dirs = [
+            ROOT / "data" / "local_recovery" / "md_cards",
+            ROOT / "output",
+        ]
+        card_manifest = import_cards_from_dirs(card_dirs, year=args.year, dry_run=False)
+        manifest["card_import"] = {
+            "events": card_manifest.events,
+            "errors": card_manifest.errors,
+        }
+
     for event in events:
         print(f"{'[dry-run] ' if dry_run else ''}Hydrating {event['name']} ({event['event_id']})...")
         try:

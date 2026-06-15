@@ -29,22 +29,15 @@ def record_market_bucket(bet_type: str | None) -> str:
 
 
 def american_odds_rank(market_odds) -> float:
-    if market_odds is not None:
-        try:
-            return float(int(str(market_odds).strip().replace("+", "")))
-        except (TypeError, ValueError):
-            pass
-    return -1_000_000.0
+    from src.official_pick_record import american_odds_rank as _rank
+
+    return _rank(market_odds)
 
 
 def matchup_record_key(pick: dict) -> tuple:
-    return (
-        str(pick.get("source") or ""),
-        str(pick.get("model_variant") or ""),
-        str(pick.get("bet_type") or "").strip().lower(),
-        str(pick.get("player_key") or pick.get("player_display") or "").strip().lower(),
-        str(pick.get("opponent_key") or pick.get("opponent_display") or "").strip().lower(),
-    )
+    from src.official_pick_record import grading_matchup_key
+
+    return grading_matchup_key(pick)
 
 
 def matchup_identity_key(pick: dict) -> tuple[str, str]:
@@ -55,25 +48,9 @@ def matchup_identity_key(pick: dict) -> tuple[str, str]:
 
 
 def dedupe_record_picks(picks: list[dict]) -> list[dict]:
-    deduped: list[dict] = []
-    matchup_indexes: dict[tuple, int] = {}
+    from src.official_pick_record import dedupe_grading_picks
 
-    for pick in picks:
-        if record_market_bucket(pick.get("bet_type")) != "matchups":
-            deduped.append(pick)
-            continue
-
-        key = matchup_record_key(pick)
-        existing_index = matchup_indexes.get(key)
-        if existing_index is None:
-            matchup_indexes[key] = len(deduped)
-            deduped.append(pick)
-            continue
-
-        if american_odds_rank(pick.get("market_odds")) > american_odds_rank(deduped[existing_index].get("market_odds")):
-            deduped[existing_index] = pick
-
-    return deduped
+    return dedupe_grading_picks(picks)
 
 
 def one_unit_profit(row: dict) -> float:

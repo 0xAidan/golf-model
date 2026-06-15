@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 venv/
 data/golf.db
+data/golf.db-*
+data/local_recovery/
 data/exports/
 data/csvs/*.csv
 data/course_images/

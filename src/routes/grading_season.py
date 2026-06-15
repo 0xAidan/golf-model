@@ -53,6 +53,28 @@ def _resolve_event_id(conn, event_name: str, year: int) -> str | None:
 def _discover_season_events(conn, year: int) -> dict[str, dict[str, Any]]:
     events: dict[str, dict[str, Any]] = {}
 
+    schedule_rows = conn.execute(
+        """
+        SELECT DISTINCT event_id, event_name, MIN(event_completed) AS event_date
+        FROM rounds
+        WHERE year = ? AND event_id IS NOT NULL AND TRIM(event_id) != ''
+        GROUP BY event_id, event_name
+        ORDER BY event_date
+        """,
+        (year,),
+    ).fetchall()
+    for row in schedule_rows:
+        eid = str(row["event_id"])
+        events[eid] = {
+            "event_id": eid,
+            "name": row["event_name"] or f"Event {eid}",
+            "year": year,
+            "event_date": row["event_date"],
+            "inventory_count": 0,
+            "positive_ev_inventory": 0,
+            "authority_tier": "no_data",
+        }
+
     ledger_rows = conn.execute(
         """
         SELECT
@@ -73,9 +95,11 @@ def _discover_season_events(conn, year: int) -> dict[str, dict[str, Any]]:
     ).fetchall()
     for row in ledger_rows:
         eid = str(row["event_id"])
+        existing = events.get(eid, {})
         events[eid] = {
+            **existing,
             "event_id": eid,
-            "name": row["name"] or f"Event {eid}",
+            "name": row["name"] or existing.get("name") or f"Event {eid}",
             "year": int(row["year"] or year),
             "course": row["course"],
             "tournament_id": row["tournament_id"],

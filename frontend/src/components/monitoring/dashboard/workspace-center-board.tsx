@@ -174,7 +174,7 @@ export function WorkspaceCenterBoard({
           </div>
           <div className="card-desc">
             {predictionTab === "past"
-              ? `${filteredTopPlays.length} picks generated for this event`
+              ? `${filteredTopPlays.length} recovered +EV matchup lines`
               : `${filteredTopPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`}
           </div>
         </div>
