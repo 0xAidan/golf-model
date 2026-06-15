@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
 import gradingHistoryFixture from "@/__fixtures__/grading-history.json"
-import type { GradingSeasonResponse } from "@/lib/types"
+import type { GradingSeasonResponse, TrackRecordPick } from "@/lib/types"
 import { GradingPage } from "@/pages/legacy-routes"
 
 const emptyBucket = {
@@ -20,7 +20,7 @@ const emptyBucket = {
 
 const toSeasonFixture = (
   fixture: typeof gradingHistoryFixture,
-  lane: "all" | "cockpit" | "lab" = "cockpit",
+  lane: "all" | "dashboard" | "lab" = "dashboard",
 ): GradingSeasonResponse => ({
   year: 2026,
   lane,
@@ -31,15 +31,16 @@ const toSeasonFixture = (
         inventory_count: event.graded_pick_count ?? 0,
         graded_pick_count: event.graded_pick_count ?? 0,
         ungraded_positive_ev_count: 0,
-        status: "graded",
+        status: "graded" as const,
         record: {
+          picks: event.graded_pick_count ?? 0,
           wins: event.hits ?? 0,
           losses: 0,
           pushes: 0,
           profit: event.total_profit ?? 0,
           hit_rate: null,
         },
-        picks: event.picks ?? [],
+        picks: (event.picks ?? []) as TrackRecordPick[],
         hits: event.hits,
         total_profit: event.total_profit,
       },
@@ -47,7 +48,7 @@ const toSeasonFixture = (
         inventory_count: 0,
         graded_pick_count: 0,
         ungraded_positive_ev_count: 0,
-        status: "graded",
+        status: "graded" as const,
         record: emptyBucket,
         picks: [],
         hits: 0,
@@ -61,7 +62,7 @@ const toSeasonFixture = (
       picks_only_lab: 0,
       overlap_matchups: 0,
     },
-  })),
+  })) as GradingSeasonResponse["events"],
   tournaments: [],
   summary: {
     dashboard: fixture.summary?.combined ?? emptyBucket,
