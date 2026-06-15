@@ -94,12 +94,19 @@ def _load_results_for_tournament(conn, tournament_id: int) -> tuple[list[dict], 
     db.store_results(tournament_id, fallback_results)
     return fallback_results, "rounds"
 
-def score_picks_for_tournament(tournament_id: int) -> dict:
+def score_picks_for_tournament(
+    tournament_id: int,
+    *,
+    force_audit: bool = False,
+    audit_reason: str | None = None,
+) -> dict:
     """
     Score all picks against results. Returns summary.
 
-    This is the same logic as results.py but callable programmatically.
+    Skips picks with outcome_locked=1 unless force_audit=True (writes audit log).
     """
+    from src.pick_ledger import log_grading_audit
+
     conn = db.get_conn()
 
     picks = conn.execute(
@@ -128,6 +135,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
     bet_hits = 0
     resolved = 0
     skipped_non_positive_ev = 0
+    skipped_locked = 0
     total_profit = 0.0
 
     for raw_pick in picks:
@@ -148,7 +156,6 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         finish_text = r.get("finish_text")
         made_cut = r.get("made_cut", 0)
 
-        # Determine opponent finish for matchups
         opp_finish = None
         opp_finish_text = None
         if bt == "matchup":
@@ -166,17 +173,25 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         is_push = outcome["is_push"]
         model_hit = _grade_model_hit(bet_hit=hit, is_push=is_push)
 
-        # Calculate profit
         odds_decimal = parse_odds_to_decimal(pick["market_odds"])
         stake = 1.0
         profit = compute_profit(hit, fraction, is_push, odds_decimal, stake)
 
         total_profit += profit
 
-        # Check if already scored
         existing = conn.execute(
-            "SELECT id, model_hit FROM pick_outcomes WHERE pick_id = ?", (pick["id"],)
+            """SELECT id, model_hit, outcome_locked, hit, profit, grading_authority, pick_key
+               FROM pick_outcomes WHERE pick_id = ?""",
+            (pick["id"],),
         ).fetchone()
+
+        if existing and int(existing["outcome_locked"] or 0) == 1 and not force_audit:
+            skipped_locked += 1
+            if existing["model_hit"]:
+                model_hits += 1
+            if existing["hit"]:
+                bet_hits += 1
+            continue
 
         actual_finish = r.get("finish_text")
         notes = None
@@ -184,12 +199,63 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
             actual_finish = f"{r.get('finish_text')} vs {opp_finish_text}"
             notes = f"Matchup result: {pick.get('player_display')} {r.get('finish_text')} vs {pick.get('opponent_display')} {opp_finish_text}"
 
+        pick_key = existing["pick_key"] if existing else None
+        if not pick_key:
+            from src.pick_ledger import compute_pick_key, normalize_american_odds
+            t_row = conn.execute(
+                "SELECT event_id FROM tournaments WHERE id = ?", (tournament_id,)
+            ).fetchone()
+            event_id = str(t_row["event_id"] or "") if t_row else ""
+            pick_key = compute_pick_key(
+                event_id=event_id,
+                lane="cockpit" if pick.get("source") in ("cockpit", "ui_display") else "lab",
+                section="upcoming",
+                phase="pre_tournament",
+                bet_type=str(bt or "matchup"),
+                player_key=str(pick.get("player_key") or ""),
+                opponent_key=str(pick.get("opponent_key") or ""),
+                book=str(pick.get("market_book") or ""),
+                odds=normalize_american_odds(pick.get("market_odds")),
+                snapshot_id=f"pick_{pick['id']}",
+            )
+
+        if existing and force_audit:
+            log_grading_audit(
+                pick_id=pick["id"],
+                pick_key=pick_key,
+                tournament_id=tournament_id,
+                action="regrade",
+                reason=audit_reason or "force_audit",
+                previous=dict(existing),
+                new={
+                    "hit": hit,
+                    "model_hit": model_hit,
+                    "profit": profit,
+                    "grading_authority": "computed",
+                },
+            )
+            conn.execute(
+                """UPDATE pick_outcomes SET
+                       hit = ?, model_hit = ?, actual_finish = ?, odds_decimal = ?,
+                       stake = ?, profit = ?, notes = ?, grading_authority = 'computed',
+                       pick_key = ?, outcome_locked = 0
+                   WHERE id = ?""",
+                (hit, model_hit, actual_finish, odds_decimal, stake, profit, notes, pick_key, existing["id"]),
+            )
+            scored += 1
+            if model_hit:
+                model_hits += 1
+            if hit:
+                bet_hits += 1
+            continue
+
         if not existing:
             conn.execute(
                 """INSERT INTO pick_outcomes
-                   (pick_id, hit, model_hit, actual_finish, odds_decimal, stake, profit, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (pick["id"], hit, model_hit, actual_finish,
+                   (pick_id, pick_key, hit, model_hit, actual_finish, odds_decimal, stake, profit,
+                    notes, grading_authority, outcome_locked)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'computed', 0)""",
+                (pick["id"], pick_key, hit, model_hit, actual_finish,
                  odds_decimal, stake, profit, notes),
             )
             scored += 1
@@ -200,7 +266,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         else:
             if existing["model_hit"] is None:
                 conn.execute(
-                    "UPDATE pick_outcomes SET model_hit = ? WHERE id = ?",
+                    "UPDATE pick_outcomes SET model_hit = ? WHERE id = ? AND COALESCE(outcome_locked, 0) = 0",
                     (model_hit, existing["id"]),
                 )
             if model_hit:
@@ -214,6 +280,12 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
             skipped_non_positive_ev,
             tournament_id,
         )
+    if skipped_locked:
+        logger.info(
+            "Scoring skipped %d locked authoritative outcome(s) for tournament %s",
+            skipped_locked,
+            tournament_id,
+        )
 
     conn.commit()
     conn.close()
@@ -222,6 +294,7 @@ def score_picks_for_tournament(tournament_id: int) -> dict:
         "status": "ok",
         "result_source": result_source,
         "skipped_non_positive_ev": skipped_non_positive_ev,
+        "skipped_locked": skipped_locked,
         "scored": scored,
         "hits": model_hits,
         "misses": resolved - model_hits,

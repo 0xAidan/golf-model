@@ -8,7 +8,8 @@ Ensures consistent model execution regardless of how it's called.
 import os
 import time
 import logging
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from src import config
@@ -1290,6 +1291,60 @@ class GolfModelService:
             return
         try:
             db.store_picks(positive_ev_rows)
+            from src.pick_ledger import compute_pick_key, normalize_american_odds, persist_pick_ledger_rows
+
+            conn = db.get_conn()
+            t_row = conn.execute(
+                "SELECT event_id, year FROM tournaments WHERE id = ?", (tid,)
+            ).fetchone()
+            conn.close()
+            event_id = str(t_row["event_id"] or "") if t_row else ""
+            year = int(t_row["year"] or datetime.now().year) if t_row else datetime.now().year
+            ledger_rows = []
+            for row in positive_ev_rows:
+                pk = compute_pick_key(
+                    event_id=event_id or f"tournament_{tid}",
+                    lane="cockpit",
+                    section="upcoming",
+                    phase="pre_tournament",
+                    bet_type=str(row.get("bet_type") or "matchup"),
+                    player_key=str(row.get("player_key") or ""),
+                    opponent_key=str(row.get("opponent_key") or ""),
+                    book=str(row.get("market_book") or ""),
+                    odds=normalize_american_odds(row.get("market_odds")),
+                    snapshot_id=f"displayed_{tid}",
+                )
+                ledger_rows.append({
+                    "pick_key": pk,
+                    "event_id": event_id or f"tournament_{tid}",
+                    "event_name": None,
+                    "tournament_id": tid,
+                    "year": year,
+                    "phase": "pre_tournament",
+                    "section": "upcoming",
+                    "lane": "cockpit",
+                    "lifecycle": "displayed",
+                    "bet_type": row.get("bet_type"),
+                    "market_family": row.get("bet_type"),
+                    "market_type": row.get("bet_type"),
+                    "player_key": row.get("player_key"),
+                    "player_display": row.get("player_display"),
+                    "opponent_key": row.get("opponent_key"),
+                    "opponent_display": row.get("opponent_display"),
+                    "book": row.get("market_book"),
+                    "odds": normalize_american_odds(row.get("market_odds")),
+                    "model_prob": row.get("model_prob"),
+                    "implied_prob": row.get("market_implied_prob"),
+                    "ev": row.get("ev"),
+                    "is_value": 1,
+                    "model_variant": row.get("model_variant"),
+                    "model_config_hash": row.get("model_config_hash"),
+                    "snapshot_id": f"displayed_{tid}",
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "source_origin": "golf_model_service",
+                    "payload_json": json.dumps(row),
+                })
+            persist_pick_ledger_rows(ledger_rows)
         except Exception as exc:
             logger.warning("Displayed pick persistence failed: %s", exc)
 

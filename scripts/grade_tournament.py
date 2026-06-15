@@ -155,6 +155,11 @@ def grade_tournament(
     year: int,
     tournament_id: int = None,
     event_name: str = None,
+    *,
+    unscored_only: bool = True,
+    force_audit: bool = False,
+    audit_reason: str | None = None,
+    skip_backfill_if_locked: bool = True,
 ) -> dict:
     """
     Run the full grading pipeline for a completed tournament.
@@ -213,30 +218,50 @@ def grade_tournament(
     else:
         print("  No matchup outcomes available (normal for some events)")
 
-    # 5. Backfill durable displayed rows before scoring
-    print("  Backfilling completed market rows into gradeable picks...")
-    from src.market_row_backfill import backfill_completed_market_rows_into_picks
+    # 5. Backfill durable displayed rows before scoring (skip if authoritative outcomes exist)
+    from src.pick_ledger import tournament_has_locked_outcomes
 
-    dashboard_backfilled = backfill_completed_market_rows_into_picks(
-        event_id,
-        tournament_id,
-        source="dashboard",
-    )
-    lab_backfilled = backfill_completed_market_rows_into_picks(
-        event_id,
-        tournament_id,
-        source="lab",
-    )
-    report["steps"]["market_row_pick_backfill"] = {
-        "dashboard_inserted": dashboard_backfilled,
-        "lab_inserted": lab_backfilled,
-    }
-    print(f"  Backfilled picks: dashboard={dashboard_backfilled}, lab={lab_backfilled}")
+    dashboard_backfilled = 0
+    lab_backfilled = 0
+    has_locked = skip_backfill_if_locked and tournament_has_locked_outcomes(tournament_id)
+    if has_locked:
+        print("  Skipping market-row backfill — tournament has locked authoritative outcomes")
+        report["steps"]["market_row_pick_backfill"] = {
+            "dashboard_inserted": 0,
+            "lab_inserted": 0,
+            "skipped": "locked_outcomes",
+        }
+    else:
+        print("  Backfilling completed market rows into gradeable picks...")
+        from src.market_row_backfill import backfill_completed_market_rows_into_picks
 
-    # 6. Score picks
+        dashboard_backfilled = backfill_completed_market_rows_into_picks(
+            event_id,
+            tournament_id,
+            source="dashboard",
+        )
+        lab_backfilled = backfill_completed_market_rows_into_picks(
+            event_id,
+            tournament_id,
+            source="lab",
+        )
+        report["steps"]["market_row_pick_backfill"] = {
+            "dashboard_inserted": dashboard_backfilled,
+            "lab_inserted": lab_backfilled,
+        }
+        print(f"  Backfilled picks: dashboard={dashboard_backfilled}, lab={lab_backfilled}")
+
+    # 6. Score picks (respect locked outcomes unless force_audit)
     print("  Scoring picks...")
     from src.learning import score_picks_for_tournament
-    score_result = score_picks_for_tournament(tournament_id)
+    if unscored_only and not force_audit:
+        score_result = score_picks_for_tournament(tournament_id)
+    else:
+        score_result = score_picks_for_tournament(
+            tournament_id,
+            force_audit=force_audit,
+            audit_reason=audit_reason,
+        )
     report["steps"]["scoring"] = score_result
     print(f"  Scoring: {score_result.get('status', 'done')}")
 
@@ -253,6 +278,30 @@ def grade_tournament(
     }
     report["calibration"] = learn_result.get("calibration", {})
 
+    # 8. Cold archive tournament tables (includes pick_ledger)
+    try:
+        import os
+        import subprocess
+
+        export_script = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts",
+            "export_tournament_archive.py",
+        )
+        proc = subprocess.run(
+            [sys.executable, export_script, "--tournament-id", str(tournament_id)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        report["steps"]["tournament_archive"] = {
+            "ok": proc.returncode == 0,
+            "stdout": (proc.stdout or "").strip()[-500:],
+            "stderr": (proc.stderr or "").strip()[-500:],
+        }
+    except Exception as exc:
+        report["steps"]["tournament_archive"] = {"ok": False, "error": str(exc)}
+
     report["status"] = "complete"
     print(f"  Grading complete for tournament {tournament_id}")
     return report
@@ -264,6 +313,17 @@ def main():
     parser.add_argument("--event-name", type=str, help="Tournament name (fuzzy match)")
     parser.add_argument("--year", type=int, default=datetime.now().year, help="Year")
     parser.add_argument("--latest", action="store_true", help="Grade the most recent event")
+    parser.add_argument(
+        "--force-audit",
+        action="store_true",
+        help="Re-grade locked picks (writes grading_audit_log; requires --audit-reason)",
+    )
+    parser.add_argument("--audit-reason", type=str, default="", help="Reason for --force-audit")
+    parser.add_argument(
+        "--allow-backfill-on-locked",
+        action="store_true",
+        help="Run market-row backfill even when locked outcomes exist",
+    )
     args = parser.parse_args()
 
     db.ensure_initialized()
@@ -301,7 +361,14 @@ def main():
     print("  Tournament Grading Pipeline")
     print("=" * 50)
 
-    report = grade_tournament(event_id, year, event_name=event_name)
+    report = grade_tournament(
+        event_id,
+        year,
+        event_name=event_name,
+        force_audit=args.force_audit,
+        audit_reason=args.audit_reason or None,
+        skip_backfill_if_locked=not args.allow_backfill_on_locked,
+    )
 
     print()
     print("=" * 50)

@@ -18,6 +18,7 @@ _TABLES = [
     ("tournaments", "id = ?"),
     ("picks", "tournament_id = ?"),
     ("pick_outcomes", "pick_id IN (SELECT id FROM picks WHERE tournament_id = ?)"),
+    ("pick_ledger", "tournament_id = ?"),
     ("prediction_log", "tournament_id = ?"),
     ("results", "tournament_id = ?"),
     ("runs", "tournament_id = ?"),

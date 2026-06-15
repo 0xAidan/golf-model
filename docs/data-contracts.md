@@ -5,8 +5,9 @@ Canonical stores for analytics, grading, backtests, and the dashboard.
 
 | Contract | Table / view | Use when you need… |
 |----------|--------------|-------------------|
+| **PickLedgerRow** | `pick_ledger` | Every model-generated line (pre-tournament + live); append-only, never pruned |
 | **DisplayedPick** | `picks` | What the UI showed or we staked (`source` in `cockpit`, `ui_display`, `lab`) |
-| **GradedOutcome** | `v_displayed_picks_graded` | Pick + hit/miss/profit |
+| **GradedOutcome** | `v_pick_analytics` / `v_displayed_picks_graded` | Pick + hit/miss/profit + `grading_authority` |
 | **CalibrationObservation** | `prediction_log` | Model vs market vs outcome time series (first row per key wins) |
 | **MarketLineSnapshot** | `market_prediction_rows` | Every book line on every live-refresh tick |
 | **PipelineRun** | `runs` | Pipeline metadata (field size, duration, errors) |
@@ -42,6 +43,7 @@ Canonical stores for analytics, grading, backtests, and the dashboard.
 
 Created by `src/data_views.ensure_analytics_views()`:
 
+- `v_pick_analytics` — composable ledger + outcomes (filter by EV, phase, lane, outcome)
 - `v_displayed_picks_graded`
 - `v_tournament_data_health`
 - `v_2026_monthly_coverage`

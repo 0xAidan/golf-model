@@ -929,6 +929,84 @@ def init_db():
     conn.close()
 
 
+def _ensure_pick_ledger_tables(conn: sqlite3.Connection) -> None:
+    """Append-only pick ledger + grading audit trail (never pruned)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pick_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pick_key TEXT NOT NULL UNIQUE,
+            event_id TEXT NOT NULL,
+            event_name TEXT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            year INTEGER,
+            phase TEXT NOT NULL DEFAULT 'pre_tournament',
+            section TEXT NOT NULL DEFAULT 'upcoming',
+            lane TEXT NOT NULL DEFAULT 'cockpit',
+            lifecycle TEXT NOT NULL DEFAULT 'generated',
+            bet_type TEXT,
+            market_family TEXT,
+            market_type TEXT,
+            player_key TEXT NOT NULL,
+            player_display TEXT,
+            opponent_key TEXT,
+            opponent_display TEXT,
+            book TEXT,
+            odds TEXT,
+            model_prob REAL,
+            implied_prob REAL,
+            ev REAL,
+            is_value INTEGER DEFAULT 0,
+            model_variant TEXT,
+            model_config_hash TEXT,
+            snapshot_id TEXT,
+            generated_at TEXT NOT NULL,
+            source_origin TEXT NOT NULL DEFAULT 'live_refresh',
+            payload_json TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pick_ledger_event_phase
+        ON pick_ledger(event_id, phase, generated_at DESC)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pick_ledger_tournament
+        ON pick_ledger(tournament_id, lifecycle)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS grading_audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pick_id INTEGER REFERENCES picks(id),
+            pick_key TEXT,
+            tournament_id INTEGER REFERENCES tournaments(id),
+            action TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            previous_json TEXT,
+            new_json TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    for col, col_type, default in [
+        ("pick_key", "TEXT", None),
+        ("grading_authority", "TEXT", None),
+        ("outcome_locked", "INTEGER", "0"),
+    ]:
+        try:
+            conn.execute(f"SELECT {col} FROM pick_outcomes LIMIT 1")
+        except sqlite3.OperationalError:
+            default_clause = f" DEFAULT {default}" if default is not None else ""
+            conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
+    conn.commit()
+
+
 def _ensure_pre_teeoff_tables(conn: sqlite3.Connection) -> None:
     """Pre-teeoff candidate + frozen snapshot tables for Completed tab replay."""
     conn.execute(
@@ -1173,6 +1251,7 @@ def _run_migrations(conn: sqlite3.Connection):
     conn.commit()
 
     _ensure_pre_teeoff_tables(conn)
+    _ensure_pick_ledger_tables(conn)
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS shadow_event_simulations (
@@ -2308,10 +2387,18 @@ def build_completed_snapshot_section(event_id: str, *, source: str = "dashboard"
         return None
     normalized_source = str(source or "dashboard").strip().lower()
     frozen = get_pre_teeoff_frozen_payload(normalized) if normalized_source != "lab" else None
+    ranking_source = None
     if not frozen:
         pre_teeoff_section = "lab_upcoming" if normalized_source == "lab" else "upcoming"
-        latest_pre_teeoff = get_latest_snapshot_section(normalized, section=pre_teeoff_section)
-        frozen = (latest_pre_teeoff or {}).get("snapshot") or None
+        earliest_pre = get_first_snapshot_section(normalized, section=pre_teeoff_section)
+        if earliest_pre:
+            frozen = (earliest_pre or {}).get("snapshot") or None
+            ranking_source = f"recovered_earliest_{pre_teeoff_section}"
+        if not frozen:
+            latest_pre_teeoff = get_latest_snapshot_section(normalized, section=pre_teeoff_section)
+            frozen = (latest_pre_teeoff or {}).get("snapshot") or None
+            if frozen:
+                ranking_source = f"recovered_latest_{pre_teeoff_section}"
     latest_live = get_latest_snapshot_section(normalized, section="live")
     live_snap = (latest_live or {}).get("snapshot") or {}
     if not frozen and not live_snap:
@@ -2325,9 +2412,11 @@ def build_completed_snapshot_section(event_id: str, *, source: str = "dashboard"
     out["diagnostics"]["state"] = "completed_replay"
     if frozen:
         out["frozen_pre_teeoff_rankings"] = frozen.get("rankings") or frozen.get("live_rankings")
-        out["ranking_source"] = frozen.get("ranking_source") or (
+        out["ranking_source"] = ranking_source or frozen.get("ranking_source") or (
             "frozen_pre_teeoff_lab_upcoming" if normalized_source == "lab" else "frozen_pre_teeoff_upcoming"
         )
+    elif live_snap:
+        out["ranking_source"] = "completed_replay_live_fallback"
     return out
 
 
@@ -2638,9 +2727,12 @@ def get_completed_market_prediction_rows_for_event(
     """
     Fetch the final pre-teeoff market-row inventory for a completed event.
 
-    Dashboard Past replays the main ``upcoming`` lane. Lab Past replays the
-    independent ``lab_upcoming`` lane so research picks do not mix with the
-    operator dashboard picks.
+    Ordered fallbacks when primary ``upcoming`` / ``lab_upcoming`` rows are missing:
+    1. Frozen pre-teeoff ledger rows
+    2. Latest upcoming / lab_upcoming market rows (original behavior)
+    3. Earliest upcoming snapshot in live_snapshot_history
+    4. Earliest market_prediction_rows for event (any section, pre-completion)
+    5. Recovery: earliest live snapshot (mislabeled historical data)
     """
     normalized_event_id = str(event_id or "").strip()
     if not normalized_event_id:
@@ -2648,46 +2740,159 @@ def get_completed_market_prediction_rows_for_event(
     normalized_source = str(source or "dashboard").strip().lower()
     section = "lab_upcoming" if normalized_source == "lab" else "upcoming"
 
+    tiers: list[tuple[str, list[dict]]] = []
+
+    ledger_rows = _ledger_rows_for_completed_event(
+        normalized_event_id,
+        lane="lab" if normalized_source == "lab" else "cockpit",
+        limit=limit,
+    )
+    if ledger_rows:
+        tiers.append(("pick_ledger_frozen", ledger_rows))
+
+    upcoming_rows = _fetch_market_rows_for_section(
+        normalized_event_id,
+        section=section,
+        market_family=market_family,
+        limit=limit,
+        order="DESC",
+    )
+    if upcoming_rows:
+        tiers.append(("upcoming_latest", upcoming_rows))
+
+    earliest_history = get_first_snapshot_section(normalized_event_id, section=section)
+    if earliest_history:
+        hist_rows = _market_rows_from_snapshot_payload(
+            earliest_history,
+            event_id=normalized_event_id,
+            section=section,
+            limit=limit,
+        )
+        if hist_rows:
+            tiers.append(("earliest_snapshot_history", hist_rows))
+
+    earliest_any = _fetch_earliest_market_rows_any_section(
+        normalized_event_id,
+        market_family=market_family,
+        limit=limit,
+    )
+    if earliest_any:
+        tiers.append(("earliest_market_rows", earliest_any))
+
+    recovery_section = "lab_live" if normalized_source == "lab" else "live"
+    recovery_rows = _fetch_market_rows_for_section(
+        normalized_event_id,
+        section=recovery_section,
+        market_family=market_family,
+        limit=limit,
+        order="ASC",
+    )
+    if not recovery_rows:
+        recovery_rows = _fetch_market_rows_for_section(
+            normalized_event_id,
+            section="live",
+            market_family=market_family,
+            limit=limit,
+            order="ASC",
+        )
+    if recovery_rows:
+        tiers.append(("recovered_live_mislabeled", recovery_rows))
+
+    for tier_name, rows in tiers:
+        if not rows:
+            continue
+        for row in rows:
+            row["recovery_tier"] = tier_name
+        return _dedupe_completed_market_rows(rows)
+
+    return []
+
+
+def _ledger_rows_for_completed_event(
+    event_id: str,
+    *,
+    lane: str,
+    limit: int,
+) -> list[dict]:
+    conn = get_conn()
+    try:
+        conn.execute("SELECT 1 FROM pick_ledger LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+    rows = conn.execute(
+        """
+        SELECT * FROM pick_ledger
+        WHERE event_id = ? AND lane = ?
+          AND lifecycle IN ('frozen_pre_teeoff', 'displayed', 'graded', 'recovered')
+        ORDER BY
+            CASE lifecycle WHEN 'frozen_pre_teeoff' THEN 0 WHEN 'displayed' THEN 1 ELSE 2 END,
+            generated_at ASC
+        LIMIT ?
+        """,
+        (event_id, lane, int(limit)),
+    ).fetchall()
+    conn.close()
+    result: list[dict] = []
+    for row in rows:
+        d = dict(row)
+        try:
+            d["payload"] = json.loads(d.get("payload_json") or "{}")
+        except json.JSONDecodeError:
+            d["payload"] = {}
+        d["section"] = d.get("section") or "upcoming"
+        result.append(d)
+    return result
+
+
+def _fetch_market_rows_for_section(
+    event_id: str,
+    *,
+    section: str,
+    market_family: str | None,
+    limit: int,
+    order: str,
+) -> list[dict]:
     clauses = ["event_id = ?", "section = ?"]
-    params: list[Any] = [normalized_event_id, section]
+    params: list[Any] = [event_id, section]
     if market_family:
         clauses.append("market_family = ?")
         params.append(str(market_family))
 
+    sort = "ASC" if str(order).upper() == "ASC" else "DESC"
     conn = get_conn()
-    latest = conn.execute(
+    anchor = conn.execute(
         f"""
         SELECT snapshot_id, generated_at
         FROM market_prediction_rows
         WHERE {' AND '.join(clauses)}
-        ORDER BY generated_at DESC, id DESC
+        ORDER BY generated_at {sort}, id {sort}
         LIMIT 1
         """,
         params,
     ).fetchone()
-    if not latest:
+    if not anchor:
         conn.close()
         return []
 
-    latest_clauses = list(clauses)
-    latest_params = list(params)
-    if latest["snapshot_id"]:
-        latest_clauses.append("snapshot_id = ?")
-        latest_params.append(latest["snapshot_id"])
+    anchor_clauses = list(clauses)
+    anchor_params = list(params)
+    if anchor["snapshot_id"]:
+        anchor_clauses.append("snapshot_id = ?")
+        anchor_params.append(anchor["snapshot_id"])
     else:
-        latest_clauses.append("generated_at = ?")
-        latest_params.append(latest["generated_at"])
-    latest_params.append(int(limit))
+        anchor_clauses.append("generated_at = ?")
+        anchor_params.append(anchor["generated_at"])
+    anchor_params.append(int(limit))
 
     rows = conn.execute(
         f"""
-        SELECT *
-        FROM market_prediction_rows
-        WHERE {' AND '.join(latest_clauses)}
+        SELECT * FROM market_prediction_rows
+        WHERE {' AND '.join(anchor_clauses)}
         ORDER BY id ASC
         LIMIT ?
         """,
-        latest_params,
+        anchor_params,
     ).fetchall()
     conn.close()
 
@@ -2698,7 +2903,87 @@ def get_completed_market_prediction_rows_for_event(
             row["payload"] = json.loads(raw_payload) if raw_payload else {}
         except json.JSONDecodeError:
             row["payload"] = {}
-    return _dedupe_completed_market_rows(result)
+    return result
+
+
+def _fetch_earliest_market_rows_any_section(
+    event_id: str,
+    *,
+    market_family: str | None,
+    limit: int,
+) -> list[dict]:
+    clauses = ["event_id = ?"]
+    params: list[Any] = [event_id]
+    if market_family:
+        clauses.append("market_family = ?")
+        params.append(str(market_family))
+    conn = get_conn()
+    anchor = conn.execute(
+        f"""
+        SELECT snapshot_id, generated_at, section
+        FROM market_prediction_rows
+        WHERE {' AND '.join(clauses)}
+        ORDER BY generated_at ASC, id ASC
+        LIMIT 1
+        """,
+        params,
+    ).fetchone()
+    if not anchor:
+        conn.close()
+        return []
+    anchor_clauses = list(clauses)
+    anchor_params = list(params)
+    if anchor["snapshot_id"]:
+        anchor_clauses.append("snapshot_id = ?")
+        anchor_params.append(anchor["snapshot_id"])
+    else:
+        anchor_clauses.append("generated_at = ?")
+        anchor_params.append(anchor["generated_at"])
+    anchor_params.append(int(limit))
+    rows = conn.execute(
+        f"""
+        SELECT * FROM market_prediction_rows
+        WHERE {' AND '.join(anchor_clauses)}
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        anchor_params,
+    ).fetchall()
+    conn.close()
+    result = [dict(row) for row in rows]
+    for row in result:
+        raw_payload = row.get("payload_json")
+        try:
+            row["payload"] = json.loads(raw_payload) if raw_payload else {}
+        except json.JSONDecodeError:
+            row["payload"] = {}
+    return result
+
+
+def _market_rows_from_snapshot_payload(
+    snapshot_row: dict,
+    *,
+    event_id: str,
+    section: str,
+    limit: int,
+) -> list[dict]:
+    snap = snapshot_row.get("snapshot") if isinstance(snapshot_row.get("snapshot"), dict) else snapshot_row
+    if not isinstance(snap, dict):
+        return []
+    from backtester.dashboard_runtime import _build_market_prediction_rows
+
+    generated_at = str(snapshot_row.get("generated_at") or snap.get("generated_at") or "")
+    snapshot_id = str(snapshot_row.get("snapshot_id") or snap.get("snapshot_id") or generated_at or "history")
+    rows = _build_market_prediction_rows(
+        snapshot_id=snapshot_id,
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+        tour=str(snap.get("tour") or "pga"),
+        section_name=section,
+        section_payload=snap,
+    )
+    for row in rows:
+        row.setdefault("event_id", event_id)
+    return rows[: int(limit)]
 
 
 def _dedupe_completed_market_rows(rows: list[dict]) -> list[dict]:
