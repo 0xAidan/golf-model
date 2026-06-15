@@ -2717,12 +2717,43 @@ def get_market_prediction_rows_for_event(
     return result
 
 
+def _count_market_prediction_rows_for_event(
+    event_id: str,
+    *,
+    sections: tuple[str, ...] | None = None,
+) -> int:
+    """Count durable market rows for an event (optionally filtered by section)."""
+    normalized_event_id = str(event_id or "").strip()
+    if not normalized_event_id:
+        return 0
+    conn = get_conn()
+    try:
+        if sections:
+            placeholders = ",".join("?" for _ in sections)
+            row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS c FROM market_prediction_rows
+                WHERE event_id = ? AND section IN ({placeholders})
+                """,
+                (normalized_event_id, *sections),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS c FROM market_prediction_rows WHERE event_id = ?",
+                (normalized_event_id,),
+            ).fetchone()
+    finally:
+        conn.close()
+    return int(row["c"] or 0) if row else 0
+
+
 def get_completed_market_prediction_rows_for_event(
     event_id: str,
     *,
     source: str = "dashboard",
     market_family: str | None = None,
     limit: int = 10000,
+    prefer_richest_source: bool = False,
 ) -> list[dict]:
     """
     Fetch the final pre-teeoff market-row inventory for a completed event.
@@ -2747,7 +2778,12 @@ def get_completed_market_prediction_rows_for_event(
         lane="lab" if normalized_source == "lab" else "cockpit",
         limit=limit,
     )
-    if ledger_rows:
+    recovery_section = "lab_live" if normalized_source == "lab" else "live"
+    mpr_section_count = _count_market_prediction_rows_for_event(
+        normalized_event_id,
+        sections=(recovery_section,),
+    )
+    if ledger_rows and (mpr_section_count == 0 or len(ledger_rows) >= mpr_section_count * 0.5):
         tiers.append(("pick_ledger_frozen", ledger_rows))
 
     upcoming_rows = _fetch_market_rows_for_section(
@@ -2780,32 +2816,45 @@ def get_completed_market_prediction_rows_for_event(
         tiers.append(("earliest_market_rows", earliest_any))
 
     recovery_section = "lab_live" if normalized_source == "lab" else "live"
-    recovery_rows = _fetch_market_rows_for_section(
+    recovery_rows = _fetch_all_market_rows_for_section(
         normalized_event_id,
         section=recovery_section,
         market_family=market_family,
         limit=limit,
-        order="ASC",
     )
     if not recovery_rows:
-        recovery_rows = _fetch_market_rows_for_section(
+        recovery_rows = _fetch_all_market_rows_for_section(
             normalized_event_id,
             section="live",
             market_family=market_family,
             limit=limit,
-            order="ASC",
         )
     if recovery_rows:
         tiers.append(("recovered_live_mislabeled", recovery_rows))
 
+    ledger_skipped = bool(
+        ledger_rows
+        and mpr_section_count > 0
+        and len(ledger_rows) < mpr_section_count * 0.5
+    )
+
+    scored: list[tuple[str, list[dict], int]] = []
     for tier_name, rows in tiers:
         if not rows:
             continue
-        for row in rows:
-            row["recovery_tier"] = tier_name
-        return _dedupe_completed_market_rows(rows)
+        scored.append((tier_name, rows, len(_dedupe_completed_market_rows(rows))))
 
-    return []
+    if not scored:
+        return []
+
+    if prefer_richest_source or ledger_skipped:
+        tier_name, rows, _ = max(scored, key=lambda item: item[2])
+    else:
+        tier_name, rows, _ = scored[0]
+
+    for row in rows:
+        row["recovery_tier"] = tier_name
+    return _dedupe_completed_market_rows(rows)
 
 
 def _ledger_rows_for_completed_event(
@@ -2842,6 +2891,43 @@ def _ledger_rows_for_completed_event(
             d["payload"] = {}
         d["section"] = d.get("section") or "upcoming"
         result.append(d)
+    return result
+
+
+def _fetch_all_market_rows_for_section(
+    event_id: str,
+    *,
+    section: str,
+    market_family: str | None,
+    limit: int,
+) -> list[dict]:
+    """Fetch all rows for a section (across snapshots) for inventory recovery."""
+    clauses = ["event_id = ?", "section = ?"]
+    params: list[Any] = [event_id, section]
+    if market_family:
+        clauses.append("market_family = ?")
+        params.append(str(market_family))
+    params.append(int(limit))
+
+    conn = get_conn()
+    rows = conn.execute(
+        f"""
+        SELECT * FROM market_prediction_rows
+        WHERE {' AND '.join(clauses)}
+        ORDER BY generated_at ASC, id ASC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    conn.close()
+
+    result = [dict(row) for row in rows]
+    for row in result:
+        raw_payload = row.get("payload_json")
+        try:
+            row["payload"] = json.loads(raw_payload) if raw_payload else {}
+        except json.JSONDecodeError:
+            row["payload"] = {}
     return result
 
 

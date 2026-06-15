@@ -9,6 +9,7 @@ import type {
   TrackComparisonResponse,
   EventSummary,
   GradingHistoryResponse,
+  GradingSeasonResponse,
   LiveRefreshSnapshotResponse,
   LiveRefreshStatusResponse,
   PastMarketRowsResponse,
@@ -93,6 +94,28 @@ export const api = {
     }
     const qs = params.toString()
     return request<GradingHistoryResponse>(`/api/grading/history${qs ? `?${qs}` : ""}`)
+  },
+  getGradingSeason: (options?: {
+    year?: number
+    lane?: "all" | "cockpit" | "lab"
+    includePicks?: boolean
+    limit?: number
+  }) => {
+    const params = new URLSearchParams()
+    if (options?.year !== undefined) {
+      params.set("year", String(options.year))
+    }
+    if (options?.lane && options.lane !== "all") {
+      params.set("lane", options.lane)
+    }
+    if (options?.includePicks === false) {
+      params.set("include_picks", "false")
+    }
+    if (options?.limit !== undefined) {
+      params.set("limit", String(options.limit))
+    }
+    const qs = params.toString()
+    return request<GradingSeasonResponse>(`/api/grading/season${qs ? `?${qs}` : ""}`)
   },
   getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) => {
     const enc = encodeURIComponent(playerKey)

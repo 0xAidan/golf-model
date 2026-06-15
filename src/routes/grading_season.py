@@ -1,0 +1,374 @@
+"""Season-wide grading API with Dashboard vs Lab lane comparison."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Query
+
+from src.db import ensure_initialized, get_conn
+from src.grading_record import (
+    build_lane_comparison,
+    build_record_summary,
+    format_graded_pick_rows,
+    pick_lane_sql,
+)
+
+router = APIRouter(tags=["grading"])
+
+TRACK_RECORD_PATH = Path(__file__).resolve().parents[2] / "frontend" / "src" / "data" / "trackRecord.json"
+
+
+def _load_track_record_events() -> list[dict]:
+    if not TRACK_RECORD_PATH.is_file():
+        return []
+    with open(TRACK_RECORD_PATH, encoding="utf-8") as handle:
+        data = json.load(handle)
+    return list(data.get("events") or [])
+
+
+def _resolve_event_id(conn, event_name: str, year: int) -> str | None:
+    needle = event_name.strip().lower()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT event_id, event_name FROM rounds
+        WHERE year = ? AND event_id IS NOT NULL AND TRIM(event_id) != ''
+          AND LOWER(event_name) LIKE ?
+        """,
+        (year, f"%{needle}%"),
+    ).fetchall()
+    for row in rows:
+        if str(row["event_name"] or "").strip().lower() == needle:
+            return str(row["event_id"])
+    if len(rows) == 1:
+        return str(rows[0]["event_id"])
+    for row in rows:
+        if needle in str(row["event_name"] or "").strip().lower():
+            return str(row["event_id"])
+    return None
+
+
+def _discover_season_events(conn, year: int) -> dict[str, dict[str, Any]]:
+    events: dict[str, dict[str, Any]] = {}
+
+    ledger_rows = conn.execute(
+        """
+        SELECT
+            pl.event_id,
+            MAX(pl.event_name) AS name,
+            MAX(COALESCE(pl.year, t.year)) AS year,
+            MAX(t.course) AS course,
+            MAX(t.id) AS tournament_id,
+            COUNT(*) AS inventory_count,
+            SUM(CASE WHEN pl.is_value = 1 THEN 1 ELSE 0 END) AS positive_ev_count
+        FROM pick_ledger pl
+        LEFT JOIN tournaments t ON t.id = pl.tournament_id
+        WHERE COALESCE(pl.year, t.year) = ?
+          AND pl.event_id IS NOT NULL AND TRIM(pl.event_id) != ''
+        GROUP BY pl.event_id
+        """,
+        (year,),
+    ).fetchall()
+    for row in ledger_rows:
+        eid = str(row["event_id"])
+        events[eid] = {
+            "event_id": eid,
+            "name": row["name"] or f"Event {eid}",
+            "year": int(row["year"] or year),
+            "course": row["course"],
+            "tournament_id": row["tournament_id"],
+            "inventory_count": int(row["inventory_count"] or 0),
+            "positive_ev_inventory": int(row["positive_ev_count"] or 0),
+            "authority_tier": "inventory",
+        }
+
+    tournament_rows = conn.execute(
+        """
+        SELECT t.id, t.name, t.course, t.year, t.event_id
+        FROM tournaments t
+        WHERE t.year = ? AND t.event_id IS NOT NULL AND TRIM(t.event_id) != ''
+        """,
+        (year,),
+    ).fetchall()
+    for row in tournament_rows:
+        eid = str(row["event_id"])
+        existing = events.get(eid, {})
+        events[eid] = {
+            **existing,
+            "event_id": eid,
+            "name": existing.get("name") or row["name"],
+            "year": int(row["year"] or year),
+            "course": existing.get("course") or row["course"],
+            "tournament_id": existing.get("tournament_id") or row["id"],
+            "inventory_count": int(existing.get("inventory_count") or 0),
+            "positive_ev_inventory": int(existing.get("positive_ev_inventory") or 0),
+            "authority_tier": existing.get("authority_tier") or "graded",
+        }
+
+    for static_event in _load_track_record_events():
+        name = str(static_event.get("name") or "")
+        if not name:
+            continue
+        eid = _resolve_event_id(conn, name, year)
+        if not eid:
+            continue
+        record = static_event.get("record") or {}
+        picks = static_event.get("picks") or []
+        existing = events.get(eid, {})
+        authority = "locked" if picks else "rollup_only"
+        if existing.get("authority_tier") == "locked":
+            authority = "locked"
+        elif existing.get("authority_tier") == "graded" and picks:
+            authority = "locked"
+        elif not picks and not existing:
+            authority = "rollup_only"
+        elif existing:
+            authority = existing.get("authority_tier") or authority
+
+        events[eid] = {
+            **existing,
+            "event_id": eid,
+            "name": name,
+            "year": year,
+            "course": static_event.get("course") or existing.get("course"),
+            "tournament_id": existing.get("tournament_id"),
+            "inventory_count": int(existing.get("inventory_count") or 0),
+            "positive_ev_inventory": int(existing.get("positive_ev_inventory") or 0),
+            "authority_tier": authority,
+            "picks_detail_missing": len(picks) == 0,
+            "rollup_record": {
+                "wins": int(record.get("wins") or 0),
+                "losses": int(record.get("losses") or 0),
+                "pushes": int(record.get("pushes") or 0),
+                "profit": float(static_event.get("profit_units") or 0),
+            } if not picks else None,
+        }
+
+    return events
+
+
+def _fetch_lane_picks(conn, tournament_id: int | None, lane: str) -> list[dict]:
+    if not tournament_id:
+        return []
+    lane_sql = pick_lane_sql(lane)
+    rows = conn.execute(
+        f"""
+        SELECT
+            p.id,
+            p.model_variant,
+            p.source,
+            p.bet_type,
+            p.player_key,
+            p.player_display,
+            p.opponent_key,
+            p.opponent_display,
+            p.market_odds,
+            p.market_book,
+            p.model_prob,
+            p.ev,
+            p.reasoning,
+            po.hit AS hit,
+            po.hit AS bet_hit,
+            po.model_hit,
+            po.actual_finish,
+            po.odds_decimal,
+            po.stake,
+            ROUND(COALESCE(po.profit, 0), 2) AS profit,
+            po.entered_at AS graded_at,
+            po.outcome_locked,
+            po.grading_authority
+        FROM picks p
+        JOIN pick_outcomes po ON po.pick_id = p.id
+        WHERE p.tournament_id = ? {lane_sql}
+        ORDER BY po.entered_at, p.id
+        """,
+        (int(tournament_id),),
+    ).fetchall()
+    return format_graded_pick_rows([dict(row) for row in rows])
+
+
+def _lane_inventory_counts(conn, event_id: str, lane: str) -> tuple[int, int]:
+    ledger_lane = "cockpit" if lane in {"cockpit", "dashboard"} else "lab"
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS inventory_count,
+            SUM(CASE WHEN is_value = 1 THEN 1 ELSE 0 END) AS positive_ev_count
+        FROM pick_ledger
+        WHERE event_id = ? AND lane = ?
+        """,
+        (event_id, ledger_lane),
+    ).fetchone()
+    if not row:
+        return 0, 0
+    return int(row["inventory_count"] or 0), int(row["positive_ev_count"] or 0)
+
+
+def _build_lane_payload(
+    conn,
+    *,
+    event_id: str,
+    tournament_id: int | None,
+    lane: str,
+    rollup_record: dict | None,
+) -> dict[str, Any]:
+    inventory_count, positive_ev_inventory = _lane_inventory_counts(conn, event_id, lane)
+    picks = _fetch_lane_picks(conn, tournament_id, lane)
+    summary = build_record_summary(picks)
+    combined = summary["combined"]
+    graded_pick_count = combined["picks"]
+    ungraded = max(0, positive_ev_inventory - graded_pick_count) if positive_ev_inventory else 0
+
+    record = {
+        "wins": combined["wins"],
+        "losses": combined["losses"],
+        "pushes": combined["pushes"],
+        "profit": combined["profit"],
+        "hit_rate": combined["hit_rate"],
+    }
+    if graded_pick_count == 0 and rollup_record and lane in {"cockpit", "dashboard"}:
+        record = {
+            "wins": rollup_record.get("wins", 0),
+            "losses": rollup_record.get("losses", 0),
+            "pushes": rollup_record.get("pushes", 0),
+            "profit": rollup_record.get("profit", 0),
+            "hit_rate": None,
+        }
+
+    status = "graded"
+    if graded_pick_count == 0 and rollup_record and lane in {"cockpit", "dashboard"}:
+        status = "rollup_only"
+    elif ungraded > 0:
+        status = "partial"
+    elif graded_pick_count == 0 and inventory_count > 0:
+        status = "partial"
+
+    return {
+        "inventory_count": inventory_count,
+        "graded_pick_count": graded_pick_count,
+        "ungraded_positive_ev_count": ungraded,
+        "status": status,
+        "record": record,
+        "market_stats": summary,
+        "picks": picks,
+        "hits": combined["wins"],
+        "total_profit": combined["profit"],
+    }
+
+
+@router.get("/api/grading/season")
+async def get_grading_season(
+    year: int = Query(2026, ge=2000, le=2100),
+    lane: str = Query("all", pattern="^(all|cockpit|dashboard|lab)$"),
+    include_picks: bool = Query(True),
+    limit: int = Query(100, ge=1, le=500),
+):
+    ensure_initialized()
+    conn = get_conn()
+    discovered = _discover_season_events(conn, year)
+
+    events_out: list[dict[str, Any]] = []
+    all_dashboard_picks: list[dict] = []
+    all_lab_picks: list[dict] = []
+
+    sorted_events = sorted(
+        discovered.values(),
+        key=lambda item: (
+            -int(item.get("inventory_count") or 0),
+            item.get("name") or "",
+        ),
+    )
+
+    for meta in sorted_events[:limit]:
+        tournament_id = meta.get("tournament_id")
+        if tournament_id is None and meta.get("event_id"):
+            row = conn.execute(
+                "SELECT id FROM tournaments WHERE event_id = ? AND year = ? LIMIT 1",
+                (meta["event_id"], year),
+            ).fetchone()
+            tournament_id = row["id"] if row else None
+
+        rollup = meta.get("rollup_record")
+        dashboard_lane = _build_lane_payload(
+            conn,
+            event_id=str(meta["event_id"]),
+            tournament_id=tournament_id,
+            lane="cockpit",
+            rollup_record=rollup,
+        )
+        lab_lane = _build_lane_payload(
+            conn,
+            event_id=str(meta["event_id"]),
+            tournament_id=tournament_id,
+            lane="lab",
+            rollup_record=None,
+        )
+        comparison = build_lane_comparison(dashboard_lane["picks"], lab_lane["picks"])
+        all_dashboard_picks.extend(dashboard_lane["picks"])
+        all_lab_picks.extend(lab_lane["picks"])
+
+        if not include_picks:
+            dashboard_lane = {**dashboard_lane, "picks": []}
+            lab_lane = {**lab_lane, "picks": []}
+
+        event_payload = {
+            "event_id": meta["event_id"],
+            "name": meta["name"],
+            "course": meta.get("course"),
+            "year": meta.get("year", year),
+            "tournament_id": tournament_id,
+            "authority_tier": meta.get("authority_tier"),
+            "picks_detail_missing": bool(meta.get("picks_detail_missing")),
+            "inventory_count": int(meta.get("inventory_count") or 0),
+            "lanes": {
+                "dashboard": dashboard_lane,
+                "lab": lab_lane,
+            },
+            "comparison": comparison,
+        }
+
+        if lane in {"cockpit", "dashboard"}:
+            event_payload["graded_pick_count"] = dashboard_lane["graded_pick_count"]
+            event_payload["hits"] = dashboard_lane["hits"]
+            event_payload["total_profit"] = dashboard_lane["total_profit"]
+            event_payload["picks"] = dashboard_lane["picks"]
+            event_payload["status"] = dashboard_lane["status"]
+        elif lane == "lab":
+            event_payload["graded_pick_count"] = lab_lane["graded_pick_count"]
+            event_payload["hits"] = lab_lane["hits"]
+            event_payload["total_profit"] = lab_lane["total_profit"]
+            event_payload["picks"] = lab_lane["picks"]
+            event_payload["status"] = lab_lane["status"]
+        else:
+            event_payload["graded_pick_count"] = dashboard_lane["graded_pick_count"] + lab_lane["graded_pick_count"]
+            event_payload["hits"] = dashboard_lane["hits"] + lab_lane["hits"]
+            event_payload["total_profit"] = round(
+                float(dashboard_lane["total_profit"] or 0) + float(lab_lane["total_profit"] or 0),
+                2,
+            )
+            event_payload["picks"] = dashboard_lane["picks"] + lab_lane["picks"]
+            event_payload["status"] = dashboard_lane["status"] if dashboard_lane["status"] != "graded" else lab_lane["status"]
+
+        events_out.append(event_payload)
+
+    conn.close()
+
+    normalized_lane = "dashboard" if lane in {"cockpit", "dashboard"} else lane
+    summary = {
+        "dashboard": build_record_summary(all_dashboard_picks)["combined"],
+        "lab": build_record_summary(all_lab_picks)["combined"],
+        "comparison": build_lane_comparison(
+            format_graded_pick_rows(all_dashboard_picks),
+            format_graded_pick_rows(all_lab_picks),
+        ),
+    }
+
+    return {
+        "year": year,
+        "lane": normalized_lane,
+        "events": events_out,
+        "tournaments": events_out,
+        "summary": summary,
+    }

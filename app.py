@@ -233,8 +233,10 @@ app.include_router(field_board_router)
 app.include_router(eval_router)
 app.include_router(ops_router)
 from src.routes.analytics import router as analytics_router
+from src.routes.grading_season import router as grading_season_router
 
 app.include_router(analytics_router)
+app.include_router(grading_season_router)
 
 
 # Store last analysis in memory for the card page

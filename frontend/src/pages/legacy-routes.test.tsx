@@ -6,11 +6,79 @@ import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
 import gradingHistoryFixture from "@/__fixtures__/grading-history.json"
+import type { GradingSeasonResponse } from "@/lib/types"
 import { GradingPage } from "@/pages/legacy-routes"
+
+const emptyBucket = {
+  picks: 0,
+  wins: 0,
+  losses: 0,
+  pushes: 0,
+  profit: 0,
+  hit_rate: null,
+}
+
+const toSeasonFixture = (
+  fixture: typeof gradingHistoryFixture,
+  lane: "all" | "cockpit" | "lab" = "cockpit",
+): GradingSeasonResponse => ({
+  year: 2026,
+  lane,
+  events: fixture.tournaments.map((event) => ({
+    ...event,
+    lanes: {
+      dashboard: {
+        inventory_count: event.graded_pick_count ?? 0,
+        graded_pick_count: event.graded_pick_count ?? 0,
+        ungraded_positive_ev_count: 0,
+        status: "graded",
+        record: {
+          wins: event.hits ?? 0,
+          losses: 0,
+          pushes: 0,
+          profit: event.total_profit ?? 0,
+          hit_rate: null,
+        },
+        picks: event.picks ?? [],
+        hits: event.hits,
+        total_profit: event.total_profit,
+      },
+      lab: {
+        inventory_count: 0,
+        graded_pick_count: 0,
+        ungraded_positive_ev_count: 0,
+        status: "graded",
+        record: emptyBucket,
+        picks: [],
+        hits: 0,
+        total_profit: 0,
+      },
+    },
+    comparison: {
+      profit_delta: event.total_profit ?? 0,
+      hit_rate_delta: 0,
+      picks_only_dashboard: event.graded_pick_count ?? 0,
+      picks_only_lab: 0,
+      overlap_matchups: 0,
+    },
+  })),
+  tournaments: [],
+  summary: {
+    dashboard: fixture.summary?.combined ?? emptyBucket,
+    lab: emptyBucket,
+    comparison: {
+      profit_delta: fixture.summary?.combined?.profit ?? 0,
+      hit_rate_delta: 0,
+      picks_only_dashboard: fixture.summary?.combined?.picks ?? 0,
+      picks_only_lab: 0,
+      overlap_matchups: 0,
+    },
+  },
+})
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
-    getGradingHistory: vi.fn(),
+    getGradingSeason: vi.fn(),
     getDashboardState: vi.fn(async () => ({
       ai_status: { available: false },
       latest_graded_tournament: {
@@ -56,7 +124,7 @@ function renderGradingPage() {
 
 describe("GradingPage", () => {
   it("renders trust strip, source toggle, and ungraded banner", async () => {
-    apiMock.getGradingHistory.mockResolvedValue(gradingHistoryFixture)
+    apiMock.getGradingSeason.mockResolvedValue(toSeasonFixture(gradingHistoryFixture))
 
     renderGradingPage()
 
@@ -65,8 +133,8 @@ describe("GradingPage", () => {
     expect(await screen.findByTestId("grading-ungraded-banner")).toHaveTextContent(/\+EV pick/i)
   })
 
-  it("refetches history when pick source changes", async () => {
-    apiMock.getGradingHistory.mockResolvedValue(gradingHistoryFixture)
+  it("refetches season when pick source changes", async () => {
+    apiMock.getGradingSeason.mockResolvedValue(toSeasonFixture(gradingHistoryFixture))
     const user = userEvent.setup()
 
     renderGradingPage()
@@ -75,7 +143,9 @@ describe("GradingPage", () => {
     await user.click(screen.getByTestId("grading-source-lab"))
 
     await waitFor(() => {
-      expect(apiMock.getGradingHistory).toHaveBeenCalledWith({ pickSource: "lab" })
+      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
+        expect.objectContaining({ lane: "lab", year: 2026 }),
+      )
     })
   })
 })
