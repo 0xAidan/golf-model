@@ -185,16 +185,21 @@ def main() -> int:
 
     for event in events:
         print(f"{'[dry-run] ' if dry_run else ''}Hydrating {event['name']} ({event['event_id']})...")
-        result = hydrate_event(
-            str(event["event_id"]),
-            year=int(event.get("year") or args.year),
-            name=str(event.get("name") or f"Event {event['event_id']}"),
-            tournament_id=event.get("tournament_id"),
-            course=event.get("course"),
-            dry_run=dry_run,
-        )
-        manifest["events"].append(result)
-        print(json.dumps(result, indent=2))
+        try:
+            result = hydrate_event(
+                str(event["event_id"]),
+                year=int(event.get("year") or args.year),
+                name=str(event.get("name") or f"Event {event['event_id']}"),
+                tournament_id=event.get("tournament_id"),
+                course=event.get("course"),
+                dry_run=dry_run,
+            )
+            manifest["events"].append(result)
+            print(json.dumps(result, indent=2))
+        except Exception as exc:
+            err = {"event_id": event["event_id"], "name": event.get("name"), "error": str(exc)}
+            manifest["events"].append(err)
+            print(f"ERROR: {event.get('name')}: {exc}", file=sys.stderr)
 
     out_path = ROOT / "output" / "audits" / f"hydrate_season_{args.year}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
