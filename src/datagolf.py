@@ -1272,6 +1272,64 @@ def get_current_event_info(tour: str = "pga") -> dict | None:
     return None
 
 
+def normalize_schedule_status(event_row: dict | None) -> str | None:
+    """Normalize Data Golf schedule ``status`` (e.g. completed, upcoming, in_progress)."""
+    if not event_row:
+        return None
+    raw = event_row.get("status")
+    if raw is None:
+        return None
+    normalized = str(raw).strip().lower()
+    return normalized or None
+
+
+def _parse_schedule_start_date(event_row: dict) -> date | None:
+    raw = event_row.get("start_date")
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def is_schedule_event_live(event_row: dict, *, today: date | None = None) -> bool:
+    """True when the DG schedule marks an event in progress."""
+    status = normalize_schedule_status(event_row)
+    if status in {"completed", "upcoming"}:
+        return False
+    if status in {"in_progress", "live", "active"}:
+        return True
+    start_date = _parse_schedule_start_date(event_row)
+    end_date_raw = event_row.get("end_date")
+    if start_date and end_date_raw:
+        try:
+            end_date = datetime.strptime(str(end_date_raw), "%Y-%m-%d").date()
+        except ValueError:
+            return False
+        ref = today or date.today()
+        return start_date <= ref <= end_date
+    return False
+
+
+def is_schedule_event_completed(event_row: dict, *, today: date | None = None) -> bool:
+    """True when DG marks the event completed, or end_date is in the past."""
+    status = normalize_schedule_status(event_row)
+    if status in {"upcoming", "in_progress", "live"}:
+        return False
+    if status == "completed":
+        return True
+    end_date_raw = event_row.get("end_date")
+    if not end_date_raw:
+        return False
+    try:
+        end_date = datetime.strptime(str(end_date_raw), "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    ref = today or date.today()
+    return end_date <= ref
+
+
 def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None) -> dict | None:
     """Return the latest completed event from the full DG schedule for a tour."""
     try:
@@ -1283,15 +1341,19 @@ def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None
         today = as_of or date.today()
         completed: list[tuple[date, dict]] = []
         for event in events:
-            end_date_raw = event.get("end_date")
-            if not end_date_raw:
+            if not is_schedule_event_completed(event, today=today):
                 continue
-            try:
-                end_date = datetime.strptime(end_date_raw, "%Y-%m-%d").date()
-            except ValueError:
-                continue
-            if end_date <= today:
-                completed.append((end_date, event))
+            sort_date = _parse_schedule_start_date(event)
+            if sort_date is None:
+                end_date_raw = event.get("end_date")
+                if end_date_raw:
+                    try:
+                        sort_date = datetime.strptime(str(end_date_raw), "%Y-%m-%d").date()
+                    except ValueError:
+                        sort_date = today
+                else:
+                    sort_date = today
+            completed.append((sort_date, event))
 
         if not completed:
             return None

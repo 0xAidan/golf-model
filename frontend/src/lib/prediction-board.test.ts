@@ -285,6 +285,8 @@ describe("buildHydratedPredictionRun", () => {
     const snapshot: LiveRefreshSnapshot = {
       live_tournament: {
         event_name: "Live Only",
+        source_event_id: "99",
+        active: true,
         rankings: [
           {
             rank: 1,
@@ -304,6 +306,43 @@ describe("buildHydratedPredictionRun", () => {
     const run = buildHydratedPredictionRun(snapshot, "upcoming")
     expect(run?.hydration_section).toBe("upcoming_fallback_live")
     expect(run?.warnings?.some((w) => w.includes("Upcoming board is using live"))).toBe(true)
+  })
+
+  it("does not cross-fallback when live and upcoming share the same event id", () => {
+    const snapshot: LiveRefreshSnapshot = {
+      live_tournament: {
+        event_name: "U.S. Open",
+        source_event_id: "26",
+        active: false,
+        rankings: [],
+        matchup_bets: [],
+        value_bets: {},
+      },
+      upcoming_tournament: {
+        event_name: "U.S. Open",
+        source_event_id: "26",
+        rankings: [
+          {
+            rank: 1,
+            player_key: "a",
+            player: "A",
+            composite: 80,
+            course_fit: 70,
+            form: 70,
+            momentum: 70,
+          },
+        ],
+        matchup_bets: [],
+        value_bets: {},
+      },
+    }
+
+    const liveRun = buildHydratedPredictionRun(snapshot, "live")
+    expect(liveRun?.composite_results).toHaveLength(0)
+
+    const upcomingRun = buildHydratedPredictionRun(snapshot, "upcoming")
+    expect(upcomingRun?.composite_results).toHaveLength(1)
+    expect(upcomingRun?.hydration_section).toBe("upcoming")
   })
 
   it("preserves new-live flags on matchup and secondary rows", () => {

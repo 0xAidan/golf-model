@@ -1,0 +1,1 @@
+var e={dashboard:3e4,liveSnapshot:1e4,liveRefreshStatusIdle:15e3,liveRefreshStatusBusy:2500,playerProfileStale:6e4,queryDefaultStale:15e3};export{e as t};

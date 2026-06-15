@@ -309,6 +309,10 @@ export function buildHydratedPredictionRun(
     return null
   }
 
+  const liveId = snapshot.live_tournament?.source_event_id
+  const upcomingId = snapshot.upcoming_tournament?.source_event_id
+  const sameEventContext = Boolean(liveId && upcomingId && liveId === upcomingId)
+
   let source: LiveTournamentSnapshot | null | undefined
   let hydrationSection: HydrationSectionKey
 
@@ -316,7 +320,7 @@ export function buildHydratedPredictionRun(
     if (snapshot.live_tournament) {
       source = snapshot.live_tournament
       hydrationSection = "live"
-    } else if (snapshot.upcoming_tournament) {
+    } else if (snapshot.upcoming_tournament && !sameEventContext) {
       source = snapshot.upcoming_tournament
       hydrationSection = "live_fallback_upcoming"
     } else {
@@ -326,7 +330,7 @@ export function buildHydratedPredictionRun(
   } else if (snapshot.upcoming_tournament) {
     source = snapshot.upcoming_tournament
     hydrationSection = "upcoming"
-  } else if (snapshot.live_tournament) {
+  } else if (snapshot.live_tournament?.active && !sameEventContext) {
     source = snapshot.live_tournament
     hydrationSection = "upcoming_fallback_live"
   } else {

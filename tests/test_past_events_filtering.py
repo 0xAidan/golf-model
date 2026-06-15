@@ -137,3 +137,40 @@ def test_completed_events_propagates_exclusion(tmp_db):
         limit=10, exclude_event_ids={"556"}
     )
     assert [r["event_id"] for r in out] == ["18"]
+
+
+def test_past_events_api_excludes_snapshot_upcoming_id(monkeypatch):
+    """Past-events API reads on-disk snapshot, not worker memory."""
+    import app as app_module
+    from fastapi.testclient import TestClient
+
+    captured: dict[str, set[str] | None] = {}
+
+    def fake_list_completed(limit=40, exclude_event_ids=None):
+        captured["exclude_event_ids"] = exclude_event_ids
+        return [{"event_id": "32", "event_name": "RBC Canadian Open"}]
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(app_module, "list_completed_snapshot_events", fake_list_completed)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {
+            "live_tournament": {"source_event_id": "26", "active": False},
+            "upcoming_tournament": {"source_event_id": "26"},
+        },
+    )
+    monkeypatch.setattr(
+        "src.datagolf.fetch_schedule",
+        lambda tour="pga", upcoming_only=False: [
+            {"event_id": "26", "status": "upcoming"},
+            {"event_id": "32", "status": "completed"},
+        ],
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/past-events")
+
+    assert response.status_code == 200
+    assert captured["exclude_event_ids"] == {"26"}
+    assert response.json()["events"][0]["event_id"] == "32"
+
