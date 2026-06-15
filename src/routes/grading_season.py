@@ -50,19 +50,35 @@ def _resolve_event_id(conn, event_name: str, year: int) -> str | None:
     return None
 
 
-def _discover_season_events(conn, year: int) -> dict[str, dict[str, Any]]:
+def _discover_season_events(conn, year: int, *, tour: str | None = "pga") -> dict[str, dict[str, Any]]:
     events: dict[str, dict[str, Any]] = {}
+    tour_norm = (tour or "pga").strip().lower()
 
-    schedule_rows = conn.execute(
-        """
-        SELECT DISTINCT event_id, event_name, MIN(event_completed) AS event_date
-        FROM rounds
-        WHERE year = ? AND event_id IS NOT NULL AND TRIM(event_id) != ''
-        GROUP BY event_id, event_name
-        ORDER BY event_date
-        """,
-        (year,),
-    ).fetchall()
+    if tour_norm == "all":
+        schedule_rows = conn.execute(
+            """
+            SELECT event_id, event_name, MIN(event_completed) AS event_date
+            FROM rounds
+            WHERE year = ?
+              AND event_id IS NOT NULL AND TRIM(event_id) != ''
+            GROUP BY event_id, event_name
+            ORDER BY event_date ASC, event_name ASC
+            """,
+            (year,),
+        ).fetchall()
+    else:
+        schedule_rows = conn.execute(
+            """
+            SELECT event_id, event_name, MIN(event_completed) AS event_date
+            FROM rounds
+            WHERE year = ?
+              AND event_id IS NOT NULL AND TRIM(event_id) != ''
+              AND LOWER(COALESCE(tour, 'pga')) = ?
+            GROUP BY event_id, event_name
+            ORDER BY event_date ASC, event_name ASC
+            """,
+            (year, tour_norm),
+        ).fetchall()
     for row in schedule_rows:
         eid = str(row["event_id"])
         events[eid] = {
@@ -263,7 +279,9 @@ def _build_lane_payload(
         }
 
     status = "graded"
-    if graded_pick_count == 0 and rollup_record and lane in {"cockpit", "dashboard"}:
+    if not graded_pick_count and not inventory_count and not rollup_record:
+        status = "no_data"
+    elif graded_pick_count == 0 and rollup_record and lane in {"cockpit", "dashboard"}:
         status = "rollup_only"
     elif ungraded > 0:
         status = "partial"
@@ -288,23 +306,22 @@ async def get_grading_season(
     year: int = Query(2026, ge=2000, le=2100),
     lane: str = Query("all", pattern="^(all|cockpit|dashboard|lab)$"),
     include_picks: bool = Query(True),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(200, ge=1, le=500),
+    tour: str = Query("pga", pattern="^(pga|liv|all)$"),
 ):
     ensure_initialized()
     conn = get_conn()
-    discovered = _discover_season_events(conn, year)
+    discovered = _discover_season_events(conn, year, tour=None if tour == "all" else tour)
 
     events_out: list[dict[str, Any]] = []
     all_dashboard_picks: list[dict] = []
     all_lab_picks: list[dict] = []
 
-    sorted_events = sorted(
-        discovered.values(),
-        key=lambda item: (
-            -int(item.get("inventory_count") or 0),
-            item.get("name") or "",
-        ),
-    )
+    def _chronological_key(item: dict[str, Any]) -> tuple:
+        raw_date = item.get("event_date") or ""
+        return (str(raw_date), str(item.get("name") or ""))
+
+    sorted_events = sorted(discovered.values(), key=_chronological_key)
 
     for meta in sorted_events[:limit]:
         tournament_id = meta.get("tournament_id")
@@ -314,6 +331,27 @@ async def get_grading_season(
                 (meta["event_id"], year),
             ).fetchone()
             tournament_id = row["id"] if row else None
+
+        last_graded_at = None
+        if tournament_id:
+            lg = conn.execute(
+                """
+                SELECT MAX(po.entered_at) AS last_graded_at
+                FROM pick_outcomes po
+                JOIN picks p ON p.id = po.pick_id
+                WHERE p.tournament_id = ?
+                """,
+                (tournament_id,),
+            ).fetchone()
+            last_graded_at = lg["last_graded_at"] if lg else None
+
+        has_results = False
+        if tournament_id:
+            rc = conn.execute(
+                "SELECT COUNT(*) AS c FROM results WHERE tournament_id = ?",
+                (tournament_id,),
+            ).fetchone()
+            has_results = bool(rc and int(rc["c"] or 0) > 0)
 
         rollup = meta.get("rollup_record")
         dashboard_lane = _build_lane_payload(
@@ -343,10 +381,13 @@ async def get_grading_season(
             "name": meta["name"],
             "course": meta.get("course"),
             "year": meta.get("year", year),
+            "event_date": meta.get("event_date"),
             "tournament_id": tournament_id,
             "authority_tier": meta.get("authority_tier"),
             "picks_detail_missing": bool(meta.get("picks_detail_missing")),
             "inventory_count": int(meta.get("inventory_count") or 0),
+            "has_results": has_results,
+            "last_graded_at": last_graded_at,
             "lanes": {
                 "dashboard": dashboard_lane,
                 "lab": lab_lane,
@@ -354,7 +395,12 @@ async def get_grading_season(
             "comparison": comparison,
         }
 
-        if lane in {"cockpit", "dashboard"}:
+        if not has_results and dashboard_lane["graded_pick_count"] == 0 and lab_lane["graded_pick_count"] == 0:
+            if dashboard_lane["status"] == "no_data":
+                event_payload["status"] = "no_data"
+            else:
+                event_payload["status"] = "in_progress"
+        elif lane in {"cockpit", "dashboard"}:
             event_payload["graded_pick_count"] = dashboard_lane["graded_pick_count"]
             event_payload["hits"] = dashboard_lane["hits"]
             event_payload["total_profit"] = dashboard_lane["total_profit"]

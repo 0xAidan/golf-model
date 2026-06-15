@@ -165,3 +165,36 @@ def test_grading_season_lane_filter_dashboard(monkeypatch, tmp_path):
     assert event["graded_pick_count"] == 1
     assert len(event["picks"]) == 1
     assert event["picks"][0]["source"] == "cockpit"
+
+
+def test_grading_season_events_chronological_pga(monkeypatch, tmp_path):
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_season_chrono.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.executemany(
+        """
+        INSERT INTO rounds (dg_id, event_id, event_name, year, tour, event_completed, round_num)
+        VALUES (?, ?, ?, 2026, 'pga', ?, 4)
+        """,
+        [
+            (1, "100", "Zebra Open", "2026-06-20"),
+            (2, "200", "Alpha Open", "2026-03-01"),
+            (3, "300", "Beta Open", "2026-04-15"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/season?year=2026&tour=pga")
+    assert response.status_code == 200
+    events = response.json()["events"]
+    event_ids = [row["event_id"] for row in events if row["event_id"] in {"100", "200", "300"}]
+    assert event_ids == ["200", "300", "100"]
+    assert events[0].get("event_date") == "2026-03-01"

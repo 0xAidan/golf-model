@@ -17,7 +17,7 @@ import { buildGradingPickColumns, buildTrackRecordPickColumns } from "@/lib/reco
 import { api } from "@/lib/api"
 import { formatDateTime, formatUnits } from "@/lib/format"
 import { buildGradingTrustMetrics } from "@/lib/grading-trust"
-import { laneStatusLabel, seasonEventsToGradingHistory, seasonLaneFromPickSource } from "@/lib/grading-season"
+import { formatSeasonEventDate, laneStatusLabel, seasonEventsToGradingHistory, seasonLaneFromPickSource } from "@/lib/grading-season"
 import type { GradingSeasonEvent } from "@/lib/types"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import { GRADING_KPI_STRIP_TOOLTIPS } from "@/lib/metric-tooltips"
@@ -193,8 +193,12 @@ export function GradingPage() {
                       <div className="tr-event-meta">
                         <div className="tr-event-name">{item.name}</div>
                         <div className="tr-event-sub">
+                          {formatSeasonEventDate(seasonEvent?.event_date) ? (
+                            <span>{formatSeasonEventDate(seasonEvent?.event_date)} · </span>
+                          ) : null}
                           Dashboard {dash.hits ?? 0}/{dash.graded_pick_count} · Lab {lab.hits ?? 0}/{lab.graded_pick_count}
-                          {seasonEvent.picks_detail_missing ? " · Rollup detail missing" : ""}
+                          {seasonEvent?.picks_detail_missing ? " · Rollup detail missing" : ""}
+                          {seasonEvent?.status === "in_progress" ? " · In progress" : ""}
                         </div>
                       </div>
                       <div className="tr-event-actions">
@@ -282,9 +286,13 @@ export function GradingPage() {
                     <div className="tr-event-meta">
                       <div className="tr-event-name">{item.name}</div>
                       <div className="tr-event-sub">
+                        {formatSeasonEventDate(seasonEvent?.event_date) ? (
+                          <span>{formatSeasonEventDate(seasonEvent?.event_date)} · </span>
+                        ) : null}
                         {hits}/{picks} hits · {hr}
                         {laneStatus ? ` · ${laneStatus}` : ""}
                         {seasonEvent?.picks_detail_missing ? " · Rollup detail missing" : ""}
+                        {seasonEvent?.status === "in_progress" ? " · In progress" : ""}
                       </div>
                     </div>
                     <div className="tr-event-actions">

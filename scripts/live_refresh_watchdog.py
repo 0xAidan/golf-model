@@ -96,7 +96,23 @@ def main() -> int:
         help="Actually restart golf-live-refresh.service when unhealthy",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
+    parser.add_argument(
+        "--ensure-grading",
+        action="store_true",
+        help="Run ensure_completed_event_grading after watchdog check",
+    )
+    parser.add_argument("--grading-year", type=int, default=None, help="Year for --ensure-grading")
     args = parser.parse_args()
+
+    if args.ensure_grading:
+        from src.event_pick_freeze import ensure_all_completed_pga_events_graded
+
+        grading_report = ensure_all_completed_pga_events_graded(year=args.grading_year)
+        if args.json:
+            print(json.dumps({"grading": grading_report}, indent=2, default=str))
+        elif not grading_report.get("ok"):
+            print("grading ensure reported failures", file=sys.stderr)
+            return 1
 
     result = evaluate(
         heartbeat_stale_seconds=max(900, args.heartbeat_stale_seconds),
