@@ -785,7 +785,12 @@ async def get_grading_history(
                 WHERE p6.tournament_id = t.id {pick_where.replace("p.", "p6.")}
             ) AS last_graded_at
         FROM tournaments t
-        JOIN results r ON r.tournament_id = t.id
+        LEFT JOIN results r ON r.tournament_id = t.id
+        WHERE EXISTS (
+            SELECT 1 FROM picks px
+            JOIN pick_outcomes pox ON pox.pick_id = px.id
+            WHERE px.tournament_id = t.id {pick_where.replace("p.", "px.")}
+        )
         GROUP BY t.id
         ORDER BY COALESCE(
             (
