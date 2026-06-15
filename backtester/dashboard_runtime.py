@@ -788,6 +788,26 @@ def _maybe_freeze_pre_teeoff(
         )
     except Exception as exc:
         _logger.warning("Failed to persist frozen pre-teeoff ledger rows: %s", exc)
+    try:
+        from datetime import datetime, timezone
+
+        from src.event_pick_freeze import capture_pre_teeoff_picks
+
+        year = datetime.now(timezone.utc).year
+        inserted = capture_pre_teeoff_picks(
+            live_event_id,
+            year=year,
+            event_name=str(cand.get("event_name") or live_event_name or "").strip() or None,
+            section_payload=cand,
+        )
+        if inserted:
+            _logger.info(
+                "Pre-teeoff capture: %s +EV picks frozen for event %s",
+                inserted,
+                live_event_id,
+            )
+    except Exception as exc:
+        _logger.warning("Failed to capture pre-teeoff picks: %s", exc)
 
 
 _NON_BOOK_SOURCES = {"datagolf"}
@@ -2167,7 +2187,7 @@ def _ingest_has_event_context(ingest_summary: dict[str, Any]) -> bool:
 
 
 def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[str, Any] | None:
-    """Auto-grade ungraded UI picks for the latest completed event."""
+    """Backfill + grade +EV inventory for the latest completed event."""
     event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
     raw_year = ingest_summary.get("latest_completed_event_year")
     if not event_id:
@@ -2177,106 +2197,94 @@ def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[st
     except (TypeError, ValueError):
         year = datetime.now(timezone.utc).year
 
+    from src.event_pick_freeze import _inventory_exists, freeze_completed_event_picks
+
+    ledger_count, mpr_count = _inventory_exists(event_id)
+
     conn = db.get_conn()
     try:
         tournament = conn.execute(
             "SELECT id, name FROM tournaments WHERE event_id = ? AND year = ? ORDER BY id DESC LIMIT 1",
             (event_id, year),
         ).fetchone()
-        if not tournament:
-            return {
-                "status": "skipped",
-                "reason": "tournament_not_found",
-                "event_id": event_id,
-                "year": year,
-            }
-        tournament_id = int(tournament["id"])
-        picks_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM picks WHERE tournament_id = ?",
-                (tournament_id,),
-            ).fetchone()["count"]
-            or 0
-        )
-        graded_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(*) AS count
-                FROM pick_outcomes po
-                JOIN picks p ON p.id = po.pick_id
-                WHERE p.tournament_id = ?
-                """,
-                (tournament_id,),
-            ).fetchone()["count"]
-            or 0
-        )
-        ledger_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM pick_ledger WHERE event_id = ? AND is_value = 1",
-                (event_id,),
-            ).fetchone()["count"]
-            or 0
-        )
-        mpr_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM market_prediction_rows WHERE event_id = ?",
-                (event_id,),
-            ).fetchone()["count"]
-            or 0
-        )
+        picks_count = 0
+        graded_count = 0
+        ungraded_positive = 0
+        if tournament:
+            tournament_id = int(tournament["id"])
+            picks_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS count FROM picks WHERE tournament_id = ?",
+                    (tournament_id,),
+                ).fetchone()["count"]
+                or 0
+            )
+            graded_count = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM pick_outcomes po
+                    JOIN picks p ON p.id = po.pick_id
+                    WHERE p.tournament_id = ?
+                    """,
+                    (tournament_id,),
+                ).fetchone()["count"]
+                or 0
+            )
+            ungraded_positive = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM picks p
+                    LEFT JOIN pick_outcomes po ON po.pick_id = p.id
+                    WHERE p.tournament_id = ?
+                      AND p.ev IS NOT NULL AND p.ev > 0
+                      AND po.id IS NULL
+                    """,
+                    (tournament_id,),
+                ).fetchone()["count"]
+                or 0
+            )
     finally:
         conn.close()
 
-    if picks_count == 0:
-        if ledger_count == 0 and mpr_count == 0:
-            return {
-                "status": "skipped",
-                "reason": "no_tracked_picks",
-                "event_id": event_id,
-                "year": year,
-                "tournament_id": tournament_id,
-            }
-        from src.event_pick_freeze import freeze_completed_event_picks
+    if ledger_count == 0 and mpr_count == 0 and picks_count == 0:
+        return {
+            "status": "skipped",
+            "reason": "no_tracked_picks",
+            "event_id": event_id,
+            "year": year,
+        }
 
+    if (
+        ledger_count > 0
+        or mpr_count > 0
+        or ungraded_positive > 0
+        or (picks_count > 0 and graded_count < picks_count)
+    ):
+        _logger.info(
+            "Auto-capture/grade completed event %s/%s (ledger=%s mpr=%s picks=%s graded=%s ungraded+ev=%s)",
+            event_id,
+            year,
+            ledger_count,
+            mpr_count,
+            picks_count,
+            graded_count,
+            ungraded_positive,
+        )
         return freeze_completed_event_picks(
             event_id,
             year=year,
             event_name=ingest_summary.get("latest_completed_event_name"),
         )
-    if graded_count >= picks_count:
-        return {
-            "status": "skipped",
-            "reason": "already_graded",
-            "event_id": event_id,
-            "year": year,
-            "tournament_id": tournament_id,
-            "picks_count": picks_count,
-            "graded_count": graded_count,
-        }
 
-    from scripts.grade_tournament import grade_tournament
-
-    _logger.info(
-        "Auto-grading latest completed event %s/%s (tournament_id=%s, picks=%s, graded=%s)",
-        event_id,
-        year,
-        tournament_id,
-        picks_count,
-        graded_count,
-    )
-    report = grade_tournament(
-        event_id=event_id,
-        year=year,
-        tournament_id=tournament_id,
-        event_name=ingest_summary.get("latest_completed_event_name"),
-    )
     return {
-        "status": report.get("status", "unknown"),
+        "status": "skipped",
+        "reason": "already_graded",
         "event_id": event_id,
         "year": year,
-        "tournament_id": tournament_id,
         "picks_count": picks_count,
-        "graded_count_before": graded_count,
+        "graded_count": graded_count,
     }
 
 

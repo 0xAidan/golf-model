@@ -65,7 +65,20 @@ export const laneStatusLabel = (status: string | undefined): string => {
   if (status === "graded") return "Graded"
   if (status === "partial") return "Partial"
   if (status === "rollup_only") return "Rollup only"
+  if (status === "in_progress") return "In progress"
+  if (status === "no_data") return "No data"
   return "—"
+}
+
+export const formatSeasonEventDate = (value: string | null | undefined): string => {
+  if (!value) return ""
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return value
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed)
 }
 
 export const isSeasonEvent = (event: GradedTournamentSummary): event is GradingSeasonEvent =>

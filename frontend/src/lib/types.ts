@@ -572,6 +572,8 @@ export type GradingSeasonEvent = {
   authority_tier?: string
   picks_detail_missing?: boolean
   inventory_count?: number
+  event_date?: string | null
+  has_results?: boolean
   status?: string
   lanes?: {
     dashboard: GradingSeasonLaneSummary
