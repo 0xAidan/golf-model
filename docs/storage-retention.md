@@ -6,9 +6,11 @@ $0-cost hygiene for `data/golf.db` on the VPS.
 
 Classification: **KEEP_FOREVER**
 
-- `picks`, `pick_outcomes`, `results`, `prediction_log`
+- `picks`, `pick_outcomes`, `pick_ledger`, `grading_audit_log`, `results`, `prediction_log`
 - `tournaments`, `runs`, `weight_sets`, `calibration_curve`, `market_performance`
 - `rounds`, `metrics` (backfill / rolling — large but required)
+
+`pick_ledger` is append-only: every pre-tournament and live model line from live refresh, freeze, CLI runs, and restore scripts. **Never pruned.** Graded results live in `pick_outcomes` (joined via `pick_key`).
 
 ## Archive then prune (append-heavy ticks)
 

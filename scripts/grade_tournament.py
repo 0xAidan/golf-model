@@ -278,6 +278,30 @@ def grade_tournament(
     }
     report["calibration"] = learn_result.get("calibration", {})
 
+    # 8. Cold archive tournament tables (includes pick_ledger)
+    try:
+        import os
+        import subprocess
+
+        export_script = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts",
+            "export_tournament_archive.py",
+        )
+        proc = subprocess.run(
+            [sys.executable, export_script, "--tournament-id", str(tournament_id)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        report["steps"]["tournament_archive"] = {
+            "ok": proc.returncode == 0,
+            "stdout": (proc.stdout or "").strip()[-500:],
+            "stderr": (proc.stderr or "").strip()[-500:],
+        }
+    except Exception as exc:
+        report["steps"]["tournament_archive"] = {"ok": False, "error": str(exc)}
+
     report["status"] = "complete"
     print(f"  Grading complete for tournament {tournament_id}")
     return report
