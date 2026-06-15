@@ -127,7 +127,25 @@ export function WorkspaceCenterBoard({
         </Link>
       </div>
       <div className="table-scroll">
-        {displayPlayers.length > 0 ? (
+        {predictionTab === "live" && !isLiveActive ? (
+          <div className="card-body">
+            <div className="empty-state">
+              <Radar size={28} className="empty-state-icon" />
+              <div className="empty-state-title">No live tournament right now</div>
+              <div className="empty-state-desc">
+                Switch to{" "}
+                <button
+                  type="button"
+                  className="text-link-btn"
+                  onClick={() => onPredictionTabChange("upcoming")}
+                >
+                  Upcoming
+                </button>{" "}
+                for pre-tournament picks and rankings.
+              </div>
+            </div>
+          </div>
+        ) : displayPlayers.length > 0 ? (
           <HeroDataGrid
             data={displayPlayers}
             columns={rankingsColumns}

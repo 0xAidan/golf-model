@@ -36,6 +36,20 @@ export function resolvePastHistoryLane(
   return lane
 }
 
+export function selectDefaultPastEvent(
+  options: PastSnapshotEvent[],
+  excludeEventId?: string,
+): PastSnapshotEvent | null {
+  if (options.length === 0) return null
+  const excluded = excludeEventId?.trim()
+  const candidates = excluded
+    ? options.filter((event) => event.event_id !== excluded)
+    : options
+  const pool = candidates.length > 0 ? candidates : options
+  const withSnapshots = pool.filter((event) => (event.snapshot_count ?? 0) > 0)
+  return withSnapshots[0] ?? pool[0] ?? null
+}
+
 export function useWorkspacePastReplay({
   predictionTab,
   gradingHistory,
@@ -44,6 +58,7 @@ export function useWorkspacePastReplay({
   availableBooks,
   pastReplaySource,
   onPastEventContextChange,
+  upcomingSourceEventId,
 }: {
   predictionTab: PredictionTab
   gradingHistory: GradedTournamentSummary[]
@@ -52,6 +67,7 @@ export function useWorkspacePastReplay({
   availableBooks: string[]
   pastReplaySource: PastReplaySource
   onPastEventContextChange?: (context: { eventName: string; courseName?: string } | null) => void
+  upcomingSourceEventId?: string
 }) {
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
   const [pastReplaySection, setPastReplaySection] = useState<PastReplayLane>("completed")
@@ -90,12 +106,26 @@ export function useWorkspacePastReplay({
 
   const selectedPastEvent = useMemo(() => {
     if (pastEventOptions.length === 0) return null
-    if (!selectedPastEventKey) return pastEventOptions[0]
+    if (!selectedPastEventKey) {
+      return selectDefaultPastEvent(pastEventOptions, upcomingSourceEventId)
+    }
     return (
       pastEventOptions.find((event) => event.event_id === selectedPastEventKey) ??
-      pastEventOptions[0]
+      selectDefaultPastEvent(pastEventOptions, upcomingSourceEventId)
     )
-  }, [pastEventOptions, selectedPastEventKey])
+  }, [pastEventOptions, selectedPastEventKey, upcomingSourceEventId])
+
+  useEffect(() => {
+    if (predictionTab !== "past" || pastEventOptions.length === 0) return
+    const defaultEvent = selectDefaultPastEvent(pastEventOptions, upcomingSourceEventId)
+    if (!defaultEvent) return
+    setSelectedPastEventKey((current) => {
+      if (current && pastEventOptions.some((event) => event.event_id === current)) {
+        return current
+      }
+      return defaultEvent.event_id
+    })
+  }, [pastEventOptions, predictionTab, upcomingSourceEventId])
 
   const pastSnapshotQuery = useQuery({
     queryKey: ["live-refresh-past-snapshot", selectedPastEvent?.event_id, pastReplaySection, pastReplaySource],

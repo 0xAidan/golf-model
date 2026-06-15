@@ -2394,6 +2394,7 @@ def list_completed_snapshot_events(
     ).fetchall()
     conn.close()
     merged: dict[str, dict[str, Any]] = {}
+    frozen_event_ids = {str(fr["event_id"]).strip() for fr in frozen_rows if fr["event_id"]}
     for row in live_rows:
         eid = str(row.get("event_id") or "").strip()
         if not eid or eid in excluded:
@@ -2403,6 +2404,7 @@ def list_completed_snapshot_events(
             "event_name": row.get("event_name") or "",
             "latest_generated_at": row.get("latest_generated_at"),
             "snapshot_count": int(row.get("snapshot_count") or 0),
+            "has_frozen_pre_teeoff": eid in frozen_event_ids,
         }
     for fr in frozen_rows:
         eid = str(fr["event_id"] or "").strip()
@@ -2416,13 +2418,20 @@ def list_completed_snapshot_events(
                 "event_name": fr["event_name"] or "",
                 "latest_generated_at": ts,
                 "snapshot_count": 1,
+                "has_frozen_pre_teeoff": True,
             }
         else:
+            prev["has_frozen_pre_teeoff"] = True
             if ts and (not prev.get("latest_generated_at") or str(ts) > str(prev.get("latest_generated_at") or "")):
                 prev["latest_generated_at"] = ts
     out = sorted(
         merged.values(),
-        key=lambda r: (str(r.get("latest_generated_at") or ""), r["event_id"]),
+        key=lambda r: (
+            1 if r.get("has_frozen_pre_teeoff") else 0,
+            int(r.get("snapshot_count") or 0) > 0,
+            str(r.get("latest_generated_at") or ""),
+            r["event_id"],
+        ),
         reverse=True,
     )
     return out[: int(limit)]

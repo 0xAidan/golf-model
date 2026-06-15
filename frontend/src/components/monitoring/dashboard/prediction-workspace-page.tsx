@@ -91,6 +91,10 @@ export function PredictionWorkspacePage({
   const [opportunityFilter, setOpportunityFilter] = useState<"all" | "new" | "high">("all")
   const [dismissedOpportunityGeneratedAt, setDismissedOpportunityGeneratedAt] = useState<string | null>(null)
 
+  const liveTournament = liveSnapshot?.live_tournament
+  const upcomingTournament = liveSnapshot?.upcoming_tournament
+  const isLiveActive = Boolean(liveTournament?.active)
+
   const pastReplay = useWorkspacePastReplay({
     predictionTab,
     gradingHistory,
@@ -99,11 +103,8 @@ export function PredictionWorkspacePage({
     availableBooks,
     pastReplaySource,
     onPastEventContextChange,
+    upcomingSourceEventId: upcomingTournament?.source_event_id,
   })
-
-  const liveTournament = liveSnapshot?.live_tournament
-  const upcomingTournament = liveSnapshot?.upcoming_tournament
-  const isLiveActive = Boolean(liveTournament?.active)
 
   const displayPredictionRun = resolveDisplayPredictionRun(
     predictionTab,
@@ -112,11 +113,16 @@ export function PredictionWorkspacePage({
   )
 
   const displayPlayers = useMemo(
-    () =>
-      predictionTab === "past"
-        ? (pastReplay.pastPredictionRun?.composite_results ?? [])
-        : players,
-    [pastReplay.pastPredictionRun?.composite_results, players, predictionTab],
+    () => {
+      if (predictionTab === "past") {
+        return pastReplay.pastPredictionRun?.composite_results ?? []
+      }
+      if (predictionTab === "live" && !isLiveActive) {
+        return []
+      }
+      return players
+    },
+    [isLiveActive, pastReplay.pastPredictionRun?.composite_results, players, predictionTab],
   )
 
   const boardTrajectoryBounds = useMemo(

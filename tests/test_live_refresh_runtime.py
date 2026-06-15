@@ -766,12 +766,11 @@ def test_run_recompute_withholds_unverified_rankings_when_not_live(monkeypatch, 
     )
 
     live = snapshot["live_tournament"]
-    assert live["ranking_source"] == "eligibility_failed"
+    assert live["ranking_source"] == "no_live_event"
     assert live["rankings"] == []
     assert live["matchups"] == []
     assert live["matchup_bets"] == []
-    assert live["eligibility"]["verified"] is False
-    assert "field" in live["eligibility"]["summary"].lower()
+    assert live["diagnostics"]["state"] == "no_live_event"
 
 
 def test_run_recompute_completed_event_withholds_when_event_context_unverified(monkeypatch, tmp_path):
@@ -836,8 +835,7 @@ def test_run_recompute_completed_event_withholds_when_event_context_unverified(m
 
     live = snapshot["live_tournament"]
     assert live["rankings"] == []
-    assert live["eligibility"]["verified"] is False
-    assert live["diagnostics"]["state"] == "eligibility_failed"
+    assert live["diagnostics"]["state"] == "no_live_event"
 
 
 def test_run_recompute_does_not_use_markdown_card_rankings_for_live_surface(monkeypatch, tmp_path):
@@ -912,9 +910,92 @@ def test_run_recompute_does_not_use_markdown_card_rankings_for_live_surface(monk
     )
 
     live = snapshot["live_tournament"]
-    assert live["ranking_source"] == "eligibility_failed"
+    assert live["ranking_source"] == "no_live_event"
     assert live["rankings"] == []
-    assert live["source_card_path"] == "output/current_event.md"
+    assert live["diagnostics"]["state"] == "no_live_event"
+
+
+def test_run_recompute_off_window_empty_live_and_resolved_completed(monkeypatch, tmp_path):
+    from backtester import dashboard_runtime as runtime
+
+    analysis_calls: list[dict] = []
+
+    def fake_analysis(**kwargs):
+        analysis_calls.append(kwargs)
+        return {
+            "event_name": kwargs.get("tournament_name") or "U.S. Open",
+            "course_name": kwargs.get("course_name") or "Oakmont",
+            "field_size": 156,
+            "composite_results": [
+                {
+                    "rank": 1,
+                    "player_key": "scottie_scheffler",
+                    "player": "Scottie Scheffler",
+                    "composite": 90.0,
+                    "course_fit": 88.0,
+                    "form": 87.0,
+                    "momentum": 86.0,
+                }
+            ],
+            "matchup_bets": [],
+            "matchup_diagnostics": {
+                "selection_counts": {"selected_rows": 0},
+                "state": "no_market_posted_yet",
+                "errors": [],
+            },
+        }
+
+    monkeypatch.setattr("src.services.live_snapshot_service.run_snapshot_analysis", fake_analysis)
+    monkeypatch.setattr("backtester.dashboard_runtime.run_snapshot_analysis", fake_analysis)
+    monkeypatch.setattr(runtime, "_load_finish_state_map", lambda event_id, year=None: {})
+    monkeypatch.setattr(runtime, "_write_snapshot", lambda payload: None)
+    monkeypatch.setattr(runtime, "read_snapshot", lambda: {})
+    monkeypatch.setattr(
+        runtime,
+        "_build_section_eligibility",
+        lambda result, source_event_id=None, tour="pga": {
+            "verified": True,
+            "field_event_id": source_event_id,
+        },
+    )
+
+    snapshot = runtime._run_recompute(
+        "pga",
+        "off_window",
+        {
+            "event_name": "U.S. Open",
+            "event_id": "26",
+            "course": "Oakmont",
+            "live_event_active": False,
+            "latest_completed_event_name": "RBC Canadian Open",
+            "latest_completed_event_id": "32",
+            "latest_completed_event_course": "Hamilton",
+            "upcoming_event_row": {
+                "event_id": "26",
+                "event_name": "U.S. Open",
+                "course": "Oakmont",
+            },
+            "market_counts": {"tournament_matchups": {"raw_rows": 0}},
+        },
+    )
+
+    assert len(analysis_calls) >= 1
+    assert all(call.get("tournament_name") == "U.S. Open" for call in analysis_calls)
+
+    live = snapshot["live_tournament"]
+    assert live["active"] is False
+    assert live["rankings"] == []
+    assert live["diagnostics"]["state"] == "no_live_event"
+    assert live["diagnostics"]["next_event_name"] == "U.S. Open"
+
+    upcoming = snapshot["upcoming_tournament"]
+    assert upcoming["source_event_id"] == "26"
+    assert len(upcoming.get("rankings") or []) == 1
+
+    ctx = snapshot["event_context"]
+    assert ctx["resolved_completed_event_id"] == "32"
+    assert ctx["resolved_completed_event_name"] == "RBC Canadian Open"
+    assert ctx["resolved_completed_event_course"] == "Hamilton"
 
 
 def test_extract_board_value_bets_reports_filter_counters():

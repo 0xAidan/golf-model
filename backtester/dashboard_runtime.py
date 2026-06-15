@@ -390,11 +390,9 @@ def _parse_iso_date(value: str | None) -> date | None:
 
 
 def _is_live_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
-    start_date = _parse_iso_date(event_row.get("start_date"))
-    end_date = _parse_iso_date(event_row.get("end_date"))
-    if not start_date or not end_date:
-        return False
-    return start_date <= today <= end_date
+    from src.datagolf import is_schedule_event_live
+
+    return is_schedule_event_live(event_row, today=today)
 
 
 def _has_started_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
@@ -2750,17 +2748,21 @@ def _build_lab_tournament_sections(
 
 def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any]) -> dict[str, Any]:
     mode = "full" if cadence_mode != "live_window" else "round-matchups"
+    live_is_active_early = bool(ingest_summary.get("live_event_active"))
     live_course = str(ingest_summary.get("course") or "").split(";")[0].strip() or None
-    live_result = run_snapshot_analysis(
-        tour=tour,
-        event_id=str(ingest_summary.get("event_id") or "") or None,
-        tournament_name=str(ingest_summary.get("event_name") or "").strip() or None,
-        course_name=live_course,
-        mode=mode,
-        enable_ai=False,
-        enable_backfill=False,
-        model_variant=config.COCKPIT_SNAPSHOT_MODEL_VARIANT,
-    )
+    if live_is_active_early:
+        live_result = run_snapshot_analysis(
+            tour=tour,
+            event_id=str(ingest_summary.get("event_id") or "") or None,
+            tournament_name=str(ingest_summary.get("event_name") or "").strip() or None,
+            course_name=live_course,
+            mode=mode,
+            enable_ai=False,
+            enable_backfill=False,
+            model_variant=config.COCKPIT_SNAPSHOT_MODEL_VARIANT,
+        )
+    else:
+        live_result = {}
     generated_at = _iso_now()
     snapshot_id = uuid.uuid4().hex
     event_name = live_result.get("event_name") or ingest_summary.get("event_name")
@@ -2816,9 +2818,9 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     if not upcoming_event_name:
         upcoming_event_name = schedule_names[1] if live_is_active and len(schedule_names) > 1 else (schedule_names[0] if schedule_names else event_name)
 
-    resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or event_name or "").strip()
-    resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or live_event_id or "").strip()
-    resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip()
+    resolved_completed_event_name = str(ingest_summary.get("latest_completed_event_name") or "").strip() or None
+    resolved_completed_event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip() or None
+    resolved_completed_event_course = str(ingest_summary.get("latest_completed_event_course") or "").strip() or None
     # Live section is always built from `live_result`, which targets ingest `event_id` / `event_name`.
     # During off-air weeks we used to substitute latest_completed_* for labels while still serving
     # the next-event model rows — that produced mismatched titles vs course/rankings/tournament_id.
@@ -3250,7 +3252,24 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
     live_value_bets = base_section.get("value_bets") or {}
     live_verification_error = base_section.get("verification_error")
 
-    if not live_is_team_event and not live_eligibility.get("verified"):
+    if not live_is_active:
+        live_state = "no_live_event"
+        live_rankings = []
+        pre_tournament_rankings = []
+        live_matchups = []
+        live_board_matchup_bets = []
+        live_board_matchup_bets_all_books = []
+        live_value_bets = {}
+        live_leaderboard = []
+        eliminated_players = []
+        live_ranking_source = "no_live_event"
+        live_event_name = ""
+        live_source_event_id = ""
+        live_diag = {
+            **(live_diag or {}),
+            "next_event_name": upcoming_event_name or None,
+        }
+    elif not live_is_team_event and not live_eligibility.get("verified"):
         live_state = "eligibility_failed"
         live_rankings = []
         live_matchups = []
@@ -3287,12 +3306,9 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                     + ["Current recompute failed verification; serving last verified same-event snapshot."]
                 ),
             }
-    elif not live_is_active:
-        # Non-live windows should still use current event model context, not older card parsing.
-        live_ranking_source = "current_event_model_fallback"
 
     live_diag_errors = live_diag.get("errors") or []
-    if not live_eligibility.get("verified"):
+    if live_is_active and not live_eligibility.get("verified"):
         live_diag_errors = live_diag_errors + [
             live_eligibility.get("summary"),
             live_eligibility.get("action"),
@@ -3309,8 +3325,9 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             "event_id": ingest_summary.get("event_id"),
             "course": ingest_summary.get("course"),
             "upcoming_event_names": schedule_names,
-            "resolved_completed_event_name": resolved_completed_event_name or None,
-            "resolved_completed_event_course": resolved_completed_event_course or None,
+            "resolved_completed_event_id": resolved_completed_event_id,
+            "resolved_completed_event_name": resolved_completed_event_name,
+            "resolved_completed_event_course": resolved_completed_event_course,
         },
         "live_tournament": {
             **base_section,
@@ -3371,6 +3388,7 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 "book_stats": live_diag.get("book_stats") or {},
                 "failed_candidates": live_diag.get("failed_candidates") or [],
                 "state": live_state,
+                "next_event_name": live_diag.get("next_event_name"),
                 "errors": [err for err in live_diag_errors if err],
             },
         },

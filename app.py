@@ -2231,21 +2231,23 @@ async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=2
 
     exclude_ids: set[str] = set()
     try:
-        from backtester.dashboard_runtime import get_live_refresh_status
+        from backtester.dashboard_runtime import read_snapshot
+        from src.datagolf import fetch_schedule, normalize_schedule_status
 
-        status = get_live_refresh_status() or {}
-        last_summary = status.get("last_ingest_summary") or {}
-        for key in ("current_event_row", "upcoming_event_row"):
-            row = last_summary.get(key) or {}
-            eid = str(row.get("event_id") or "").strip()
+        snapshot = read_snapshot() or {}
+        for section_key in ("live_tournament", "upcoming_tournament"):
+            section = snapshot.get(section_key) or {}
+            eid = str(section.get("source_event_id") or "").strip()
             if eid:
                 exclude_ids.add(eid)
-        # Also exclude the bare event_id reported in the summary header.
-        bare = str(last_summary.get("event_id") or "").strip()
-        if bare:
-            exclude_ids.add(bare)
+
+        for row in fetch_schedule(tour="pga", upcoming_only=False):
+            status = normalize_schedule_status(row)
+            if status and status != "completed":
+                eid = str(row.get("event_id") or "").strip()
+                if eid:
+                    exclude_ids.add(eid)
     except Exception:
-        # Status probe is best-effort; fall back to no exclusions.
         _logger.warning("past-events exclusion probe failed", exc_info=True)
 
     events = list_completed_snapshot_events(
