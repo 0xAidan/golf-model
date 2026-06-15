@@ -1115,7 +1115,16 @@ def _run_migrations(conn: sqlite3.Connection):
         pass
     conn.execute("UPDATE picks SET opponent_key = '' WHERE opponent_key IS NULL")
     conn.execute("UPDATE picks SET opponent_display = '' WHERE opponent_display IS NULL")
-    # Rebuild legacy unique index to include model lane + opponent key.
+    try:
+        conn.execute("SELECT market_type FROM picks LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE picks ADD COLUMN market_type TEXT DEFAULT ''")
+        conn.execute(
+            "UPDATE picks SET market_type = 'tournament_matchups' "
+            "WHERE bet_type = 'matchup' AND (market_type IS NULL OR TRIM(market_type) = '')"
+        )
+        conn.commit()
+    # Rebuild legacy unique index to include model lane + opponent key + market_type.
     conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
     conn.commit()
 
@@ -1383,7 +1392,7 @@ def _add_unique_constraints(conn: sqlite3.Connection):
         (
             "idx_picks_unique",
             "picks",
-            "(tournament_id, model_variant, source, player_key, bet_type, opponent_key, market_book, market_odds)",
+            "(tournament_id, model_variant, source, player_key, bet_type, market_type, opponent_key, market_book, market_odds)",
         ),
         (
             "idx_prediction_log_unique",
@@ -1704,6 +1713,7 @@ def store_picks(picks: list[dict]):
             "model_variant": (pick.get("model_variant") or "baseline").strip().lower(),
             "source": pick.get("source") or "cockpit",
             "bet_type": pick.get("bet_type"),
+            "market_type": pick.get("market_type") or "",
             "player_key": pick.get("player_key"),
             "player_display": pick.get("player_display"),
             "opponent_key": pick.get("opponent_key") or "",
@@ -1724,12 +1734,12 @@ def store_picks(picks: list[dict]):
     conn = get_conn()
     conn.executemany(
         """INSERT OR IGNORE INTO picks
-           (tournament_id, model_variant, source, bet_type, player_key, player_display,
+           (tournament_id, model_variant, source, bet_type, market_type, player_key, player_display,
             opponent_key, opponent_display,
             composite_score, course_fit_score, form_score, momentum_score,
             model_prob, market_odds, market_book, market_implied_prob, ev,
             confidence, reasoning, model_config_hash)
-           VALUES (:tournament_id, :model_variant, :source, :bet_type, :player_key, :player_display,
+           VALUES (:tournament_id, :model_variant, :source, :bet_type, :market_type, :player_key, :player_display,
                     :opponent_key, :opponent_display,
                     :composite_score, :course_fit_score, :form_score, :momentum_score,
                     :model_prob, :market_odds, :market_book, :market_implied_prob, :ev,

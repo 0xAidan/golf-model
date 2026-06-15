@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src import db
+from src.official_pick_record import filter_positive_ev, normalize_market_type
 from src.player_normalizer import normalize_name
 
 
@@ -45,10 +46,7 @@ def backfill_completed_market_rows_into_picks(
         for row in rows
         if row.get("player_key") or row.get("player_display")
     ]
-    positive_ev_rows = [
-        row for row in pick_rows
-        if row.get("ev") is not None and row.get("ev") > 0
-    ]
+    positive_ev_rows = filter_positive_ev(pick_rows)
     if not positive_ev_rows:
         return 0
     db.store_picks(positive_ev_rows)
@@ -86,7 +84,7 @@ def _row_to_pick(
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
     model_variant = str(payload.get("model_variant") or default_model_variant).strip().lower()
     market_family = str(row.get("market_family") or "").strip().lower()
-    market_type = str(row.get("market_type") or market_family or "").strip()
+    market_type = normalize_market_type(row.get("market_type") or market_family)
     bet_type = "matchup" if market_family == "matchup" else market_type
     provenance = "market_prediction_rows"
     if row.get("snapshot_id"):
@@ -106,6 +104,7 @@ def _row_to_pick(
         "model_variant": model_variant,
         "source": source,
         "bet_type": bet_type,
+        "market_type": market_type,
         "player_key": player_key,
         "player_display": player_display,
         "opponent_key": opponent_key,

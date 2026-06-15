@@ -2210,17 +2210,39 @@ def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[st
             ).fetchone()["count"]
             or 0
         )
+        ledger_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM pick_ledger WHERE event_id = ? AND is_value = 1",
+                (event_id,),
+            ).fetchone()["count"]
+            or 0
+        )
+        mpr_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM market_prediction_rows WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()["count"]
+            or 0
+        )
     finally:
         conn.close()
 
     if picks_count == 0:
-        return {
-            "status": "skipped",
-            "reason": "no_tracked_picks",
-            "event_id": event_id,
-            "year": year,
-            "tournament_id": tournament_id,
-        }
+        if ledger_count == 0 and mpr_count == 0:
+            return {
+                "status": "skipped",
+                "reason": "no_tracked_picks",
+                "event_id": event_id,
+                "year": year,
+                "tournament_id": tournament_id,
+            }
+        from src.event_pick_freeze import freeze_completed_event_picks
+
+        return freeze_completed_event_picks(
+            event_id,
+            year=year,
+            event_name=ingest_summary.get("latest_completed_event_name"),
+        )
     if graded_count >= picks_count:
         return {
             "status": "skipped",
