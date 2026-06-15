@@ -775,6 +775,19 @@ def _maybe_freeze_pre_teeoff(
         section_payload=cand,
         source_snapshot_id=snapshot_id,
     )
+    try:
+        from src.pick_ledger import persist_pick_ledger_from_section
+
+        persist_pick_ledger_from_section(
+            cand,
+            section="frozen",
+            snapshot_id=snapshot_id,
+            generated_at=_iso_now(),
+            lifecycle="frozen_pre_teeoff",
+            source_origin="freeze",
+        )
+    except Exception as exc:
+        _logger.warning("Failed to persist frozen pre-teeoff ledger rows: %s", exc)
 
 
 _NON_BOOK_SOURCES = {"datagolf"}
@@ -3589,6 +3602,18 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             market_rows.extend(lab_rows_extra)
         market_rows_written = db.store_market_prediction_rows(market_rows)
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = market_rows_written
+        try:
+            from src.pick_ledger import persist_pick_ledger_from_market_rows
+
+            ledger_written = persist_pick_ledger_from_market_rows(
+                market_rows,
+                lifecycle="generated",
+                source_origin="live_refresh",
+            )
+            snapshot.setdefault("diagnostics", {})["pick_ledger_written"] = ledger_written
+        except Exception as ledger_exc:
+            _logger.warning("Failed to persist pick ledger rows: %s", ledger_exc)
+            snapshot.setdefault("diagnostics", {})["pick_ledger_write_error"] = str(ledger_exc)
     except Exception as exc:
         _logger.warning("Failed to persist market prediction rows: %s", exc)
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0

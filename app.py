@@ -232,6 +232,9 @@ app.include_router(tracks_router)
 app.include_router(field_board_router)
 app.include_router(eval_router)
 app.include_router(ops_router)
+from src.routes.analytics import router as analytics_router
+
+app.include_router(analytics_router)
 
 
 # Store last analysis in memory for the card page

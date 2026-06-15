@@ -52,6 +52,16 @@ def backfill_completed_market_rows_into_picks(
     if not positive_ev_rows:
         return 0
     db.store_picks(positive_ev_rows)
+    try:
+        from src.pick_ledger import persist_pick_ledger_from_market_rows
+
+        persist_pick_ledger_from_market_rows(
+            rows,
+            lifecycle="recovered",
+            source_origin="market_row_backfill",
+        )
+    except Exception:
+        pass
     after = _pick_count(tid, pick_source)
     return max(0, after - before)
 

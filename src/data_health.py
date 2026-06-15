@@ -20,6 +20,8 @@ _OUTPUT_DIR = _REPO_ROOT / "output"
 KEEP_FOREVER = frozenset({
     "picks",
     "pick_outcomes",
+    "pick_ledger",
+    "grading_audit_log",
     "prediction_log",
     "results",
     "tournaments",
@@ -353,8 +355,37 @@ def build_data_health_report(
             "market_prediction_rows": _safe_count(conn, "market_prediction_rows"),
             "live_snapshot_history": _safe_count(conn, "live_snapshot_history"),
             "picks": _safe_count(conn, "picks"),
+            "pick_ledger": _safe_count(conn, "pick_ledger"),
             "prediction_log": _safe_count(conn, "prediction_log"),
             "challenger_predictions": _safe_count(conn, "challenger_predictions"),
+        }
+
+        ledger_last_24h = 0
+        try:
+            ledger_last_24h = conn.execute(
+                """
+                SELECT COUNT(*) FROM pick_ledger
+                WHERE generated_at >= datetime('now', '-1 day')
+                """
+            ).fetchone()[0]
+        except sqlite3.OperationalError:
+            ledger_last_24h = 0
+
+        mpr_last_24h = 0
+        try:
+            mpr_last_24h = conn.execute(
+                """
+                SELECT COUNT(*) FROM market_prediction_rows
+                WHERE generated_at >= datetime('now', '-1 day')
+                """
+            ).fetchone()[0]
+        except sqlite3.OperationalError:
+            mpr_last_24h = 0
+
+        ledger_capture = {
+            "pick_ledger_rows_last_24h": int(ledger_last_24h or 0),
+            "market_prediction_rows_last_24h": int(mpr_last_24h or 0),
+            "split_brain_suspected": bool(mpr_last_24h > 0 and ledger_last_24h == 0),
         }
 
         if use_dbstat:
@@ -465,6 +496,7 @@ def build_data_health_report(
                 "tournaments_total": tournaments_total,
                 "ok": live_picks_ok,
             },
+            "ledger_capture": ledger_capture,
             "storage_warnings": storage_warnings,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
