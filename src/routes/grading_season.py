@@ -8,13 +8,16 @@ from typing import Any
 
 from fastapi import APIRouter, Query
 
+from src import db
 from src.db import ensure_initialized, get_conn
 from src.grading_record import (
     build_lane_comparison,
     build_record_summary,
+    dedupe_record_picks,
     format_graded_pick_rows,
     pick_lane_sql,
 )
+from src.official_pick_record import dedupe_inventory_rows, filter_positive_ev
 
 router = APIRouter(tags=["grading"])
 
@@ -189,6 +192,47 @@ def _discover_season_events(conn, year: int, *, tour: str | None = "pga") -> dic
     return events
 
 
+def _past_replay_positive_count(event_id: str, lane: str = "dashboard") -> int:
+    rows = db.get_completed_market_prediction_rows_for_event(event_id, source=lane)
+    matchups = [row for row in rows if str(row.get("market_family") or "").lower() == "matchup"]
+    deduped = dedupe_inventory_rows(matchups, lane=lane)
+    return len(filter_positive_ev(deduped))
+
+
+def _event_reconciliation(
+    conn,
+    *,
+    event_id: str,
+    tournament_id: int | None,
+    dashboard_lane: dict[str, Any],
+) -> dict[str, Any]:
+    past_replay = _past_replay_positive_count(event_id, "dashboard")
+    graded_count = int(dashboard_lane.get("graded_pick_count") or 0)
+    gap = past_replay - graded_count
+    return {
+        "past_replay_positive_matchups": past_replay,
+        "graded_deduped_count": graded_count,
+        "gap_past_vs_graded": gap,
+        "reconciliation_ok": gap == 0 or tournament_id is None,
+    }
+
+
+def _lane_has_card_import(conn, tournament_id: int | None, lane: str) -> bool:
+    if not tournament_id:
+        return False
+    lane_sql = pick_lane_sql(lane)
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS c
+        FROM picks p
+        WHERE p.tournament_id = ? {lane_sql}
+          AND COALESCE(p.reasoning, '') LIKE 'card_import:%'
+        """,
+        (int(tournament_id),),
+    ).fetchone()
+    return bool(row and int(row["c"] or 0) > 0)
+
+
 def _fetch_lane_picks(conn, tournament_id: int | None, lane: str) -> list[dict]:
     if not tournament_id:
         return []
@@ -254,6 +298,7 @@ def _build_lane_payload(
     tournament_id: int | None,
     lane: str,
     rollup_record: dict | None,
+    has_results: bool = True,
 ) -> dict[str, Any]:
     inventory_count, positive_ev_inventory = _lane_inventory_counts(conn, event_id, lane)
     picks = _fetch_lane_picks(conn, tournament_id, lane)
@@ -285,6 +330,10 @@ def _build_lane_payload(
         status = "rollup_only"
     elif ungraded > 0:
         status = "partial"
+    elif graded_pick_count == 0 and inventory_count > 0 and has_results:
+        status = "inventory_only"
+    elif graded_pick_count > 0 and _lane_has_card_import(conn, tournament_id, lane):
+        status = "card_recovered"
     elif graded_pick_count == 0 and inventory_count > 0:
         status = "partial"
 
@@ -360,6 +409,7 @@ async def get_grading_season(
             tournament_id=tournament_id,
             lane="cockpit",
             rollup_record=rollup,
+            has_results=has_results,
         )
         lab_lane = _build_lane_payload(
             conn,
@@ -367,6 +417,13 @@ async def get_grading_season(
             tournament_id=tournament_id,
             lane="lab",
             rollup_record=None,
+            has_results=has_results,
+        )
+        reconciliation = _event_reconciliation(
+            conn,
+            event_id=str(meta["event_id"]),
+            tournament_id=tournament_id,
+            dashboard_lane=dashboard_lane,
         )
         comparison = build_lane_comparison(dashboard_lane["picks"], lab_lane["picks"])
         all_dashboard_picks.extend(dashboard_lane["picks"])
@@ -393,6 +450,7 @@ async def get_grading_season(
                 "lab": lab_lane,
             },
             "comparison": comparison,
+            "reconciliation": reconciliation,
         }
 
         if not has_results and dashboard_lane["graded_pick_count"] == 0 and lab_lane["graded_pick_count"] == 0:

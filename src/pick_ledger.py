@@ -238,6 +238,8 @@ def persist_pick_ledger_from_market_rows(
     *,
     lifecycle: str = "generated",
     source_origin: str = "live_refresh",
+    tournament_id: int | None = None,
+    year: int | None = None,
 ) -> int:
     ledger_rows: list[dict[str, Any]] = []
     for row in market_rows:
@@ -245,6 +247,8 @@ def persist_pick_ledger_from_market_rows(
             row,
             lifecycle=lifecycle,
             source_origin=source_origin,
+            tournament_id=tournament_id or row.get("tournament_id"),
+            year=year or row.get("year"),
         )
         if built:
             ledger_rows.append(built)

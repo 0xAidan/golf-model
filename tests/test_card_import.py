@@ -37,3 +37,36 @@ def test_parse_best_bets_matchup_rows():
     picks = parse_best_bets_table(text)
     assert len(picks) == 1
     assert picks[0].opponent_display == "Michael Thorbjornsen"
+
+
+def test_parse_provenance_json_matchups(tmp_path):
+    from src.card_import import parse_provenance_json, provenance_is_live, select_canonical_card, CardCandidate
+    from datetime import date
+
+    payload = tmp_path / "masters_tournament_provenance_20260408.json"
+    payload.write_text(
+        """{
+          "phase": "live",
+          "market_rows": [
+            {
+              "market_family": "matchup",
+              "market_type": "tournament_matchups",
+              "player_display": "Tiger Woods",
+              "opponent_display": "Rory McIlroy",
+              "odds": "+120",
+              "book": "draftkings",
+              "ev": 0.04
+            }
+          ]
+        }""",
+        encoding="utf-8",
+    )
+    picks = parse_provenance_json(payload)
+    assert len(picks) == 1
+    assert provenance_is_live(payload)
+    md = CardCandidate(path=tmp_path / "masters_tournament_20260408.md", event_slug="masters", file_date=date(2026, 4, 8), lane="dashboard", kind="betting_card")
+    prov = CardCandidate(path=payload, event_slug="masters", file_date=date(2026, 4, 8), lane="dashboard", kind="provenance")
+    chosen, rejected = select_canonical_card([md, prov], event_name="Masters", round1_thursday=date(2026, 4, 9))
+    assert chosen is not None
+    assert chosen.kind == "betting_card"
+    assert prov in rejected

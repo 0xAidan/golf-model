@@ -162,6 +162,54 @@ def capture_pre_teeoff_picks(
     return max(0, int(after_count) - int(before_count))
 
 
+def _backfill_ledger_tournament_id(
+    conn,
+    *,
+    event_id: str,
+    tournament_id: int,
+    year: int,
+) -> int:
+    cur = conn.execute(
+        """
+        UPDATE pick_ledger
+        SET tournament_id = ?, year = COALESCE(year, ?)
+        WHERE event_id = ? AND (tournament_id IS NULL OR tournament_id = 0)
+        """,
+        (tournament_id, year, event_id),
+    )
+    conn.commit()
+    return int(cur.rowcount or 0)
+
+
+def _write_canonical_ledger_rows(
+    event_id: str,
+    *,
+    tournament_id: int,
+    year: int,
+    event_name: str | None,
+) -> int:
+    from src.official_pick_record import dedupe_inventory_rows, filter_positive_ev
+    from src.pick_ledger import persist_pick_ledger_from_market_rows
+
+    written = 0
+    for source in ("dashboard", "lab"):
+        rows = db.get_completed_market_prediction_rows_for_event(event_id, source=source)
+        matchups = [row for row in rows if str(row.get("market_family") or "").lower() == "matchup"]
+        deduped = dedupe_inventory_rows(matchups, lane=source)
+        positive = filter_positive_ev(deduped)
+        for row in positive:
+            row["event_name"] = event_name
+            row["year"] = year
+        written += persist_pick_ledger_from_market_rows(
+            positive,
+            lifecycle="canonical",
+            source_origin="event_freeze",
+            tournament_id=tournament_id,
+            year=year,
+        )
+    return written
+
+
 def freeze_completed_event_picks(
     event_id: str,
     *,
@@ -188,6 +236,18 @@ def freeze_completed_event_picks(
     lab_inserted = backfill_completed_market_rows_into_picks(event_id, tournament_id, source="lab")
 
     conn = db.get_conn()
+    ledger_linked = _backfill_ledger_tournament_id(
+        conn,
+        event_id=event_id,
+        tournament_id=tournament_id,
+        year=year,
+    )
+    canonical_ledger = _write_canonical_ledger_rows(
+        event_id,
+        tournament_id=tournament_id,
+        year=year,
+        event_name=event_name,
+    )
     ungraded = _ungraded_positive_ev_count(conn, tournament_id)
     conn.close()
 
@@ -200,6 +260,8 @@ def freeze_completed_event_picks(
             "tournament_id": tournament_id,
             "dashboard_backfilled": dash_inserted,
             "lab_backfilled": lab_inserted,
+            "ledger_tournament_linked": ledger_linked,
+            "canonical_ledger_rows": canonical_ledger,
             "ungraded_positive_ev": ungraded,
         }
 
@@ -210,6 +272,8 @@ def freeze_completed_event_picks(
             "event_id": event_id,
             "year": year,
             "tournament_id": tournament_id,
+            "ledger_tournament_linked": ledger_linked,
+            "canonical_ledger_rows": canonical_ledger,
         }
 
     from scripts.grade_tournament import grade_tournament
@@ -228,6 +292,8 @@ def freeze_completed_event_picks(
         "tournament_id": tournament_id,
         "dashboard_backfilled": dash_inserted,
         "lab_backfilled": lab_inserted,
+        "ledger_tournament_linked": ledger_linked,
+        "canonical_ledger_rows": canonical_ledger,
         "grade_report": report,
     }
 
