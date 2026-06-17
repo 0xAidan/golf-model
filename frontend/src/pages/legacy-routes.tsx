@@ -199,6 +199,13 @@ export function GradingPage() {
                           Dashboard {dash.hits ?? 0}/{dash.graded_pick_count} · Lab {lab.hits ?? 0}/{lab.graded_pick_count}
                           {seasonEvent?.picks_detail_missing ? " · Rollup detail missing" : ""}
                           {seasonEvent?.status === "in_progress" ? " · In progress" : ""}
+                          {seasonEvent?.reconciliation && seasonEvent.reconciliation.reconciliation_ok === false ? (
+                            <span className="text-[var(--status-warning)]">
+                              {" "}
+                              · Mismatch Past {seasonEvent.reconciliation.past_replay_positive_matchups} vs Results{" "}
+                              {seasonEvent.reconciliation.graded_deduped_count}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       <div className="tr-event-actions">
@@ -293,6 +300,13 @@ export function GradingPage() {
                         {laneStatus ? ` · ${laneStatus}` : ""}
                         {seasonEvent?.picks_detail_missing ? " · Rollup detail missing" : ""}
                         {seasonEvent?.status === "in_progress" ? " · In progress" : ""}
+                        {seasonEvent?.reconciliation && seasonEvent.reconciliation.reconciliation_ok === false ? (
+                          <span className="text-[var(--status-warning)]">
+                            {" "}
+                            · Mismatch Past {seasonEvent.reconciliation.past_replay_positive_matchups} vs Results{" "}
+                            {seasonEvent.reconciliation.graded_deduped_count}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="tr-event-actions">

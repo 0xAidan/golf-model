@@ -579,6 +579,12 @@ export type GradingSeasonEvent = {
     dashboard: GradingSeasonLaneSummary
     lab: GradingSeasonLaneSummary
   }
+  reconciliation?: {
+    past_replay_positive_matchups?: number
+    graded_deduped_count?: number
+    gap_past_vs_graded?: number
+    reconciliation_ok?: boolean
+  }
   comparison?: {
     profit_delta: number
     hit_rate_delta: number

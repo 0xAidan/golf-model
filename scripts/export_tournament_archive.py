@@ -27,10 +27,21 @@ _TABLES = [
 
 def _export_tournament(conn: sqlite3.Connection, tid: int, out_dir: str, db_path: str) -> int:
     manifest: dict[str, int] = {}
-    for table, where in _TABLES:
+    event_id_row = conn.execute("SELECT event_id FROM tournaments WHERE id = ?", (tid,)).fetchone()
+    event_id = str(event_id_row["event_id"]) if event_id_row and event_id_row["event_id"] else None
+
+    table_filters = list(_TABLES)
+    if event_id:
+        table_filters = [
+            (table, where) if table != "pick_ledger" else ("pick_ledger", "(tournament_id = ? OR event_id = ?)")
+            for table, where in table_filters
+        ]
+
+    for table, where in table_filters:
+        params: tuple = (tid, event_id) if table == "pick_ledger" and event_id else (tid,)
         rows = conn.execute(
             f"SELECT * FROM {table} WHERE {where}",
-            (tid,),
+            params,
         ).fetchall()
         out_path = os.path.join(out_dir, f"{table}.jsonl")
         with open(out_path, "w", encoding="utf-8") as f:

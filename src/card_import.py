@@ -296,15 +296,22 @@ def parse_provenance_json(path: Path) -> list[ParsedPick]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return []
+    phase = str(payload.get("phase") or payload.get("snapshot_phase") or "").strip().lower()
     rows = payload.get("market_rows") or payload.get("rows") or payload.get("picks") or []
+    if not rows and isinstance(payload.get("sections"), dict):
+        for section_payload in payload["sections"].values():
+            if not isinstance(section_payload, dict):
+                continue
+            rows.extend(section_payload.get("matchup_bets") or section_payload.get("matchups") or [])
     picks: list[ParsedPick] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         market_family = str(row.get("market_family") or row.get("bet_type") or "").lower()
-        if market_family not in {"matchup", "matchups"} and "matchup" not in str(row.get("market_type") or "").lower():
+        market_type_raw = str(row.get("market_type") or "").lower()
+        if market_family not in {"matchup", "matchups"} and "matchup" not in market_type_raw:
             continue
-        player = row.get("player_display") or row.get("player") or ""
+        player = row.get("player_display") or row.get("player") or row.get("pick") or ""
         opponent = row.get("opponent_display") or row.get("opponent") or ""
         if not player or not opponent:
             continue
@@ -320,13 +327,23 @@ def parse_provenance_json(path: Path) -> list[ParsedPick]:
                 player_key=str(row.get("player_key") or normalize_name(str(player))),
                 opponent_key=str(row.get("opponent_key") or normalize_name(str(opponent))),
                 market_odds=str(row.get("odds") or row.get("market_odds") or ""),
-                market_book=str(row.get("book") or row.get("market_book") or ""),
+                market_book=str(row.get("book") or row.get("market_book") or row.get("bookmaker") or ""),
                 model_prob=row.get("model_prob"),
                 ev=ev_val,
                 market_type=normalize_market_type(row.get("market_type") or "tournament_matchups"),
+                reasoning=f"provenance:{phase}" if phase else "provenance",
             )
         )
     return picks
+
+
+def provenance_is_live(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    phase = str(payload.get("phase") or payload.get("snapshot_phase") or "").strip().lower()
+    return phase in {"live", "in_play", "live_plays"}
 
 
 def discover_card_candidates(search_dirs: Iterable[Path]) -> list[CardCandidate]:
@@ -352,17 +369,10 @@ def discover_card_candidates(search_dirs: Iterable[Path]) -> list[CardCandidate]
     return candidates
 
 
-def select_canonical_card(
-    candidates: list[CardCandidate],
-    *,
-    event_name: str,
+def _rank_cards(
+    betting: list[CardCandidate],
     round1_thursday: date | None,
-) -> tuple[CardCandidate | None, list[CardCandidate]]:
-    del event_name
-    betting = [c for c in candidates if c.kind in {"betting_card", "provenance"}]
-    if not betting:
-        return None, []
-
+) -> list[CardCandidate]:
     def sort_key(card: CardCandidate) -> tuple:
         file_date = card.file_date or date.min
         if round1_thursday:
@@ -372,9 +382,33 @@ def select_canonical_card(
             return (1, (file_date - round1_thursday).days, file_date.toordinal())
         return (0, 0, file_date.toordinal())
 
-    ranked = sorted(betting, key=sort_key)
+    return sorted(betting, key=sort_key)
+
+
+def select_canonical_card(
+    candidates: list[CardCandidate],
+    *,
+    event_name: str,
+    round1_thursday: date | None,
+) -> tuple[CardCandidate | None, list[CardCandidate]]:
+    del event_name
+    md_cards = [c for c in candidates if c.kind == "betting_card"]
+    prov_cards = [c for c in candidates if c.kind == "provenance"]
+    if not md_cards and not prov_cards:
+        return None, []
+
+    if md_cards:
+        ranked = _rank_cards(md_cards, round1_thursday)
+        chosen = ranked[0]
+        rejected = [card for card in md_cards if card.path != chosen.path]
+        rejected.extend(prov_cards)
+        return chosen, rejected
+
+    live_prov = [c for c in prov_cards if provenance_is_live(c.path)]
+    pool = live_prov or prov_cards
+    ranked = _rank_cards(pool, round1_thursday)
     chosen = ranked[0]
-    rejected = [card for card in betting if card.path != chosen.path]
+    rejected = [card for card in pool if card.path != chosen.path]
     return chosen, rejected
 
 
@@ -501,6 +535,18 @@ def import_cards_from_dirs(
                 parsed = parse_provenance_json(chosen.path)
             else:
                 parsed = parse_card_file(chosen.path)
+            if not parsed:
+                prov_cards = [c for c in lane_candidates if c.kind == "provenance" and c.path != chosen.path]
+                if prov_cards:
+                    fallback, extra_rejected = select_canonical_card(
+                        prov_cards,
+                        event_name=event_name,
+                        round1_thursday=round1_thursday,
+                    )
+                    if fallback:
+                        rejected.extend(extra_rejected)
+                        chosen = fallback
+                        parsed = parse_provenance_json(chosen.path)
             parsed = [pick for pick in parsed if pick.market_odds]
             positive = [pick for pick in parsed if (pick.ev or 0) > 0]
             pick_source = "lab_sandbox" if lane_name == "lab" else "cockpit"

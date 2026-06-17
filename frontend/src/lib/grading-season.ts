@@ -63,7 +63,9 @@ export const seasonEventsToGradingHistory = (
 
 export const laneStatusLabel = (status: string | undefined): string => {
   if (status === "graded") return "Graded"
+  if (status === "card_recovered") return "Card recovered"
   if (status === "partial") return "Partial"
+  if (status === "inventory_only") return "Inventory only"
   if (status === "rollup_only") return "Rollup only"
   if (status === "in_progress") return "In progress"
   if (status === "no_data") return "No data"
