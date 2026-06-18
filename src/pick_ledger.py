@@ -255,6 +255,94 @@ def persist_pick_ledger_from_market_rows(
     return persist_pick_ledger_rows(ledger_rows)
 
 
+def backfill_pick_ledger_from_picks(
+    tournament_id: int,
+    *,
+    lifecycle: str = "displayed",
+    source_origin: str = "picks_backfill",
+) -> int:
+    """Sync gradeable picks rows into pick_ledger when ledger writes were missed."""
+    tid = int(tournament_id or 0)
+    if tid <= 0:
+        return 0
+    db.ensure_initialized()
+    conn = db.get_conn()
+    try:
+        picks = conn.execute(
+            """
+            SELECT p.*, t.event_id, t.year, t.name AS event_name
+            FROM picks p
+            JOIN tournaments t ON t.id = p.tournament_id
+            WHERE p.tournament_id = ?
+              AND p.ev IS NOT NULL AND p.ev > 0
+            """,
+            (tid,),
+        ).fetchall()
+    finally:
+        conn.close()
+    if not picks:
+        return 0
+
+    ledger_rows: list[dict[str, Any]] = []
+    for raw in picks:
+        pick = dict(raw)
+        event_id = str(pick.get("event_id") or f"tournament_{tid}").strip()
+        year = int(pick.get("year") or datetime.now(timezone.utc).year)
+        source = str(pick.get("source") or "cockpit").strip().lower()
+        lane = "lab" if source == "lab_sandbox" else "cockpit"
+        bet_type = str(pick.get("bet_type") or "matchup").strip().lower()
+        player_key = str(pick.get("player_key") or "").strip()
+        if not player_key:
+            continue
+        opponent_key = str(pick.get("opponent_key") or "").strip()
+        book = str(pick.get("market_book") or "").strip()
+        odds = normalize_american_odds(pick.get("market_odds"))
+        snapshot_id = f"displayed_{tid}"
+        pick_key = compute_pick_key(
+            event_id=event_id,
+            lane=lane,
+            section="upcoming",
+            phase="pre_tournament",
+            bet_type=bet_type,
+            player_key=player_key,
+            opponent_key=opponent_key,
+            book=book,
+            odds=odds,
+            snapshot_id=snapshot_id,
+        )
+        ledger_rows.append({
+            "pick_key": pick_key,
+            "event_id": event_id,
+            "event_name": pick.get("event_name"),
+            "tournament_id": tid,
+            "year": year,
+            "phase": "pre_tournament",
+            "section": "upcoming",
+            "lane": lane,
+            "lifecycle": lifecycle,
+            "bet_type": bet_type,
+            "market_family": bet_type if bet_type != "matchup" else "matchup",
+            "market_type": pick.get("market_type") or bet_type,
+            "player_key": player_key,
+            "player_display": pick.get("player_display") or display_name(player_key),
+            "opponent_key": opponent_key,
+            "opponent_display": pick.get("opponent_display") or "",
+            "book": book,
+            "odds": odds,
+            "model_prob": pick.get("model_prob"),
+            "implied_prob": pick.get("market_implied_prob"),
+            "ev": pick.get("ev"),
+            "is_value": 1,
+            "model_variant": pick.get("model_variant"),
+            "model_config_hash": pick.get("model_config_hash"),
+            "snapshot_id": snapshot_id,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source_origin": source_origin,
+            "payload_json": json.dumps(pick),
+        })
+    return persist_pick_ledger_rows(ledger_rows)
+
+
 def persist_pick_ledger_from_section(
     section_payload: dict[str, Any] | None,
     *,

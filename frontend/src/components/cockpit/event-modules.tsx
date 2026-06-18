@@ -77,7 +77,7 @@ export function LeaderboardPanel({
         </div>
       ) : (
         <div className="term-notice term-notice--inset">
-          Tournament scoring view: Pos / Start pos / Pos Δ track movement alongside the model board.
+          Tournament scoring view: Pos and Pos Δ track live leaderboard movement alongside the model board.
         </div>
       )}
       <HeroDataGrid

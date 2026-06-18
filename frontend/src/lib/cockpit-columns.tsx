@@ -136,27 +136,6 @@ export function buildLiveRankingsColumns({
       meta: { label: "Model now", align: "left", sticky: true, mono: true },
       enableSorting: true,
       cell: ({ row }) => (
-        <span className="num">{formatRankCell(row.original.current_rank ?? row.original.rank)}</span>
-      ),
-    },
-    buildPlayerColumn(onPlayerSelect),
-    {
-      id: "startModelRank",
-      accessorKey: "start_rank",
-      header: "Start (model)",
-      meta: { label: "Start (model)", align: "right", mono: true },
-      enableSorting: true,
-      cell: ({ row }) => (
-        <span className="num text-muted-11">{formatRankCell(row.original.start_rank)}</span>
-      ),
-    },
-    {
-      id: "modelDelta",
-      accessorKey: "rank_delta",
-      header: "Model Δ",
-      meta: { label: "Model Δ", align: "right", mono: true },
-      enableSorting: true,
-      cell: ({ row }) => (
         <span
           className="num"
           aria-label={formatModelDeltaAriaLabel(
@@ -165,10 +144,14 @@ export function buildLiveRankingsColumns({
             row.original.rank_delta,
           )}
         >
-          {formatMovementCell(row.original.rank_delta)}
+          {formatModelNowCell(
+            row.original.current_rank ?? row.original.rank,
+            row.original.rank_delta,
+          )}
         </span>
       ),
     },
+    buildPlayerColumn(onPlayerSelect),
     {
       id: "leaderboardPos",
       accessorKey: "leaderboard_position",
@@ -177,16 +160,6 @@ export function buildLiveRankingsColumns({
       enableSorting: true,
       cell: ({ row }) => (
         <span className="num">{row.original.leaderboard_position ?? "--"}</span>
-      ),
-    },
-    {
-      id: "leaderboardStartPos",
-      accessorKey: "start_leaderboard_position",
-      header: "Start pos",
-      meta: { label: "Start pos", align: "right", mono: true },
-      enableSorting: true,
-      cell: ({ row }) => (
-        <span className="num text-muted-11">{row.original.start_leaderboard_position ?? "--"}</span>
       ),
     },
     {
@@ -621,6 +594,27 @@ function formatRankCell(value?: number | null) {
     return "--"
   }
   return `#${value}`
+}
+
+function formatModelNowCell(rank?: number | null, delta?: number | null) {
+  const rankLabel = formatRankCell(rank)
+  if (
+    delta === null ||
+    delta === undefined ||
+    Number.isNaN(delta) ||
+    delta === 0
+  ) {
+    return rankLabel
+  }
+  const movement = formatMovementCell(delta)
+  const movementClass =
+    delta > 0 ? "text-[var(--green)]" : delta < 0 ? "text-[var(--red)]" : "text-[var(--text-faint)]"
+  return (
+    <>
+      {rankLabel}{" "}
+      <span className={movementClass}>({movement})</span>
+    </>
+  )
 }
 
 function formatMovementCell(value?: number | null) {

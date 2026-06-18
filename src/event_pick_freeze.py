@@ -298,6 +298,116 @@ def freeze_completed_event_picks(
     }
 
 
+def ensure_event_grading_readiness(
+    event_id: str,
+    *,
+    year: int,
+    event_name: str | None = None,
+) -> dict[str, Any]:
+    """Backfill gradeable picks + ledger inventory for a live or completed event."""
+    normalized_event_id = str(event_id or "").strip()
+    if not normalized_event_id:
+        return {"status": "skipped", "reason": "missing_event_id"}
+
+    db.ensure_initialized()
+    conn = db.get_conn()
+    tournament_id = _ensure_tournament(
+        conn,
+        event_id=normalized_event_id,
+        year=year,
+        event_name=event_name,
+    )
+    has_results = _event_has_results(conn, tournament_id)
+    conn.close()
+
+    dash_inserted = backfill_completed_market_rows_into_picks(
+        normalized_event_id,
+        tournament_id,
+        source="dashboard",
+    )
+    lab_inserted = backfill_completed_market_rows_into_picks(
+        normalized_event_id,
+        tournament_id,
+        source="lab",
+    )
+
+    ledger_from_mpr = 0
+    ledger_count, mpr_count = _inventory_exists(normalized_event_id)
+    if ledger_count == 0 and mpr_count > 0:
+        from src.pick_ledger import persist_pick_ledger_from_market_rows
+
+        for source in ("dashboard", "lab"):
+            rows = db.get_completed_market_prediction_rows_for_event(
+                normalized_event_id,
+                source=source,
+            )
+            positive = filter_positive_ev(rows)
+            if positive:
+                ledger_from_mpr += persist_pick_ledger_from_market_rows(
+                    positive,
+                    lifecycle="canonical",
+                    source_origin="grading_readiness",
+                    tournament_id=tournament_id,
+                    year=year,
+                )
+
+    from src.pick_ledger import backfill_pick_ledger_from_picks
+
+    ledger_from_picks = backfill_pick_ledger_from_picks(
+        tournament_id,
+        lifecycle="displayed",
+        source_origin="grading_readiness",
+    )
+
+    conn = db.get_conn()
+    try:
+        ledger_linked = _backfill_ledger_tournament_id(
+            conn,
+            event_id=normalized_event_id,
+            tournament_id=tournament_id,
+            year=year,
+        )
+        positive_ev_picks = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM picks
+                WHERE tournament_id = ? AND ev IS NOT NULL AND ev > 0
+                """,
+                (tournament_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        ledger_rows = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM pick_ledger WHERE event_id = ?",
+                (normalized_event_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        ungraded = _ungraded_positive_ev_count(conn, tournament_id)
+    finally:
+        conn.close()
+
+    ready = positive_ev_picks > 0 and ledger_rows > 0
+    return {
+        "status": "ready" if ready else "incomplete",
+        "event_id": normalized_event_id,
+        "year": year,
+        "tournament_id": tournament_id,
+        "event_name": event_name,
+        "has_results": has_results,
+        "positive_ev_picks": positive_ev_picks,
+        "ledger_rows": ledger_rows,
+        "ungraded_positive_ev": ungraded,
+        "dashboard_backfilled": dash_inserted,
+        "lab_backfilled": lab_inserted,
+        "ledger_from_mpr": ledger_from_mpr,
+        "ledger_from_picks": ledger_from_picks,
+        "ledger_tournament_linked": ledger_linked,
+        "grading_ready": ready and not has_results,
+    }
+
+
 def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[str, Any]:
     """Backfill + grade every completed PGA event that still has ungraded +EV picks."""
     db.ensure_initialized()

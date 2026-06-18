@@ -26,17 +26,17 @@ describe("rankings column builders", () => {
     expect(headers).not.toContain("To par")
   })
 
-  it("live columns include dual model/scoring movement headers and SG Traj", () => {
+  it("live columns include model rank movement inline and scoring columns", () => {
     const cols = buildLiveRankingsColumns({
       onPlayerSelect: noop,
       trajectoryBounds: { min: -2, max: 2 },
     })
     const headers = cols.map((c) => (typeof c.header === "string" ? c.header : c.id))
     expect(headers).toContain("Model now")
-    expect(headers).toContain("Start (model)")
-    expect(headers).toContain("Model Δ")
+    expect(headers).not.toContain("Start (model)")
+    expect(headers).not.toContain("Model Δ")
     expect(headers).toContain("Pos")
-    expect(headers).toContain("Start pos")
+    expect(headers).not.toContain("Start pos")
     expect(headers).toContain("Pos Δ")
     expect(headers).toContain("To par")
     expect(headers).toContain("SG Traj")
