@@ -3644,6 +3644,23 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         except Exception as ledger_exc:
             _logger.warning("Failed to persist pick ledger rows: %s", ledger_exc)
             snapshot.setdefault("diagnostics", {})["pick_ledger_write_error"] = str(ledger_exc)
+        try:
+            from datetime import datetime, timezone
+
+            from src.event_pick_freeze import ensure_event_grading_readiness
+
+            live_section = snapshot.get("live_tournament") or {}
+            readiness_event_id = str(live_section.get("source_event_id") or "").strip()
+            if readiness_event_id:
+                readiness = ensure_event_grading_readiness(
+                    readiness_event_id,
+                    year=int(live_section.get("year") or datetime.now(timezone.utc).year),
+                    event_name=str(live_section.get("event_name") or "").strip() or None,
+                )
+                snapshot.setdefault("diagnostics", {})["grading_readiness"] = readiness
+        except Exception as readiness_exc:
+            _logger.warning("Grading readiness check failed: %s", readiness_exc)
+            snapshot.setdefault("diagnostics", {})["grading_readiness_error"] = str(readiness_exc)
     except Exception as exc:
         _logger.warning("Failed to persist market prediction rows: %s", exc)
         snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0

@@ -156,13 +156,14 @@ describe("PredictionWorkspacePage live UX", () => {
   it("renders dual model/scoring ranking columns in live mode", async () => {
     renderPage(buildProps())
 
-    expect(screen.getByText("Model now")).toBeInTheDocument()
-    expect(screen.getByText("Start (model)")).toBeInTheDocument()
-    expect(screen.getByText("Model Δ")).toBeInTheDocument()
-    expect(screen.getAllByText("Pos").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Start pos").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Pos Δ").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("To par").length).toBeGreaterThan(0)
+    const grid = screen.getByTestId("cockpit-rankings-grid")
+    expect(grid).toHaveTextContent("Model now")
+    expect(grid).not.toHaveTextContent("Start (model)")
+    expect(grid).not.toHaveTextContent("Model Δ")
+    expect(grid).toHaveTextContent("Pos")
+    expect(grid).not.toHaveTextContent("Start pos")
+    expect(grid).toHaveTextContent("Pos Δ")
+    expect(grid).toHaveTextContent("To par")
   })
 
   it("renders model-centric ranking columns in upcoming mode", async () => {
