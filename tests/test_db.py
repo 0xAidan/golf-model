@@ -172,6 +172,38 @@ def test_store_picks_dedupes_within_lane_but_allows_cross_lane():
     assert counts.get("v5") == 1
 
 
+def test_store_picks_dedupes_same_play_across_books_best_odds():
+    tid = db.get_or_create_tournament("Book Dedup Test", year=2026)
+    shared = {
+        "tournament_id": tid,
+        "bet_type": "matchup",
+        "market_type": "tournament_matchups",
+        "player_key": "scottie_scheffler",
+        "player_display": "Scottie Scheffler",
+        "opponent_key": "rory_mcilroy",
+        "opponent_display": "Rory McIlroy",
+        "model_prob": 0.52,
+        "market_implied_prob": 0.5238,
+        "ev": 0.08,
+        "confidence": "good",
+        "model_variant": "baseline",
+        "source": "cockpit",
+    }
+    fd_pick = {**shared, "market_odds": "-110", "market_book": "fd"}
+    dk_pick = {**shared, "market_odds": "+120", "market_book": "dk"}
+    db.store_picks([fd_pick, dk_pick])
+
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT market_odds, market_book FROM picks WHERE tournament_id = ?",
+        (tid,),
+    ).fetchall()
+    conn.close()
+    assert len(rows) == 1
+    assert rows[0]["market_odds"] == "+120"
+    assert rows[0]["market_book"] == "dk"
+
+
 def test_hot_path_indexes_include_past_replay():
     """Past replay queries must have section-aware indexes on large snapshot tables."""
     conn = db.get_conn()

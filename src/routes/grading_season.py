@@ -194,8 +194,7 @@ def _discover_season_events(conn, year: int, *, tour: str | None = "pga") -> dic
 
 def _past_replay_positive_count(event_id: str, lane: str = "dashboard") -> int:
     rows = db.get_completed_market_prediction_rows_for_event(event_id, source=lane)
-    matchups = [row for row in rows if str(row.get("market_family") or "").lower() == "matchup"]
-    deduped = dedupe_inventory_rows(matchups, lane=lane)
+    deduped = dedupe_inventory_rows(rows, lane=lane)
     return len(filter_positive_ev(deduped))
 
 
