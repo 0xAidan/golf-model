@@ -138,7 +138,17 @@ export function PredictionWorkspacePage({
 
   const diagnosticsMessage =
     predictionTab === "past"
-      ? "Select a past event from the replay selector to load market data."
+      ? pastReplay.pastEventsBootstrapping
+        ? "Loading past events and graded pick history…"
+        : pastReplay.selectedPastEvent
+          ? pastReplay.pastReplayLoading
+            ? `Loading replay data for ${pastReplay.selectedPastEvent.event_name}…`
+            : pastReplay.pastReplayHasData
+              ? ""
+              : "Replay snapshot is sparse for this event — showing official graded picks when available."
+          : pastReplay.pastEventOptions.length === 0
+            ? "No completed events available for replay yet."
+            : "Select a past event from the replay selector to load market data."
       : getMatchupStateMessage({
           state: activeSection?.diagnostics?.state,
           reasonCodes: activeSection?.diagnostics?.reason_codes,
@@ -333,7 +343,9 @@ export function PredictionWorkspacePage({
     isLiveActive,
     eventName:
       predictionTab === "past"
-        ? (pastReplay.selectedPastEvent?.event_name ?? "Past event snapshot unavailable")
+        ? pastReplay.pastEventsBootstrapping
+          ? "Loading past events…"
+          : (pastReplay.selectedPastEvent?.event_name ?? "Past event")
         : (activeSection?.event_name ?? displayPredictionRun?.event_name ?? "No event loaded"),
     selectedPlayerKey,
     onPlayerSelect,
@@ -346,7 +358,9 @@ export function PredictionWorkspacePage({
 
   const eventName =
     predictionTab === "past"
-      ? (pastReplay.selectedPastEvent?.event_name ?? "Past event snapshot unavailable")
+      ? pastReplay.pastEventsBootstrapping
+        ? "Loading past events…"
+        : (pastReplay.selectedPastEvent?.event_name ?? "Select a past event")
       : (activeSection?.event_name ?? displayPredictionRun?.event_name ?? "No event loaded")
 
   const courseName =
@@ -442,7 +456,7 @@ export function PredictionWorkspacePage({
 
   const lane = fullPicks?.mode === "lab" ? "lab" : "dashboard"
   const laneTrust = buildLaneTrustState({
-    snapshotNotice,
+    snapshotNotice: predictionTab === "past" ? null : snapshotNotice,
     displayPredictionRun,
     diagnosticsState: activeSection?.diagnostics?.state,
     usingProdSnapshotFallback,
@@ -631,7 +645,9 @@ export function PredictionWorkspacePage({
           setDismissedOpportunityGeneratedAt(liveSnapshot?.generated_at ?? null)
         }
         predictionTabPastLoading={
-          predictionTab === "past" && pastReplay.pastReplayLoading && !pastReplay.pastReplayHasData
+          predictionTab === "past" &&
+          (pastReplay.pastEventsBootstrapping ||
+            (pastReplay.pastReplayLoading && !pastReplay.pastReplayHasData))
         }
         pastEventName={pastReplay.selectedPastEvent?.event_name}
         predictionTabPastError={
@@ -643,10 +659,11 @@ export function PredictionWorkspacePage({
         pastReplayErrorMessage={pastReplay.pastReplayErrorMessage ?? "Replay API request failed."}
         predictionTabPastNoEvent={
           predictionTab === "past" &&
+          !pastReplay.pastEventsBootstrapping &&
           !pastReplay.pastReplayLoading &&
           !pastReplay.pastReplayHasData &&
           !pastReplay.pastReplayHasError &&
-          pastReplay.pastEventOptions.length > 0
+          pastReplay.pastEventOptions.length === 0
         }
       />
 

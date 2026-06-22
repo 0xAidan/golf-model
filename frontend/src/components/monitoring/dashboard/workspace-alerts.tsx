@@ -33,9 +33,8 @@ export function WorkspaceAlerts({
           role="status"
           data-testid="past-replay-empty"
         >
-          Select a completed event in the replay panel to load pre-tee-off rankings, picks, and
-          market history. Use the lane buttons to switch between completed, live, and upcoming
-          snapshots.
+          No completed events are available for replay yet. Once an event finishes and grading runs,
+          it will appear here automatically.
         </div>
       ) : null}
       {displayPredictionRun?.hydration_section === "upcoming_fallback_live" ||
