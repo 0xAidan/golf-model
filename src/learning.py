@@ -519,7 +519,10 @@ def compute_calibration() -> dict:
             continue
 
         predicted_avg = sum(d["model_prob"] for d in in_bucket) / len(in_bucket)
-        actual_rate = sum(d["actual_outcome"] for d in in_bucket) / len(in_bucket)
+        resolved = [d for d in in_bucket if d["actual_outcome"] is not None]
+        if not resolved:
+            continue
+        actual_rate = sum(int(d["actual_outcome"]) for d in resolved) / len(resolved)
 
         calibration.append({
             "bucket": label,
