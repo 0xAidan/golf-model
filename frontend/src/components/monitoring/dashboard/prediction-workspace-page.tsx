@@ -21,6 +21,7 @@ import {
 } from "@/lib/cockpit-event-models"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { isTeamEvent } from "@/lib/event-format"
+import { formatUnits } from "@/lib/format"
 import {
   getRawGeneratedMatchups,
   getRawGeneratedSecondaryBets,
@@ -641,13 +642,16 @@ export function PredictionWorkspacePage({
             {
               id: "combined",
               label: "Combined P&L",
-              value: String(pastReplay.recordSummary.combined.profit),
+              value: formatUnits(pastReplay.recordSummary.combined.profit),
               tone: pastReplay.recordSummary.combined.profit >= 0 ? "positive" : "negative",
             },
             {
               id: "picks",
               label: "+EV picks",
-              value: String(filteredTopPlays.length),
+              value:
+                predictionTab === "past"
+                  ? String(pastReplay.recordSummary.combined.picks)
+                  : String(filteredTopPlays.length),
             },
             {
               id: "field",

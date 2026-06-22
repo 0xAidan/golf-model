@@ -15,6 +15,7 @@ import { usePredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { formatDateTime } from "@/lib/format"
+import { seasonEventsToGradingHistory } from "@/lib/grading-season"
 import { lazyWithRetry } from "@/lib/lazy-import"
 import {
   buildHydratedPredictionRun,
@@ -192,8 +193,14 @@ function AppContent({
   })
   const gradingHistoryPickSource = labRouteActive ? "lab" : "cockpit"
   const gradingHistoryQuery = useQuery({
-    queryKey: ["grading-history", gradingHistoryPickSource],
-    queryFn: () => api.getGradingHistory({ pickSource: gradingHistoryPickSource }),
+    queryKey: ["grading-season", gradingHistoryPickSource],
+    queryFn: () =>
+      api.getGradingSeason({
+        year: 2026,
+        lane: gradingHistoryPickSource,
+        includePicks: true,
+        limit: 100,
+      }),
   })
   /** When the parallel lab lane is off, lab routes still hydrate from production snapshot so the UI is usable. */
   const labDisplaySnapshot = useMemo(() => {
@@ -587,8 +594,12 @@ function AppContent({
       ? picksMarketRowsQuery.error.message
       : undefined
 
-  const gradingHistory = gradingHistoryQuery.data?.tournaments ?? []
-  const gradingRecordSummary = gradingHistoryQuery.data?.summary
+  const gradingHistoryData = useMemo(
+    () => seasonEventsToGradingHistory(gradingHistoryQuery.data, gradingHistoryPickSource),
+    [gradingHistoryQuery.data, gradingHistoryPickSource],
+  )
+  const gradingHistory = gradingHistoryData.tournaments ?? []
+  const gradingRecordSummary = gradingHistoryData.summary
   const dashboard = dashboardQuery.data
 
   useLiveRefreshRuntime({

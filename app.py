@@ -705,7 +705,10 @@ async def get_grading_history(
     src = (pick_source or "all").strip().lower()
     pick_where = ""
     if src == "cockpit":
-        pick_where = " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
+        pick_where = (
+            " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
+            " AND COALESCE(NULLIF(TRIM(p.model_variant), ''), 'baseline') = 'baseline' "
+        )
     elif src == "lab":
         pick_where = " AND p.source IN ('lab_sandbox', 'lab_sandbox_candidate') "
 

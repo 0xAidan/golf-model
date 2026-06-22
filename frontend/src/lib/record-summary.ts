@@ -1,4 +1,5 @@
 import { gradeTournamentMatchupFromLeaderboard } from "@/lib/matchup-pick-grade"
+import { dedupeReplayMatchups, dedupeReplaySecondaryBets } from "@/lib/replay-pick-dedupe"
 import { gradeSecondaryBetFromLeaderboard } from "@/lib/outright-replay-grade"
 import type {
   FlattenedSecondaryBet,
@@ -112,11 +113,33 @@ const americanOddsProfit = (odds: string | number | undefined | null) => {
   return 100 / Math.abs(raw)
 }
 
+export const buildEventGradingRecordSummary = (
+  event: GradedTournamentSummary | null | undefined,
+): DisplayRecordSummary => {
+  if (!event) {
+    return {
+      outrights: toDisplayBucket(finalizeBucket(makeBucket())),
+      matchups: toDisplayBucket(finalizeBucket(makeBucket())),
+      combined: toDisplayBucket(finalizeBucket(makeBucket())),
+    }
+  }
+  if (event.market_stats) {
+    return buildGradingRecordSummary([], {
+      outrights: event.market_stats.outrights,
+      matchups: event.market_stats.matchups,
+      combined: event.market_stats.combined,
+    })
+  }
+  return buildGradingRecordSummary([event])
+}
+
 export const buildPastReplayRecordSummary = (
   matchups: MatchupBet[],
   outrights: FlattenedSecondaryBet[],
   leaderboardRows: LiveLeaderboardRow[],
 ): DisplayRecordSummary => {
+  const dedupedMatchups = dedupeReplayMatchups(matchups)
+  const dedupedOutrights = dedupeReplaySecondaryBets(outrights)
   const summary = emptySummary()
 
   const applyBucket = (bucket: RecordBucket, outcome: "win" | "loss" | "push", profit: number) => {
@@ -131,7 +154,7 @@ export const buildPastReplayRecordSummary = (
     }
   }
 
-  for (const matchup of matchups) {
+  for (const matchup of dedupedMatchups) {
     const outcome =
       matchup.graded_result ??
       gradeTournamentMatchupFromLeaderboard(matchup, leaderboardRows)
@@ -150,7 +173,7 @@ export const buildPastReplayRecordSummary = (
     applyBucket(summary.combined, outcome, profit)
   }
 
-  for (const bet of outrights) {
+  for (const bet of dedupedOutrights) {
     const graded = gradeSecondaryBetFromLeaderboard(bet, leaderboardRows)
     if (!graded) {
       continue

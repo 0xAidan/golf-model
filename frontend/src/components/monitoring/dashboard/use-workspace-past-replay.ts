@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
+import { applyGradedPicksToMatchups } from "@/lib/apply-graded-picks"
 import {
   buildReplayGeneratedMatchups,
   buildReplayGeneratedSecondaryBets,
@@ -16,7 +17,12 @@ import {
   NON_BOOK_SOURCES,
   normalizeSportsbook,
 } from "@/lib/prediction-board"
-import { buildGradingRecordSummary, buildPastReplayRecordSummary } from "@/lib/record-summary"
+import {
+  buildEventGradingRecordSummary,
+  buildGradingRecordSummary,
+  buildPastReplayRecordSummary,
+} from "@/lib/record-summary"
+import { dedupeReplayMatchups, dedupeReplaySecondaryBets } from "@/lib/replay-pick-dedupe"
 import type {
   GradedTournamentSummary,
   LiveTournamentSnapshot,
@@ -260,18 +266,41 @@ export function useWorkspacePastReplay({
     })
   }, [gradingHistory, pastEventOptions, predictionTab])
 
+  const selectedEventGrading = useMemo(
+    () =>
+      gradingHistory.find(
+        (event) => String(event.event_id ?? "") === String(selectedPastEvent?.event_id ?? ""),
+      ) ?? null,
+    [gradingHistory, selectedPastEvent?.event_id],
+  )
+
+  const selectedEventGradedMatchups = useMemo(
+    () =>
+      (selectedEventGrading?.picks ?? []).filter(
+        (pick) => String(pick.bet_type ?? "").trim().toLowerCase() === "matchup",
+      ),
+    [selectedEventGrading?.picks],
+  )
+
   const pastMatchups = useMemo(() => {
-    const sourceRows =
+    const sourceRows = dedupeReplayMatchups(
       pastReplayRows.length > 0
-        ? buildReplayGeneratedMatchups(pastReplayRows)
-        : (pastPredictionRun?.matchup_bets_all_books ?? pastPredictionRun?.matchup_bets ?? [])
+        ? applyGradedPicksToMatchups(
+            buildReplayGeneratedMatchups(pastReplayRows),
+            selectedEventGradedMatchups,
+          )
+        : applyGradedPicksToMatchups(
+            pastPredictionRun?.matchup_bets_all_books ?? pastPredictionRun?.matchup_bets ?? [],
+            selectedEventGradedMatchups,
+          ),
+    )
     return sourceRows.filter((matchup) => {
       const passesSearch = matchupSearch
         ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
         : true
       return passesSearch
     })
-  }, [matchupSearch, pastPredictionRun, pastReplayRows])
+  }, [matchupSearch, pastPredictionRun, pastReplayRows, selectedEventGradedMatchups])
 
   const pastSecondaryBets = useMemo(() => {
     const sourceRows =
@@ -294,10 +323,12 @@ export function useWorkspacePastReplay({
 
   const rawGeneratedMatchups = useMemo(() => {
     if (predictionTab !== "past") return []
-    return pastReplayRows.length > 0
-      ? buildReplayGeneratedMatchups(pastReplayRows)
-      : getRawGeneratedMatchups(pastPredictionRun)
-  }, [pastPredictionRun, pastReplayRows, predictionTab])
+    const sourceRows =
+      pastReplayRows.length > 0
+        ? buildReplayGeneratedMatchups(pastReplayRows)
+        : getRawGeneratedMatchups(pastPredictionRun)
+    return applyGradedPicksToMatchups(sourceRows, selectedEventGradedMatchups)
+  }, [pastPredictionRun, pastReplayRows, predictionTab, selectedEventGradedMatchups])
 
   const rawGeneratedSecondaryBets = useMemo(() => {
     if (predictionTab !== "past") return []
@@ -306,24 +337,35 @@ export function useWorkspacePastReplay({
       : getRawGeneratedSecondaryBets(pastPredictionRun)
   }, [pastPredictionRun, pastReplayRows, predictionTab])
 
-  const recordSummary = useMemo(
-    () =>
-      predictionTab === "past" &&
-      (rawGeneratedMatchups.length > 0 || rawGeneratedSecondaryBets.length > 0)
-        ? buildPastReplayRecordSummary(
-            rawGeneratedMatchups,
-            rawGeneratedSecondaryBets,
-            pastLeaderboardForGrades,
-          )
-        : durableRecordSummary,
-    [
-      durableRecordSummary,
-      pastLeaderboardForGrades,
-      predictionTab,
-      rawGeneratedMatchups,
-      rawGeneratedSecondaryBets,
-    ],
-  )
+  const recordSummary = useMemo(() => {
+    if (predictionTab !== "past") {
+      return durableRecordSummary
+    }
+
+    const officialSummary = buildEventGradingRecordSummary(selectedEventGrading)
+    if (officialSummary.combined.picks > 0) {
+      return officialSummary
+    }
+
+    const dedupedMatchups = dedupeReplayMatchups(rawGeneratedMatchups)
+    const dedupedOutrights = dedupeReplaySecondaryBets(rawGeneratedSecondaryBets)
+    if (dedupedMatchups.length > 0 || dedupedOutrights.length > 0) {
+      return buildPastReplayRecordSummary(
+        dedupedMatchups,
+        dedupedOutrights,
+        pastLeaderboardForGrades,
+      )
+    }
+
+    return officialSummary
+  }, [
+    durableRecordSummary,
+    pastLeaderboardForGrades,
+    predictionTab,
+    rawGeneratedMatchups,
+    rawGeneratedSecondaryBets,
+    selectedEventGrading,
+  ])
 
   const courseName = pastPredictionRun?.course_name ?? ""
 

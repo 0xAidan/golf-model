@@ -2450,6 +2450,46 @@ def get_pre_teeoff_frozen_payload(event_id: str) -> dict | None:
         return None
 
 
+def build_final_leaderboard_from_results(event_id: str) -> list[dict]:
+    """Build final-position leaderboard rows from graded results (preferred for completed replay)."""
+    normalized = str(event_id or "").strip()
+    if not normalized:
+        return []
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT r.player_key, r.player_display, r.finish_position, r.finish_text, r.made_cut
+        FROM results r
+        JOIN tournaments t ON t.id = r.tournament_id
+        WHERE t.event_id = ?
+        ORDER BY
+            CASE WHEN r.finish_position IS NULL THEN 1 ELSE 0 END,
+            r.finish_position ASC,
+            r.player_display ASC
+        """,
+        (normalized,),
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return []
+
+    leaderboard: list[dict] = []
+    for index, row in enumerate(rows, start=1):
+        finish_text = str(row["finish_text"] or "").strip()
+        if not finish_text and row["finish_position"] is not None:
+            finish_text = str(row["finish_position"])
+        leaderboard.append(
+            {
+                "rank": index,
+                "position": finish_text or None,
+                "player_key": row["player_key"],
+                "player": row["player_display"] or row["player_key"],
+                "finish_state": finish_text or None,
+            }
+        )
+    return leaderboard
+
+
 def build_completed_snapshot_section(event_id: str, *, source: str = "dashboard") -> dict | None:
     """
     Merge frozen pre-teeoff upcoming board with latest live snapshot leaderboard for Completed replay.
@@ -2474,14 +2514,25 @@ def build_completed_snapshot_section(event_id: str, *, source: str = "dashboard"
     latest_live = get_latest_snapshot_section(normalized, section="live")
     live_snap = (latest_live or {}).get("snapshot") or {}
     if not frozen and not live_snap:
-        return None
+        results_lb = build_final_leaderboard_from_results(normalized)
+        if not results_lb:
+            return None
+        return {
+            "leaderboard": results_lb,
+            "completed_replay": True,
+            "diagnostics": {"state": "completed_replay", "leaderboard_source": "results_table"},
+            "ranking_source": "results_table_only",
+        }
     base = dict(frozen) if frozen else dict(live_snap)
-    final_lb = live_snap.get("leaderboard") or base.get("leaderboard") or []
+    results_lb = build_final_leaderboard_from_results(normalized)
+    final_lb = results_lb or live_snap.get("leaderboard") or base.get("leaderboard") or []
     out = dict(base)
     out["leaderboard"] = final_lb
     out["completed_replay"] = True
     out.setdefault("diagnostics", {})
     out["diagnostics"]["state"] = "completed_replay"
+    if results_lb:
+        out["diagnostics"]["leaderboard_source"] = "results_table"
     if frozen:
         out["frozen_pre_teeoff_rankings"] = frozen.get("rankings") or frozen.get("live_rankings")
         out["ranking_source"] = ranking_source or frozen.get("ranking_source") or (

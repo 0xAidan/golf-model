@@ -111,7 +111,10 @@ def build_record_summary(picks: list[dict]) -> dict:
 def pick_lane_sql(lane: str) -> str:
     normalized = (lane or "all").strip().lower()
     if normalized in {"cockpit", "dashboard"}:
-        return " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
+        return (
+            " AND (COALESCE(p.source,'') IN ('cockpit','ui_display')) "
+            " AND COALESCE(NULLIF(TRIM(p.model_variant), ''), 'baseline') = 'baseline' "
+        )
     if normalized == "lab":
         return " AND p.source IN ('lab_sandbox', 'lab_sandbox_candidate') "
     return ""

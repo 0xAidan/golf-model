@@ -9,7 +9,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     getDashboardState: vi.fn(async () => ({})),
-    getGradingHistory: vi.fn(async () => ({ tournaments: [] })),
+    getGradingSeason: vi.fn(async () => ({ year: 2026, lane: "cockpit", events: [], tournaments: [], summary: { dashboard: { picks: 0, wins: 0, losses: 0, pushes: 0, profit: 0, hit_rate: null }, lab: { picks: 0, wins: 0, losses: 0, pushes: 0, profit: 0, hit_rate: null }, comparison: { profit_delta: 0, hit_rate_delta: 0, picks_only_dashboard: 0, picks_only_lab: 0, overlap_matchups: 0 } } })),
     getLiveRefreshStatus: vi.fn(async () => ({ status: { running: false } })),
     getLiveRefreshSnapshot: vi.fn(async () => ({ snapshot: null, age_seconds: null })),
     getPlayerProfile: vi.fn(async () => null),
@@ -93,14 +93,18 @@ describe("App legacy route replay gating", () => {
     renderAppAtRoute("/lab")
 
     await waitFor(() => {
-      expect(apiMock.getGradingHistory).toHaveBeenCalledWith({ pickSource: "lab" })
+      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
+        expect.objectContaining({ lane: "lab", year: 2026 }),
+      )
     })
 
     vi.clearAllMocks()
     renderAppAtRoute("/")
 
     await waitFor(() => {
-      expect(apiMock.getGradingHistory).toHaveBeenCalledWith({ pickSource: "cockpit" })
+      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
+        expect.objectContaining({ lane: "cockpit", year: 2026 }),
+      )
     })
   })
 })

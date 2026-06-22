@@ -13,6 +13,11 @@ export function getRawGeneratedSecondaryBets(predictionRun: PredictionRunRespons
 export function buildReplayGeneratedMatchups(rows: PastMarketPredictionRow[]): MatchupBet[] {
   return rows
     .filter((row) => row.market_family === "matchup")
+    .filter((row) => {
+      const payload = row.payload ?? {}
+      const ev = typeof row.ev === "number" ? row.ev : Number(payload.ev ?? 0)
+      return ev > 0
+    })
     .map((row) => {
       const payload = row.payload ?? {}
       const storedGrade = readStoredMatchupOutcome(payload as Record<string, unknown>)
@@ -60,6 +65,10 @@ export function buildReplayGeneratedMatchups(rows: PastMarketPredictionRow[]): M
 export function buildReplayGeneratedSecondaryBets(rows: PastMarketPredictionRow[]): FlattenedSecondaryBet[] {
   return rows
     .filter((row) => row.market_family !== "matchup")
+    .filter((row) => {
+      const ev = typeof row.ev === "number" ? row.ev : Number(row.payload?.ev ?? 0)
+      return ev > 0
+    })
     .map((row) => ({
       market: row.market_type ?? row.market_family,
       player: row.player_display ?? "Unknown player",

@@ -633,8 +633,10 @@ export type TrackRecordPick = {
   market_book?: string | null
   player_display: string
   opponent_display?: string
-  market_odds?: string
+  player_key?: string
+  opponent_key?: string
   bet_type?: string
+  market_odds?: string
   model_prob?: number | null
   ev?: number | null
   reasoning?: string | null
