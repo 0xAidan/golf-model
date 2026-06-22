@@ -17,8 +17,83 @@ const { apiMock, snapshotMock } = vi.hoisted(() => ({
       effective_config_hash: { dashboard: "011e7743e143e26b", lab: "3936389c4ef2d5b9" },
       history: [],
     })),
+    getFieldBoard: vi.fn(async () => ({
+      section: "upcoming",
+      event_name: "RBC",
+      lab_available: true,
+      player_count: 2,
+      players: [
+        {
+          player_key: "a",
+          player: "Player A",
+          champion_rank: 1,
+          challenger_rank: 5,
+          rank_delta: -4,
+          composite: 80,
+          course_fit: 1,
+          form: 2,
+          momentum: 0.1,
+          matchup_count: 1,
+          in_positive_ev: true,
+          has_sg: false,
+        },
+        {
+          player_key: "b",
+          player: "Player B",
+          champion_rank: 2,
+          challenger_rank: 1,
+          rank_delta: 1,
+          composite: 78,
+          course_fit: 1,
+          form: 2,
+          momentum: 0.1,
+          matchup_count: 0,
+          in_positive_ev: false,
+          has_sg: false,
+        },
+      ],
+    })),
+    getTrackComparison: vi.fn(async () => ({
+      window: "30d",
+      window_days: 30,
+      tracks: {
+        cockpit: {
+          n: 10,
+          graded_with_odds: 10,
+          wins: 5,
+          hit_rate_pct: 50,
+          roi_pct: 5,
+          pnl_units: 0.5,
+          brier: 0.2,
+          low_sample: true,
+        },
+        lab: {
+          n: 12,
+          graded_with_odds: 12,
+          wins: 7,
+          hit_rate_pct: 58.33,
+          roi_pct: 8,
+          pnl_units: 0.96,
+          brier: 0.19,
+          low_sample: true,
+        },
+      },
+      overlap: { both: 4, cockpit_only: 3, lab_only: 5 },
+      by_market: {
+        cockpit: { matchup: { n: 8, roi_pct: 6, hit_rate_pct: 50 } },
+        lab: { matchup: { n: 9, roi_pct: 9, hit_rate_pct: 55 } },
+      },
+      data_kind: "live_graded",
+      note: "Live graded +EV picks only.",
+    })),
   },
   snapshotMock: { value: {} as Record<string, unknown> },
+}))
+
+vi.mock("@/components/compare/compare-charts-lazy", () => ({
+  RankScatterChartLazy: () => <div data-testid="compare-rank-scatter-mock" />,
+  ComponentDriversChartLazy: () => <div data-testid="compare-component-chart-mock" />,
+  MarketDeltaChartLazy: () => <div data-testid="compare-market-chart-mock" />,
 }))
 
 vi.mock("@/lib/api", () => ({ api: apiMock }))
@@ -26,11 +101,13 @@ vi.mock("@/providers/live-snapshot-provider", () => ({
   useLiveSnapshot: () => snapshotMock.value,
 }))
 
-function renderPage() {
+function renderPage(initialEntry = "/compare") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <ComparePage />
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <ComparePage />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -65,7 +142,7 @@ describe("ComparePage", () => {
     expect(await screen.findByTestId("compare-no-event")).toBeInTheDocument()
   })
 
-  it("renders rank deltas and pick overlap when both tracks are present", async () => {
+  it("renders event analytics when both tracks are present", async () => {
     snapshotMock.value = {
       isLiveActive: false,
       liveTournament: undefined,
@@ -77,7 +154,21 @@ describe("ComparePage", () => {
           { rank: 2, player_key: "b", player: "Player B", composite: 78, course_fit: 0, form: 0, momentum: 0 },
         ],
         matchup_bets: [
-          { pick: "A", pick_key: "a", opponent: "B", opponent_key: "b", odds: "-110", model_win_prob: 0.55, implied_prob: 0.52, ev: 0.06, ev_pct: "6%", composite_gap: 2, form_gap: 1, course_fit_gap: 1, reason: "x" },
+          {
+            pick: "A",
+            pick_key: "a",
+            opponent: "B",
+            opponent_key: "b",
+            odds: "-110",
+            model_win_prob: 0.55,
+            implied_prob: 0.52,
+            ev: 0.06,
+            ev_pct: "6%",
+            composite_gap: 2,
+            form_gap: 1,
+            course_fit_gap: 1,
+            reason: "x",
+          },
         ],
       },
       labUpcomingTournament: {
@@ -88,21 +179,70 @@ describe("ComparePage", () => {
           { rank: 1, player_key: "b", player: "Player B", composite: 82, course_fit: 0, form: 0, momentum: 0 },
         ],
         matchup_bets: [
-          { pick: "C", pick_key: "c", opponent: "D", opponent_key: "d", odds: "+120", model_win_prob: 0.5, implied_prob: 0.45, ev: 0.1, ev_pct: "10%", composite_gap: 1, form_gap: 0, course_fit_gap: 0, reason: "y" },
+          {
+            pick: "C",
+            pick_key: "c",
+            opponent: "D",
+            opponent_key: "d",
+            odds: "+120",
+            model_win_prob: 0.5,
+            implied_prob: 0.45,
+            ev: 0.1,
+            ev_pct: "10%",
+            composite_gap: 1,
+            form_gap: 0,
+            course_fit_gap: 0,
+            reason: "y",
+          },
         ],
       },
       labLiveTournament: null,
     }
     renderPage()
-    await waitFor(() => expect(screen.getByTestId("compare-rank-deltas")).toBeInTheDocument())
-    const table = screen.getByTestId("compare-rank-deltas")
-    expect(table).toHaveTextContent("Player A")
-    expect(table).toHaveTextContent("Player B")
-    const overlap = screen.getByTestId("compare-pick-overlap")
-    expect(overlap).toHaveTextContent("Champion only")
-    expect(overlap).toHaveTextContent("Challenger only")
+    await waitFor(() => expect(screen.getByTestId("compare-event-dashboard")).toBeInTheDocument())
+    expect(screen.getByTestId("compare-kpi-band")).toBeInTheDocument()
+    expect(screen.getByTestId("compare-matchup-diff")).toBeInTheDocument()
+    expect(screen.getByTestId("compare-matchup-grid")).toBeInTheDocument()
+    expect(screen.getByText("Champ EV")).toBeInTheDocument()
     expect(screen.getByTestId("track-badge-dashboard")).toBeInTheDocument()
     expect(screen.getByTestId("track-badge-lab")).toBeInTheDocument()
+  })
+
+  it("renders track record scope from query param", async () => {
+    snapshotMock.value = {
+      isLiveActive: false,
+      liveTournament: undefined,
+      upcomingTournament: undefined,
+      labLiveTournament: null,
+      labUpcomingTournament: null,
+    }
+    renderPage("/compare?scope=history")
+    await waitFor(() => expect(screen.getByTestId("compare-history-dashboard")).toBeInTheDocument())
+    expect(screen.getByTestId("track-metrics-dashboard")).toBeInTheDocument()
+    expect(screen.getByTestId("compare-history-overlap")).toBeInTheDocument()
+  })
+
+  it("switches to track record via scope toggle", async () => {
+    const user = userEvent.setup()
+    snapshotMock.value = {
+      isLiveActive: false,
+      liveTournament: undefined,
+      upcomingTournament: {
+        event_name: "RBC",
+        rankings: [],
+        matchup_bets: [],
+      },
+      labUpcomingTournament: {
+        event_name: "RBC",
+        rankings: [],
+        matchup_bets: [],
+      },
+      labLiveTournament: null,
+    }
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId("compare-event-dashboard")).toBeInTheDocument())
+    await user.click(screen.getByTestId("compare-scope-history"))
+    await waitFor(() => expect(screen.getByTestId("compare-history-dashboard")).toBeInTheDocument())
   })
 })
 
@@ -138,7 +278,6 @@ describe("Route error boundary on satellite routes", () => {
     expect(screen.getByTestId("route-error-boundary")).toBeInTheDocument()
     window.history.pushState({}, "", "/ok")
     await user.click(document.body)
-    // Navigate using MemoryRouter — remount with healthy route
     render(
       <MemoryRouter initialEntries={["/ok"]}>
         <RouteErrorBoundaryGate>

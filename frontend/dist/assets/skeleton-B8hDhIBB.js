@@ -1,1 +1,0 @@
-import{n as e,s as t}from"./api-MsvspmgY.js";var n=t();function r({className:t,...r}){return(0,n.jsx)(`div`,{"data-slot":`skeleton`,className:e(`animate-pulse rounded-md bg-muted`,t),...r})}export{r as t};
