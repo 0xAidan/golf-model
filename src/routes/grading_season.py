@@ -275,20 +275,38 @@ def _fetch_lane_picks(conn, tournament_id: int | None, lane: str) -> list[dict]:
 
 
 def _lane_inventory_counts(conn, event_id: str, lane: str) -> tuple[int, int]:
+    from src.official_pick_record import dedupe_grading_picks
+
     ledger_lane = "cockpit" if lane in {"cockpit", "dashboard"} else "lab"
-    row = conn.execute(
+    rows = conn.execute(
         """
-        SELECT
-            COUNT(*) AS inventory_count,
-            SUM(CASE WHEN is_value = 1 THEN 1 ELSE 0 END) AS positive_ev_count
+        SELECT bet_type, market_type, market_family, player_key, player_display,
+               opponent_key, opponent_display, book, odds, ev, is_value
         FROM pick_ledger
         WHERE event_id = ? AND lane = ?
         """,
         (event_id, ledger_lane),
-    ).fetchone()
-    if not row:
+    ).fetchall()
+    if not rows:
         return 0, 0
-    return int(row["inventory_count"] or 0), int(row["positive_ev_count"] or 0)
+    inventory_rows = [dict(row) for row in rows]
+    positive_rows = [row for row in inventory_rows if int(row.get("is_value") or 0) == 1]
+    pick_like = [
+        {
+            "source": ledger_lane,
+            "model_variant": "baseline" if ledger_lane == "cockpit" else "v5",
+            "bet_type": row.get("bet_type") or row.get("market_family"),
+            "market_type": row.get("market_type") or row.get("market_family"),
+            "player_key": row.get("player_key"),
+            "player_display": row.get("player_display"),
+            "opponent_key": row.get("opponent_key"),
+            "opponent_display": row.get("opponent_display"),
+            "market_odds": row.get("odds"),
+            "ev": row.get("ev"),
+        }
+        for row in positive_rows
+    ]
+    return len(inventory_rows), len(dedupe_grading_picks(pick_like))
 
 
 def _build_lane_payload(

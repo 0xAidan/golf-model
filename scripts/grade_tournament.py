@@ -220,6 +220,7 @@ def grade_tournament(
 
     # 5. Backfill durable displayed rows before scoring (skip if authoritative outcomes exist)
     from src.pick_ledger import tournament_has_locked_outcomes
+    from src.official_pick_record import consolidate_duplicate_picks
 
     dashboard_backfilled = 0
     lab_backfilled = 0
@@ -250,6 +251,25 @@ def grade_tournament(
             "lab_inserted": lab_backfilled,
         }
         print(f"  Backfilled picks: dashboard={dashboard_backfilled}, lab={lab_backfilled}")
+
+    # 5b. Collapse duplicate pick rows (same player/market, different snapshot odds)
+    dedupe_result = consolidate_duplicate_picks(tournament_id)
+    report["steps"]["pick_dedupe"] = dedupe_result
+    if dedupe_result.get("removed"):
+        print(f"  Removed {dedupe_result['removed']} duplicate pick row(s); kept {dedupe_result['kept']}")
+
+    # Clear unlocked outcomes so scoring reflects deduped pick rows.
+    conn = db.get_conn()
+    conn.execute(
+        """
+        DELETE FROM pick_outcomes
+        WHERE COALESCE(outcome_locked, 0) = 0
+          AND pick_id IN (SELECT id FROM picks WHERE tournament_id = ?)
+        """,
+        (tournament_id,),
+    )
+    conn.commit()
+    conn.close()
 
     # 6. Score picks (respect locked outcomes unless force_audit)
     print("  Scoring picks...")
@@ -375,9 +395,9 @@ def main():
     if report["status"] == "complete":
         scoring = report["steps"].get("scoring", {})
         print("  Status: COMPLETE")
-        print(f"  Picks scored: {scoring.get('total_picks', 0)}")
-        print(f"  Wins: {scoring.get('wins', 0)}")
-        print(f"  Losses: {scoring.get('losses', 0)}")
+        print(f"  Picks scored: {scoring.get('scored', 0)}")
+        print(f"  Wins: {scoring.get('bet_hits', scoring.get('hits', 0))}")
+        print(f"  Losses: {scoring.get('misses', 0)}")
         profit = scoring.get("total_profit", 0)
         print(f"  Profit: {'+' if profit >= 0 else ''}{profit:.2f}u")
     else:

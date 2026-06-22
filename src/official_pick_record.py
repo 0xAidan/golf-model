@@ -42,14 +42,25 @@ def inventory_matchup_key(row: dict, *, lane: str = "") -> tuple:
 
 
 def grading_matchup_key(pick: dict) -> tuple:
-    return (
+    return grading_pick_identity_key(pick)
+
+
+def grading_pick_identity_key(pick: dict) -> tuple:
+    """Canonical grading identity — one scored pick per player/market lane (best odds kept)."""
+    bet_type = str(pick.get("bet_type") or "").strip().lower()
+    base = (
         str(pick.get("source") or ""),
         str(pick.get("model_variant") or ""),
-        str(pick.get("bet_type") or "").strip().lower(),
-        normalize_market_type(pick.get("market_type")),
-        str(pick.get("player_key") or pick.get("player_display") or "").strip().lower(),
-        str(pick.get("opponent_key") or pick.get("opponent_display") or "").strip().lower(),
+        bet_type,
     )
+    player = str(pick.get("player_key") or pick.get("player_display") or "").strip().lower()
+    if bet_type == "matchup" or is_matchup_row(pick):
+        return base + (
+            normalize_market_type(pick.get("market_type")),
+            player,
+            str(pick.get("opponent_key") or pick.get("opponent_display") or "").strip().lower(),
+        )
+    return base + (player,)
 
 
 def dedupe_matchup_rows(
@@ -89,16 +100,11 @@ def dedupe_inventory_rows(rows: list[dict], *, lane: str = "") -> list[dict]:
 
 
 def dedupe_grading_picks(picks: list[dict]) -> list[dict]:
-    from src.grading_record import record_market_bucket
-
     deduped: list[dict] = []
     indexes: dict[tuple, int] = {}
 
     for pick in picks:
-        if record_market_bucket(pick.get("bet_type")) != "matchups":
-            deduped.append(pick)
-            continue
-        key = grading_matchup_key(pick)
+        key = grading_pick_identity_key(pick)
         existing_index = indexes.get(key)
         if existing_index is None:
             indexes[key] = len(deduped)
@@ -108,6 +114,59 @@ def dedupe_grading_picks(picks: list[dict]) -> list[dict]:
             deduped[existing_index] = pick
 
     return deduped
+
+
+def consolidate_duplicate_picks(tournament_id: int) -> dict[str, int]:
+    """Remove duplicate pick rows for the same grading identity, keeping best odds."""
+    from src import db
+
+    conn = db.get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, model_variant, source, bet_type, market_type, player_key, player_display,
+               opponent_key, opponent_display, market_odds, market_book
+        FROM picks
+        WHERE tournament_id = ? AND COALESCE(ev, 0) > 0
+        ORDER BY id ASC
+        """,
+        (int(tournament_id),),
+    ).fetchall()
+
+    keep_ids: set[int] = set()
+    remove_ids: list[int] = []
+    indexes: dict[tuple, int] = {}
+
+    for row in rows:
+        pick = dict(row)
+        pick_id = int(pick["id"])
+        key = grading_pick_identity_key(pick)
+        existing_id = indexes.get(key)
+        if existing_id is None:
+            indexes[key] = pick_id
+            keep_ids.add(pick_id)
+            continue
+        existing_row = conn.execute(
+            "SELECT market_odds FROM picks WHERE id = ?",
+            (existing_id,),
+        ).fetchone()
+        existing_odds = existing_row["market_odds"] if existing_row else None
+        if american_odds_rank(pick.get("market_odds")) > american_odds_rank(existing_odds):
+            remove_ids.append(existing_id)
+            keep_ids.discard(existing_id)
+            indexes[key] = pick_id
+            keep_ids.add(pick_id)
+        else:
+            remove_ids.append(pick_id)
+
+    removed = 0
+    for pick_id in remove_ids:
+        conn.execute("DELETE FROM pick_outcomes WHERE pick_id = ?", (pick_id,))
+        conn.execute("DELETE FROM picks WHERE id = ?", (pick_id,))
+        removed += 1
+
+    conn.commit()
+    conn.close()
+    return {"removed": removed, "kept": len(keep_ids)}
 
 
 def filter_positive_ev(rows: list[dict], *, ev_field: str = "ev") -> list[dict]:
