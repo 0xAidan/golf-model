@@ -353,7 +353,8 @@ export function buildPredictionRunFromSection(
   }
 
   const eligibility = source.eligibility
-  if (eligibility && eligibility.verified === false) {
+  const completedReplay = Boolean(source.completed_replay)
+  if (eligibility && eligibility.verified === false && !completedReplay) {
     const warning = [
       eligibility.summary ?? "Rankings withheld: field eligibility not verified.",
       eligibility.action ?? "",

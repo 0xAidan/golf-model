@@ -22,6 +22,7 @@ import {
   buildGradingRecordSummary,
   buildPastReplayRecordSummary,
 } from "@/lib/record-summary"
+import { gradedPicksToMatchups, gradedPicksToSecondaryBets } from "@/lib/graded-picks-display"
 import { dedupeReplayMatchups, dedupeReplaySecondaryBets } from "@/lib/replay-pick-dedupe"
 import type {
   GradedTournamentSummary,
@@ -282,7 +283,25 @@ export function useWorkspacePastReplay({
     [selectedEventGrading?.picks],
   )
 
+  const selectedEventGradedSecondary = useMemo(
+    () => gradedPicksToSecondaryBets(selectedEventGrading?.picks ?? []),
+    [selectedEventGrading?.picks],
+  )
+
+  const useGradedPickInventory =
+    pastReplaySection === "completed" && (selectedEventGrading?.picks?.length ?? 0) > 0
+
   const pastMatchups = useMemo(() => {
+    if (useGradedPickInventory) {
+      const gradedRows = gradedPicksToMatchups(selectedEventGrading?.picks ?? [])
+      return gradedRows.filter((matchup) => {
+        const passesSearch = matchupSearch
+          ? `${matchup.pick} ${matchup.opponent}`.toLowerCase().includes(matchupSearch.toLowerCase())
+          : true
+        return passesSearch
+      })
+    }
+
     const sourceRows = dedupeReplayMatchups(
       pastReplayRows.length > 0
         ? applyGradedPicksToMatchups(
@@ -300,18 +319,45 @@ export function useWorkspacePastReplay({
         : true
       return passesSearch
     })
-  }, [matchupSearch, pastPredictionRun, pastReplayRows, selectedEventGradedMatchups])
+  }, [
+    matchupSearch,
+    pastPredictionRun,
+    pastReplayRows,
+    pastReplaySection,
+    selectedEventGradedMatchups,
+    selectedEventGrading?.picks,
+    useGradedPickInventory,
+  ])
 
   const pastSecondaryBets = useMemo(() => {
+    if (useGradedPickInventory) {
+      return selectedEventGradedSecondary
+    }
+
     const sourceRows =
       pastReplayRows.length > 0
         ? buildReplayGeneratedSecondaryBets(pastReplayRows)
         : flattenSecondaryBets(pastPredictionRun)
-    return sourceRows
-  }, [pastPredictionRun, pastReplayRows])
+    return dedupeReplaySecondaryBets(sourceRows)
+  }, [
+    pastPredictionRun,
+    pastReplayRows,
+    pastReplaySection,
+    selectedEventGradedSecondary,
+    selectedEventGrading?.picks,
+    useGradedPickInventory,
+  ])
 
   const displayAvailableBooks = useMemo(() => {
     if (predictionTab !== "past") return availableBooks
+    if (useGradedPickInventory) {
+      const gradedBooks = new Set<string>()
+      for (const pick of selectedEventGrading?.picks ?? []) {
+        const normalized = normalizeSportsbook(pick.market_book)
+        if (normalized && !NON_BOOK_SOURCES.has(normalized)) gradedBooks.add(normalized)
+      }
+      if (gradedBooks.size > 0) return Array.from(gradedBooks).sort()
+    }
     const replayBooks = new Set<string>()
     pastReplayRows.forEach((row) => {
       const normalized = normalizeSportsbook(row.book)
@@ -319,23 +365,45 @@ export function useWorkspacePastReplay({
     })
     if (replayBooks.size > 0) return Array.from(replayBooks).sort()
     return collectAvailableBooks(pastPredictionRun)
-  }, [availableBooks, pastPredictionRun, pastReplayRows, predictionTab])
+  }, [availableBooks, pastPredictionRun, pastReplayRows, predictionTab, selectedEventGrading?.picks, useGradedPickInventory])
 
   const rawGeneratedMatchups = useMemo(() => {
     if (predictionTab !== "past") return []
+    if (useGradedPickInventory) {
+      return gradedPicksToMatchups(selectedEventGrading?.picks ?? [])
+    }
     const sourceRows =
       pastReplayRows.length > 0
         ? buildReplayGeneratedMatchups(pastReplayRows)
         : getRawGeneratedMatchups(pastPredictionRun)
     return applyGradedPicksToMatchups(sourceRows, selectedEventGradedMatchups)
-  }, [pastPredictionRun, pastReplayRows, predictionTab, selectedEventGradedMatchups])
+  }, [
+    pastPredictionRun,
+    pastReplayRows,
+    predictionTab,
+    pastReplaySection,
+    selectedEventGradedMatchups,
+    selectedEventGrading?.picks,
+    useGradedPickInventory,
+  ])
 
   const rawGeneratedSecondaryBets = useMemo(() => {
     if (predictionTab !== "past") return []
+    if (useGradedPickInventory) {
+      return selectedEventGradedSecondary
+    }
     return pastReplayRows.length > 0
-      ? buildReplayGeneratedSecondaryBets(pastReplayRows)
+      ? dedupeReplaySecondaryBets(buildReplayGeneratedSecondaryBets(pastReplayRows))
       : getRawGeneratedSecondaryBets(pastPredictionRun)
-  }, [pastPredictionRun, pastReplayRows, predictionTab])
+  }, [
+    pastPredictionRun,
+    pastReplayRows,
+    predictionTab,
+    pastReplaySection,
+    selectedEventGradedSecondary,
+    selectedEventGrading?.picks,
+    useGradedPickInventory,
+  ])
 
   const recordSummary = useMemo(() => {
     if (predictionTab !== "past") {
@@ -373,7 +441,8 @@ export function useWorkspacePastReplay({
     predictionTab === "past" &&
     ((pastPredictionRun?.composite_results?.length ?? 0) > 0 ||
       pastReplayRows.length > 0 ||
-      (pastSnapshotSection?.leaderboard?.length ?? 0) > 0)
+      (pastSnapshotSection?.leaderboard?.length ?? 0) > 0 ||
+      (selectedEventGrading?.picks?.length ?? 0) > 0)
 
   useEffect(() => {
     if (!onPastEventContextChange) return

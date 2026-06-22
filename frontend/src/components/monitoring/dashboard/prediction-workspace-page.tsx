@@ -386,7 +386,12 @@ export function PredictionWorkspacePage({
   const fullPicksTabLabel = fullPicks?.mode === "lab" ? "Full lab picks" : "Full picks"
 
   const fullPicksPanel = (
-    <WorkspaceFullPicksPanel fullPicks={fullPicks} predictionTabPast={predictionTab === "past"} />
+    <WorkspaceFullPicksPanel
+      fullPicks={fullPicks}
+      predictionTabPast={predictionTab === "past"}
+      pastGradedMatchups={predictionTab === "past" ? pastReplay.pastMatchups : undefined}
+      pastGradedSecondaryBets={predictionTab === "past" ? pastReplay.pastSecondaryBets : undefined}
+    />
   )
 
   const leaderboardPanel = (
@@ -452,7 +457,19 @@ export function PredictionWorkspacePage({
     .filter(Boolean)
     .join(" · ")
 
-  const latestGradedEvent = gradingHistory[0] ?? null
+  const latestGradedEvent = useMemo(() => {
+    if (predictionTab === "past") {
+      const selected = gradingHistory.find(
+        (event) => String(event.event_id ?? "") === String(pastReplay.selectedPastEvent?.event_id ?? ""),
+      )
+      if (selected && (selected.graded_pick_count ?? 0) > 0) {
+        return selected
+      }
+    }
+    return (
+      gradingHistory.find((event) => (event.graded_pick_count ?? 0) > 0) ?? gradingHistory[0] ?? null
+    )
+  }, [gradingHistory, pastReplay.selectedPastEvent?.event_id, predictionTab])
 
   const toolbarBooks = predictionTab === "past" ? pastReplay.displayAvailableBooks : availableBooks
 

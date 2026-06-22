@@ -417,4 +417,31 @@ describe("buildHydratedPredictionRun", () => {
     expect(run?.composite_results?.[0]?.momentum_trend).toBe(0.55)
     expect(run?.composite_results?.[0]?.momentum_direction).toBe("hot")
   })
+
+  it("allows completed replay rankings when eligibility is withheld", () => {
+    const run = buildPredictionRunFromSection({
+      event_name: "U.S. Open",
+      completed_replay: true,
+      rankings: [
+        {
+          rank: 1,
+          player_key: "player_a",
+          player: "Player A",
+          composite: 82,
+          course_fit: 78,
+          form: 80,
+          momentum: 76,
+        },
+      ],
+      eligibility: {
+        verified: false,
+        summary: "Field verification failed",
+      },
+      matchup_bets: [],
+      value_bets: {},
+    })
+
+    expect(run?.composite_results).toHaveLength(1)
+    expect(run?.errors ?? []).toHaveLength(0)
+  })
 })

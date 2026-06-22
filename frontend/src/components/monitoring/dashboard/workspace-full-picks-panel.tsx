@@ -2,14 +2,18 @@ import { LabPicksPage } from "@/pages/lab-picks-page"
 import { PicksPage } from "@/pages/picks-page"
 
 import { PanelBackfill } from "../panel-backfill"
-import type { WorkspaceFullPicksEmbed } from "./workspace-types"
+import type { WorkspaceFullPicksEmbed, WorkspaceFullPicksProduction } from "./workspace-types"
 
 export function WorkspaceFullPicksPanel({
   fullPicks,
   predictionTabPast,
+  pastGradedMatchups,
+  pastGradedSecondaryBets,
 }: {
   fullPicks?: WorkspaceFullPicksEmbed
   predictionTabPast: boolean
+  pastGradedMatchups?: WorkspaceFullPicksProduction["matchups"]
+  pastGradedSecondaryBets?: WorkspaceFullPicksProduction["secondaryBets"]
 }) {
   if (!fullPicks) {
     return (
@@ -23,13 +27,31 @@ export function WorkspaceFullPicksPanel({
   }
 
   if (predictionTabPast) {
+    const pastMatchups = pastGradedMatchups ?? []
+    const pastSecondary = pastGradedSecondaryBets ?? []
+    if (pastMatchups.length === 0 && pastSecondary.length === 0) {
+      return (
+        <PanelBackfill
+          message="Past replay lives on the board tabs"
+          detail="Switch to Top picks or use Recent results in Intel for graded history."
+          loading={false}
+          testId="workspace-full-picks-past-backfill"
+        />
+      )
+    }
+
     return (
-      <PanelBackfill
-        message="Past replay lives on the board tabs"
-        detail="Switch to Top picks or use Recent results in Intel for graded history."
-        loading={false}
-        testId="workspace-full-picks-past-backfill"
-      />
+      <div className="workspace-full-picks-embed" data-testid="workspace-full-picks-past">
+        <PicksPage
+          embedded
+          lane="production"
+          matchups={pastMatchups}
+          matchupsEmptyMessage="No graded matchup picks for this event."
+          minEdgePct={0}
+          secondaryBets={pastSecondary}
+          onPlayerSelect={fullPicks?.onPlayerSelect}
+        />
+      </div>
     )
   }
 
