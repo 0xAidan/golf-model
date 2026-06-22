@@ -1393,7 +1393,7 @@ def _add_unique_constraints(conn: sqlite3.Connection):
         (
             "idx_picks_unique",
             "picks",
-            "(tournament_id, model_variant, source, player_key, bet_type, market_type, opponent_key, market_book)",
+            "(tournament_id, model_variant, source, player_key, bet_type, market_type, opponent_key)",
         ),
         (
             "idx_prediction_log_unique",
@@ -1716,13 +1716,23 @@ def get_player_display_names(tournament_id: int) -> dict:
 # ── Picks / results helpers ─────────────────────────────────────────
 
 def _migrate_picks_unique_index(conn: sqlite3.Connection) -> None:
-    """Ensure picks unique index excludes market_odds (one identity row; best odds on upsert)."""
+    """Ensure picks unique index is one row per play identity (best odds on upsert)."""
+    from src.official_pick_record import dedupe_picks_by_grading_identity
+
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_picks_unique'",
     ).fetchone()
-    if row and row["sql"] and "market_odds" in str(row["sql"]):
-        conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
-        conn.commit()
+    needs_dedupe = False
+    if row and row["sql"]:
+        sql = str(row["sql"]).lower()
+        if "market_odds" in sql or "market_book" in sql:
+            conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
+            conn.commit()
+            needs_dedupe = True
+    else:
+        needs_dedupe = True
+    if needs_dedupe:
+        dedupe_picks_by_grading_identity(conn)
     _add_unique_constraints(conn)
 
 
@@ -1758,7 +1768,7 @@ def store_picks(picks: list[dict]):
         })
     conn = get_conn()
     select_sql = """
-        SELECT id, market_odds, ev FROM picks
+        SELECT id, market_odds, ev, market_book FROM picks
         WHERE tournament_id = :tournament_id
           AND model_variant = :model_variant
           AND source = :source
@@ -1766,7 +1776,6 @@ def store_picks(picks: list[dict]):
           AND bet_type = :bet_type
           AND market_type = :market_type
           AND opponent_key = :opponent_key
-          AND market_book = :market_book
         LIMIT 1
     """
     insert_sql = """
@@ -1792,6 +1801,7 @@ def store_picks(picks: list[dict]):
             momentum_score = :momentum_score,
             model_prob = :model_prob,
             market_odds = :market_odds,
+            market_book = :market_book,
             market_implied_prob = :market_implied_prob,
             ev = :ev,
             confidence = :confidence,

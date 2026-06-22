@@ -41,6 +41,17 @@ def inventory_matchup_key(row: dict, *, lane: str = "") -> tuple:
     )
 
 
+def inventory_prop_key(row: dict, *, lane: str = "") -> tuple:
+    bet_type = str(
+        row.get("bet_type") or row.get("market_family") or row.get("market_type") or "",
+    ).strip().lower()
+    return (
+        str(lane or row.get("lane") or "").strip().lower(),
+        bet_type,
+        str(row.get("player_key") or row.get("player_display") or "").strip().lower(),
+    )
+
+
 def grading_matchup_key(pick: dict) -> tuple:
     return grading_pick_identity_key(pick)
 
@@ -89,14 +100,19 @@ def dedupe_matchup_rows(
 
 def dedupe_inventory_rows(rows: list[dict], *, lane: str = "") -> list[dict]:
     matchups = [row for row in rows if is_matchup_row(row)]
-    other = [row for row in rows if not is_matchup_row(row)]
+    props = [row for row in rows if not is_matchup_row(row)]
     lane_value = lane.strip().lower()
     deduped_matchups = dedupe_matchup_rows(
         matchups,
         key_fn=lambda row: inventory_matchup_key(row, lane=lane_value),
         odds_field="odds",
     )
-    return deduped_matchups + other
+    deduped_props = dedupe_matchup_rows(
+        props,
+        key_fn=lambda row: inventory_prop_key(row, lane=lane_value),
+        odds_field="odds",
+    )
+    return deduped_matchups + deduped_props
 
 
 def dedupe_grading_picks(picks: list[dict]) -> list[dict]:
@@ -121,35 +137,51 @@ def consolidate_duplicate_picks(tournament_id: int) -> dict[str, int]:
     from src import db
 
     conn = db.get_conn()
+    try:
+        return dedupe_picks_by_grading_identity(conn, tournament_id=tournament_id)
+    finally:
+        conn.close()
+
+
+def dedupe_picks_by_grading_identity(
+    conn,
+    *,
+    tournament_id: int | None = None,
+) -> dict[str, int]:
+    """Collapse duplicate pick rows to one per grading identity (best odds kept)."""
+    params: tuple = ()
+    tournament_filter = ""
+    if tournament_id is not None:
+        tournament_filter = "WHERE tournament_id = ?"
+        params = (int(tournament_id),)
+
     rows = conn.execute(
-        """
+        f"""
         SELECT id, model_variant, source, bet_type, market_type, player_key, player_display,
                opponent_key, opponent_display, market_odds, market_book
         FROM picks
-        WHERE tournament_id = ? AND COALESCE(ev, 0) > 0
+        {tournament_filter}
         ORDER BY id ASC
         """,
-        (int(tournament_id),),
+        params,
     ).fetchall()
 
     keep_ids: set[int] = set()
     remove_ids: list[int] = []
     indexes: dict[tuple, int] = {}
+    odds_by_id: dict[int, Any] = {}
 
     for row in rows:
         pick = dict(row)
         pick_id = int(pick["id"])
+        odds_by_id[pick_id] = pick.get("market_odds")
         key = grading_pick_identity_key(pick)
         existing_id = indexes.get(key)
         if existing_id is None:
             indexes[key] = pick_id
             keep_ids.add(pick_id)
             continue
-        existing_row = conn.execute(
-            "SELECT market_odds FROM picks WHERE id = ?",
-            (existing_id,),
-        ).fetchone()
-        existing_odds = existing_row["market_odds"] if existing_row else None
+        existing_odds = odds_by_id.get(existing_id)
         if american_odds_rank(pick.get("market_odds")) > american_odds_rank(existing_odds):
             remove_ids.append(existing_id)
             keep_ids.discard(existing_id)
@@ -165,7 +197,6 @@ def consolidate_duplicate_picks(tournament_id: int) -> dict[str, int]:
         removed += 1
 
     conn.commit()
-    conn.close()
     return {"removed": removed, "kept": len(keep_ids)}
 
 
