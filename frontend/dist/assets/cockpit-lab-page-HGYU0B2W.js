@@ -1,0 +1,1 @@
+import{t as e}from"./cockpit-lab-page-D711zcA7.js";export{e as CockpitLabPage};
