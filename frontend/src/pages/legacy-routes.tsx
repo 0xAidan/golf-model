@@ -232,7 +232,9 @@ export function GradingPage() {
                               <HeroDataGrid
                                 data={dash.picks ?? []}
                                 columns={gradingPickColumns}
-                                getRowId={(row) => `dash-${row.player_display}-${row.opponent_display ?? "solo"}`}
+                                getRowId={(row) =>
+                                  String(row.id ?? `dash-${row.bet_type}-${row.player_display}-${row.opponent_display ?? "solo"}`)
+                                }
                                 density="compact"
                                 testId={`grading-picks-dashboard-${id}`}
                               />
@@ -248,7 +250,9 @@ export function GradingPage() {
                               <HeroDataGrid
                                 data={lab.picks ?? []}
                                 columns={gradingPickColumns}
-                                getRowId={(row) => `lab-${row.player_display}-${row.opponent_display ?? "solo"}`}
+                                getRowId={(row) =>
+                                  String(row.id ?? `lab-${row.bet_type}-${row.player_display}-${row.opponent_display ?? "solo"}`)
+                                }
                                 density="compact"
                                 testId={`grading-picks-lab-${id}`}
                               />
@@ -347,7 +351,9 @@ export function GradingPage() {
                           <HeroDataGrid
                             data={item.picks ?? []}
                             columns={gradingPickColumns}
-                            getRowId={(row) => `${row.player_display}-${row.opponent_display ?? "solo"}`}
+                            getRowId={(row) =>
+                              String(row.id ?? `${row.bet_type}-${row.player_display}-${row.opponent_display ?? "solo"}`)
+                            }
                             density="compact"
                             testId={`grading-picks-${id}`}
                           />

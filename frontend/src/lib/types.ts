@@ -627,6 +627,7 @@ export type GradingSeasonResponse = {
 }
 
 export type TrackRecordPick = {
+  id?: number
   model_variant?: string
   source?: string | null
   market_book?: string | null

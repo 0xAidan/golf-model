@@ -1127,6 +1127,7 @@ def _run_migrations(conn: sqlite3.Connection):
     # Rebuild legacy unique index to include model lane + opponent key + market_type.
     conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
     conn.commit()
+    _migrate_picks_unique_index(conn)
 
     # Add event_id column to tournaments if missing
     try:
@@ -1392,7 +1393,7 @@ def _add_unique_constraints(conn: sqlite3.Connection):
         (
             "idx_picks_unique",
             "picks",
-            "(tournament_id, model_variant, source, player_key, bet_type, market_type, opponent_key, market_book, market_odds)",
+            "(tournament_id, model_variant, source, player_key, bet_type, market_type, opponent_key, market_book)",
         ),
         (
             "idx_prediction_log_unique",
@@ -1412,6 +1413,17 @@ def _add_unique_constraints(conn: sqlite3.Connection):
 
         # Deduplicate: keep the row with the highest id (most recent)
         try:
+            if table == "picks":
+                conn.execute(f"""
+                    DELETE FROM pick_outcomes
+                    WHERE pick_id IN (
+                        SELECT id FROM {table}
+                        WHERE id NOT IN (
+                            SELECT MAX(id) FROM {table}
+                            GROUP BY {cols.strip('()')}
+                        )
+                    )
+                """)
             conn.execute(f"""
                 DELETE FROM {table}
                 WHERE id NOT IN (
@@ -1703,9 +1715,22 @@ def get_player_display_names(tournament_id: int) -> dict:
 
 # ── Picks / results helpers ─────────────────────────────────────────
 
+def _migrate_picks_unique_index(conn: sqlite3.Connection) -> None:
+    """Ensure picks unique index excludes market_odds (one identity row; best odds on upsert)."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_picks_unique'",
+    ).fetchone()
+    if row and row["sql"] and "market_odds" in str(row["sql"]):
+        conn.execute("DROP INDEX IF EXISTS idx_picks_unique")
+        conn.commit()
+    _add_unique_constraints(conn)
+
+
 def store_picks(picks: list[dict]):
     if not picks:
         return
+    from src.official_pick_record import american_odds_rank
+
     normalized_rows = []
     for pick in picks:
         normalized_rows.append({
@@ -1732,8 +1757,20 @@ def store_picks(picks: list[dict]):
             "model_config_hash": pick.get("model_config_hash"),
         })
     conn = get_conn()
-    conn.executemany(
-        """INSERT OR IGNORE INTO picks
+    select_sql = """
+        SELECT id, market_odds, ev FROM picks
+        WHERE tournament_id = :tournament_id
+          AND model_variant = :model_variant
+          AND source = :source
+          AND player_key = :player_key
+          AND bet_type = :bet_type
+          AND market_type = :market_type
+          AND opponent_key = :opponent_key
+          AND market_book = :market_book
+        LIMIT 1
+    """
+    insert_sql = """
+        INSERT INTO picks
            (tournament_id, model_variant, source, bet_type, market_type, player_key, player_display,
             opponent_key, opponent_display,
             composite_score, course_fit_score, form_score, momentum_score,
@@ -1743,9 +1780,34 @@ def store_picks(picks: list[dict]):
                     :opponent_key, :opponent_display,
                     :composite_score, :course_fit_score, :form_score, :momentum_score,
                     :model_prob, :market_odds, :market_book, :market_implied_prob, :ev,
-                    :confidence, :reasoning, :model_config_hash)""",
-        normalized_rows,
-    )
+                    :confidence, :reasoning, :model_config_hash)
+    """
+    update_sql = """
+        UPDATE picks SET
+            player_display = :player_display,
+            opponent_display = :opponent_display,
+            composite_score = :composite_score,
+            course_fit_score = :course_fit_score,
+            form_score = :form_score,
+            momentum_score = :momentum_score,
+            model_prob = :model_prob,
+            market_odds = :market_odds,
+            market_implied_prob = :market_implied_prob,
+            ev = :ev,
+            confidence = :confidence,
+            reasoning = :reasoning,
+            model_config_hash = :model_config_hash
+        WHERE id = :existing_id
+    """
+    for row in normalized_rows:
+        existing = conn.execute(select_sql, row).fetchone()
+        if existing is None:
+            conn.execute(insert_sql, row)
+            continue
+        better_odds = american_odds_rank(row.get("market_odds")) > american_odds_rank(existing["market_odds"])
+        better_ev = float(row.get("ev") or 0) > float(existing["ev"] or 0)
+        if better_odds or better_ev:
+            conn.execute(update_sql, {**row, "existing_id": existing["id"]})
     conn.commit()
     conn.close()
 

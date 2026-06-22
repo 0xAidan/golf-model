@@ -290,6 +290,24 @@ def score_picks_for_tournament(
     conn.commit()
     conn.close()
 
+    from src.grading_record import build_record_summary, format_graded_pick_rows
+
+    conn = db.get_conn()
+    graded_rows = conn.execute(
+        """
+        SELECT p.id, p.model_variant, p.source, p.bet_type, p.market_type,
+               p.player_key, p.player_display, p.opponent_key, p.opponent_display,
+               p.market_odds, p.market_book, p.model_prob, p.ev,
+               po.hit AS hit, po.hit AS bet_hit, po.profit, po.stake, po.odds_decimal
+        FROM picks p
+        JOIN pick_outcomes po ON po.pick_id = p.id
+        WHERE p.tournament_id = ? AND COALESCE(p.ev, 0) > 0
+        """,
+        (tournament_id,),
+    ).fetchall()
+    conn.close()
+    deduped_summary = build_record_summary(format_graded_pick_rows([dict(row) for row in graded_rows]))
+
     return {
         "status": "ok",
         "result_source": result_source,
@@ -301,7 +319,8 @@ def score_picks_for_tournament(
         "hit_rate": round(model_hits / resolved, 3) if resolved else 0,
         "bet_hits": bet_hits,
         "model_hits": model_hits,
-        "total_profit": round(total_profit, 2),
+        "total_profit": deduped_summary["combined"]["profit"],
+        "deduped_picks": deduped_summary["combined"]["picks"],
     }
 
 
