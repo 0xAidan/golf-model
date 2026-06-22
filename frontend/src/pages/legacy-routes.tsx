@@ -43,6 +43,7 @@ export function GradingPage() {
         year: 2026,
         lane: seasonLaneFromPickSource(pickSource),
         includePicks: true,
+        includeReconciliation: true,
         limit: 100,
       }),
   })
