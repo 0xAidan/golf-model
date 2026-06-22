@@ -34,7 +34,8 @@ const LIVE_REFRESH_STATUS_TIMEOUT_MS = 30_000
 const LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS = 35_000
 const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 95_000
 const LIVE_REFRESH_START_TIMEOUT_MS = 30_000
-const PAST_REPLAY_TIMEOUT_MS = 45_000
+const PAST_REPLAY_TIMEOUT_MS = 90_000
+const GRADING_SEASON_TIMEOUT_MS = 120_000
 /** Lab instrumentation panels; allow headroom when dashboard is busy with live-refresh recompute. */
 const RESEARCH_INSTRUMENTATION_TIMEOUT_MS = 30_000
 
@@ -99,6 +100,7 @@ export const api = {
     year?: number
     lane?: "all" | "cockpit" | "lab"
     includePicks?: boolean
+    includeReconciliation?: boolean
     limit?: number
   }) => {
     const params = new URLSearchParams()
@@ -111,11 +113,18 @@ export const api = {
     if (options?.includePicks === false) {
       params.set("include_picks", "false")
     }
+    if (options?.includeReconciliation) {
+      params.set("include_reconciliation", "true")
+    }
     if (options?.limit !== undefined) {
       params.set("limit", String(options.limit))
     }
     const qs = params.toString()
-    return request<GradingSeasonResponse>(`/api/grading/season${qs ? `?${qs}` : ""}`)
+    return request<GradingSeasonResponse>(
+      `/api/grading/season${qs ? `?${qs}` : ""}`,
+      undefined,
+      GRADING_SEASON_TIMEOUT_MS,
+    )
   },
   getPlayerProfile: (playerKey: string, tournamentId: number, courseNum?: number) => {
     const enc = encodeURIComponent(playerKey)

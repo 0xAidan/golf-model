@@ -204,9 +204,20 @@ def _event_reconciliation(
     event_id: str,
     tournament_id: int | None,
     dashboard_lane: dict[str, Any],
+    include_past_replay: bool = False,
 ) -> dict[str, Any]:
-    past_replay = _past_replay_positive_count(event_id, "dashboard")
     graded_count = int(dashboard_lane.get("graded_pick_count") or 0)
+    if not include_past_replay:
+        positive_inventory = int(dashboard_lane.get("ungraded_positive_ev_count") or 0) + graded_count
+        gap = positive_inventory - graded_count
+        return {
+            "past_replay_positive_matchups": positive_inventory,
+            "graded_deduped_count": graded_count,
+            "gap_past_vs_graded": gap,
+            "reconciliation_ok": gap == 0 or tournament_id is None,
+        }
+
+    past_replay = _past_replay_positive_count(event_id, "dashboard")
     gap = past_replay - graded_count
     return {
         "past_replay_positive_matchups": past_replay,
@@ -273,39 +284,50 @@ def _fetch_lane_picks(conn, tournament_id: int | None, lane: str) -> list[dict]:
     return format_graded_pick_rows([dict(row) for row in rows])
 
 
-def _lane_inventory_counts(conn, event_id: str, lane: str) -> tuple[int, int]:
-    from src.official_pick_record import dedupe_grading_picks
-
+def _lane_inventory_counts(
+    conn,
+    event_id: str,
+    lane: str,
+    *,
+    tournament_id: int | None = None,
+) -> tuple[int, int]:
+    """Fast inventory counts — avoid loading the full pick_ledger into memory."""
     ledger_lane = "cockpit" if lane in {"cockpit", "dashboard"} else "lab"
-    rows = conn.execute(
+    inventory_row = conn.execute(
         """
-        SELECT bet_type, market_type, market_family, player_key, player_display,
-               opponent_key, opponent_display, book, odds, ev, is_value
+        SELECT COUNT(*) AS c
         FROM pick_ledger
         WHERE event_id = ? AND lane = ?
         """,
         (event_id, ledger_lane),
-    ).fetchall()
-    if not rows:
+    ).fetchone()
+    inventory_count = int(inventory_row["c"] or 0) if inventory_row else 0
+
+    positive_ev_inventory = 0
+    if tournament_id:
+        lane_sql = pick_lane_sql(lane)
+        pick_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS c
+            FROM picks p
+            WHERE p.tournament_id = ? {lane_sql}
+              AND COALESCE(p.ev, 0) > 0
+            """,
+            (int(tournament_id),),
+        ).fetchone()
+        positive_ev_inventory = int(pick_row["c"] or 0) if pick_row else 0
+
+    if positive_ev_inventory > 0:
+        return inventory_count, positive_ev_inventory
+
+    if inventory_count == 0:
         return 0, 0
-    inventory_rows = [dict(row) for row in rows]
-    positive_rows = [row for row in inventory_rows if int(row.get("is_value") or 0) == 1]
-    pick_like = [
-        {
-            "source": ledger_lane,
-            "model_variant": "baseline" if ledger_lane == "cockpit" else "v5",
-            "bet_type": row.get("bet_type") or row.get("market_family"),
-            "market_type": row.get("market_type") or row.get("market_family"),
-            "player_key": row.get("player_key"),
-            "player_display": row.get("player_display"),
-            "opponent_key": row.get("opponent_key"),
-            "opponent_display": row.get("opponent_display"),
-            "market_odds": row.get("odds"),
-            "ev": row.get("ev"),
-        }
-        for row in positive_rows
-    ]
-    return len(inventory_rows), len(dedupe_grading_picks(pick_like))
+
+    # Fallback for events without durable picks yet: dedupe completed MPR rows only.
+    source = "dashboard" if ledger_lane == "cockpit" else "lab"
+    rows = db.get_completed_market_prediction_rows_for_event(event_id, source=source)
+    deduped = dedupe_inventory_rows(rows, lane=source)
+    return inventory_count, len(filter_positive_ev(deduped))
 
 
 def _build_lane_payload(
@@ -317,7 +339,12 @@ def _build_lane_payload(
     rollup_record: dict | None,
     has_results: bool = True,
 ) -> dict[str, Any]:
-    inventory_count, positive_ev_inventory = _lane_inventory_counts(conn, event_id, lane)
+    inventory_count, positive_ev_inventory = _lane_inventory_counts(
+        conn,
+        event_id,
+        lane,
+        tournament_id=tournament_id,
+    )
     picks = _fetch_lane_picks(conn, tournament_id, lane)
     summary = build_record_summary(picks)
     combined = summary["combined"]
@@ -372,6 +399,7 @@ async def get_grading_season(
     year: int = Query(2026, ge=2000, le=2100),
     lane: str = Query("all", pattern="^(all|cockpit|dashboard|lab)$"),
     include_picks: bool = Query(True),
+    include_reconciliation: bool = Query(False),
     limit: int = Query(200, ge=1, le=500),
     tour: str = Query("pga", pattern="^(pga|liv|all)$"),
 ):
@@ -441,6 +469,7 @@ async def get_grading_season(
             event_id=str(meta["event_id"]),
             tournament_id=tournament_id,
             dashboard_lane=dashboard_lane,
+            include_past_replay=include_reconciliation,
         )
         comparison = build_lane_comparison(dashboard_lane["picks"], lab_lane["picks"])
         all_dashboard_picks.extend(dashboard_lane["picks"])
