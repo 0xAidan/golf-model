@@ -2,10 +2,32 @@ import type { FieldBoardPlayer, LiveRankingRow, LiveTournamentSnapshot, MatchupB
 
 export type CompareScope = "event" | "history"
 
+export type CompareEventMode = "current" | "past"
+
+export type CompareEventOption = {
+  eventId: string
+  label: string
+  mode: CompareEventMode
+  hasSnapshots?: boolean
+  hasGrading?: boolean
+}
+
 export type CompareTrackSections = {
   champion: LiveTournamentSnapshot | undefined
   challenger: LiveTournamentSnapshot | null | undefined
   usingLive: boolean
+  eventMode?: CompareEventMode
+}
+
+export type CompareFieldPlayer = FieldBoardPlayer & {
+  champion_composite?: number | null
+  challenger_composite?: number | null
+  champion_form?: number | null
+  challenger_form?: number | null
+  champion_course_fit?: number | null
+  challenger_course_fit?: number | null
+  champion_momentum?: number | null
+  challenger_momentum?: number | null
 }
 
 export type RankDeltaRow = {
@@ -61,6 +83,8 @@ export type MatchupDiffRow = {
 
 export type CompareKpiSummary = {
   eventName: string
+  eventMode: CompareEventMode
+  modeLabel: string
   usingLive: boolean
   fieldSize: number
   bothRankedCount: number
@@ -70,6 +94,39 @@ export type CompareKpiSummary = {
   overlapChampionOnly: number
   overlapChallengerOnly: number
   maxDisagreement: { player: string; delta: number } | null
+  championGradedPnl?: number | null
+  challengerGradedPnl?: number | null
+  gradedProfitDelta?: number | null
+}
+
+export type GradedPickDiffRow = {
+  key: string
+  pick: string
+  opponent: string
+  betType: string
+  book: string
+  championEv: number | null
+  challengerEv: number | null
+  championProfit: number | null
+  challengerProfit: number | null
+  championHit: boolean | null
+  challengerHit: boolean | null
+  bucket: MatchupBucket
+}
+
+export type SeasonEventCompareRow = {
+  eventId: string
+  name: string
+  eventDate?: string | null
+  championPnl: number | null
+  challengerPnl: number | null
+  profitDelta: number | null
+  championHitRate: number | null
+  challengerHitRate: number | null
+  overlapMatchups: number | null
+  picksOnlyChampion: number | null
+  picksOnlyChallenger: number | null
+  status?: string
 }
 
 export type MatchupOverlap = {

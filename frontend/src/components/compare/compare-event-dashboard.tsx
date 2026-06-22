@@ -1,51 +1,55 @@
 import { useMemo, useRef, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { RankScatterChartLazy } from "@/components/compare/compare-charts-lazy"
 import { CompareComponentDrivers } from "@/components/compare/compare-component-drivers"
 import { CompareDiagnosticsPanel } from "@/components/compare/compare-diagnostics-panel"
+import { CompareGradedPicksTable } from "@/components/compare/compare-graded-picks-table"
 import { CompareKpiBand } from "@/components/compare/compare-kpi-band"
 import { CompareMatchupDiffTable } from "@/components/compare/compare-matchup-diff-table"
-import type { CompareTrackSections } from "@/components/compare/compare-types"
+import type {
+  CompareEventMode,
+  CompareFieldPlayer,
+  CompareTrackSections,
+} from "@/components/compare/compare-types"
 import {
   computeComponentDeltaRows,
+  computeGradedPickDiffRows,
   computeKpiSummary,
   computeMatchupDiffRows,
   computeMatchupOverlap,
   computeRankScatterPoints,
+  resolveSnapshotRankings,
 } from "@/components/compare/compare-utils"
 import { BentoGrid } from "@/components/monitoring/bento-grid"
 import { BentoPanel } from "@/components/monitoring/bento-panel"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
-import { api } from "@/lib/api"
-import { POLLING } from "@/lib/query-polling"
-import type { FieldBoardPlayer } from "@/lib/types"
+import type { GradingSeasonEvent } from "@/lib/types"
 
 const fmt = (v?: number | null, d = 1) => (v == null ? "—" : v.toFixed(d))
 
 function CompareFieldBoardSection({
-  section,
-  highlightedKey,
-  onHighlight,
   eventName,
+  modeLabel,
   players,
   isLoading,
   labAvailable,
+  highlightedKey,
+  onHighlight,
 }: {
-  section: "live" | "upcoming"
-  highlightedKey: string | null
-  onHighlight: (key: string | null) => void
-  eventName?: string | null
-  players: FieldBoardPlayer[]
+  eventName: string
+  modeLabel: string
+  players: CompareFieldPlayer[]
   isLoading: boolean
   labAvailable: boolean
+  highlightedKey: string | null
+  onHighlight: (key: string | null) => void
 }) {
-  const [selected, setSelected] = useState<FieldBoardPlayer | null>(null)
+  const [selected, setSelected] = useState<CompareFieldPlayer | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
 
-  const columns = useMemo<ColumnDef<FieldBoardPlayer, unknown>[]>(() => {
-    const cols: ColumnDef<FieldBoardPlayer, unknown>[] = [
+  const columns = useMemo<ColumnDef<CompareFieldPlayer, unknown>[]>(() => {
+    const cols: ColumnDef<CompareFieldPlayer, unknown>[] = [
       {
         id: "player",
         header: "Player",
@@ -55,7 +59,7 @@ function CompareFieldBoardSection({
             className={
               row.original.player_key === highlightedKey
                 ? "font-semibold text-[var(--gold)]"
-                : "text-[var(--text-primary)]"
+                : "font-medium text-[var(--text-primary)]"
             }
           >
             {row.original.player}
@@ -79,42 +83,76 @@ function CompareFieldBoardSection({
         },
         {
           id: "rank_delta",
-          header: "Δ",
+          header: "Rank Δ",
           accessorFn: (r) => (r.rank_delta == null ? 0 : Math.abs(r.rank_delta)),
           cell: ({ row }) => {
             const d = row.original.rank_delta
             if (d == null) return <span className="num text-[var(--text-faint)]">—</span>
             const cls =
               d > 0 ? "text-[var(--green)]" : d < 0 ? "text-[var(--red)]" : "text-[var(--text-faint)]"
-            return <span className={`num ${cls}`}>{d > 0 ? `+${d}` : d}</span>
+            return <span className={`num font-medium ${cls}`}>{d > 0 ? `+${d}` : d}</span>
+          },
+        },
+        {
+          id: "composite_delta",
+          header: "Comp Δ",
+          accessorFn: (r) =>
+            r.champion_composite != null && r.challenger_composite != null
+              ? Math.abs(r.champion_composite - r.challenger_composite)
+              : 0,
+          cell: ({ row }) => {
+            const a = row.original.champion_composite
+            const b = row.original.challenger_composite
+            if (a == null || b == null) return <span className="num">—</span>
+            const d = a - b
+            const cls = d > 0 ? "text-[var(--green)]" : d < 0 ? "text-[var(--red)]" : ""
+            return <span className={`num ${cls}`}>{d > 0 ? "+" : ""}{d.toFixed(2)}</span>
+          },
+        },
+        {
+          id: "form_delta",
+          header: "Form Δ",
+          accessorFn: (r) =>
+            r.champion_form != null && r.challenger_form != null
+              ? Math.abs(r.champion_form - r.challenger_form)
+              : 0,
+          cell: ({ row }) => {
+            const a = row.original.champion_form
+            const b = row.original.challenger_form
+            if (a == null || b == null) return <span className="num">—</span>
+            const d = a - b
+            return <span className="num">{d > 0 ? "+" : ""}{d.toFixed(2)}</span>
+          },
+        },
+        {
+          id: "course_delta",
+          header: "Course Δ",
+          accessorFn: (r) =>
+            r.champion_course_fit != null && r.challenger_course_fit != null
+              ? Math.abs(r.champion_course_fit - r.challenger_course_fit)
+              : 0,
+          cell: ({ row }) => {
+            const a = row.original.champion_course_fit
+            const b = row.original.challenger_course_fit
+            if (a == null || b == null) return <span className="num">—</span>
+            const d = a - b
+            return <span className="num">{d > 0 ? "+" : ""}{d.toFixed(2)}</span>
           },
         },
       )
     }
     cols.push(
       {
-        id: "composite",
-        header: "Composite",
-        accessorFn: (r) => r.composite ?? 0,
-        cell: ({ row }) => <span className="num">{fmt(row.original.composite)}</span>,
+        id: "champion_composite",
+        header: "Champ comp",
+        accessorFn: (r) => r.champion_composite ?? r.composite ?? 0,
+        cell: ({ row }) => <span className="num">{fmt(row.original.champion_composite ?? row.original.composite)}</span>,
       },
       {
-        id: "form",
-        header: "Form",
-        accessorFn: (r) => r.form ?? 0,
-        cell: ({ row }) => <span className="num">{fmt(row.original.form)}</span>,
-      },
-      {
-        id: "course_fit",
-        header: "Course",
-        accessorFn: (r) => r.course_fit ?? 0,
-        cell: ({ row }) => <span className="num">{fmt(row.original.course_fit)}</span>,
-      },
-      {
-        id: "momentum",
-        header: "Mom.",
-        accessorFn: (r) => r.momentum ?? 0,
-        cell: ({ row }) => <span className="num">{fmt(row.original.momentum, 2)}</span>,
+        id: "challenger_composite",
+        header: "Chlgr comp",
+        accessorFn: (r) => r.challenger_composite ?? 0,
+        cell: ({ row }) => <span className="num">{fmt(row.original.challenger_composite)}</span>,
       },
       {
         id: "in_positive_ev",
@@ -131,7 +169,7 @@ function CompareFieldBoardSection({
       },
     )
     return cols
-  }, [labAvailable, highlightedKey])
+  }, [highlightedKey, labAvailable])
 
   const sortedPlayers = useMemo(
     () =>
@@ -143,35 +181,38 @@ function CompareFieldBoardSection({
     [players],
   )
 
-  const handleRowClick = (row: FieldBoardPlayer) => {
+  const handleRowClick = (row: CompareFieldPlayer) => {
     setSelected(row)
     onHighlight(row.player_key)
     gridRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
   }
 
   return (
-    <section className="card" ref={gridRef} data-testid="compare-field-board">
+    <section className="card compare-panel" ref={gridRef} data-testid="compare-field-board">
       <div className="card-header">
-        <div className="card-title">Full field{eventName ? ` — ${eventName}` : ""}</div>
-        <div className="text-xs text-[var(--text-faint)]">
-          {players.length} players · {section} · sorted by |rank Δ|
+        <div className="card-title">Full field — {eventName}</div>
+        <div className="text-xs text-[var(--text-secondary)]">
+          {players.length} players · {modeLabel} · sorted by |rank Δ|
         </div>
       </div>
       <div className="card-body">
         {selected ? (
           <div
-            className="mb-3 rounded border border-[var(--border)] bg-[var(--bg-1)] px-3 py-2 text-sm"
+            className="compare-detail-strip mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-1)] px-4 py-3 text-sm"
             data-testid="compare-field-detail"
           >
-            <span className="font-medium text-[var(--text-primary)]">{selected.player}</span>
-            <span className="ml-2 text-[var(--text-faint)]">
-              Champ #{selected.champion_rank ?? "—"} · Chlgr #{selected.challenger_rank ?? "—"} ·
-              composite {fmt(selected.composite)} · form {fmt(selected.form)} · course{" "}
-              {fmt(selected.course_fit)} · mom {fmt(selected.momentum, 2)}
-            </span>
+            <div className="font-semibold text-[var(--text-primary)]">{selected.player}</div>
+            <div className="mt-1 grid gap-1 text-[var(--text-secondary)] sm:grid-cols-2">
+              <span>Champ #{selected.champion_rank ?? "—"} · Chlgr #{selected.challenger_rank ?? "—"} · rank Δ {selected.rank_delta ?? "—"}</span>
+              <span>
+                Comp {fmt(selected.champion_composite)} vs {fmt(selected.challenger_composite)} · Form{" "}
+                {fmt(selected.champion_form)} vs {fmt(selected.challenger_form)} · Course{" "}
+                {fmt(selected.champion_course_fit)} vs {fmt(selected.challenger_course_fit)}
+              </span>
+            </div>
           </div>
         ) : null}
-        <ProDataGrid<FieldBoardPlayer>
+        <ProDataGrid<CompareFieldPlayer>
           data={sortedPlayers}
           columns={columns}
           virtualizeAfter={80}
@@ -188,70 +229,81 @@ function CompareFieldBoardSection({
   )
 }
 
-export function CompareEventDashboard({ tracks }: { tracks: CompareTrackSections }) {
+export function CompareEventDashboard({
+  tracks,
+  players,
+  gradingEvent,
+  eventName,
+  eventMode,
+  modeLabel,
+  isLoading,
+  labAvailable,
+}: {
+  tracks: CompareTrackSections
+  players: CompareFieldPlayer[]
+  gradingEvent?: GradingSeasonEvent
+  eventName: string
+  eventMode: CompareEventMode
+  modeLabel: string
+  isLoading: boolean
+  labAvailable: boolean
+}) {
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null)
-  const section = tracks.usingLive ? "live" : "upcoming"
 
-  const fieldQuery = useQuery({
-    queryKey: ["field-board", section],
-    queryFn: () => api.getFieldBoard(section),
-    refetchInterval: POLLING.dashboard,
-    staleTime: POLLING.queryDefaultStale,
-  })
+  const championRankings = resolveSnapshotRankings(tracks.champion)
+  const challengerRankings = resolveSnapshotRankings(tracks.challenger)
 
   const overlap = useMemo(
-    () =>
-      computeMatchupOverlap(
-        tracks.champion?.matchup_bets,
-        tracks.challenger?.matchup_bets ?? undefined,
-      ),
+    () => computeMatchupOverlap(tracks.champion?.matchup_bets, tracks.challenger?.matchup_bets ?? undefined),
     [tracks.champion?.matchup_bets, tracks.challenger?.matchup_bets],
   )
 
   const matchupDiffRows = useMemo(
-    () =>
-      computeMatchupDiffRows(
-        tracks.champion?.matchup_bets,
-        tracks.challenger?.matchup_bets ?? undefined,
-      ),
+    () => computeMatchupDiffRows(tracks.champion?.matchup_bets, tracks.challenger?.matchup_bets ?? undefined),
     [tracks.champion?.matchup_bets, tracks.challenger?.matchup_bets],
   )
 
-  const componentRows = useMemo(
+  const gradedPickRows = useMemo(
     () =>
-      computeComponentDeltaRows(tracks.champion?.rankings, tracks.challenger?.rankings ?? undefined),
-    [tracks.champion?.rankings, tracks.challenger?.rankings],
+      computeGradedPickDiffRows(
+        gradingEvent?.lanes?.dashboard?.picks,
+        gradingEvent?.lanes?.lab?.picks,
+      ),
+    [gradingEvent],
+  )
+
+  const componentRows = useMemo(
+    () => computeComponentDeltaRows(championRankings, challengerRankings),
+    [championRankings, challengerRankings],
   )
 
   const kpi = useMemo(
     () =>
       computeKpiSummary({
-        eventName:
-          tracks.champion?.event_name ||
-          tracks.challenger?.event_name ||
-          fieldQuery.data?.event_name ||
-          "current event",
+        eventName,
+        eventMode,
+        modeLabel,
         usingLive: tracks.usingLive,
-        players: fieldQuery.data?.players ?? [],
+        players,
         overlap,
+        championGradedPnl: gradingEvent?.lanes?.dashboard?.record?.profit ?? gradingEvent?.lanes?.dashboard?.total_profit,
+        challengerGradedPnl: gradingEvent?.lanes?.lab?.record?.profit ?? gradingEvent?.lanes?.lab?.total_profit,
+        gradedProfitDelta: gradingEvent?.comparison?.profit_delta,
       }),
-    [tracks, fieldQuery.data, overlap],
+    [eventMode, eventName, gradingEvent, modeLabel, overlap, players, tracks.usingLive],
   )
 
-  const scatterPoints = useMemo(
-    () => computeRankScatterPoints(fieldQuery.data?.players ?? []),
-    [fieldQuery.data?.players],
-  )
+  const scatterPoints = useMemo(() => computeRankScatterPoints(players), [players])
 
   return (
-    <div className="flex flex-col gap-6" data-testid="compare-event-dashboard">
+    <div className="compare-dashboard flex flex-col gap-6" data-testid="compare-event-dashboard">
       <CompareKpiBand kpi={kpi} />
 
       <BentoGrid testId="compare-event-bento">
         <BentoPanel title="Rank disagreement map" span={6} testId="compare-rank-scatter">
-          <p className="mb-2 text-xs text-[var(--text-faint)]">
-            Each dot is a player. On the diagonal = same rank. Click a dot to highlight in the field
-            table.
+          <p className="compare-panel-desc mb-3 text-sm text-[var(--text-secondary)]">
+            Each dot is a player. On the diagonal = same rank. Farther from the line = bigger split.
+            Click a dot to highlight that player below.
           </p>
           <RankScatterChartLazy
             points={scatterPoints}
@@ -270,14 +322,16 @@ export function CompareEventDashboard({ tracks }: { tracks: CompareTrackSections
 
       <CompareMatchupDiffTable rows={matchupDiffRows} />
 
+      {gradedPickRows.length > 0 ? <CompareGradedPicksTable rows={gradedPickRows} /> : null}
+
       <CompareFieldBoardSection
-        section={section}
+        eventName={eventName}
+        modeLabel={modeLabel}
+        players={players}
+        isLoading={isLoading}
+        labAvailable={labAvailable}
         highlightedKey={highlightedKey}
         onHighlight={setHighlightedKey}
-        eventName={fieldQuery.data?.event_name}
-        players={fieldQuery.data?.players ?? []}
-        isLoading={fieldQuery.isLoading}
-        labAvailable={fieldQuery.data?.lab_available ?? false}
       />
 
       <CompareDiagnosticsPanel champion={tracks.champion} challenger={tracks.challenger} />

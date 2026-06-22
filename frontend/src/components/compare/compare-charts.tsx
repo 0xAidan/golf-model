@@ -5,14 +5,15 @@ import type { ComponentDriverSummary } from "@/components/compare/compare-types"
 import { getEchartsTooltipStyle } from "@/lib/chart-theme"
 
 const T = {
-  surface: "var(--surface)",
+  surface: "var(--bg-1)",
   border: "var(--border)",
-  text: "var(--text)",
+  text: "var(--text-primary)",
+  muted: "var(--text-secondary)",
   faint: "var(--text-faint)",
-  green: "var(--green)",
-  cyan: "var(--cyan)",
-  gold: "var(--gold)",
-  red: "var(--red)",
+  green: "#34d399",
+  cyan: "#22d3ee",
+  gold: "#fbbf24",
+  red: "#f87171",
   mono: "var(--font-mono)",
 }
 
@@ -28,8 +29,8 @@ function ChartEmpty({ height = 220, message = "No data" }: { height?: number; me
         border: `1px dashed ${T.border}`,
         borderRadius: 3,
         fontFamily: T.mono,
-        fontSize: 10,
-        letterSpacing: "0.08em",
+        fontSize: 11,
+        letterSpacing: "0.06em",
         textTransform: "uppercase",
         color: T.faint,
       }}
@@ -61,7 +62,7 @@ export function RankScatterChart({
     delta: p.delta,
     itemStyle: {
       color: p.playerKey === highlightedKey ? T.gold : T.cyan,
-      opacity: highlightedKey && p.playerKey !== highlightedKey ? 0.35 : 0.85,
+      opacity: highlightedKey && p.playerKey !== highlightedKey ? 0.25 : 1,
     },
   }))
 
@@ -99,19 +100,21 @@ export function RankScatterChart({
           min: 1,
           max: maxRank,
           inverse: false,
-          axisLabel: { color: T.faint, fontFamily: T.mono, fontSize: 10 },
-          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          axisLabel: { color: T.muted, fontFamily: T.mono, fontSize: 11 },
+          nameTextStyle: { color: T.muted, fontSize: 11 },
+          splitLine: { lineStyle: { color: T.border, type: "dashed", opacity: 0.8 } },
         },
         yAxis: {
           type: "value",
           name: "Challenger rank",
           nameLocation: "middle",
-          nameGap: 32,
+          nameGap: 36,
           min: 1,
           max: maxRank,
           inverse: true,
-          axisLabel: { color: T.faint, fontFamily: T.mono, fontSize: 10 },
-          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          axisLabel: { color: T.muted, fontFamily: T.mono, fontSize: 11 },
+          nameTextStyle: { color: T.muted, fontSize: 11 },
+          splitLine: { lineStyle: { color: T.border, type: "dashed", opacity: 0.8 } },
         },
         series: [
           {
@@ -121,14 +124,14 @@ export function RankScatterChart({
               [maxRank, maxRank],
             ],
             symbol: "none",
-            lineStyle: { color: T.border, type: "dashed", width: 1 },
+            lineStyle: { color: T.muted, type: "dashed", width: 1.5 },
             silent: true,
             z: 0,
           },
           {
             type: "scatter",
             data: seriesData,
-            symbolSize: 8,
+            symbolSize: 10,
             z: 1,
           },
         ],
@@ -156,7 +159,7 @@ export function ComponentDriversChart({
       style={{ height }}
       option={{
         animation: false,
-        grid: { top: 8, right: 12, bottom: 28, left: 72 },
+        grid: { top: 8, right: 16, bottom: 28, left: 88 },
         tooltip: {
           ...getEchartsTooltipStyle(),
           trigger: "axis",
@@ -168,13 +171,13 @@ export function ComponentDriversChart({
         },
         xAxis: {
           type: "value",
-          axisLabel: { color: T.faint, fontFamily: T.mono, fontSize: 10 },
-          splitLine: { lineStyle: { color: T.border, type: "dashed" } },
+          axisLabel: { color: T.muted, fontFamily: T.mono, fontSize: 11 },
+          splitLine: { lineStyle: { color: T.border, type: "dashed", opacity: 0.8 } },
         },
         yAxis: {
           type: "category",
           data: labels,
-          axisLabel: { color: T.faint, fontFamily: T.mono, fontSize: 10 },
+          axisLabel: { color: T.muted, fontFamily: T.mono, fontSize: 12, fontWeight: 500 },
           axisTick: { show: false },
           axisLine: { show: false },
         },
@@ -183,9 +186,9 @@ export function ComponentDriversChart({
             type: "bar",
             data: values.map((v, i) => ({
               value: v,
-              itemStyle: { color: [T.cyan, T.green, T.gold, T.red][i] ?? T.cyan },
+              itemStyle: { color: [T.cyan, T.green, T.gold, T.red][i] ?? T.cyan, opacity: 0.95 },
             })),
-            barMaxWidth: 18,
+            barMaxWidth: 22,
           },
         ],
       }}
