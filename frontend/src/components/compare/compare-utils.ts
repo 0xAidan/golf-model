@@ -1,14 +1,18 @@
 import type {
+  CompareEventMode,
+  CompareFieldPlayer,
   ComponentDeltaRow,
   ComponentDriverSummary,
   CompareKpiSummary,
+  GradedPickDiffRow,
   MatchupBucket,
   MatchupDiffRow,
   MatchupOverlap,
   RankDeltaRow,
   RankScatterPoint,
+  SeasonEventCompareRow,
 } from "@/components/compare/compare-types"
-import type { FieldBoardPlayer, LiveRankingRow, MatchupBet } from "@/lib/types"
+import type { FieldBoardPlayer, GradingSeasonEvent, LiveRankingRow, LiveTournamentSnapshot, MatchupBet, TrackRecordPick } from "@/lib/types"
 
 export const DEFAULT_RANK_DISAGREEMENT_THRESHOLD = 3
 
@@ -23,6 +27,157 @@ export const buildRankIndex = (rows: LiveRankingRow[] | undefined) => {
   }
   return index
 }
+
+export const resolveSnapshotRankings = (
+  section: LiveTournamentSnapshot | undefined | null,
+): LiveRankingRow[] => {
+  if (!section) return []
+  return (
+    section.rankings ??
+    section.frozen_pre_teeoff_rankings ??
+    section.live_rankings ??
+    section.pre_tournament_rankings ??
+    []
+  )
+}
+
+const positiveEvPlayers = (bets: MatchupBet[] | undefined) => {
+  const players = new Set<string>()
+  for (const bet of bets ?? []) {
+    if ((bet.ev ?? 0) > 0) {
+      const key = (bet.pick_key || "").toLowerCase()
+      if (key) players.add(key)
+    }
+  }
+  return players
+}
+
+export const buildFieldBoardPlayers = (
+  championSection: LiveTournamentSnapshot | undefined,
+  challengerSection: LiveTournamentSnapshot | null | undefined,
+): CompareFieldPlayer[] => {
+  const champRanks = buildRankIndex(resolveSnapshotRankings(championSection))
+  const labRanks = buildRankIndex(resolveSnapshotRankings(challengerSection))
+  const champEv = positiveEvPlayers(championSection?.matchup_bets)
+  const matchupCount: Record<string, number> = {}
+  for (const bet of championSection?.matchup_bets ?? []) {
+    for (const who of [(bet.pick_key || "").toLowerCase(), (bet.opponent_key || "").toLowerCase()]) {
+      if (who) matchupCount[who] = (matchupCount[who] ?? 0) + 1
+    }
+  }
+
+  const players: CompareFieldPlayer[] = []
+  for (const [key, row] of champRanks) {
+    const labRow = labRanks.get(key)
+    const championRank = row.rank ?? null
+    const challengerRank = labRow?.rank ?? null
+    const rankDelta =
+      championRank !== null && challengerRank !== null ? championRank - challengerRank : null
+    players.push({
+      player_key: row.player_key || key,
+      player: row.player,
+      champion_rank: championRank,
+      challenger_rank: challengerRank,
+      rank_delta: rankDelta,
+      composite: row.composite ?? null,
+      course_fit: row.course_fit ?? null,
+      form: row.form ?? null,
+      momentum: row.momentum ?? null,
+      momentum_direction: row.momentum_direction,
+      momentum_trend: row.momentum_trend,
+      course_confidence: row.course_confidence,
+      finish_state: row.finish_state,
+      matchup_count: matchupCount[key] ?? 0,
+      in_positive_ev: champEv.has(key),
+      has_sg: false,
+      champion_composite: row.composite ?? null,
+      challenger_composite: labRow?.composite ?? null,
+      champion_form: row.form ?? null,
+      challenger_form: labRow?.form ?? null,
+      champion_course_fit: row.course_fit ?? null,
+      challenger_course_fit: labRow?.course_fit ?? null,
+      champion_momentum: row.momentum ?? null,
+      challenger_momentum: labRow?.momentum ?? null,
+    })
+  }
+  players.sort((a, b) => (a.champion_rank ?? 999) - (b.champion_rank ?? 999))
+  return players
+}
+
+const gradedPickKey = (pick: TrackRecordPick) =>
+  [
+    (pick.bet_type || "matchup").toLowerCase(),
+    (pick.player_key || pick.player_display || "").toLowerCase(),
+    (pick.opponent_key || pick.opponent_display || "").toLowerCase(),
+    (pick.market_book || "").toLowerCase(),
+  ].join("|")
+
+export const computeGradedPickDiffRows = (
+  championPicks: TrackRecordPick[] | undefined,
+  challengerPicks: TrackRecordPick[] | undefined,
+): GradedPickDiffRow[] => {
+  const champ = new Map<string, TrackRecordPick>()
+  for (const pick of championPicks ?? []) champ.set(gradedPickKey(pick), pick)
+  const chall = new Map<string, TrackRecordPick>()
+  for (const pick of challengerPicks ?? []) chall.set(gradedPickKey(pick), pick)
+  const keys = new Set<string>([...champ.keys(), ...chall.keys()])
+  const rows: GradedPickDiffRow[] = []
+  for (const key of keys) {
+    const championPick = champ.get(key)
+    const challengerPick = chall.get(key)
+    const source = championPick ?? challengerPick
+    if (!source) continue
+    const bucket: MatchupBucket =
+      championPick && challengerPick ? "both" : championPick ? "champion_only" : "challenger_only"
+    rows.push({
+      key,
+      pick: source.player_display,
+      opponent: source.opponent_display || "—",
+      betType: source.bet_type || "—",
+      book: source.market_book || "—",
+      championEv: numOrNull(championPick?.ev),
+      challengerEv: numOrNull(challengerPick?.ev),
+      championProfit: numOrNull(championPick?.profit),
+      challengerProfit: numOrNull(challengerPick?.profit),
+      championHit: championPick?.hit == null ? null : championPick.hit === 1,
+      challengerHit: challengerPick?.hit == null ? null : challengerPick.hit === 1,
+      bucket,
+    })
+  }
+  rows.sort(
+    (a, b) =>
+      Math.abs((b.championProfit ?? 0) - (b.challengerProfit ?? 0)) -
+      Math.abs((a.championProfit ?? 0) - (a.challengerProfit ?? 0)),
+  )
+  return rows
+}
+
+export const buildSeasonEventCompareRows = (
+  events: GradingSeasonEvent[] | undefined,
+): SeasonEventCompareRow[] =>
+  (events ?? [])
+    .filter((event) => event.lanes?.dashboard || event.lanes?.lab)
+    .map((event) => {
+      const dash = event.lanes?.dashboard?.record
+      const lab = event.lanes?.lab?.record
+      return {
+        eventId: String(event.event_id ?? event.tournament_id ?? event.name),
+        name: event.name,
+        eventDate: event.event_date,
+        championPnl: dash?.profit ?? event.lanes?.dashboard?.total_profit ?? null,
+        challengerPnl: lab?.profit ?? event.lanes?.lab?.total_profit ?? null,
+        profitDelta: event.comparison?.profit_delta ?? null,
+        championHitRate:
+          dash?.hit_rate == null ? null : dash.hit_rate <= 1 ? dash.hit_rate * 100 : dash.hit_rate,
+        challengerHitRate:
+          lab?.hit_rate == null ? null : lab.hit_rate <= 1 ? lab.hit_rate * 100 : lab.hit_rate,
+        overlapMatchups: event.comparison?.overlap_matchups ?? null,
+        picksOnlyChampion: event.comparison?.picks_only_dashboard ?? null,
+        picksOnlyChallenger: event.comparison?.picks_only_lab ?? null,
+        status: event.status,
+      }
+    })
+    .sort((a, b) => String(b.eventDate ?? "").localeCompare(String(a.eventDate ?? "")))
 
 const numOrNull = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null
@@ -213,9 +368,14 @@ export const filterMatchupDiffRows = (
 
 export const computeKpiSummary = (input: {
   eventName: string
+  eventMode?: CompareEventMode
+  modeLabel?: string
   usingLive: boolean
   players: FieldBoardPlayer[]
   overlap: MatchupOverlap
+  championGradedPnl?: number | null
+  challengerGradedPnl?: number | null
+  gradedProfitDelta?: number | null
 }): CompareKpiSummary => {
   const absDeltas = input.players
     .map((p) => p.rank_delta)
@@ -234,6 +394,8 @@ export const computeKpiSummary = (input: {
   }
   return {
     eventName: input.eventName,
+    eventMode: input.eventMode ?? "current",
+    modeLabel: input.modeLabel ?? (input.usingLive ? "Live" : "Upcoming"),
     usingLive: input.usingLive,
     fieldSize: input.players.length,
     bothRankedCount,
@@ -244,5 +406,8 @@ export const computeKpiSummary = (input: {
     overlapChampionOnly: input.overlap.championOnly.length,
     overlapChallengerOnly: input.overlap.challengerOnly.length,
     maxDisagreement,
+    championGradedPnl: input.championGradedPnl,
+    challengerGradedPnl: input.challengerGradedPnl,
+    gradedProfitDelta: input.gradedProfitDelta,
   }
 }

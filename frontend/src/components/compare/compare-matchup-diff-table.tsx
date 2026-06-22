@@ -75,9 +75,14 @@ export function CompareMatchupDiffTable({ rows }: { rows: MatchupDiffRow[] }) {
   )
 
   return (
-    <section className="card" data-testid="compare-matchup-diff">
+    <section className="card compare-panel" data-testid="compare-matchup-diff">
       <div className="card-header flex flex-wrap items-center justify-between gap-2">
-        <div className="card-title">Matchup diff</div>
+        <div>
+          <div className="card-title">Model pick diff</div>
+          <div className="text-xs text-[var(--text-secondary)]">
+            +EV matchup lines each track would take at snapshot time
+          </div>
+        </div>
         <div className="flex gap-2" role="group" aria-label="Matchup overlap bucket">
           {BUCKETS.map((b) => (
             <button

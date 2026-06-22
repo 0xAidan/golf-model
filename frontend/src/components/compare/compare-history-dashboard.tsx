@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { MarketDeltaChartLazy } from "@/components/compare/compare-charts-lazy"
+import { CompareSeasonEventsTable } from "@/components/compare/compare-season-events-table"
 import { MetricCell, TrackMetricsCard } from "@/components/compare/track-metrics-card"
 import { api } from "@/lib/api"
 import type { TrackMetrics } from "@/lib/types"
@@ -25,22 +26,22 @@ function MarketBreakdownTable({
 
   if (markets.length === 0) {
     return (
-      <p className="text-sm text-[var(--text-faint)]">No per-market breakdown for this window.</p>
+      <p className="text-sm text-[var(--text-secondary)]">No per-market breakdown for this window.</p>
     )
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] text-sm" data-testid="compare-market-breakdown-table">
+    <div className="compare-table-wrap overflow-x-auto">
+      <table className="compare-data-table w-full min-w-[560px] text-sm" data-testid="compare-market-breakdown-table">
         <thead>
-          <tr className="text-left text-[var(--text-faint)]">
-            <th className="py-2 pr-4 font-medium">Market</th>
-            <th className="py-2 pr-4 font-medium num">Champ ROI</th>
-            <th className="py-2 pr-4 font-medium num">Chlgr ROI</th>
-            <th className="py-2 pr-4 font-medium num">Δ ROI</th>
-            <th className="py-2 pr-4 font-medium num">Champ hit%</th>
-            <th className="py-2 pr-4 font-medium num">Chlgr hit%</th>
-            <th className="py-2 pr-2 font-medium num">Δ hit%</th>
+          <tr className="text-left text-[var(--text-secondary)]">
+            <th className="py-2 pr-4 font-semibold">Market</th>
+            <th className="py-2 pr-4 font-semibold num">Champ ROI</th>
+            <th className="py-2 pr-4 font-semibold num">Chlgr ROI</th>
+            <th className="py-2 pr-4 font-semibold num">Δ ROI</th>
+            <th className="py-2 pr-4 font-semibold num">Champ hit%</th>
+            <th className="py-2 pr-4 font-semibold num">Chlgr hit%</th>
+            <th className="py-2 pr-2 font-semibold num">Δ hit%</th>
           </tr>
         </thead>
         <tbody>
@@ -55,7 +56,7 @@ function MarketBreakdownTable({
                 : null
             return (
               <tr key={market} className="border-t border-[var(--border)]">
-                <td className="py-2 pr-4 capitalize">{market}</td>
+                <td className="py-2 pr-4 capitalize text-[var(--text-primary)]">{market}</td>
                 <td className="py-2 pr-4 num">{champ?.roi_pct ?? "—"}</td>
                 <td className="py-2 pr-4 num">{lab?.roi_pct ?? "—"}</td>
                 <td className="py-2 pr-4 num">
@@ -75,12 +76,21 @@ function MarketBreakdownTable({
   )
 }
 
-export function CompareHistoryDashboard() {
+export function CompareHistoryDashboard({
+  onSelectEvent,
+}: {
+  onSelectEvent?: (eventId: string) => void
+}) {
   const [window, setWindow] = useState<CompareWindow>("30d")
   const query = useQuery({
     queryKey: ["track-comparison", window],
     queryFn: () => api.getTrackComparison(window),
     refetchInterval: 60_000,
+  })
+  const seasonQuery = useQuery({
+    queryKey: ["compare-grading-season"],
+    queryFn: () => api.getGradingSeason({ lane: "all", includePicks: false, limit: 200 }),
+    staleTime: 60_000,
   })
   const data = query.data
 
@@ -98,7 +108,19 @@ export function CompareHistoryDashboard() {
   }, [data?.by_market])
 
   return (
-    <div className="flex flex-col gap-6" data-testid="compare-history-dashboard">
+    <div className="compare-dashboard flex flex-col gap-6" data-testid="compare-history-dashboard">
+      <section className="card compare-panel" data-testid="compare-season-events-section">
+        <div className="card-header">
+          <div className="card-title">Season by event</div>
+          <div className="text-xs text-[var(--text-secondary)]">
+            Aggregate and per-tournament graded performance for both tracks
+          </div>
+        </div>
+        <div className="card-body">
+          <CompareSeasonEventsTable season={seasonQuery.data} onSelectEvent={onSelectEvent} />
+        </div>
+      </section>
+
       <div className="flex items-center gap-2" role="group" aria-label="Track record window">
         {WINDOWS.map((w) => (
           <button
@@ -121,7 +143,7 @@ export function CompareHistoryDashboard() {
         <TrackMetricsCard track="lab" metrics={data?.tracks?.lab} />
       </div>
 
-      <section className="card" data-testid="compare-history-market-chart">
+      <section className="card compare-panel" data-testid="compare-history-market-chart">
         <div className="card-header">
           <div className="card-title">ROI by market</div>
         </div>
@@ -135,7 +157,7 @@ export function CompareHistoryDashboard() {
         </div>
       </section>
 
-      <section className="card" data-testid="compare-history-market-table">
+      <section className="card compare-panel" data-testid="compare-history-market-table">
         <div className="card-header">
           <div className="card-title">Market breakdown</div>
         </div>
@@ -144,9 +166,9 @@ export function CompareHistoryDashboard() {
         </div>
       </section>
 
-      <section className="card" data-testid="compare-history-overlap">
+      <section className="card compare-panel" data-testid="compare-history-overlap">
         <div className="card-header">
-          <div className="card-title">Pick overlap (graded)</div>
+          <div className="card-title">Pick overlap (graded window)</div>
         </div>
         <div className="card-body grid grid-cols-3 gap-3 text-center">
           <MetricCell label="Both" value={data?.overlap?.both ?? null} />

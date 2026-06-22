@@ -53,6 +53,67 @@ const { apiMock, snapshotMock } = vi.hoisted(() => ({
         },
       ],
     })),
+    getLiveRefreshPastEvents: vi.fn(async () => ({
+      events: [{ event_id: "26", event_name: "U.S. Open", snapshot_count: 3 }],
+    })),
+    getLiveRefreshPastSnapshot: vi.fn(async () => ({
+      ok: true,
+      snapshot: {
+        event_name: "U.S. Open",
+        rankings: [
+          { rank: 1, player_key: "a", player: "Player A", composite: 80, course_fit: 1, form: 2, momentum: 0.1 },
+        ],
+        matchup_bets: [],
+      },
+    })),
+    getGradingSeason: vi.fn(async () => ({
+      year: 2026,
+      lane: "all",
+      events: [
+        {
+          event_id: "26",
+          name: "U.S. Open",
+          event_date: "2026-06-15",
+          lanes: {
+            dashboard: {
+              record: { profit: 10, hit_rate: 0.5, picks: 5, wins: 2, losses: 3, pushes: 0 },
+              picks: [],
+              graded_pick_count: 5,
+              ungraded_positive_ev_count: 0,
+              inventory_count: 5,
+              status: "graded",
+            },
+            lab: {
+              record: { profit: 8, hit_rate: 0.55, picks: 4, wins: 2, losses: 2, pushes: 0 },
+              picks: [],
+              graded_pick_count: 4,
+              ungraded_positive_ev_count: 0,
+              inventory_count: 4,
+              status: "graded",
+            },
+          },
+          comparison: {
+            profit_delta: -2,
+            hit_rate_delta: 0.05,
+            picks_only_dashboard: 1,
+            picks_only_lab: 0,
+            overlap_matchups: 3,
+          },
+        },
+      ],
+      tournaments: [],
+      summary: {
+        dashboard: { profit: 10, hit_rate: 0.5, picks: 5, wins: 2, losses: 3, pushes: 0 },
+        lab: { profit: 8, hit_rate: 0.55, picks: 4, wins: 2, losses: 2, pushes: 0 },
+        comparison: {
+          profit_delta: -2,
+          hit_rate_delta: 0.05,
+          picks_only_dashboard: 1,
+          picks_only_lab: 0,
+          overlap_matchups: 3,
+        },
+      },
+    })),
     getTrackComparison: vi.fn(async () => ({
       window: "30d",
       window_days: 30,
@@ -243,6 +304,34 @@ describe("ComparePage", () => {
     await waitFor(() => expect(screen.getByTestId("compare-event-dashboard")).toBeInTheDocument())
     await user.click(screen.getByTestId("compare-scope-history"))
     await waitFor(() => expect(screen.getByTestId("compare-history-dashboard")).toBeInTheDocument())
+    expect(screen.getByTestId("compare-season-events-section")).toBeInTheDocument()
+  })
+
+  it("loads a past tournament from the event selector", async () => {
+    const user = userEvent.setup()
+    snapshotMock.value = {
+      isLiveActive: false,
+      liveTournament: undefined,
+      upcomingTournament: {
+        event_name: "RBC",
+        rankings: [],
+        matchup_bets: [],
+      },
+      labUpcomingTournament: {
+        event_name: "RBC",
+        rankings: [],
+        matchup_bets: [],
+      },
+      labLiveTournament: null,
+    }
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId("compare-event-select")).not.toBeDisabled())
+    await waitFor(() =>
+      expect(screen.getByTestId("compare-event-select")).toHaveTextContent("U.S. Open"),
+    )
+    await user.selectOptions(screen.getByTestId("compare-event-select"), "26")
+    await waitFor(() => expect(screen.getByTestId("compare-event-dashboard")).toBeInTheDocument())
+    expect(screen.getByText("U.S. Open · Completed · graded")).toBeInTheDocument()
   })
 })
 
