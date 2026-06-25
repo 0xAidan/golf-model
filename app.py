@@ -31,6 +31,7 @@ except ImportError:
     pass  # python-dotenv not installed; keys must be in environment
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
@@ -178,6 +179,12 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://ancc.blog"],
+    allow_methods=["GET"],
+)
 
 
 def _expected_dashboard_api_key() -> str:
