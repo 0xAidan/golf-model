@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
 import type { PredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
@@ -164,6 +164,37 @@ export function useWorkspacePastReplay({
     )
   }, [gradingHistory, pastEventOptions, preferredPastEventId, selectedPastEventKey, upcomingSourceEventId])
 
+  const gradingEventLane = pastReplaySource === "lab" ? "lab" : "cockpit"
+  const eventPicksQuery = useQuery({
+    queryKey: ["grading-event-picks", selectedPastEvent?.event_id, 2026, gradingEventLane],
+    queryFn: () =>
+      api.getGradingEventPicks({
+        eventId: String(selectedPastEvent?.event_id),
+        year: 2026,
+        lane: gradingEventLane,
+      }),
+    enabled:
+      predictionTab === "past" &&
+      pastReplaySection === "completed" &&
+      Boolean(selectedPastEvent?.event_id),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  })
+
+  const eventPicksSummary = useMemo((): GradedTournamentSummary | null => {
+    const payload = eventPicksQuery.data
+    if (!payload?.ok) return null
+    return {
+      event_id: payload.event_id,
+      name: payload.name ?? selectedPastEvent?.event_name ?? "Past event",
+      picks: payload.picks,
+      market_stats: payload.market_stats,
+      graded_pick_count: payload.graded_pick_count,
+      hits: payload.hits,
+      total_profit: payload.total_profit,
+    }
+  }, [eventPicksQuery.data, selectedPastEvent?.event_name])
+
   const pastEventsBootstrapping =
     predictionTab === "past" &&
     pastEventOptions.length === 0 &&
@@ -320,11 +351,10 @@ export function useWorkspacePastReplay({
   }, [gradingHistory, pastEventOptions, predictionTab])
 
   const selectedEventGrading = useMemo(
-    () =>
-      gradingHistory.find(
+    () => eventPicksSummary ?? gradingHistory.find(
         (event) => String(event.event_id ?? "") === String(selectedPastEvent?.event_id ?? ""),
       ) ?? null,
-    [gradingHistory, selectedPastEvent?.event_id],
+    [eventPicksSummary, gradingHistory, selectedPastEvent?.event_id],
   )
 
   const selectedEventGradedMatchups = useMemo(
@@ -341,7 +371,16 @@ export function useWorkspacePastReplay({
   )
 
   const useGradedPickInventory =
-    pastReplaySection === "completed" && (selectedEventGrading?.picks?.length ?? 0) > 0
+    pastReplaySection === "completed" &&
+    ((eventPicksQuery.data?.picks?.length ?? 0) > 0 ||
+      (selectedEventGrading?.picks?.length ?? 0) > 0)
+
+  const pastEventPicksLoading =
+    predictionTab === "past" &&
+    pastReplaySection === "completed" &&
+    Boolean(selectedPastEvent?.event_id) &&
+    eventPicksQuery.isFetching &&
+    !eventPicksQuery.data
 
   const pastMatchups = useMemo(() => {
     if (useGradedPickInventory) {
@@ -494,6 +533,7 @@ export function useWorkspacePastReplay({
     ((pastPredictionRun?.composite_results?.length ?? 0) > 0 ||
       pastReplayRows.length > 0 ||
       (pastSnapshotSection?.leaderboard?.length ?? 0) > 0 ||
+      (eventPicksQuery.data?.picks?.length ?? 0) > 0 ||
       (selectedEventGrading?.picks?.length ?? 0) > 0)
 
   useEffect(() => {
@@ -537,6 +577,7 @@ export function useWorkspacePastReplay({
     selectedPastEvent,
     pastReplayHasData,
     pastEventsBootstrapping,
+    pastEventPicksLoading,
   }
 }
 

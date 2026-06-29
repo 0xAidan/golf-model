@@ -12,6 +12,7 @@ import { RouteErrorBoundaryGate } from "@/components/route-error-boundary-gate"
 import { useLiveRefreshRuntime } from "@/hooks/use-live-refresh-runtime"
 import { usePredictionTab } from "@/hooks/use-prediction-tab"
 import { api } from "@/lib/api"
+import { markAutoStaleRefresh, shouldAutoStaleRefresh } from "@/lib/auto-stale-refresh"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { formatDateTime } from "@/lib/format"
 import { seasonEventsToGradingHistory } from "@/lib/grading-season"
@@ -137,6 +138,7 @@ export function AppContent({
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
   const [gradeJobId, setGradeJobId] = useState<string | null>(null)
   const [gradeJobProgress, setGradeJobProgress] = useState<number | null>(null)
+  const [refreshQueued, setRefreshQueued] = useState(false)
 
   const location = useLocation()
   const {
@@ -172,8 +174,32 @@ export function AppContent({
     () => false,
   )
 
-  const snapshotNotice = snapshotNoticeBase
   const { predictionTab, setPredictionTab } = usePredictionTab(isLiveActive)
+
+  const snapshotNotice = useMemo(() => {
+    if (snapshotNoticeBase) return snapshotNoticeBase
+    const isStale =
+      dataState === "stale" ||
+      (snapshotAgeSeconds != null &&
+        staleAfterSeconds != null &&
+        snapshotAgeSeconds > staleAfterSeconds)
+    if (!isStale || !liveSnapshot) return null
+    const section =
+      predictionTab === "upcoming"
+        ? liveSnapshot.upcoming_tournament
+        : predictionTab === "live"
+          ? liveSnapshot.live_tournament
+          : liveSnapshot.upcoming_tournament ?? liveSnapshot.live_tournament
+    const eventName = section?.event_name ?? "cached event"
+    return `Showing cached data from ${eventName}. Use Refresh to load the current tournament.`
+  }, [
+    dataState,
+    liveSnapshot,
+    predictionTab,
+    snapshotAgeSeconds,
+    snapshotNoticeBase,
+    staleAfterSeconds,
+  ])
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
@@ -183,8 +209,7 @@ export function AppContent({
   const gradingHistoryPickSource = labRouteActive ? "lab" : "cockpit"
   const needsGradingPicks =
     location.pathname.startsWith("/results") ||
-    location.pathname === "/system" ||
-    predictionTab === "past"
+    location.pathname === "/system"
   const gradingHistoryQuery = useQuery({
     queryKey: ["grading-season", gradingHistoryPickSource, needsGradingPicks],
     queryFn: () =>
@@ -391,6 +416,7 @@ export function AppContent({
     },
     onSuccess: (payload) => {
       if (payload.accepted) {
+        setRefreshQueued(true)
         const msg =
           payload.operator_message ??
           payload.stale_reason ??
@@ -429,6 +455,51 @@ export function AppContent({
 
   const liveProgress = liveRefreshStatus?.status?.progress
   const lrRefreshState = liveProgress?.refresh_state ?? liveRefreshStatus?.status?.refresh_state
+  const isSnapshotStale =
+    dataState === "stale" ||
+    (snapshotAgeSeconds != null &&
+      staleAfterSeconds != null &&
+      snapshotAgeSeconds > staleAfterSeconds)
+
+  useEffect(() => {
+    const refreshState = lrRefreshState
+    if (refreshState === "running" || refreshState === "busy") {
+      setRefreshQueued(true)
+      return
+    }
+    if (refreshState === "idle" || refreshState === "error" || refreshState == null) {
+      setRefreshQueued(false)
+    }
+  }, [lrRefreshState])
+
+  useEffect(() => {
+    if (!isSnapshotStale || splitBrainSuspected || tabPollingSuspended) return
+    if (refreshSnapshotMutation.isPending || refreshQueued) return
+    if (!shouldAutoStaleRefresh()) return
+    markAutoStaleRefresh()
+    void api
+      .refreshLiveSnapshot()
+      .then((payload) => {
+        if (payload.accepted) {
+          setRefreshQueued(true)
+          void queryClient.invalidateQueries({ queryKey: ["live-refresh-status"] })
+          return
+        }
+        if (!payload.ok && payload.operator_message) {
+          setUiAlert(payload.operator_message)
+        }
+      })
+      .catch(() => {})
+  }, [
+    isSnapshotStale,
+    queryClient,
+    refreshQueued,
+    refreshSnapshotMutation.isPending,
+    setUiAlert,
+    splitBrainSuspected,
+    tabPollingSuspended,
+  ])
+
   const refreshButtonDisabled =
     refreshSnapshotMutation.isPending || lrRefreshState === "running" || lrRefreshState === "busy"
   useEffect(() => {
@@ -471,6 +542,14 @@ export function AppContent({
       return "Use the dashboard home to review past-event matchup replay."
     if (predictionTab === "live" && !isLiveActive)
       return "No event is live right now. Switch to Upcoming for pre-tournament matchup context."
+    const isStale =
+      dataState === "stale" ||
+      (snapshotAgeSeconds != null &&
+        staleAfterSeconds != null &&
+        snapshotAgeSeconds > staleAfterSeconds)
+    if (isStale) {
+      return "Cached snapshot is too old for current picks. Use Refresh to load this week's markets."
+    }
     const diagnostics =
       predictionTab === "upcoming"
         ? liveSnapshot?.upcoming_tournament?.diagnostics
@@ -480,7 +559,15 @@ export function AppContent({
       reasonCodes: diagnostics?.reason_codes,
       hasFilters: normalizedSelectedBooks.length > 0,
     })
-  }, [isLiveActive, liveSnapshot, normalizedSelectedBooks, predictionTab])
+  }, [
+    dataState,
+    isLiveActive,
+    liveSnapshot,
+    normalizedSelectedBooks,
+    predictionTab,
+    snapshotAgeSeconds,
+    staleAfterSeconds,
+  ])
 
   const secondaryBets = useMemo(() => {
     if (predictionTab === "past") return []
@@ -926,12 +1013,14 @@ export function AppContent({
           ageSeconds={snapshotAgeSeconds}
           staleAfterSeconds={staleAfterSeconds}
           isFetching={snapshotIsFetching || Boolean(gradeJobId)}
+          refreshQueued={refreshQueued || refreshSnapshotMutation.isPending}
           isError={snapshotIsError}
           splitBrain={splitBrainSuspected}
           onRetry={() => {
             void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
             void queryClient.invalidateQueries({ queryKey: ["live-refresh-summary"] })
           }}
+          onRefresh={() => refreshSnapshotMutation.mutate()}
         />
       }
       actions={

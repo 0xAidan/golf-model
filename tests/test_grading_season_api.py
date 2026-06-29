@@ -233,3 +233,46 @@ def test_lane_ungraded_zero_before_results(monkeypatch, tmp_path):
     assert event["has_results"] is False
     assert event["lanes"]["dashboard"]["ungraded_positive_ev_count"] == 0
 
+
+def test_grading_event_picks_returns_single_event(monkeypatch, tmp_path):
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_event_picks.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "Travelers Test", "TPC River", 2026, "34"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+            opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "baseline", "cockpit", "matchup", "player_a", "Player A", "player_b", "Player B", "-110", "fanduel", 0.55, 0.05),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes (pick_id, hit, profit, odds_decimal, stake, entered_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (1, 1, 0.91, 1.91, 1.0, "2026-06-20 10:00:00"),
+    )
+    conn.execute(
+        "INSERT INTO results (tournament_id, player_key, finish_position) VALUES (?, ?, ?)",
+        (1, "player_a", 1),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/event-picks?event_id=34&year=2026&lane=cockpit")
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("ok") is True
+    assert body.get("event_id") == "34"
+    assert body.get("graded_pick_count") == 1
+    assert len(body.get("picks") or []) == 1
+

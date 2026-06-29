@@ -385,6 +385,8 @@ export type LiveRefreshRuntimeStatus = {
   runtime_owner?: string
   last_auto_grade_at?: string | null
   last_auto_grade_status?: Record<string, unknown> | null
+  heartbeat_age_seconds?: number | null
+  split_brain_suspected?: boolean
 }
 
 export type LiveRefreshStatusResponse = {
@@ -608,6 +610,23 @@ export type GradingSeasonEvent = {
   market_stats?: RecordSummary
   variant_stats?: Record<string, { picks: number; hits: number; profit: number }>
   picks?: TrackRecordPick[]
+}
+
+export type GradingEventPicksResponse = {
+  ok: boolean
+  event_id: string
+  year: number
+  lane: string
+  name?: string | null
+  inventory_count: number
+  graded_pick_count: number
+  ungraded_positive_ev_count: number
+  status: string
+  record: RecordBucket
+  market_stats: RecordSummary
+  picks: TrackRecordPick[]
+  hits: number
+  total_profit: number
 }
 
 export type GradingSeasonResponse = {

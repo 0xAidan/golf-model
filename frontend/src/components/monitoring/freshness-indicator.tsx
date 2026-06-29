@@ -10,10 +10,12 @@ export type FreshnessIndicatorProps = {
   ageSeconds?: number | null
   staleAfterSeconds?: number | null
   isFetching: boolean
+  refreshQueued?: boolean
   isOnline?: boolean
   isError?: boolean
   splitBrain?: boolean
   onRetry?: () => void
+  onRefresh?: () => void
   className?: string
 }
 
@@ -39,10 +41,12 @@ export function FreshnessIndicator({
   ageSeconds = null,
   staleAfterSeconds = null,
   isFetching,
+  refreshQueued = false,
   isOnline = typeof navigator !== "undefined" ? navigator.onLine : true,
   isError = false,
   splitBrain = false,
   onRetry,
+  onRefresh,
   className,
 }: FreshnessIndicatorProps) {
   const state = deriveFreshnessState({
@@ -50,6 +54,7 @@ export function FreshnessIndicator({
     ageSeconds,
     staleAfterSeconds,
     isFetching,
+    refreshQueued,
     isOnline,
     isError,
     splitBrain,
@@ -79,6 +84,11 @@ export function FreshnessIndicator({
       {onRetry && (state === "error" || state === "offline") ? (
         <button type="button" className="btn btn-ghost btn-xs" onClick={onRetry}>
           Retry
+        </button>
+      ) : null}
+      {onRefresh && state === "stale" ? (
+        <button type="button" className="btn btn-ghost btn-xs" onClick={onRefresh}>
+          Refresh
         </button>
       ) : null}
     </div>

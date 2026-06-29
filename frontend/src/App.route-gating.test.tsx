@@ -113,7 +113,7 @@ describe("App legacy route replay gating", () => {
     })
   })
 
-  it("loads grading-season with picks when past replay tab is active", async () => {
+  it("does not load grading-season picks when past replay tab is active", async () => {
     vi.mocked(usePredictionTab).mockReturnValue({
       predictionTab: "past",
       setPredictionTab: vi.fn(),
@@ -122,7 +122,7 @@ describe("App legacy route replay gating", () => {
 
     await waitFor(() => {
       expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
-        expect.objectContaining({ includePicks: true, limit: 100 }),
+        expect.objectContaining({ includePicks: false, limit: 20 }),
       )
     })
   })

@@ -158,6 +158,7 @@ export function LiveSnapshotProvider({
     liveRefreshStatusQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
 
   const liveRuntimeRunning = Boolean(liveRefreshStatusQuery.data?.status?.running)
+  const heartbeatAgeSeconds = liveRefreshStatusQuery.data?.status?.heartbeat_age_seconds
 
   const runtimeStatus = useMemo<RuntimeStatus>(() => {
     if (splitBrainSuspected) {
@@ -165,6 +166,13 @@ export function LiveSnapshotProvider({
     }
     if (statusSustainedFailure || snapshotSustainedFailure) {
       return { label: "Runtime error", tone: "bad" }
+    }
+    if (
+      heartbeatAgeSeconds != null &&
+      heartbeatAgeSeconds > 900 &&
+      liveRuntimeRunning
+    ) {
+      return { label: "Worker stale", tone: "bad" }
     }
     if (dataState === "stale") {
       return { label: "Stale data", tone: "warn" }
@@ -182,6 +190,7 @@ export function LiveSnapshotProvider({
     snapshotSustainedFailure,
     dataState,
     liveRuntimeRunning,
+    heartbeatAgeSeconds,
     envelope?.stale_reason,
   ])
 

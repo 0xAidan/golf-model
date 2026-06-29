@@ -51,16 +51,16 @@ def evaluate(*, heartbeat_stale_seconds: int, snapshot_stale_seconds: int) -> di
     reasons: list[str] = []
     restart = False
 
-    if (
-        hb_running
-        and hb_age is not None
-        and hb_age > heartbeat_stale_seconds
-        and (hb_refresh == "running" or hb_phase)
-    ):
+    if hb_running and hb_age is not None and hb_age > heartbeat_stale_seconds:
         restart = True
-        reasons.append(
-            f"worker heartbeat stale ({hb_age}s > {heartbeat_stale_seconds}s) while running phase={hb_phase!r}"
-        )
+        if hb_refresh == "running" or hb_phase:
+            reasons.append(
+                f"worker heartbeat stale ({hb_age}s > {heartbeat_stale_seconds}s) while running phase={hb_phase!r}"
+            )
+        else:
+            reasons.append(
+                f"worker heartbeat stale ({hb_age}s > {heartbeat_stale_seconds}s) while idle"
+            )
     if snap_age is not None and snap_age > snapshot_stale_seconds:
         restart = True
         reasons.append(f"snapshot stale ({snap_age}s > {snapshot_stale_seconds}s)")
