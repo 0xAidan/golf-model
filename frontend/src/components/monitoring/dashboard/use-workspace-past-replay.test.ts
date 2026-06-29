@@ -14,18 +14,32 @@ describe("selectDefaultPastEvent", () => {
     expect(selected?.event_id).toBe("32")
   })
 
-  it("prefers events with graded picks when available", () => {
+  it("prefers the most recent graded event in API order, not highest graded count", () => {
     const options = [
-      { event_id: "32", event_name: "RBC Canadian Open", snapshot_count: 9 },
+      { event_id: "34", event_name: "Travelers Championship", snapshot_count: 527 },
       { event_id: "26", event_name: "U.S. Open", snapshot_count: 346 },
     ]
     const gradingHistory = [
-      { event_id: "26", name: "U.S. Open", graded_pick_count: 132, total_profit: 48.57 },
-      { event_id: "32", name: "RBC Canadian Open", graded_pick_count: 0, total_profit: 0 },
+      { event_id: "34", name: "Travelers Championship", graded_pick_count: 73, total_profit: 47.82 },
+      { event_id: "26", name: "U.S. Open", graded_pick_count: 130, total_profit: 48.57 },
     ]
 
-    const selected = selectDefaultPastEvent(options, "32", gradingHistory)
+    const selected = selectDefaultPastEvent(options, undefined, gradingHistory)
 
-    expect(selected?.event_id).toBe("26")
+    expect(selected?.event_id).toBe("34")
+  })
+
+  it("uses preferred latest-completed event id when provided", () => {
+    const options = [
+      { event_id: "34", event_name: "Travelers Championship", snapshot_count: 527 },
+      { event_id: "26", event_name: "U.S. Open", snapshot_count: 346 },
+    ]
+    const gradingHistory = [
+      { event_id: "26", name: "U.S. Open", graded_pick_count: 130, total_profit: 48.57 },
+    ]
+
+    const selected = selectDefaultPastEvent(options, undefined, gradingHistory, "34")
+
+    expect(selected?.event_id).toBe("34")
   })
 })
