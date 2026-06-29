@@ -1,4 +1,16 @@
-import type { DashboardState, GradedTournamentSummary, GradingHistoryResponse, LiveRefreshRuntimeStatus } from "@/lib/types"
+import type {
+  DashboardState,
+  GradedTournamentSummary,
+  GradingHistoryResponse,
+  GradingSeasonResponse,
+  LiveRefreshRuntimeStatus,
+} from "@/lib/types"
+
+import {
+  pickLatestGradedSeasonEvent,
+  seasonLaneFromPickSource,
+  sumUngradedPositiveEvForCompletedEvents,
+} from "@/lib/grading-season"
 
 export type GradingTrustMetrics = {
   lastGradedAt: string | null
@@ -17,13 +29,6 @@ function countPositiveEvPicks(tournaments: GradedTournamentSummary[]): number {
     }
   }
   return total
-}
-
-function ungradedFromTournament(row: GradedTournamentSummary | null | undefined): number {
-  if (!row) return 0
-  const picks = row.picks_count ?? 0
-  const graded = row.graded_pick_count ?? 0
-  return Math.max(0, picks - graded)
 }
 
 const formatAutoGradeMessage = (
@@ -52,12 +57,14 @@ const formatAutoGradeMessage = (
 
 /**
  * Trust strip metrics for /grading and /track-record.
- * +EV-only: persisted picks are already ev > 0; ungraded gap uses pick vs outcome counts.
+ * +EV-only: ungraded counts come from season lane data for completed events only.
  */
 export function buildGradingTrustMetrics(
   history: GradingHistoryResponse | undefined,
   dashboard: DashboardState | undefined,
   liveRefreshStatus?: LiveRefreshRuntimeStatus,
+  season?: GradingSeasonResponse,
+  pickSource: "all" | "cockpit" | "lab" = "cockpit",
 ): GradingTrustMetrics {
   const tournaments = history?.tournaments ?? []
   const summaryPicks = history?.summary?.combined?.picks
@@ -66,22 +73,21 @@ export function buildGradingTrustMetrics(
       ? summaryPicks
       : countPositiveEvPicks(tournaments)
 
+  const latestFromSeason = season
+    ? pickLatestGradedSeasonEvent(season.events, pickSource)
+    : null
   const lastGradedAt =
-    tournaments[0]?.last_graded_at ??
+    latestFromSeason?.last_graded_at ??
+    tournaments
+      .map((event) => event.last_graded_at)
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(String(right)) - Date.parse(String(left)))[0] ??
     dashboard?.latest_graded_tournament?.last_graded_at ??
     null
 
-  const latestGradedGap = ungradedFromTournament(dashboard?.latest_graded_tournament)
-  const completedEvent = dashboard?.latest_completed_event
-  const gradedEventId = dashboard?.latest_graded_tournament?.event_id
-  const completedNeedsGrade =
-    completedEvent?.event_id &&
-    completedEvent.event_id !== gradedEventId &&
-    latestGradedGap === 0
-
-  const ungradedPositiveEvCount = completedNeedsGrade
-    ? Math.max(latestGradedGap, 1)
-    : latestGradedGap
+  const ungradedPositiveEvCount = season
+    ? sumUngradedPositiveEvForCompletedEvents(season.events, pickSource)
+    : 0
 
   return {
     lastGradedAt,

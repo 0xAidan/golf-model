@@ -17,7 +17,7 @@ import { buildGradingPickColumns, buildTrackRecordPickColumns } from "@/lib/reco
 import { api } from "@/lib/api"
 import { formatDateTime, formatUnits } from "@/lib/format"
 import { buildGradingTrustMetrics } from "@/lib/grading-trust"
-import { formatSeasonEventDate, laneStatusLabel, seasonEventsToGradingHistory, seasonLaneFromPickSource } from "@/lib/grading-season"
+import { formatSeasonEventDate, laneStatusLabel, pickLatestGradedSeasonEvent, recentGradedSeasonEventsForTrend, seasonEventsToGradingHistory, seasonLaneFromPickSource } from "@/lib/grading-season"
 import type { GradingSeasonEvent } from "@/lib/types"
 import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import { GRADING_KPI_STRIP_TOOLTIPS } from "@/lib/metric-tooltips"
@@ -67,8 +67,10 @@ export function GradingPage() {
         gradingHistoryData,
         dashboardQuery.data,
         liveRefreshStatusQuery.data?.status,
+        seasonQuery.data,
+        pickSource,
       ),
-    [gradingHistoryData, dashboardQuery.data, liveRefreshStatusQuery.data?.status],
+    [gradingHistoryData, dashboardQuery.data, liveRefreshStatusQuery.data?.status, pickSource, seasonQuery.data],
   )
 
   const gradingHistory = gradingHistoryData.tournaments ?? []
@@ -76,14 +78,25 @@ export function GradingPage() {
   const seasonSummary = seasonQuery.data?.summary
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const labels = gradingHistory
-    .slice(0, 8)
-    .reverse()
+  const latestGradedSeasonEvent = useMemo(
+    () => pickLatestGradedSeasonEvent(seasonEvents, pickSource),
+    [pickSource, seasonEvents],
+  )
+
+  const trendEvents = useMemo(
+    () => recentGradedSeasonEventsForTrend(seasonEvents, pickSource, 8),
+    [pickSource, seasonEvents],
+  )
+
+  const labels = trendEvents
     .map((item) => item.name.replace(/open|championship|invitational/gi, "").trim().split(" ").slice(-1)[0] ?? item.name)
-  const profits = gradingHistory
-    .slice(0, 8)
-    .reverse()
-    .map((item) => Number(item.total_profit ?? 0))
+  const profits = trendEvents.map((item) => {
+    if (pickSource === "all") {
+      return Number(item.total_profit ?? 0)
+    }
+    const lane = pickSource === "lab" ? item.lanes?.lab : item.lanes?.dashboard
+    return Number(lane?.total_profit ?? item.total_profit ?? 0)
+  })
 
   const totalProfit = gradingHistory.reduce((s, t) => s + Number(t.total_profit ?? 0), 0)
   const totalHits = gradingHistory.reduce((s, t) => s + (t.hits ?? 0), 0)
@@ -138,13 +151,13 @@ export function GradingPage() {
       {
         id: "latest",
         label: "Latest event",
-        value: gradingHistory[0]?.name ?? "—",
-        suffix: gradingHistory[0]?.last_graded_at
-          ? formatDateTime(gradingHistory[0].last_graded_at)
+        value: latestGradedSeasonEvent?.name ?? gradingHistory.find((e) => (e.graded_pick_count ?? 0) > 0)?.name ?? "—",
+        suffix: latestGradedSeasonEvent?.last_graded_at
+          ? formatDateTime(latestGradedSeasonEvent.last_graded_at)
           : undefined,
       },
     ]
-  }, [gradingHistory, pickSource, seasonSummary, totalHits, totalPicks, totalProfit])
+  }, [gradingHistory, latestGradedSeasonEvent, pickSource, seasonSummary, totalHits, totalPicks, totalProfit])
 
   return (
     <div className="monitor-records-page monitor-scroll-region" data-testid="grading-page">
@@ -394,6 +407,17 @@ export function TrackRecordPage() {
     queryKey: ["grading-history", "all"],
     queryFn: () => api.getGradingHistory({ pickSource: "all" }),
   })
+  const seasonQuery = useQuery({
+    queryKey: ["grading-season", "all"],
+    queryFn: () =>
+      api.getGradingSeason({
+        year: 2026,
+        lane: "all",
+        includePicks: false,
+        includeReconciliation: false,
+        limit: 100,
+      }),
+  })
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
     queryFn: api.getDashboardState,
@@ -410,8 +434,10 @@ export function TrackRecordPage() {
         gradingHistoryQuery.data,
         dashboardQuery.data,
         liveRefreshStatusQuery.data?.status,
+        seasonQuery.data,
+        "all",
       ),
-    [gradingHistoryQuery.data, dashboardQuery.data, liveRefreshStatusQuery.data?.status],
+    [gradingHistoryQuery.data, dashboardQuery.data, liveRefreshStatusQuery.data?.status, seasonQuery.data],
   )
 
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
