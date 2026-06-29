@@ -198,3 +198,38 @@ def test_grading_season_events_chronological_pga(monkeypatch, tmp_path):
     event_ids = [row["event_id"] for row in events if row["event_id"] in {"100", "200", "300"}]
     assert event_ids == ["200", "300", "100"]
     assert events[0].get("event_date") == "2026-03-01"
+
+
+def test_lane_ungraded_zero_before_results(monkeypatch, tmp_path):
+    """Upcoming events with +EV inventory must not count as ungraded +EV gaps."""
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_season_ungraded.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "Upcoming Test", "Test Course", 2026, "8001"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+            market_odds, market_book, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "baseline", "cockpit", "top10", "player_a", "Player A", "+200", "fanduel", 0.4, 0.05),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/season?year=2026&lane=cockpit")
+    assert response.status_code == 200
+    event = next((row for row in response.json()["events"] if row["event_id"] == "8001"), None)
+    assert event is not None
+    assert event["has_results"] is False
+    assert event["lanes"]["dashboard"]["ungraded_positive_ev_count"] == 0
+

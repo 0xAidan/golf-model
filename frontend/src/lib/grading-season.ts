@@ -85,3 +85,79 @@ export const formatSeasonEventDate = (value: string | null | undefined): string 
 
 export const isSeasonEvent = (event: GradedTournamentSummary): event is GradingSeasonEvent =>
   "lanes" in event && event.lanes != null
+
+const laneUngradedPositiveEv = (
+  event: GradingSeasonEvent,
+  pickSource: "all" | "cockpit" | "lab",
+): number => {
+  if (pickSource === "lab") {
+    return event.lanes?.lab?.ungraded_positive_ev_count ?? 0
+  }
+  if (pickSource === "all") {
+    return (
+      (event.lanes?.dashboard?.ungraded_positive_ev_count ?? 0) +
+      (event.lanes?.lab?.ungraded_positive_ev_count ?? 0)
+    )
+  }
+  return event.lanes?.dashboard?.ungraded_positive_ev_count ?? 0
+}
+
+/** Sum +EV gaps only for events that have final results (post-completion). */
+export const sumUngradedPositiveEvForCompletedEvents = (
+  events: GradingSeasonEvent[],
+  pickSource: "all" | "cockpit" | "lab",
+): number =>
+  events.reduce((total, event) => {
+    if (!event.has_results) return total
+    return total + laneUngradedPositiveEv(event, pickSource)
+  }, 0)
+
+export const pickLatestGradedSeasonEvent = (
+  events: GradingSeasonEvent[],
+  pickSource: "all" | "cockpit" | "lab",
+): GradingSeasonEvent | null => {
+  let best: GradingSeasonEvent | null = null
+  let bestTs = Number.NEGATIVE_INFINITY
+  for (const event of events) {
+    const lane =
+      pickSource === "lab"
+        ? event.lanes?.lab
+        : pickSource === "cockpit"
+          ? event.lanes?.dashboard
+          : null
+    const graded =
+      pickSource === "all"
+        ? (event.lanes?.dashboard?.graded_pick_count ?? 0) +
+          (event.lanes?.lab?.graded_pick_count ?? 0)
+        : (lane?.graded_pick_count ?? event.graded_pick_count ?? 0)
+    if (graded <= 0) continue
+    const ts = event.last_graded_at ? Date.parse(event.last_graded_at) : Number.NaN
+    if (Number.isNaN(ts) || ts < bestTs) continue
+    bestTs = ts
+    best = event
+  }
+  return best
+}
+
+/** Last N season events with graded picks, in chronological order for charts. */
+export const recentGradedSeasonEventsForTrend = (
+  events: GradingSeasonEvent[],
+  pickSource: "all" | "cockpit" | "lab",
+  limit = 8,
+): GradingSeasonEvent[] => {
+  const graded = events.filter((event) => {
+    const lane =
+      pickSource === "lab"
+        ? event.lanes?.lab
+        : pickSource === "cockpit"
+          ? event.lanes?.dashboard
+          : null
+    const count =
+      pickSource === "all"
+        ? (event.lanes?.dashboard?.graded_pick_count ?? 0) +
+          (event.lanes?.lab?.graded_pick_count ?? 0)
+        : (lane?.graded_pick_count ?? event.graded_pick_count ?? 0)
+    return count > 0
+  })
+  return graded.slice(-limit)
+}

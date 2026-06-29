@@ -349,7 +349,12 @@ def _build_lane_payload(
     summary = build_record_summary(picks)
     combined = summary["combined"]
     graded_pick_count = combined["picks"]
-    ungraded = max(0, positive_ev_inventory - graded_pick_count) if positive_ev_inventory else 0
+    # Only completed events (results present) can have "ungraded +EV" gaps.
+    ungraded = (
+        max(0, positive_ev_inventory - graded_pick_count)
+        if positive_ev_inventory and has_results
+        else 0
+    )
 
     record = {
         "wins": combined["wins"],
