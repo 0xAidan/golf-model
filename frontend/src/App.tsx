@@ -633,6 +633,9 @@ function AppContent({
   const gradingHistory = gradingHistoryData.tournaments ?? []
   const gradingRecordSummary = gradingHistoryData.summary
   const dashboard = dashboardQuery.data
+  const preferredPastEventId = dashboard?.latest_completed_event?.event_id
+    ? String(dashboard.latest_completed_event.event_id)
+    : undefined
 
   useLiveRefreshRuntime({
     requestedTour: predictionRequest.tour,
@@ -688,6 +691,7 @@ function AppContent({
       powerRankingsSubtitle: dashboardPowerRankingsSubtitle,
       pastReplaySource: "dashboard",
       onPastEventContextChange: handlePastEventContextChange,
+      preferredPastEventId,
       fullPicks: {
         mode: "production" as const,
         matchups: filteredMatchups,
@@ -732,6 +736,7 @@ function AppContent({
       secondaryBets,
       dashboardPowerRankingsSubtitle,
       handlePastEventContextChange,
+      preferredPastEventId,
       liveSnapshot,
       matchupsPageEmptyMessage,
       picksMarketRows,
@@ -789,6 +794,7 @@ function AppContent({
       secondaryBets: labSecondaryBets,
       powerRankingsSubtitle: labPowerRankingsSubtitle,
       pastReplaySource: "lab",
+      preferredPastEventId,
       fullPicks: {
         mode: "lab" as const,
         matchups: labFilteredMatchups,
@@ -834,6 +840,7 @@ function AppContent({
       handlePlayerProfileRetry,
       labSecondaryBets,
       labPowerRankingsSubtitle,
+      preferredPastEventId,
       liveSnapshot,
       labMatchupsEmptyMessage,
       labPicksMarketRows,

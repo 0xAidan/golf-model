@@ -47,6 +47,7 @@ export function selectDefaultPastEvent(
   options: PastSnapshotEvent[],
   excludeEventId?: string,
   gradingHistory: GradedTournamentSummary[] = [],
+  preferredEventId?: string,
 ): PastSnapshotEvent | null {
   if (options.length === 0) return null
   const excluded = excludeEventId?.trim()
@@ -55,18 +56,22 @@ export function selectDefaultPastEvent(
     : options
   const pool = candidates.length > 0 ? candidates : options
 
+  const preferred = preferredEventId?.trim()
+  if (preferred) {
+    const match = pool.find((event) => event.event_id === preferred)
+    if (match) return match
+  }
+
   const gradedByEventId = new Map(
     gradingHistory
       .filter((event) => Boolean(event.event_id))
       .map((event) => [String(event.event_id), event]),
   )
-  const gradedWithPicks = pool
-    .filter((event) => (gradedByEventId.get(event.event_id)?.graded_pick_count ?? 0) > 0)
-    .sort(
-      (left, right) =>
-        (gradedByEventId.get(right.event_id)?.graded_pick_count ?? 0) -
-        (gradedByEventId.get(left.event_id)?.graded_pick_count ?? 0),
-    )
+  // Keep API recency order (most recently completed first) — do not sort by graded count,
+  // or a prior event with more picks (e.g. U.S. Open) steals default from the latest event.
+  const gradedWithPicks = pool.filter(
+    (event) => (gradedByEventId.get(event.event_id)?.graded_pick_count ?? 0) > 0,
+  )
   if (gradedWithPicks.length > 0) {
     return gradedWithPicks[0] ?? null
   }
@@ -84,6 +89,7 @@ export function useWorkspacePastReplay({
   pastReplaySource,
   onPastEventContextChange,
   upcomingSourceEventId,
+  preferredPastEventId,
 }: {
   predictionTab: PredictionTab
   gradingHistory: GradedTournamentSummary[]
@@ -93,6 +99,8 @@ export function useWorkspacePastReplay({
   pastReplaySource: PastReplaySource
   onPastEventContextChange?: (context: { eventName: string; courseName?: string } | null) => void
   upcomingSourceEventId?: string
+  /** Latest completed event from dashboard state — default past replay target. */
+  preferredPastEventId?: string
 }) {
   const [selectedPastEventKey, setSelectedPastEventKey] = useState("")
   const [pastReplaySection, setPastReplaySection] = useState<PastReplayLane>("completed")
@@ -138,13 +146,23 @@ export function useWorkspacePastReplay({
   const selectedPastEvent = useMemo(() => {
     if (pastEventOptions.length === 0) return null
     if (!selectedPastEventKey) {
-      return selectDefaultPastEvent(pastEventOptions, upcomingSourceEventId, gradingHistory)
+      return selectDefaultPastEvent(
+        pastEventOptions,
+        upcomingSourceEventId,
+        gradingHistory,
+        preferredPastEventId,
+      )
     }
     return (
       pastEventOptions.find((event) => event.event_id === selectedPastEventKey) ??
-      selectDefaultPastEvent(pastEventOptions, upcomingSourceEventId, gradingHistory)
+      selectDefaultPastEvent(
+        pastEventOptions,
+        upcomingSourceEventId,
+        gradingHistory,
+        preferredPastEventId,
+      )
     )
-  }, [gradingHistory, pastEventOptions, selectedPastEventKey, upcomingSourceEventId])
+  }, [gradingHistory, pastEventOptions, preferredPastEventId, selectedPastEventKey, upcomingSourceEventId])
 
   const pastEventsBootstrapping =
     predictionTab === "past" &&
@@ -153,7 +171,12 @@ export function useWorkspacePastReplay({
 
   useEffect(() => {
     if (predictionTab !== "past" || pastEventOptions.length === 0) return
-    const defaultEvent = selectDefaultPastEvent(pastEventOptions, upcomingSourceEventId, gradingHistory)
+    const defaultEvent = selectDefaultPastEvent(
+      pastEventOptions,
+      upcomingSourceEventId,
+      gradingHistory,
+      preferredPastEventId,
+    )
     if (!defaultEvent) return
     setSelectedPastEventKey((current) => {
       if (current && pastEventOptions.some((event) => event.event_id === current)) {
@@ -161,7 +184,7 @@ export function useWorkspacePastReplay({
       }
       return defaultEvent.event_id
     })
-  }, [gradingHistory, pastEventOptions, predictionTab, upcomingSourceEventId])
+  }, [gradingHistory, pastEventOptions, preferredPastEventId, predictionTab, upcomingSourceEventId])
 
   const pastSnapshotQuery = useQuery({
     queryKey: ["live-refresh-past-snapshot", selectedPastEvent?.event_id, pastReplaySection, pastReplaySource],

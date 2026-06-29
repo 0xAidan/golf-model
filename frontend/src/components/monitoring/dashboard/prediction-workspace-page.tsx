@@ -81,6 +81,7 @@ export function PredictionWorkspacePage({
   powerRankingsSubtitle,
   pastReplaySource = "dashboard",
   onPastEventContextChange,
+  preferredPastEventId,
   usingProdSnapshotFallback = false,
   labLanePartialSections = false,
   fullPicks,
@@ -105,6 +106,7 @@ export function PredictionWorkspacePage({
     pastReplaySource,
     onPastEventContextChange,
     upcomingSourceEventId: upcomingTournament?.source_event_id,
+    preferredPastEventId,
   })
 
   const displayPredictionRun = resolveDisplayPredictionRun(
