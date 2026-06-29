@@ -46,9 +46,11 @@ export function PastPickGradeCell({
 export function PastSecondaryGradeCell({
   bet,
   leaderboard,
+  completedReplay = false,
 }: {
   bet: FlattenedSecondaryBet
   leaderboard: LiveLeaderboardRow[] | undefined
+  completedReplay?: boolean
 }) {
   if (bet.graded_result === "win") {
     return (
@@ -73,6 +75,13 @@ export function PastSecondaryGradeCell({
   }
 
   if (!leaderboard || leaderboard.length === 0) {
+    if (completedReplay) {
+      return (
+        <span className="text-pending" title="No graded outcome stored for this pick" aria-label="Ungraded">
+          Ungraded
+        </span>
+      )
+    }
     return (
       <span style={{ fontSize: 11, color: "var(--text-muted)" }} title="Waiting for final leaderboard">
         Pending

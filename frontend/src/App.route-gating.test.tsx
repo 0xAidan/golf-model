@@ -12,8 +12,11 @@ const { apiMock } = vi.hoisted(() => ({
     getGradingSeason: vi.fn(async () => ({ year: 2026, lane: "cockpit", events: [], tournaments: [], summary: { dashboard: { picks: 0, wins: 0, losses: 0, pushes: 0, profit: 0, hit_rate: null }, lab: { picks: 0, wins: 0, losses: 0, pushes: 0, profit: 0, hit_rate: null }, comparison: { profit_delta: 0, hit_rate_delta: 0, picks_only_dashboard: 0, picks_only_lab: 0, overlap_matchups: 0 } } })),
     getLiveRefreshStatus: vi.fn(async () => ({ status: { running: false } })),
     getLiveRefreshSnapshot: vi.fn(async () => ({ snapshot: null, age_seconds: null })),
+    getLiveRefreshSummary: vi.fn(async () => ({ snapshot: null, age_seconds: null, data_state: "missing" })),
     getPlayerProfile: vi.fn(async () => null),
     gradeLatestTournament: vi.fn(async () => ({})),
+    startGradeJob: vi.fn(async () => ({ job_id: "test-job", status: "running" })),
+    getOpsJob: vi.fn(async () => ({ id: "test-job", status: "complete", progress_pct: 100 })),
     refreshLiveSnapshot: vi.fn(async () => ({ ok: false })),
   },
 }))
@@ -89,21 +92,22 @@ describe("App legacy route replay gating", () => {
     })
   })
 
-  it("keeps dashboard and lab grading records on separate sources", async () => {
-    renderAppAtRoute("/lab")
-
-    await waitFor(() => {
-      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
-        expect.objectContaining({ lane: "lab", year: 2026 }),
-      )
-    })
-
-    vi.clearAllMocks()
+  it("defers grading-season includePicks on dashboard boot", async () => {
     renderAppAtRoute("/")
 
     await waitFor(() => {
       expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
-        expect.objectContaining({ lane: "cockpit", year: 2026 }),
+        expect.objectContaining({ lane: "cockpit", includePicks: false, limit: 20 }),
+      )
+    })
+  })
+
+  it("loads grading-season with picks on /results", async () => {
+    renderAppAtRoute("/results")
+
+    await waitFor(() => {
+      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
+        expect.objectContaining({ includePicks: true, limit: 100 }),
       )
     })
   })

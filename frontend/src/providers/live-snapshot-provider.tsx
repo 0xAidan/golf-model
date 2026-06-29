@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react"
@@ -17,6 +18,7 @@ import type {
   LiveRefreshStatusResponse,
   LiveTournamentSnapshot,
 } from "@/lib/types"
+import { readIdbWarmSnapshotEnvelope, writeIdbWarmSnapshotEnvelope } from "@/lib/warm-snapshot-idb"
 import { readWarmSnapshotEnvelope, writeWarmSnapshotEnvelope } from "@/lib/warm-snapshot"
 
 export type RuntimeStatus = {
@@ -26,6 +28,7 @@ export type RuntimeStatus = {
 
 export type LiveSnapshotContextValue = {
   envelope: LiveRefreshSnapshotResponse | undefined
+  summaryEnvelope: LiveRefreshSnapshotResponse | undefined
   snapshot: LiveRefreshSnapshot | null
   warmSnapshot: LiveRefreshSnapshot | null
   displaySnapshot: LiveRefreshSnapshot | null
@@ -36,6 +39,7 @@ export type LiveSnapshotContextValue = {
   labUpcomingTournament: LiveTournamentSnapshot | null | undefined
   isLiveActive: boolean
   ageSeconds: number | null
+  staleAfterSeconds: number | null
   dataState?: string | null
   operatorMessage?: string | null
   splitBrainSuspected?: boolean
@@ -79,13 +83,26 @@ export function LiveSnapshotProvider({
 }: LiveSnapshotProviderProps) {
   const tabPollingSuspended = useTabPollingSuspended()
   const warmEnvelope = useMemo(() => readWarmSnapshotEnvelope(), [])
+  const [idbEnvelope, setIdbEnvelope] = useState<LiveRefreshSnapshotResponse | null>(null)
+
+  useEffect(() => {
+    void readIdbWarmSnapshotEnvelope().then(setIdbEnvelope)
+  }, [])
+
+  const summaryQuery = useQuery({
+    queryKey: ["live-refresh-summary"],
+    queryFn: api.getLiveRefreshSummary,
+    refetchInterval: tabPollingSuspended ? false : POLLING.liveSnapshot,
+    placeholderData: keepPreviousData,
+    initialData: warmEnvelope ?? idbEnvelope ?? undefined,
+  })
 
   const liveSnapshotQuery = useQuery({
     queryKey: ["live-refresh-snapshot"],
     queryFn: api.getLiveRefreshSnapshot,
     refetchInterval: tabPollingSuspended ? false : POLLING.liveSnapshot,
     placeholderData: keepPreviousData,
-    initialData: warmEnvelope ?? undefined,
+    initialData: warmEnvelope ?? idbEnvelope ?? undefined,
   })
 
   const liveRefreshStatusQuery = useQuery({
@@ -104,21 +121,35 @@ export function LiveSnapshotProvider({
   })
 
   const envelope = liveSnapshotQuery.data
-  const snapshot = envelope?.ok === false ? null : envelope?.snapshot ?? null
-  const warmSnapshot = warmEnvelope?.snapshot ?? null
-  const displaySnapshot = snapshot
-  const dataState = envelope?.data_state ?? null
-  const operatorMessage = envelope?.operator_message ?? null
+  const summaryEnvelope = summaryQuery.data
+  const contractSnapshot = envelope?.ok === false ? null : envelope?.snapshot ?? null
+  const summarySnapshot = summaryEnvelope?.snapshot ?? null
+  const warmSnapshot =
+    warmEnvelope?.snapshot ?? idbEnvelope?.snapshot ?? null
+  const displaySnapshot = contractSnapshot ?? summarySnapshot ?? warmSnapshot
+  const dataState =
+    envelope?.data_state ?? summaryEnvelope?.data_state ?? (displaySnapshot ? "stale" : null)
+  const operatorMessage = envelope?.operator_message ?? summaryEnvelope?.operator_message ?? null
   const splitBrainSuspected = Boolean(
-    envelope?.split_brain_suspected || envelope?.data_state === "split_brain",
+    envelope?.split_brain_suspected ||
+      summaryEnvelope?.split_brain_suspected ||
+      envelope?.data_state === "split_brain",
   )
+  const staleAfterSeconds =
+    envelope?.stale_after_seconds ?? summaryEnvelope?.stale_after_seconds ?? null
 
   useEffect(() => {
-    if (!liveSnapshotQuery.data?.snapshot) return
-    writeWarmSnapshotEnvelope(liveSnapshotQuery.data)
-  }, [liveSnapshotQuery.data])
+    const toPersist = liveSnapshotQuery.data?.snapshot
+      ? liveSnapshotQuery.data
+      : summaryQuery.data?.snapshot
+        ? summaryQuery.data
+        : null
+    if (!toPersist?.snapshot) return
+    writeWarmSnapshotEnvelope(toPersist)
+    void writeIdbWarmSnapshotEnvelope(toPersist)
+  }, [liveSnapshotQuery.data, summaryQuery.data])
 
-  const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(snapshot), [snapshot])
+  const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(displaySnapshot), [displaySnapshot])
 
   const snapshotSustainedFailure =
     liveSnapshotQuery.isError && liveSnapshotQuery.failureCount >= SUSTAINED_FAILURE_THRESHOLD
@@ -135,7 +166,7 @@ export function LiveSnapshotProvider({
     if (statusSustainedFailure || snapshotSustainedFailure) {
       return { label: "Runtime error", tone: "bad" }
     }
-    if (envelope?.ok === false && dataState === "stale") {
+    if (dataState === "stale") {
       return { label: "Stale data", tone: "warn" }
     }
     if (!liveRuntimeRunning) {
@@ -149,7 +180,6 @@ export function LiveSnapshotProvider({
     splitBrainSuspected,
     statusSustainedFailure,
     snapshotSustainedFailure,
-    envelope?.ok,
     dataState,
     liveRuntimeRunning,
     envelope?.stale_reason,
@@ -160,13 +190,16 @@ export function LiveSnapshotProvider({
       ? operatorMessage ??
         "Dashboard and refresh worker may be using different data folders. Rankings are hidden."
       : snapshotSustainedFailure
-        ? "Live snapshot request failed. Retry after checking API health."
+        ? "Live snapshot request failed. Retry after checking System health."
         : operatorMessage ?? envelope?.stale_reason ?? envelope?.fallback_reason ?? uiAlert
+
+  const ageSeconds = envelope?.age_seconds ?? summaryEnvelope?.age_seconds ?? null
 
   const value = useMemo<LiveSnapshotContextValue>(
     () => ({
       envelope,
-      snapshot,
+      summaryEnvelope,
+      snapshot: contractSnapshot,
       warmSnapshot,
       displaySnapshot,
       labSnapshotMerged,
@@ -175,12 +208,13 @@ export function LiveSnapshotProvider({
       labLiveTournament: displaySnapshot?.lab_live_tournament,
       labUpcomingTournament: displaySnapshot?.lab_upcoming_tournament,
       isLiveActive: Boolean(displaySnapshot?.live_tournament?.active),
-      ageSeconds: envelope?.age_seconds ?? null,
+      ageSeconds,
+      staleAfterSeconds,
       dataState,
       operatorMessage,
       splitBrainSuspected,
-      isLoading: liveSnapshotQuery.isLoading,
-      isFetching: liveSnapshotQuery.isFetching,
+      isLoading: liveSnapshotQuery.isLoading && !displaySnapshot,
+      isFetching: liveSnapshotQuery.isFetching || summaryQuery.isFetching,
       isError: liveSnapshotQuery.isError,
       error: liveSnapshotQuery.error instanceof Error ? liveSnapshotQuery.error : null,
       failureCount: liveSnapshotQuery.failureCount,
@@ -192,7 +226,8 @@ export function LiveSnapshotProvider({
     }),
     [
       envelope,
-      snapshot,
+      summaryEnvelope,
+      contractSnapshot,
       warmSnapshot,
       displaySnapshot,
       labSnapshotMerged,
@@ -201,11 +236,14 @@ export function LiveSnapshotProvider({
       liveSnapshotQuery.isError,
       liveSnapshotQuery.error,
       liveSnapshotQuery.failureCount,
+      summaryQuery.isFetching,
       snapshotSustainedFailure,
       runtimeStatus,
       liveRuntimeRunning,
       liveRefreshStatusQuery.data,
       snapshotNoticeBase,
+      ageSeconds,
+      staleAfterSeconds,
       dataState,
       operatorMessage,
       splitBrainSuspected,

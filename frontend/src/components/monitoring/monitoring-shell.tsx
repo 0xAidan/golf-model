@@ -29,6 +29,7 @@ type NavItem = {
   href: string
   icon: ElementType
   prefetch?: boolean
+  hint?: string
 }
 
 const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
@@ -38,8 +39,8 @@ const PRIMARY_NAV: NavItem[] = [
   ...(COCKPIT_LAB_ENABLED
     ? ([
         { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true },
-        { id: "compare", label: "Compare", href: "/compare", icon: GitCompare },
-        { id: "eval", label: "Eval", href: "/eval", icon: FlaskConical },
+        { id: "compare", label: "Compare", href: "/compare", icon: GitCompare, hint: "Dashboard vs Lab" },
+        { id: "eval", label: "Eval", href: "/eval", icon: FlaskConical, hint: "Promotion gates" },
       ] as NavItem[])
     : []),
   { id: "players", label: "Players", href: "/players", icon: Users, prefetch: true },
@@ -82,6 +83,7 @@ function NavItemLink({
   icon: Icon,
   label,
   id,
+  hint,
   onPrefetch,
 }: NavItem & { onPrefetch?: (href: string) => void }) {
   const handleMouseEnter = useCallback(() => {
@@ -100,7 +102,10 @@ function NavItemLink({
       onFocus={handleMouseEnter}
     >
       <Icon size={15} aria-hidden />
-      <span>{label}</span>
+      <span className="nav-item__stack">
+        <span>{label}</span>
+        {hint ? <span className="nav-item__hint">{hint}</span> : null}
+      </span>
     </NavLink>
   )
 }

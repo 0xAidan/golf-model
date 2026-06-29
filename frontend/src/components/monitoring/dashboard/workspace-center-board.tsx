@@ -389,7 +389,11 @@ export function buildSecondaryColumnsForWorkspace({
     renderResult: isPastTab
       ? (bet) => (
           <span data-testid={`secondary-grade-${bet.market}-${bet.player}`}>
-            <PastSecondaryGradeCell bet={bet} leaderboard={pastLeaderboardForGrades} />
+            <PastSecondaryGradeCell
+              bet={bet}
+              leaderboard={pastLeaderboardForGrades}
+              completedReplay={isPastTab}
+            />
           </span>
         )
       : undefined,

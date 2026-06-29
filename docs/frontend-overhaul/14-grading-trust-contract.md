@@ -71,6 +71,19 @@ Data Golf final results are often available **2–6 hours** after the last group
 5. Run `python3 -m pytest tests/test_learning.py tests/test_grading_integration.py -q`.  
 6. Run `cd frontend && npm run test -- grading-trust legacy-routes`.
 
+## Recovery matrix (never-SSH)
+
+| Symptom | In-app action | Script (if needed) |
+|---------|---------------|-------------------|
+| Board blank on tab start | Wait for freshness indicator; click **Refresh** in shell | — |
+| Stale snapshot (>15m) | **Refresh** queues worker recompute; `/system` shows worker status | — |
+| Grade stuck / timeout | **Grade event** uses background job (`/api/ops/jobs/grade`); check `/system` for job status | `python3 scripts/grade_tournament.py --event-id <ID> --year 2026` |
+| Ungraded +EV after Sunday | Open `/results` → Grading tab; run **Grade event** until strip shows 0 | `python3 scripts/ensure_completed_event_grading.py --year 2026` |
+| Worker not running | `/system` → Operator recovery panel; **Refresh** on Dashboard | `systemctl restart golf-live-refresh` (emergency only) |
+| Grading integrity doubt | `/system` reconciliation status | `python3 scripts/grading_reconciliation.py --write` |
+
+Background grade jobs persist in SQLite `ops_jobs` — visible on `/system` via latest grade job row.
+
 ## Frontend tests
 
 - `frontend/src/lib/grading-trust.test.ts` — metric builder  

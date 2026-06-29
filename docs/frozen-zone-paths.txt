@@ -1,0 +1,17 @@
+src/models/composite.py
+src/models/course_fit.py
+src/models/form.py
+src/models/momentum.py
+src/models/weights.py
+src/models/prob_engine_v1/
+src/value.py
+src/matchup_value.py
+src/matchups.py
+src/kelly.py
+src/portfolio.py
+src/exposure.py
+src/config.py
+run_predictions.py
+src/services/golf_model_service.py
+backtester/pit_models.py
+backtester/strategy.py

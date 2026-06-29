@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
 
-import { GradingPage, TrackRecordPage } from "@/pages/legacy-routes"
+import { AnalyticsWorkspacePage } from "@/pages/analytics-workspace-page"
+import { GradingPage } from "@/pages/legacy-routes"
 import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { cn } from "@/lib/utils"
 
-type ResultsTab = "grading" | "track-record"
+type ResultsTab = "grading" | "analytics"
 
 export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTab }) {
   const [searchParams] = useSearchParams()
-  const urlTab = searchParams.get("tab") === "track-record" ? "track-record" : initialTab
+  const urlTab = searchParams.get("tab") === "analytics" ? "analytics" : initialTab
   const [tab, setTab] = useState<ResultsTab>(urlTab)
 
   useEffect(() => {
@@ -21,14 +22,14 @@ export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTa
       <TerminalPageHeader
         eyebrow="Records"
         title="Results"
-        description="Grade tournament picks and review track record by model lane (Dashboard vs Lab)."
+        description="Grade tournament picks and explore season analytics with filters and presets."
       />
       <div className="px-5 pb-3">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Results views">
           {(
             [
               { id: "grading" as const, label: "Grading" },
-              { id: "track-record" as const, label: "Track record" },
+              { id: "analytics" as const, label: "Analytics" },
             ] as const
           ).map((item) => (
             <button
@@ -49,19 +50,9 @@ export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTa
             </button>
           ))}
         </div>
-        <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-          Legacy routes still work:{" "}
-          <Link to="/grading" className="link-subtle">
-            /grading
-          </Link>
-          ,{" "}
-          <Link to="/track-record" className="link-subtle">
-            /track-record
-          </Link>
-        </p>
       </div>
       <div role="tabpanel" className="flex-1">
-        {tab === "grading" ? <GradingPage /> : <TrackRecordPage />}
+        {tab === "grading" ? <GradingPage /> : <AnalyticsWorkspacePage />}
       </div>
     </div>
   )

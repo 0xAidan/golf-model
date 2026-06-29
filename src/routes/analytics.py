@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any
 
 from fastapi import APIRouter, Query
+from fastapi.responses import PlainTextResponse
 
 from src.data_views import ensure_analytics_views
 from src.db import ensure_initialized, get_conn
 
 router = APIRouter(tags=["analytics"])
+
+PICKS_FROM = """
+FROM pick_ledger pl
+LEFT JOIN pick_outcomes po ON po.pick_key = pl.pick_key
+LEFT JOIN tournaments t ON t.id = pl.tournament_id
+LEFT JOIN picks p ON p.tournament_id = pl.tournament_id
+  AND p.player_key = pl.player_key
+  AND LOWER(COALESCE(p.bet_type, '')) = LOWER(COALESCE(pl.bet_type, ''))
+"""
 
 
 def _outcome_filter_sql(outcome: str | None) -> tuple[str, list[Any]]:
@@ -27,8 +39,8 @@ def _outcome_filter_sql(outcome: str | None) -> tuple[str, list[Any]]:
     return "", []
 
 
-@router.get("/api/analytics/picks")
-async def list_analytics_picks(
+def _build_picks_where(
+    *,
     event_id: str | None = None,
     year: int | None = None,
     season: int | None = None,
@@ -41,12 +53,12 @@ async def list_analytics_picks(
     lifecycle: str | None = None,
     book: str | None = None,
     model_variant: str | None = None,
+    player: str | None = None,
+    confidence: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     include_reconstructed: bool = False,
-    limit: int = Query(500, ge=1, le=5000),
-    offset: int = Query(0, ge=0),
-):
-    ensure_initialized()
-    ensure_analytics_views()
+) -> tuple[str, list[Any]]:
     clauses: list[str] = ["1=1"]
     params: list[Any] = []
 
@@ -57,12 +69,10 @@ async def list_analytics_picks(
     if event_id:
         clauses.append("pl.event_id = ?")
         params.append(str(event_id).strip())
-    if year is not None:
+    target_year = season if season is not None else year
+    if target_year is not None:
         clauses.append("COALESCE(pl.year, t.year) = ?")
-        params.append(int(year))
-    if season is not None:
-        clauses.append("COALESCE(pl.year, t.year) = ?")
-        params.append(int(season))
+        params.append(int(target_year))
     if phase:
         clauses.append("pl.phase = ?")
         params.append(phase.strip().lower())
@@ -87,32 +97,177 @@ async def list_analytics_picks(
     if model_variant:
         clauses.append("pl.model_variant = ?")
         params.append(model_variant.strip().lower())
+    if player:
+        clauses.append("(pl.player_key = ? OR LOWER(pl.player_display) LIKE ?)")
+        key = player.strip().lower()
+        params.extend([key, f"%{key}%"])
+    if confidence:
+        clauses.append("LOWER(COALESCE(p.confidence, '')) = ?")
+        params.append(confidence.strip().lower())
+    if date_from:
+        clauses.append("pl.generated_at >= ?")
+        params.append(date_from.strip())
+    if date_to:
+        clauses.append("pl.generated_at <= ?")
+        params.append(date_to.strip())
 
     outcome_sql, outcome_params = _outcome_filter_sql(outcome)
-    clauses.append(outcome_sql.lstrip(" AND ") if outcome_sql else "1=1")
+    if outcome_sql:
+        clauses.append(outcome_sql.lstrip(" AND "))
     params.extend(outcome_params)
 
-    where = " AND ".join(clauses)
+    return " AND ".join(clauses), params
+
+
+@router.get("/api/analytics/summary")
+async def analytics_summary(
+    event_id: str | None = None,
+    year: int | None = None,
+    season: int | None = None,
+    phase: str | None = None,
+    lane: str | None = None,
+    bet_type: str | None = None,
+    ev_min: float | None = None,
+    ev_max: float | None = None,
+    outcome: str | None = None,
+    book: str | None = None,
+    player: str | None = None,
+    confidence: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    include_reconstructed: bool = False,
+):
+    ensure_initialized()
+    ensure_analytics_views()
+    where, params = _build_picks_where(
+        event_id=event_id,
+        year=year,
+        season=season,
+        phase=phase,
+        lane=lane,
+        bet_type=bet_type,
+        ev_min=ev_min,
+        ev_max=ev_max,
+        outcome=outcome,
+        book=book,
+        player=player,
+        confidence=confidence,
+        date_from=date_from,
+        date_to=date_to,
+        include_reconstructed=include_reconstructed,
+    )
+    conn = get_conn()
+    row = conn.execute(
+        f"""
+        SELECT
+            COUNT(*) AS pick_count,
+            SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN po.id IS NOT NULL AND po.hit = 0 AND COALESCE(po.profit, 0) != 0 THEN 1 ELSE 0 END) AS losses,
+            SUM(CASE WHEN po.id IS NOT NULL AND po.hit = 0 AND COALESCE(po.profit, 0) = 0 THEN 1 ELSE 0 END) AS pushes,
+            SUM(CASE WHEN po.id IS NOT NULL THEN 1 ELSE 0 END) AS graded_count,
+            ROUND(SUM(COALESCE(po.profit, 0)), 2) AS profit_units,
+            ROUND(
+                CASE WHEN SUM(CASE WHEN po.id IS NOT NULL THEN 1 ELSE 0 END) > 0
+                THEN 100.0 * SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END)
+                     / SUM(CASE WHEN po.id IS NOT NULL THEN 1 ELSE 0 END)
+                ELSE 0 END, 1
+            ) AS win_rate_pct,
+            ROUND(
+                CASE WHEN SUM(CASE WHEN po.id IS NOT NULL THEN 1 ELSE 0 END) > 0
+                THEN 100.0 * SUM(COALESCE(po.profit, 0)) / SUM(CASE WHEN po.id IS NOT NULL THEN 1 ELSE 0 END)
+                ELSE 0 END, 2
+            ) AS roi_pct
+        {PICKS_FROM}
+        WHERE {where}
+        """,
+        params,
+    ).fetchone()
+    conn.close()
+    data = dict(row) if row else {}
+    return {
+        "pick_count": int(data.get("pick_count") or 0),
+        "wins": int(data.get("wins") or 0),
+        "losses": int(data.get("losses") or 0),
+        "pushes": int(data.get("pushes") or 0),
+        "graded_count": int(data.get("graded_count") or 0),
+        "profit_units": float(data.get("profit_units") or 0),
+        "win_rate_pct": float(data.get("win_rate_pct") or 0),
+        "roi_pct": float(data.get("roi_pct") or 0),
+    }
+
+
+@router.get("/api/analytics/picks")
+async def list_analytics_picks(
+    event_id: str | None = None,
+    year: int | None = None,
+    season: int | None = None,
+    phase: str | None = None,
+    lane: str | None = None,
+    bet_type: str | None = None,
+    ev_min: float | None = None,
+    ev_max: float | None = None,
+    outcome: str | None = None,
+    lifecycle: str | None = None,
+    book: str | None = None,
+    model_variant: str | None = None,
+    player: str | None = None,
+    confidence: str | None = None,
+    from_date: str | None = Query(None, alias="from"),
+    to_date: str | None = Query(None, alias="to"),
+    include_reconstructed: bool = False,
+    format: str = Query("json", pattern="^(json|csv)$"),
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+):
+    ensure_initialized()
+    ensure_analytics_views()
+    where, params = _build_picks_where(
+        event_id=event_id,
+        year=year,
+        season=season,
+        phase=phase,
+        lane=lane,
+        bet_type=bet_type,
+        ev_min=ev_min,
+        ev_max=ev_max,
+        outcome=outcome,
+        lifecycle=lifecycle,
+        book=book,
+        model_variant=model_variant,
+        player=player,
+        confidence=confidence,
+        date_from=from_date,
+        date_to=to_date,
+        include_reconstructed=include_reconstructed,
+    )
     conn = get_conn()
     rows = conn.execute(
         f"""
         SELECT pl.*, po.hit, po.model_hit, po.profit, po.grading_authority, po.outcome_locked,
-               po.entered_at AS graded_at, t.name AS tournament_name, t.date AS tournament_date
-        FROM pick_ledger pl
-        LEFT JOIN pick_outcomes po ON po.pick_key = pl.pick_key
-        LEFT JOIN tournaments t ON t.id = pl.tournament_id
+               po.entered_at AS graded_at, t.name AS tournament_name, t.date AS tournament_date,
+               p.confidence AS pick_confidence
+        {PICKS_FROM}
         WHERE {where}
         ORDER BY pl.generated_at DESC, pl.id DESC
         LIMIT ? OFFSET ?
         """,
         (*params, int(limit), int(offset)),
     ).fetchall()
+    picks = [dict(r) for r in rows]
+
+    if format == "csv":
+        conn.close()
+        buf = io.StringIO()
+        if picks:
+            writer = csv.DictWriter(buf, fieldnames=list(picks[0].keys()))
+            writer.writeheader()
+            writer.writerows(picks)
+        return PlainTextResponse(buf.getvalue(), media_type="text/csv")
+
     total = conn.execute(
         f"""
         SELECT COUNT(*) AS c
-        FROM pick_ledger pl
-        LEFT JOIN pick_outcomes po ON po.pick_key = pl.pick_key
-        LEFT JOIN tournaments t ON t.id = pl.tournament_id
+        {PICKS_FROM}
         WHERE {where}
         """,
         params,
@@ -123,15 +278,19 @@ async def list_analytics_picks(
         "total": int(total["c"] if total else 0),
         "limit": limit,
         "offset": offset,
-        "picks": [dict(r) for r in rows],
+        "picks": picks,
     }
 
 
 @router.get("/api/analytics/picks/rollup")
 async def rollup_analytics_picks(
-    group_by: str = Query("event", pattern="^(event|bet_type|book|phase|month|lane)$"),
+    group_by: str = Query("event", pattern="^(event|bet_type|book|phase|month|lane|player)$"),
     season: int | None = None,
     year: int | None = None,
+    lane: str | None = None,
+    book: str | None = None,
+    bet_type: str | None = None,
+    ev_min: float | None = None,
     include_reconstructed: bool = False,
 ):
     ensure_initialized()
@@ -143,18 +302,18 @@ async def rollup_analytics_picks(
         "phase": "pl.phase",
         "month": "strftime('%Y-%m', COALESCE(pl.generated_at, t.date))",
         "lane": "pl.lane",
+        "player": "pl.player_display",
     }[group_by]
 
-    clauses = ["1=1"]
-    params: list[Any] = []
-    if not include_reconstructed:
-        clauses.append("pl.lifecycle != 'pit_reconstructed'")
-    target_year = season or year
-    if target_year is not None:
-        clauses.append("COALESCE(pl.year, t.year) = ?")
-        params.append(int(target_year))
-
-    where = " AND ".join(clauses)
+    where, params = _build_picks_where(
+        season=season,
+        year=year,
+        lane=lane,
+        book=book,
+        bet_type=bet_type,
+        ev_min=ev_min,
+        include_reconstructed=include_reconstructed,
+    )
     conn = get_conn()
     rows = conn.execute(
         f"""
@@ -171,9 +330,7 @@ async def rollup_analytics_picks(
                 THEN 100.0 * SUM(COALESCE(po.profit, 0)) / SUM(CASE WHEN po.id IS NOT NULL THEN 1 ELSE 0 END)
                 ELSE 0 END, 2
             ) AS roi_pct
-        FROM pick_ledger pl
-        LEFT JOIN pick_outcomes po ON po.pick_key = pl.pick_key
-        LEFT JOIN tournaments t ON t.id = pl.tournament_id
+        {PICKS_FROM}
         WHERE {where}
         GROUP BY group_key
         ORDER BY profit DESC

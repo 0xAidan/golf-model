@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { DataHealthPanel } from "@/components/data-health-panel"
 import { DiagnosticsGradingPanel } from "@/components/cockpit/event-modules"
 import { BentoGrid, BentoPanel } from "@/components/monitoring"
+import { OpsHealthPanel } from "@/components/monitoring/ops-health-panel"
 import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { buildDiagnosticsModel } from "@/lib/cockpit-event-models"
 import type {
@@ -64,6 +65,10 @@ export function SystemPage({
         />
 
         <BentoGrid columns={2} testId="system-bento">
+          <BentoPanel title="Operator recovery" span={6}>
+            <OpsHealthPanel />
+          </BentoPanel>
+
           <BentoPanel title="Data health" span={6}>
             <DataHealthPanel />
           </BentoPanel>
@@ -94,9 +99,9 @@ export function SystemPage({
         </BentoGrid>
 
         <p className="px-5 pb-5 text-xs text-[var(--text-tertiary)]">
-          Legacy route:{" "}
-          <Link to="/research/diagnostics" className="link-subtle">
-            /research/diagnostics
+          Advanced diagnostics:{" "}
+          <Link to="/research/diagnostics-legacy" className="link-subtle">
+            Technical details
           </Link>
         </p>
       </main>

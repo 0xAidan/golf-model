@@ -230,6 +230,7 @@ from src.routes.tracks import router as tracks_router
 from src.routes.field_board import router as field_board_router
 from src.routes.eval import router as eval_router
 from src.routes.ops import router as ops_router
+from src.routes.ops_jobs import router as ops_jobs_router
 
 app.include_router(research_router)
 app.include_router(model_registry_router)
@@ -239,6 +240,7 @@ app.include_router(tracks_router)
 app.include_router(field_board_router)
 app.include_router(eval_router)
 app.include_router(ops_router)
+app.include_router(ops_jobs_router)
 from src.routes.analytics import router as analytics_router
 from src.routes.grading_season import router as grading_season_router
 
@@ -2470,7 +2472,6 @@ async def get_live_refresh_snapshot():
     from src.live_refresh_policy import resolve_cadence
     from backtester.dashboard_runtime import (
         build_current_board_contract,
-        generate_snapshot_once,
         get_live_refresh_status,
         read_snapshot,
         start_live_refresh,
@@ -2495,31 +2496,19 @@ async def get_live_refresh_snapshot():
         except Exception as exc:
             _logger.warning("Live refresh runtime autostart failed: %s", exc)
 
-    async def _attempt_fresh_snapshot(timeout_seconds: float = 8.0) -> dict:
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(generate_snapshot_once, tour=tour),
-                timeout=timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            _logger.warning("On-demand live snapshot generation timed out after %.1fs", timeout_seconds)
-            return {}
-        except Exception as exc:
-            _logger.warning("On-demand live snapshot generation failed: %s", exc)
-            return {}
-
     snapshot = read_snapshot()
-    if not snapshot:
-        snapshot = await _attempt_fresh_snapshot()
     if not snapshot:
         return {
             "ok": False,
             "snapshot": None,
+            "data_state": "missing",
             "stale_reason": (
                 "No snapshot generated yet. Live refresh runtime is starting."
                 if runtime_autostarted
                 else "No snapshot generated yet. Start live refresh runtime."
             ),
+            "operator_message": "No live data yet. Showing cached data if available.",
+            "retry_after": 30,
         }
     generated_at = snapshot.get("generated_at")
     age_seconds = None
@@ -2553,6 +2542,64 @@ async def get_live_refresh_snapshot():
     if verification_messages and contract.get("stale_reason") is None:
         contract["stale_reason"] = " | ".join(verification_messages)
     return contract
+
+
+@app.get("/api/live-refresh/summary")
+async def get_live_refresh_summary():
+    """Fast last-good snapshot for shell/SWR — never blocks on recompute."""
+    from src.db import ensure_initialized
+    ensure_initialized()
+    from src.autoresearch_settings import get_settings
+    from src.live_refresh_policy import resolve_cadence
+    from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
+
+    settings = (get_settings().get("live_refresh") or {})
+    cadence = resolve_cadence(settings)
+    stale_after_seconds = max(900, int(cadence.recompute_seconds) + 120)
+
+    snapshot = read_snapshot()
+    if not snapshot:
+        return {
+            "ok": False,
+            "data_state": "missing",
+            "snapshot": None,
+            "operator_message": "No live data snapshot is available yet.",
+        }
+
+    generated_at = snapshot.get("generated_at")
+    age_seconds = None
+    if generated_at:
+        try:
+            age_seconds = max(
+                0,
+                int((datetime.now(timezone.utc) - datetime.fromisoformat(generated_at)).total_seconds()),
+            )
+        except ValueError:
+            age_seconds = None
+
+    status = _with_live_refresh_worker_status(get_live_refresh_status())
+    split_brain = bool(status.get("split_brain_suspected"))
+    if split_brain:
+        data_state = "split_brain"
+    elif age_seconds is not None and age_seconds > stale_after_seconds:
+        data_state = "stale"
+    else:
+        data_state = "fresh"
+
+    return {
+        "ok": True,
+        "data_state": data_state,
+        "snapshot": snapshot,
+        "generated_at": generated_at,
+        "age_seconds": age_seconds,
+        "stale_after_seconds": stale_after_seconds,
+        "split_brain_suspected": split_brain,
+        "operator_message": (
+            f"Data is {age_seconds // 60} minutes old — refreshing in background."
+            if data_state == "stale" and age_seconds is not None
+            else None
+        ),
+    }
 
 
 @app.post("/api/live-refresh/refresh")
