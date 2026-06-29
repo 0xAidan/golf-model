@@ -3844,6 +3844,7 @@ def _run_loop(tour: str) -> None:
             next_recompute = min(next_recompute, now_epoch + 30) if next_recompute else now_epoch + 30
         wait_target = min(next_ingest or now_epoch + 1, next_recompute or now_epoch + 1)
         sleep_for = max(1.0, wait_target - time.time())
+        _write_heartbeat()
         if _stop_event.wait(sleep_for):
             break
     with _state_lock:
@@ -3880,6 +3881,14 @@ def stop_live_refresh() -> dict[str, Any]:
 def get_live_refresh_status() -> dict[str, Any]:
     with _state_lock:
         status = dict(_state)
+        local_running = bool(_state.get("running"))
+    if live_refresh_worker_owned():
+        heartbeat = read_heartbeat()
+        if heartbeat and bool(heartbeat.get("running")) and not local_running:
+            status["running"] = True
+            for key in ("phase", "refresh_state", "last_error", "phase_detail"):
+                if heartbeat.get(key) is not None:
+                    status[key] = heartbeat.get(key)
     snapshot = read_snapshot()
     generated_at = snapshot.get("generated_at")
     age_seconds = None

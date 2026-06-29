@@ -119,3 +119,9 @@ export function WorkspaceEmptyState({ message }: { message: string }) {
     <PanelBackfill message={message} loading={false} testId="workspace-empty-state" />
   )
 }
+
+export function WorkspaceLoadingState({ message }: { message: string }) {
+  return (
+    <PanelBackfill message={message} loading testId="workspace-loading-state" />
+  )
+}

@@ -26,7 +26,7 @@ import type {
 } from "@/lib/types"
 
 import { TopPicksPipelineHint } from "./workspace-pipeline-hint"
-import { PastPickGradeCell, PastSecondaryGradeCell, WorkspaceEmptyState } from "./workspace-grade-cells"
+import { PastPickGradeCell, PastSecondaryGradeCell, WorkspaceEmptyState, WorkspaceLoadingState } from "./workspace-grade-cells"
 
 export type WorkspaceCenterBoardProps = {
   predictionTab: PredictionTab
@@ -60,6 +60,8 @@ export type WorkspaceCenterBoardProps = {
   leaderboardPanel: ReactNode
   fullPicksPanel: ReactNode
   fullPicksTabLabel: string
+  pastPicksLoading?: boolean
+  pastGradedPickCount?: number
 }
 
 export function WorkspaceCenterBoard({
@@ -94,6 +96,8 @@ export function WorkspaceCenterBoard({
   leaderboardPanel,
   fullPicksPanel,
   fullPicksTabLabel,
+  pastPicksLoading = false,
+  pastGradedPickCount,
 }: WorkspaceCenterBoardProps) {
   const rankings = (
     <div className="card cockpit-stack-card">
@@ -174,7 +178,9 @@ export function WorkspaceCenterBoard({
           </div>
           <div className="card-desc">
             {predictionTab === "past"
-              ? `${filteredTopPlays.length} recovered +EV matchup lines`
+              ? pastPicksLoading
+                ? "Loading graded picks…"
+                : `${pastGradedPickCount ?? filteredTopPlays.length} graded +EV matchup lines`
               : `${filteredTopPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`}
           </div>
         </div>
@@ -247,6 +253,8 @@ export function WorkspaceCenterBoard({
               </div>
             </div>
           </div>
+        ) : pastPicksLoading ? (
+          <WorkspaceLoadingState message="Loading graded picks for this event…" />
         ) : filteredTopPlays.length > 0 ? (
           <HeroDataGrid
             data={filteredTopPlays}

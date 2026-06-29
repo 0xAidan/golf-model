@@ -2577,6 +2577,9 @@ async def get_live_refresh_summary():
         except ValueError:
             age_seconds = None
 
+    from backtester.dashboard_runtime import manual_trigger_pending
+    from src.runtime_paths import read_heartbeat
+
     status = _with_live_refresh_worker_status(get_live_refresh_status())
     split_brain = bool(status.get("split_brain_suspected"))
     if split_brain:
@@ -2586,6 +2589,19 @@ async def get_live_refresh_summary():
     else:
         data_state = "fresh"
 
+    operator_message = None
+    if data_state == "stale" and age_seconds is not None:
+        heartbeat = read_heartbeat() or {}
+        progress = status.get("progress") or {}
+        refresh_state = progress.get("refresh_state") or status.get("refresh_state") or heartbeat.get("refresh_state")
+        refresh_active = manual_trigger_pending() or refresh_state in {"running", "busy"}
+        if refresh_active:
+            operator_message = "Refresh queued or in progress — data will update when the worker finishes."
+        else:
+            operator_message = (
+                f"Data is {age_seconds // 60} minutes old — use Refresh to load the current tournament."
+            )
+
     return {
         "ok": True,
         "data_state": data_state,
@@ -2594,11 +2610,7 @@ async def get_live_refresh_summary():
         "age_seconds": age_seconds,
         "stale_after_seconds": stale_after_seconds,
         "split_brain_suspected": split_brain,
-        "operator_message": (
-            f"Data is {age_seconds // 60} minutes old — refreshing in background."
-            if data_state == "stale" and age_seconds is not None
-            else None
-        ),
+        "operator_message": operator_message,
     }
 
 

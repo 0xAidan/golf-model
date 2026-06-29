@@ -552,3 +552,51 @@ async def get_grading_season(
         "tournaments": events_out,
         "summary": summary,
     }
+
+
+@router.get("/api/grading/event-picks")
+async def get_grading_event_picks(
+    event_id: str = Query(..., min_length=1),
+    year: int = Query(2026, ge=2000, le=2100),
+    lane: str = Query("cockpit", pattern="^(cockpit|dashboard|lab)$"),
+):
+    """Graded picks and record for a single completed event (Past replay)."""
+    ensure_initialized()
+    conn = get_conn()
+    discovered = _discover_season_events(conn, year)
+    meta = discovered.get(str(event_id))
+    tournament_id = meta.get("tournament_id") if meta else None
+    if tournament_id is None:
+        row = conn.execute(
+            "SELECT id FROM tournaments WHERE event_id = ? AND year = ? LIMIT 1",
+            (event_id, year),
+        ).fetchone()
+        tournament_id = row["id"] if row else None
+
+    has_results = False
+    if tournament_id:
+        rc = conn.execute(
+            "SELECT COUNT(*) AS c FROM results WHERE tournament_id = ?",
+            (tournament_id,),
+        ).fetchone()
+        has_results = bool(rc and int(rc["c"] or 0) > 0)
+
+    rollup = meta.get("rollup_record") if meta else None
+    lane_key = "cockpit" if lane == "dashboard" else lane
+    payload = _build_lane_payload(
+        conn,
+        event_id=str(event_id),
+        tournament_id=tournament_id,
+        lane=lane_key,
+        rollup_record=rollup,
+        has_results=has_results,
+    )
+    conn.close()
+    return {
+        "ok": True,
+        "event_id": str(event_id),
+        "year": year,
+        "lane": lane_key,
+        "name": meta.get("name") if meta else None,
+        **payload,
+    }

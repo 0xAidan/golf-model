@@ -11,6 +11,7 @@ export function WorkspaceAlerts({
   predictionTabPastError,
   pastReplayErrorMessage,
   predictionTabPastNoEvent,
+  predictionTabPastPicksLoading,
 }: {
   displayPredictionRun: PredictionRunResponse | null
   shouldShowOpportunityAlertStrip: boolean
@@ -24,6 +25,7 @@ export function WorkspaceAlerts({
   predictionTabPastError: boolean
   pastReplayErrorMessage: string
   predictionTabPastNoEvent?: boolean
+  predictionTabPastPicksLoading?: boolean
 }) {
   return (
     <>
@@ -87,6 +89,11 @@ export function WorkspaceAlerts({
           >
             Dismiss
           </button>
+        </div>
+      ) : null}
+      {predictionTabPastPicksLoading ? (
+        <div className="alert-banner" role="status" aria-live="polite" data-testid="past-picks-loading">
+          Loading graded picks for {pastEventName ?? "selected event"}…
         </div>
       ) : null}
       {predictionTabPastLoading ? (

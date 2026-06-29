@@ -454,6 +454,10 @@ export function PredictionWorkspacePage({
       leaderboardPanel={leaderboardPanel}
       fullPicksPanel={fullPicksPanel}
       fullPicksTabLabel={fullPicksTabLabel}
+      pastPicksLoading={predictionTab === "past" ? pastReplay.pastEventPicksLoading : false}
+      pastGradedPickCount={
+        predictionTab === "past" ? pastReplay.recordSummary.combined.picks : undefined
+      }
     />
   )
 
@@ -652,6 +656,7 @@ export function PredictionWorkspacePage({
           (pastReplay.pastEventsBootstrapping ||
             (pastReplay.pastReplayLoading && !pastReplay.pastReplayHasData))
         }
+        predictionTabPastPicksLoading={pastReplay.pastEventPicksLoading}
         pastEventName={pastReplay.selectedPastEvent?.event_name}
         predictionTabPastError={
           predictionTab === "past" &&

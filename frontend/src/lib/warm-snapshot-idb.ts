@@ -5,6 +5,29 @@ const DB_VERSION = 1
 const STORE = "snapshots"
 const KEY = "warm-envelope"
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const DEFAULT_STALE_AFTER_SECONDS = 3900
+
+const envelopeIsTooStale = (envelope: LiveRefreshSnapshotResponse): boolean => {
+  if (
+    envelope.age_seconds != null &&
+    envelope.stale_after_seconds != null &&
+    envelope.age_seconds > envelope.stale_after_seconds
+  ) {
+    return true
+  }
+  if (envelope.age_seconds != null && envelope.age_seconds > DEFAULT_STALE_AFTER_SECONDS) {
+    return true
+  }
+  const generatedAt = envelope.generated_at ?? envelope.snapshot?.generated_at
+  if (!generatedAt) return false
+  try {
+    const generatedMs = Date.parse(generatedAt)
+    if (!Number.isFinite(generatedMs)) return false
+    return Date.now() - generatedMs > DEFAULT_STALE_AFTER_SECONDS * 1000
+  } catch {
+    return false
+  }
+}
 
 type StoredEnvelope = {
   savedAt: number
@@ -43,6 +66,10 @@ export const readIdbWarmSnapshotEnvelope = async (): Promise<LiveRefreshSnapshot
           return
         }
         if (Date.now() - row.savedAt > MAX_AGE_MS) {
+          resolve(null)
+          return
+        }
+        if (envelopeIsTooStale(row.envelope)) {
           resolve(null)
           return
         }

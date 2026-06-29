@@ -5,6 +5,7 @@ export type FreshnessInput = {
   ageSeconds?: number | null
   staleAfterSeconds?: number | null
   isFetching: boolean
+  refreshQueued?: boolean
   isOnline: boolean
   isError: boolean
   splitBrain?: boolean
@@ -13,7 +14,7 @@ export type FreshnessInput = {
 export const deriveFreshnessState = (input: FreshnessInput): FreshnessState => {
   if (!input.isOnline) return "offline"
   if (input.splitBrain || input.isError) return "error"
-  if (input.isFetching) return "updating"
+  if (input.isFetching || input.refreshQueued) return "updating"
   if (input.dataState === "stale") return "stale"
   if (
     input.ageSeconds != null &&
@@ -37,7 +38,7 @@ export const freshnessLabel = (
     case "updating":
       return "Updating…"
     case "stale":
-      return `Stale · ${age} — refreshing`
+      return `Stale · ${age}`
     case "offline":
       return "Offline — showing last data"
     case "error":

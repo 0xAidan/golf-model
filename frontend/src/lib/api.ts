@@ -9,6 +9,7 @@ import type {
   TrackComparisonResponse,
   EventSummary,
   GradingHistoryResponse,
+  GradingEventPicksResponse,
   GradingSeasonResponse,
   LiveRefreshSnapshotResponse,
   LiveRefreshStatusResponse,
@@ -123,6 +124,22 @@ export const api = {
     const qs = params.toString()
     return request<GradingSeasonResponse>(
       `/api/grading/season${qs ? `?${qs}` : ""}`,
+      undefined,
+      GRADING_SEASON_TIMEOUT_MS,
+    )
+  },
+  getGradingEventPicks: (options: { eventId: string; year?: number; lane?: "cockpit" | "dashboard" | "lab" }) => {
+    const params = new URLSearchParams({
+      event_id: options.eventId,
+    })
+    if (options.year !== undefined) {
+      params.set("year", String(options.year))
+    }
+    if (options.lane) {
+      params.set("lane", options.lane)
+    }
+    return request<GradingEventPicksResponse>(
+      `/api/grading/event-picks?${params.toString()}`,
       undefined,
       GRADING_SEASON_TIMEOUT_MS,
     )
