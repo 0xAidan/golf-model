@@ -103,20 +103,23 @@ def run_checks(
         identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
         app_root = str(identity.get("app_root") or "")
         split_brain = bool(payload.get("split_brain_suspected"))
+        grading = payload.get("grading") if isinstance(payload.get("grading"), dict) else {}
+        grading_ok = grading.get("status") in {None, "ok"}
         ok = (
             status_code == 200
             and elapsed_ms <= max_api_ms
             and payload.get("ok") is True
             and not split_brain
+            and grading_ok
             and (not expected_app_root or app_root == expected_app_root)
         )
         message = (
-            f"ops_health returned {status_code} in {elapsed_ms}ms app_root={app_root} split_brain={split_brain}"
+            f"ops_health returned {status_code} in {elapsed_ms}ms app_root={app_root} split_brain={split_brain} grading={grading.get('status')}"
             if ok
             else (
                 "ops_health unhealthy: "
                 f"status={status_code} elapsed_ms={elapsed_ms} ok={payload.get('ok')} "
-                f"split_brain={split_brain} app_root={app_root} expected={expected_app_root}"
+                f"split_brain={split_brain} grading={grading.get('status')} app_root={app_root} expected={expected_app_root}"
             )
         )
         results.append(

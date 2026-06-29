@@ -352,16 +352,22 @@ export function WorkspaceCenterBoard({
 export function buildPickColumnsForWorkspace({
   isPastTab,
   pastLeaderboardForGrades,
+  completedReplay = false,
 }: {
   isPastTab: boolean
   pastLeaderboardForGrades: LiveLeaderboardRow[]
+  completedReplay?: boolean
 }) {
   return buildPickColumns({
     isPast: isPastTab,
     renderResult: isPastTab
       ? (matchup) => (
           <span data-testid={`matchup-grade-${buildMatchupKey(matchup)}`}>
-            <PastPickGradeCell matchup={matchup} leaderboard={pastLeaderboardForGrades} />
+            <PastPickGradeCell
+              matchup={matchup}
+              leaderboard={pastLeaderboardForGrades}
+              completedReplay={completedReplay}
+            />
           </span>
         )
       : undefined,

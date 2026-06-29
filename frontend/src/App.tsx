@@ -322,16 +322,48 @@ function AppContent({
   const gradeMutation = useMutation({
     mutationFn: () =>
       api.gradeLatestTournament(dashboardQuery.data?.latest_completed_event ?? undefined),
-    onSuccess: () => {
-      setUiAlert(null)
-      toast.success("Event graded successfully")
+    onSuccess: (report) => {
+      const payload = report as {
+        status?: string
+        reason?: string
+        error?: string
+        message?: string
+      }
+      const status = String(payload.status ?? "").trim().toLowerCase()
+      const errorText = payload.error ?? payload.message
+
+      if (status === "error" || errorText) {
+        const msg = errorText ?? "Grading failed. Check backend logs and retry."
+        setUiAlert(msg)
+        toast.error(msg)
+        return
+      }
+
+      if (status === "captured" && payload.reason === "awaiting_results") {
+        const msg = "Results not ready yet — auto-grade will retry when Data Golf publishes final results."
+        setUiAlert(msg)
+        toast.message(msg)
+      } else if (status === "complete" || status === "ok" || status === "skipped") {
+        setUiAlert(null)
+        toast.success("Event graded successfully")
+      } else {
+        setUiAlert(null)
+        toast.success("Grading finished")
+      }
+
       void queryClient.invalidateQueries({ queryKey: ["dashboard-state"] })
       void queryClient.invalidateQueries({ queryKey: ["grading-history"] })
       void queryClient.invalidateQueries({ queryKey: ["grading-season"] })
       void queryClient.invalidateQueries({ queryKey: ["track-record"] })
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-past-events"] })
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-past-snapshot"] })
+      void queryClient.invalidateQueries({ queryKey: ["live-refresh-past-market-rows"] })
     },
-    onError: () => {
-      const msg = "Grading failed. Check backend logs and retry."
+    onError: (error) => {
+      const msg =
+        error instanceof Error && error.message
+          ? error.message
+          : "Grading failed. Check backend logs and retry."
       setUiAlert(msg)
       toast.error(msg)
     },

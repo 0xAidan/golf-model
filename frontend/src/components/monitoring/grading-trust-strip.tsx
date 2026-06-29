@@ -72,6 +72,15 @@ export function GradingTrustStrip({
           <strong>Grade event</strong> in the header after the tournament completes.
         </div>
       ) : null}
+      {metrics.autoGradeMessage ? (
+        <div
+          className="grading-ungraded-banner alert-banner"
+          role="status"
+          data-testid="grading-auto-grade-banner"
+        >
+          {metrics.autoGradeMessage}
+        </div>
+      ) : null}
     </div>
   )
 }

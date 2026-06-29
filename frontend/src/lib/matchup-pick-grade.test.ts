@@ -92,6 +92,11 @@ describe("matchup-pick-grade", () => {
     expect(readStoredMatchupOutcome({ is_push: true })).toBe("push")
   })
 
+  it("returns ungraded on completed replay when leaderboard is incomplete", () => {
+    const board = [lb("player_a", "A", "5")]
+    expect(resolvePastMatchupGrade(baseMatchup(), board, { completedReplay: true }).kind).toBe("ungraded")
+  })
+
   it("prefers graded_result on the matchup over leaderboard", () => {
     const board = [lb("player_a", "A", "50"), lb("player_b", "B", "1")]
     const m = baseMatchup({ graded_result: "win" })

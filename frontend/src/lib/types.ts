@@ -383,6 +383,8 @@ export type LiveRefreshRuntimeStatus = {
   worker_pidfile?: string
   worker_running?: boolean
   runtime_owner?: string
+  last_auto_grade_at?: string | null
+  last_auto_grade_status?: Record<string, unknown> | null
 }
 
 export type LiveRefreshStatusResponse = {
@@ -636,6 +638,7 @@ export type TrackRecordPick = {
   player_key?: string
   opponent_key?: string
   bet_type?: string
+  market_type?: string
   market_odds?: string
   model_prob?: number | null
   ev?: number | null
@@ -786,6 +789,7 @@ export type FlattenedSecondaryBet = {
   ev: number
   confidence?: string
   book?: string
+  graded_result?: "win" | "loss" | "push"
   is_new_live_opportunity?: boolean
   is_material_ev_increase?: boolean
   first_seen_at?: string

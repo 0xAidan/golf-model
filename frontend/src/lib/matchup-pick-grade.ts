@@ -5,6 +5,7 @@ export type PickGradeLetter = "W" | "L" | "P"
 export type ResolvedPickGrade =
   | { kind: "letter"; letter: PickGradeLetter; title: string }
   | { kind: "pending"; title: string }
+  | { kind: "ungraded"; title: string }
   | { kind: "dash"; title: string }
 
 const CUT_LIKE = new Set(["CUT", "MC", "WD", "W/D", "DQ", "DFS", "MDF", "DNS"])
@@ -110,6 +111,7 @@ export function gradeTournamentMatchupFromLeaderboard(
 export function resolvePastMatchupGrade(
   matchup: MatchupBet,
   leaderboard: LiveLeaderboardRow[] | undefined | null,
+  options?: { completedReplay?: boolean },
 ): ResolvedPickGrade {
   const stored = matchup.graded_result ?? null
   if (stored === "win") return { kind: "letter", letter: "W", title: "Win" }
@@ -128,6 +130,13 @@ export function resolvePastMatchupGrade(
   if (fromBoard === "win") return { kind: "letter", letter: "W", title: "Win (lower finish beats higher)" }
   if (fromBoard === "loss") return { kind: "letter", letter: "L", title: "Loss" }
   if (fromBoard === "push") return { kind: "letter", letter: "P", title: "Push (tie or both missed cut)" }
+
+  if (options?.completedReplay) {
+    return {
+      kind: "ungraded",
+      title: "Not graded yet — use Grade event in the header after the tournament completes.",
+    }
+  }
 
   return {
     kind: "pending",

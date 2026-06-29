@@ -42,6 +42,26 @@ When **Ungraded +EV > 0**, show banner `data-testid="grading-ungraded-banner"` p
 
 After schedule ingest marks an event complete, `backtester/dashboard_runtime.py` may auto-grade when tracked picks exist and `graded_count < picks_count`. Operators should still verify the trust strip after each week.
 
+Monitor auto-grade without SSH:
+
+```bash
+curl -s https://golf.ancc.blog/api/live-refresh/status | python3 -m json.tool | grep -A8 last_auto_grade
+curl -s https://golf.ancc.blog/api/ops/health | python3 -m json.tool | grep -A8 grading
+```
+
+The trust strip may also show `data-testid="grading-auto-grade-banner"` when auto-grade is waiting on Data Golf results or skipped for missing inventory.
+
+## Recovery commands
+
+| Symptom | Command |
+|---------|---------|
+| Latest completed event not graded | `python3 scripts/ensure_completed_event_grading.py --year 2026` |
+| One event stuck | `python3 scripts/grade_tournament.py --event-id <ID> --year 2026` |
+| Inventory missing before tee-off | `python3 scripts/ensure_event_grading_readiness.py --event-id <ID> --year 2026` |
+| Verify grading integrity | `python3 scripts/grading_reconciliation.py --write` |
+
+Data Golf final results are often available **2–6 hours** after the last group finishes on Sunday. Until then, auto-grade may report `awaiting_results` and the Past tab may show **Ungraded** (not Pending) for picks without stored outcomes.
+
 ## Operator weekly checklist
 
 1. Confirm live snapshot ran through the completed event.  

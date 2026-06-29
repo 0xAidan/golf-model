@@ -42,6 +42,14 @@ def test_ops_health_endpoint(monkeypatch):
             "heartbeat_age_seconds": 0,
         },
     )
+    monkeypatch.setattr(
+        "src.grading_reconciliation.reconcile_grading",
+        lambda **kwargs: {
+            "status": "ok",
+            "events_with_ungraded_positive_ev": 0,
+            "orphan_outcomes": 0,
+        },
+    )
 
     client = TestClient(app_module.app)
     response = client.get("/api/ops/health")
@@ -50,3 +58,4 @@ def test_ops_health_endpoint(monkeypatch):
     assert body["ok"] is True
     assert body["identity"]["app_root"] == "/tmp/test"
     assert body["live_refresh"]["running"] is True
+    assert body["grading"]["status"] == "ok"

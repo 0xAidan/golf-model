@@ -5,12 +5,34 @@ const normalizeKey = (value: string | undefined | null): string =>
     .trim()
     .toLowerCase()
 
-const matchupPickKey = (pick: TrackRecordPick): string =>
+const normalizeMarketType = (value: string | undefined | null): string =>
+  String(value ?? "tournament_matchups").trim().toLowerCase()
+
+const buildMatchupMergeKey = (
+  betType: string,
+  playerKey: string,
+  opponentKey: string,
+  marketType?: string | null,
+): string =>
   [
-    normalizeKey(pick.bet_type ?? "matchup"),
-    normalizeKey(pick.player_key ?? pick.player_display),
-    normalizeKey(pick.opponent_key ?? pick.opponent_display),
+    normalizeKey(betType || "matchup"),
+    normalizeMarketType(marketType),
+    normalizeKey(playerKey),
+    normalizeKey(opponentKey),
   ].join("|")
+
+const matchupPickKeys = (pick: TrackRecordPick): string[] => {
+  const marketType = pick.market_type
+  const playerKeys = [pick.player_key, pick.player_display].filter(Boolean)
+  const opponentKeys = [pick.opponent_key, pick.opponent_display].filter(Boolean)
+  const keys = new Set<string>()
+  for (const player of playerKeys) {
+    for (const opponent of opponentKeys) {
+      keys.add(buildMatchupMergeKey("matchup", String(player), String(opponent), marketType))
+    }
+  }
+  return Array.from(keys)
+}
 
 const storedOutcomeFromPick = (pick: TrackRecordPick): "win" | "loss" | "push" | null => {
   if (pick.outcome === "win" || pick.outcome === "loss" || pick.outcome === "push") {
@@ -31,18 +53,27 @@ export const applyGradedPicksToMatchups = (
   const gradedByKey = new Map<string, TrackRecordPick>()
   for (const pick of gradedPicks) {
     if (String(pick.bet_type ?? "").trim().toLowerCase() !== "matchup") continue
-    gradedByKey.set(matchupPickKey(pick), pick)
+    for (const key of matchupPickKeys(pick)) {
+      gradedByKey.set(key, pick)
+    }
   }
 
   return matchups.map((matchup) => {
     if (matchup.graded_result) return matchup
-    const graded = gradedByKey.get(
-      [
+    const lookupKeys = [
+      buildMatchupMergeKey(
         "matchup",
-        normalizeKey(matchup.pick_key ?? matchup.pick),
-        normalizeKey(matchup.opponent_key ?? matchup.opponent),
-      ].join("|"),
-    )
+        matchup.pick_key ?? matchup.pick,
+        matchup.opponent_key ?? matchup.opponent,
+        matchup.market_type,
+      ),
+      buildMatchupMergeKey("matchup", matchup.pick, matchup.opponent, matchup.market_type),
+    ]
+    let graded: TrackRecordPick | undefined
+    for (const key of lookupKeys) {
+      graded = gradedByKey.get(key)
+      if (graded) break
+    }
     const stored = graded ? storedOutcomeFromPick(graded) : null
     if (!stored) return matchup
     return { ...matchup, graded_result: stored }

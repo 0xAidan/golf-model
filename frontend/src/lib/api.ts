@@ -36,6 +36,7 @@ const LIVE_REFRESH_REFRESH_TIMEOUT_MS = 95_000
 const LIVE_REFRESH_START_TIMEOUT_MS = 30_000
 const PAST_REPLAY_TIMEOUT_MS = 90_000
 const GRADING_SEASON_TIMEOUT_MS = 120_000
+const GRADE_TOURNAMENT_TIMEOUT_MS = 180_000
 /** Lab instrumentation panels; allow headroom when dashboard is busy with live-refresh recompute. */
 const RESEARCH_INSTRUMENTATION_TIMEOUT_MS = 30_000
 
@@ -272,11 +273,15 @@ export const api = {
     }),
   getTrackRecord: () => request<TrackRecordResponse>("/api/track-record"),
   gradeLatestTournament: (payload?: Partial<EventSummary>) =>
-    request<Record<string, unknown>>("/api/grade-tournament", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(payload ?? {}),
-    }),
+    request<Record<string, unknown>>(
+      "/api/grade-tournament",
+      {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify(payload ?? {}),
+      },
+      GRADE_TOURNAMENT_TIMEOUT_MS,
+    ),
   getCalibrationByMarket: () =>
     request<CalibrationByMarketResponse>(
       "/api/calibration/by-market",
