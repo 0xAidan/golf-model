@@ -30,7 +30,7 @@ try:
 except ImportError:
     pass  # python-dotenv not installed; keys must be in environment
 
-from fastapi import FastAPI, UploadFile, File, Form, Request, Query
+from fastapi import FastAPI, UploadFile, File, Form, Request, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
@@ -4305,6 +4305,15 @@ async def search_players(q: str = ""):
         ).fetchall()
     conn.close()
     return {"players": [dict(r) for r in rows]}
+
+
+@app.get("/{spa_path:path}", response_class=HTMLResponse)
+async def spa_catch_all(spa_path: str):
+    """Serve the React shell for client-side routes (/results, /lab, etc.)."""
+    blocked_prefixes = ("api/", "api", "assets/", "static/", "docs/")
+    if spa_path.startswith(blocked_prefixes):
+        raise HTTPException(status_code=404, detail="Not Found")
+    return _render_dashboard_html()
 
 
 @app.on_event("startup")

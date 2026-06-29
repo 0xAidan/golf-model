@@ -38,6 +38,37 @@ cd /opt/golf-model && python3 scripts/grading_reconciliation.py --write
 | `/compare` | ≥8/10 | Dashboard vs Lab copy + nav hint |
 | `/system` | ≥8/10 tier-1b | Ops health panel + recovery copy |
 
+## Production verification (2026-06-29 post-deploy)
+
+**Deploy:** PR #175 merged to `main`; `/opt/golf-model` updated via `./deploy.sh --update-local`.  
+**Site:** https://golf.ancc.blog/
+
+| Check | Result |
+|-------|--------|
+| `GET /api/live-refresh/summary` | PASS — `data_state: fresh`, snapshot `2026-06-29T19:01:28Z` |
+| `GET /api/ops/health` | PASS — `ok: true`, worker heartbeat fresh, snapshot_age &lt; 4000s |
+| Dashboard HTML TTFB | PASS — **66ms** |
+| Summary API TTFB | PASS — **275ms** |
+| Frontend bundle | PASS — `index-95YBVjVs.js` (operator terminal build) |
+| Background grade jobs | PASS — `POST /api/ops/jobs/grade` completed for U.S. Open + Travelers |
+| Cockpit ungraded +EV (trust strip) | PASS — **0** (`/api/grading/season?lane=cockpit`) |
+| `grading_reconciliation.py --write` | WARN — 2 events show inventory/outcome gap (Travelers 24, U.S. Open 16); UI trust metric 0 |
+| `/track-record` redirect | PASS — redirects to analytics tab |
+
+### Sunday workflow (production)
+
+| Step | Result |
+|------|--------|
+| 1. `/` board + freshness | PASS — shell loads &lt;100ms HTML; summary API fresh |
+| 2. Full picks tab | PASS — snapshot contains matchup data (off-window; no live event) |
+| 3. `/lab` | PASS — route 200, lab bundle present |
+| 4. `/compare` | PASS — route 200 |
+| 5. Grade / trust strip | PASS — cockpit ungraded +EV = 0 after background grade jobs |
+| 6. `/results?tab=analytics` | PASS — analytics API responds; filters via query params |
+| 7. `/system` | PASS — worker running; ops health API healthy |
+
+**Operator sign-off:** Automated verification complete 2026-06-29 (agent). Manual UI walkthrough recommended for perceptual gate.
+
 ## Sunday workflow
 
 See `docs/frontend-overhaul/sunday-workflow-checklist.md` — operator sign-off required after production deploy.
