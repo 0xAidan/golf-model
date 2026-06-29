@@ -1,4 +1,4 @@
-"""Composable analytics API for pick ledger."""
+"""Composable analytics API for graded picks."""
 
 from __future__ import annotations
 
@@ -11,17 +11,61 @@ from fastapi.responses import PlainTextResponse
 
 from src.data_views import ensure_analytics_views
 from src.db import ensure_initialized, get_conn
+from src.grading_record import pick_lane_sql
 
 router = APIRouter(tags=["analytics"])
 
+_BOOK_ALIASES: dict[str, str] = {
+    "dk": "draftkings",
+    "fd": "fanduel",
+    "mgm": "betmgm",
+    "pb": "pointsbet",
+    "bh": "betonline",
+}
+
 PICKS_FROM = """
-FROM pick_ledger pl
-LEFT JOIN pick_outcomes po ON po.pick_key = pl.pick_key
-LEFT JOIN tournaments t ON t.id = pl.tournament_id
-LEFT JOIN picks p ON p.tournament_id = pl.tournament_id
-  AND p.player_key = pl.player_key
-  AND LOWER(COALESCE(p.bet_type, '')) = LOWER(COALESCE(pl.bet_type, ''))
+FROM picks p
+JOIN tournaments t ON t.id = p.tournament_id
+LEFT JOIN pick_outcomes po ON po.pick_id = p.id
 """
+
+PICKS_SELECT = """
+SELECT
+    po.pick_key,
+    t.event_id,
+    t.name AS tournament_name,
+    t.name AS event_name,
+    t.year AS year,
+    t.date AS tournament_date,
+    p.bet_type,
+    p.market_book AS book,
+    p.market_odds AS odds,
+    p.ev,
+    p.model_prob,
+    p.player_key,
+    p.player_display,
+    p.opponent_key,
+    p.opponent_display,
+    p.model_variant,
+    p.source AS lane,
+    p.created_at AS generated_at,
+    po.hit,
+    po.model_hit,
+    po.profit,
+    po.grading_authority,
+    po.outcome_locked,
+    po.entered_at AS graded_at,
+    p.confidence AS pick_confidence,
+    p.id AS id
+"""
+
+
+def _book_filter_sql(book: str) -> tuple[str, list[Any]]:
+    raw = book.strip().lower()
+    canonical = _BOOK_ALIASES.get(raw, raw)
+    variants = sorted({raw, canonical})
+    clauses = " OR ".join("LOWER(TRIM(p.market_book)) = ?" for _ in variants)
+    return f"({clauses} OR LOWER(TRIM(p.market_book)) LIKE ?)", [*variants, f"%{canonical}%"]
 
 
 def _outcome_filter_sql(outcome: str | None) -> tuple[str, list[Any]]:
@@ -59,56 +103,52 @@ def _build_picks_where(
     date_to: str | None = None,
     include_reconstructed: bool = False,
 ) -> tuple[str, list[Any]]:
+    del lifecycle, include_reconstructed  # graded picks source; ledger-only filters ignored
     clauses: list[str] = ["1=1"]
     params: list[Any] = []
 
-    if not include_reconstructed:
-        clauses.append("pl.lifecycle != 'pit_reconstructed'")
-        clauses.append("COALESCE(pl.source_origin, '') != 'pit_reconstructed'")
-
     if event_id:
-        clauses.append("pl.event_id = ?")
+        clauses.append("t.event_id = ?")
         params.append(str(event_id).strip())
     target_year = season if season is not None else year
     if target_year is not None:
-        clauses.append("COALESCE(pl.year, t.year) = ?")
+        clauses.append("t.year = ?")
         params.append(int(target_year))
     if phase:
-        clauses.append("pl.phase = ?")
+        clauses.append("LOWER(COALESCE(p.market_type, p.bet_type, '')) = ?")
         params.append(phase.strip().lower())
     if lane:
-        clauses.append("pl.lane = ?")
-        params.append(lane.strip().lower())
+        lane_sql = pick_lane_sql(lane.strip().lower())
+        if lane_sql:
+            clauses.append(lane_sql.lstrip(" AND "))
     if bet_type:
-        clauses.append("pl.bet_type = ?")
+        clauses.append("LOWER(p.bet_type) = ?")
         params.append(bet_type.strip().lower())
     if ev_min is not None:
-        clauses.append("pl.ev >= ?")
+        clauses.append("p.ev >= ?")
         params.append(float(ev_min))
     if ev_max is not None:
-        clauses.append("pl.ev <= ?")
+        clauses.append("p.ev <= ?")
         params.append(float(ev_max))
-    if lifecycle:
-        clauses.append("pl.lifecycle = ?")
-        params.append(lifecycle.strip().lower())
     if book:
-        clauses.append("LOWER(pl.book) = ?")
-        params.append(book.strip().lower())
+        book_sql, book_params = _book_filter_sql(book)
+        clauses.append(book_sql)
+        params.extend(book_params)
     if model_variant:
-        clauses.append("pl.model_variant = ?")
+        clauses.append("LOWER(COALESCE(p.model_variant, '')) = ?")
         params.append(model_variant.strip().lower())
     if player:
-        clauses.append("(pl.player_key = ? OR LOWER(pl.player_display) LIKE ?)")
+        clauses.append("(p.player_key = ? OR LOWER(p.player_display) LIKE ?)")
         key = player.strip().lower()
         params.extend([key, f"%{key}%"])
     if confidence:
         clauses.append("LOWER(COALESCE(p.confidence, '')) = ?")
         params.append(confidence.strip().lower())
     if date_from:
-        clauses.append("pl.generated_at >= ?")
+        clauses.append("COALESCE(po.entered_at, p.created_at) >= ?")
         params.append(date_from.strip())
     if date_to:
-        clauses.append("pl.generated_at <= ?")
+        clauses.append("COALESCE(po.entered_at, p.created_at) <= ?")
         params.append(date_to.strip())
 
     outcome_sql, outcome_params = _outcome_filter_sql(outcome)
@@ -243,12 +283,10 @@ async def list_analytics_picks(
     conn = get_conn()
     rows = conn.execute(
         f"""
-        SELECT pl.*, po.hit, po.model_hit, po.profit, po.grading_authority, po.outcome_locked,
-               po.entered_at AS graded_at, t.name AS tournament_name, t.date AS tournament_date,
-               p.confidence AS pick_confidence
+        {PICKS_SELECT}
         {PICKS_FROM}
         WHERE {where}
-        ORDER BY pl.generated_at DESC, pl.id DESC
+        ORDER BY COALESCE(po.entered_at, p.created_at) DESC, p.id DESC
         LIMIT ? OFFSET ?
         """,
         (*params, int(limit), int(offset)),
@@ -296,13 +334,13 @@ async def rollup_analytics_picks(
     ensure_initialized()
     ensure_analytics_views()
     group_col = {
-        "event": "pl.event_id",
-        "bet_type": "pl.bet_type",
-        "book": "pl.book",
-        "phase": "pl.phase",
-        "month": "strftime('%Y-%m', COALESCE(pl.generated_at, t.date))",
-        "lane": "pl.lane",
-        "player": "pl.player_display",
+        "event": "t.event_id",
+        "bet_type": "p.bet_type",
+        "book": "p.market_book",
+        "phase": "COALESCE(p.market_type, p.bet_type)",
+        "month": "strftime('%Y-%m', COALESCE(po.entered_at, p.created_at, t.date))",
+        "lane": "p.source",
+        "player": "p.player_display",
     }[group_by]
 
     where, params = _build_picks_where(
@@ -319,6 +357,7 @@ async def rollup_analytics_picks(
         f"""
         SELECT
             {group_col} AS group_key,
+            MAX(t.name) AS group_label,
             COUNT(*) AS count,
             SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END) AS wins,
             SUM(CASE WHEN po.id IS NOT NULL AND po.hit = 0 AND COALESCE(po.profit, 0) != 0 THEN 1 ELSE 0 END) AS losses,

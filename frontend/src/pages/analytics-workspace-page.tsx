@@ -187,7 +187,7 @@ export function AnalyticsWorkspacePage() {
           <input
             className="rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm"
             value={filters.book ?? ""}
-            placeholder="dk"
+            placeholder="draftkings or dk"
             onChange={(e) => syncUrl({ ...filters, book: e.target.value })}
           />
         </label>
@@ -196,7 +196,7 @@ export function AnalyticsWorkspacePage() {
           <input
             className="rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm"
             value={filters.bet_type ?? ""}
-            placeholder="matchup"
+            placeholder="optional"
             onChange={(e) => syncUrl({ ...filters, bet_type: e.target.value })}
           />
         </label>
@@ -205,7 +205,7 @@ export function AnalyticsWorkspacePage() {
           <input
             className="rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm num"
             value={filters.ev_min ?? ""}
-            placeholder="0.05"
+            placeholder="optional"
             onChange={(e) => syncUrl({ ...filters, ev_min: e.target.value })}
           />
         </label>
@@ -219,6 +219,14 @@ export function AnalyticsWorkspacePage() {
         </label>
         <Button type="button" variant="outline" size="sm" onClick={() => void handleExportCsv()}>
           Export CSV
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => syncUrl({ ...DEFAULT_PARAMS })}
+        >
+          Clear filters
         </Button>
       </div>
 
@@ -274,7 +282,9 @@ export function AnalyticsWorkspacePage() {
                     className="cursor-pointer hover:bg-[var(--surface-2)]"
                     onClick={() => syncUrl({ ...filters, event_id: String(row.group_key) })}
                   >
-                    <td className="py-1">{String(row.group_key)}</td>
+                    <td className="py-1">
+                      {String(row.group_label ?? row.group_key)}
+                    </td>
                     <td className="text-right num py-1">{Number(row.profit ?? 0).toFixed(2)}</td>
                     <td className="text-right num py-1">{Number(row.roi_pct ?? 0).toFixed(1)}%</td>
                   </tr>
