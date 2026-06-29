@@ -7,11 +7,13 @@ import { PanelBackfill } from "../panel-backfill"
 export function PastPickGradeCell({
   matchup,
   leaderboard,
+  completedReplay = false,
 }: {
   matchup: MatchupBet
   leaderboard: LiveLeaderboardRow[] | undefined
+  completedReplay?: boolean
 }) {
-  const g = resolvePastMatchupGrade(matchup, leaderboard)
+  const g = resolvePastMatchupGrade(matchup, leaderboard, { completedReplay })
   if (g.kind === "letter") {
     const cls = g.letter === "W" ? "win" : g.letter === "L" ? "loss" : "push"
     return (
@@ -24,6 +26,13 @@ export function PastPickGradeCell({
     return (
       <span className="text-pending" title={g.title}>
         Pending
+      </span>
+    )
+  }
+  if (g.kind === "ungraded") {
+    return (
+      <span className="text-pending" title={g.title} aria-label={g.title}>
+        Ungraded
       </span>
     )
   }
@@ -41,6 +50,28 @@ export function PastSecondaryGradeCell({
   bet: FlattenedSecondaryBet
   leaderboard: LiveLeaderboardRow[] | undefined
 }) {
+  if (bet.graded_result === "win") {
+    return (
+      <span className="pick-result-badge win" title="Win" aria-label="Win">
+        W
+      </span>
+    )
+  }
+  if (bet.graded_result === "loss") {
+    return (
+      <span className="pick-result-badge loss" title="Loss" aria-label="Loss">
+        L
+      </span>
+    )
+  }
+  if (bet.graded_result === "push") {
+    return (
+      <span className="pick-result-badge push" title="Push" aria-label="Push">
+        P
+      </span>
+    )
+  }
+
   if (!leaderboard || leaderboard.length === 0) {
     return (
       <span style={{ fontSize: 11, color: "var(--text-muted)" }} title="Waiting for final leaderboard">

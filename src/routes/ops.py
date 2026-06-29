@@ -76,6 +76,24 @@ async def get_ops_health():
     # default. Keep ok=True (the system still serves a safe strategy) but surface it.
     if strategy_config_errors and summary == "healthy":
         summary = "strategy_config_fallback"
+
+    grading_health: dict = {"status": "unknown"}
+    try:
+        from src.grading_reconciliation import reconcile_grading
+
+        reconciliation = reconcile_grading(limit_events=5)
+        grading_health = {
+            "status": reconciliation.get("status"),
+            "events_with_ungraded_positive_ev": reconciliation.get("events_with_ungraded_positive_ev"),
+            "orphan_outcomes": reconciliation.get("orphan_outcomes"),
+            "last_auto_grade_at": status.get("last_auto_grade_at"),
+            "last_auto_grade_status": status.get("last_auto_grade_status"),
+        }
+        if reconciliation.get("status") == "discrepancies" and ok:
+            summary = "grading_discrepancies"
+    except Exception as exc:
+        grading_health = {"status": "error", "message": str(exc)}
+
     return {
         "ok": ok,
         "summary": summary,
@@ -86,6 +104,7 @@ async def get_ops_health():
         "heartbeat_age_seconds": heartbeat_age_seconds,
         "strategy_config_errors": strategy_config_errors,
         "tracks": track_state,
+        "grading": grading_health,
         "live_refresh": {
             "running": bool(status.get("running")),
             "refresh_state": (status.get("progress") or {}).get("refresh_state"),

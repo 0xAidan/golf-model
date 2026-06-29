@@ -52,13 +52,23 @@ export function GradingPage() {
     queryFn: api.getDashboardState,
     staleTime: 60_000,
   })
+  const liveRefreshStatusQuery = useQuery({
+    queryKey: ["live-refresh-status"],
+    queryFn: api.getLiveRefreshStatus,
+    staleTime: 30_000,
+  })
   const gradingHistoryData = useMemo(
     () => seasonEventsToGradingHistory(seasonQuery.data, pickSource),
     [seasonQuery.data, pickSource],
   )
   const trustMetrics = useMemo(
-    () => buildGradingTrustMetrics(gradingHistoryData, dashboardQuery.data),
-    [gradingHistoryData, dashboardQuery.data],
+    () =>
+      buildGradingTrustMetrics(
+        gradingHistoryData,
+        dashboardQuery.data,
+        liveRefreshStatusQuery.data?.status,
+      ),
+    [gradingHistoryData, dashboardQuery.data, liveRefreshStatusQuery.data?.status],
   )
 
   const gradingHistory = gradingHistoryData.tournaments ?? []
@@ -389,9 +399,19 @@ export function TrackRecordPage() {
     queryFn: api.getDashboardState,
     staleTime: 60_000,
   })
+  const liveRefreshStatusQuery = useQuery({
+    queryKey: ["live-refresh-status"],
+    queryFn: api.getLiveRefreshStatus,
+    staleTime: 30_000,
+  })
   const trustMetrics = useMemo(
-    () => buildGradingTrustMetrics(gradingHistoryQuery.data, dashboardQuery.data),
-    [gradingHistoryQuery.data, dashboardQuery.data],
+    () =>
+      buildGradingTrustMetrics(
+        gradingHistoryQuery.data,
+        dashboardQuery.data,
+        liveRefreshStatusQuery.data?.status,
+      ),
+    [gradingHistoryQuery.data, dashboardQuery.data, liveRefreshStatusQuery.data?.status],
   )
 
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)

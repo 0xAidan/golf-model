@@ -1881,13 +1881,32 @@ async def grade_tournament_endpoint(request: Request):
             year = year or info["year"]
             event_name = event_name or info.get("event_name")
         else:
-            return {"error": "Could not determine latest event and no event_id provided"}
+            return JSONResponse(
+                {"status": "error", "error": "Could not determine latest event and no event_id provided"},
+                status_code=422,
+            )
 
     if not year:
         from datetime import datetime as _dt
         year = _dt.now().year
 
-    report = grade_tournament(event_id, year, event_name=event_name)
+    try:
+        report = await asyncio.to_thread(
+            grade_tournament,
+            event_id,
+            year,
+            event_name=event_name,
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "message": str(exc), "event_id": event_id, "year": year},
+            status_code=500,
+        )
+
+    if report.get("error") and not report.get("status"):
+        return JSONResponse(report, status_code=422)
+    if report.get("status") == "error":
+        return JSONResponse(report, status_code=422)
     return report
 
 

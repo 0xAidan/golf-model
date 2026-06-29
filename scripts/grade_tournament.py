@@ -143,10 +143,14 @@ def find_latest_completed_event() -> dict | None:
     info = get_latest_completed_event_info("pga")
     if not info:
         return None
+    year_raw = info.get("year") or info.get("season")
+    if year_raw is None:
+        end_date = info.get("end_date")
+        year_raw = str(end_date)[:4] if end_date else datetime.now().strftime("%Y")
     return {
         "event_id": str(info.get("event_id", "")),
         "event_name": info.get("event_name", ""),
-        "year": int(str(info.get("end_date", datetime.now().strftime("%Y-%m-%d")))[:4]),
+        "year": int(str(year_raw)[:4]),
     }
 
 

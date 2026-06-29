@@ -48,3 +48,32 @@ def test_ensure_event_grading_readiness_backfills_ledger_from_picks(tmp_db):
     finally:
         conn.close()
     assert int(ledger) >= 1
+
+
+def test_ensure_all_completed_pga_events_graded_accepts_complete_status(monkeypatch, tmp_db):
+    from src.event_pick_freeze import ensure_all_completed_pga_events_graded
+
+    monkeypatch.setattr("src.event_pick_freeze.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "src.event_pick_freeze.freeze_completed_event_picks",
+        lambda event_id, *, year, event_name=None: {
+            "status": "complete",
+            "event_id": event_id,
+            "year": year,
+        },
+    )
+    monkeypatch.setattr("src.event_pick_freeze.db.get_conn", lambda: _FakeConn())
+
+    report = ensure_all_completed_pga_events_graded(year=2026)
+    assert report["ok"] is True
+
+
+class _FakeConn:
+    def execute(self, *args, **kwargs):
+        return self
+
+    def fetchall(self):
+        return [{"event_id": "34", "event_name": "Travelers Championship", "year": 2026}]
+
+    def close(self):
+        return None

@@ -13,6 +13,7 @@ describe("buildGradingTrustMetrics", () => {
 
     expect(metrics.positiveEvPickCount).toBe(2)
     expect(metrics.lastGradedAt).toBe("2026-04-20T18:45:00Z")
+    expect(metrics.autoGradeMessage).toBeNull()
   })
 
   it("shows ungraded banner when latest graded tournament has a pick gap", () => {
@@ -53,5 +54,16 @@ describe("buildGradingTrustMetrics", () => {
 
     expect(metrics.showUngradedBanner).toBe(true)
     expect(metrics.ungradedPositiveEvCount).toBeGreaterThan(0)
+  })
+
+  it("surfaces auto-grade awaiting-results message from live refresh status", () => {
+    const metrics = buildGradingTrustMetrics(undefined, undefined, {
+      last_auto_grade_status: {
+        status: "captured",
+        reason: "awaiting_results",
+      },
+    })
+
+    expect(metrics.autoGradeMessage).toMatch(/waiting for Data Golf/i)
   })
 })

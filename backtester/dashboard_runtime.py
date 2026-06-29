@@ -72,6 +72,8 @@ def _default_state() -> dict[str, Any]:
         "last_snapshot_generated_at": None,
         "last_auto_grade_at": None,
         "last_auto_grade_status": None,
+        "auto_grade_awaiting_event_id": None,
+        "auto_grade_awaiting_year": None,
         "refresh_state": "idle",
         "phase": None,
         "phase_detail": None,
@@ -2272,11 +2274,39 @@ def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[st
             graded_count,
             ungraded_positive,
         )
-        return freeze_completed_event_picks(
+        result = freeze_completed_event_picks(
             event_id,
             year=year,
             event_name=ingest_summary.get("latest_completed_event_name"),
         )
+        if result.get("reason") == "awaiting_results":
+            with _state_lock:
+                _state["auto_grade_awaiting_event_id"] = event_id
+                _state["auto_grade_awaiting_year"] = year
+        elif result.get("status") in {"complete", "skipped", "ok", "success"}:
+            with _state_lock:
+                if str(_state.get("auto_grade_awaiting_event_id") or "") == event_id:
+                    _state["auto_grade_awaiting_event_id"] = None
+                    _state["auto_grade_awaiting_year"] = None
+        elif result.get("status") == "error":
+            _logger.error("Auto-grade failed for %s/%s: %s", event_id, year, result)
+        return result
+
+    with _state_lock:
+        awaiting_id = str(_state.get("auto_grade_awaiting_event_id") or "").strip()
+        awaiting_year = _state.get("auto_grade_awaiting_year")
+    if awaiting_id == event_id and awaiting_year == year:
+        _logger.info("Retrying auto-grade for awaiting-results event %s/%s", event_id, year)
+        result = freeze_completed_event_picks(
+            event_id,
+            year=year,
+            event_name=ingest_summary.get("latest_completed_event_name"),
+        )
+        if result.get("reason") != "awaiting_results":
+            with _state_lock:
+                _state["auto_grade_awaiting_event_id"] = None
+                _state["auto_grade_awaiting_year"] = None
+        return result
 
     return {
         "status": "skipped",
@@ -3798,8 +3828,10 @@ def _run_loop(tour: str) -> None:
                     with _state_lock:
                         _state["last_auto_grade_at"] = _iso_now()
                         _state["last_auto_grade_status"] = auto_grade_result
+                    if isinstance(auto_grade_result, dict) and auto_grade_result.get("status") == "error":
+                        _logger.error("Auto-grading returned error: %s", auto_grade_result)
                 except Exception as exc:  # pragma: no cover - defensive
-                    _logger.warning("Auto-grading check failed: %s", exc)
+                    _logger.error("Auto-grading check failed: %s", exc)
                     with _state_lock:
                         _state["last_auto_grade_at"] = _iso_now()
                         _state["last_auto_grade_status"] = {"status": "error", "message": str(exc)}

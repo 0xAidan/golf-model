@@ -43,13 +43,17 @@ export const gradedPicksToSecondaryBets = (picks: TrackRecordPick[]): FlattenedS
   picks
     .filter((pick) => String(pick.bet_type ?? "").trim().toLowerCase() !== "matchup")
     .filter(isPositiveEv)
-    .map((pick) => ({
-      market: String(pick.bet_type ?? "outright").trim().toLowerCase(),
-      player: pick.player_display,
-      player_display: pick.player_display,
-      player_key: pick.player_key,
-      odds: pick.market_odds ?? "--",
-      ev: Number(pick.ev ?? 0),
-      book: pick.market_book ?? undefined,
-    }))
+    .map((pick) => {
+      const gradedResult = storedOutcomeFromPick(pick)
+      return {
+        market: String(pick.bet_type ?? "outright").trim().toLowerCase(),
+        player: pick.player_display,
+        player_display: pick.player_display,
+        player_key: pick.player_key,
+        odds: pick.market_odds ?? "--",
+        ev: Number(pick.ev ?? 0),
+        book: pick.market_book ?? undefined,
+        ...(gradedResult ? { graded_result: gradedResult } : {}),
+      }
+    })
     .sort((left, right) => right.ev - left.ev)

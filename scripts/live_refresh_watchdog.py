@@ -106,12 +106,18 @@ def main() -> int:
 
     if args.ensure_grading:
         from src.event_pick_freeze import ensure_all_completed_pga_events_graded
+        from src.grading_reconciliation import reconcile_grading
 
         grading_report = ensure_all_completed_pga_events_graded(year=args.grading_year)
+        reconciliation = reconcile_grading(limit_events=10)
+        grading_payload = {"grading": grading_report, "reconciliation": reconciliation}
         if args.json:
-            print(json.dumps({"grading": grading_report}, indent=2, default=str))
+            print(json.dumps(grading_payload, indent=2, default=str))
         elif not grading_report.get("ok"):
             print("grading ensure reported failures", file=sys.stderr)
+            return 1
+        if reconciliation.get("status") == "discrepancies":
+            print("grading reconciliation reported discrepancies", file=sys.stderr)
             return 1
 
     result = evaluate(

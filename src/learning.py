@@ -821,13 +821,18 @@ def post_tournament_learn(tournament_id: int,
         summary["steps"]["course_weights"] = course_result
 
     # 5. Global weight retune
-    from src.models.weights import retune
-    retune_result = retune(dry_run=False)
-    summary["steps"]["global_retune"] = {
-        "saved": retune_result.get("saved", False),
-        "insights": retune_result.get("insights", []),
-        "changes": retune_result.get("changes", {}),
-    }
+    try:
+        from src.models.weights import retune
+
+        retune_result = retune(dry_run=False)
+        summary["steps"]["global_retune"] = {
+            "saved": retune_result.get("saved", False),
+            "insights": retune_result.get("insights", []),
+            "changes": retune_result.get("changes", {}),
+        }
+    except Exception as e:
+        logger.warning("Global weight retune failed: %s", e)
+        summary["steps"]["global_retune"] = {"error": str(e)}
 
     # 6. Compute calibration summary and update calibration curve
     cal = compute_calibration()

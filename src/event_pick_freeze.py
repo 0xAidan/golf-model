@@ -440,7 +440,8 @@ def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[s
         if result.get("status") not in {"skipped"} or result.get("reason") != "no_inventory":
             results.append(result)
 
-    failures = [r for r in results if r.get("status") not in {"ok", "captured", "skipped", "success"}]
+    success_statuses = {"ok", "captured", "skipped", "success", "complete"}
+    failures = [r for r in results if r.get("status") not in success_statuses]
     return {
         "year": current_year,
         "events_processed": len(results),

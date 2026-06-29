@@ -1,10 +1,11 @@
-import type { DashboardState, GradedTournamentSummary, GradingHistoryResponse } from "@/lib/types"
+import type { DashboardState, GradedTournamentSummary, GradingHistoryResponse, LiveRefreshRuntimeStatus } from "@/lib/types"
 
 export type GradingTrustMetrics = {
   lastGradedAt: string | null
   positiveEvPickCount: number
   ungradedPositiveEvCount: number
   showUngradedBanner: boolean
+  autoGradeMessage: string | null
 }
 
 function countPositiveEvPicks(tournaments: GradedTournamentSummary[]): number {
@@ -25,6 +26,30 @@ function ungradedFromTournament(row: GradedTournamentSummary | null | undefined)
   return Math.max(0, picks - graded)
 }
 
+const formatAutoGradeMessage = (
+  liveRefreshStatus: LiveRefreshRuntimeStatus | undefined,
+): string | null => {
+  const autoGrade = liveRefreshStatus?.last_auto_grade_status
+  if (!autoGrade || typeof autoGrade !== "object") return null
+
+  const status = String(autoGrade.status ?? "").trim().toLowerCase()
+  const reason = String(autoGrade.reason ?? "").trim()
+
+  if (status === "error") {
+    return String(autoGrade.message ?? "Auto-grade failed — use Grade event or check backend logs.")
+  }
+  if (status === "captured" && reason === "awaiting_results") {
+    return "Auto-grade waiting for Data Golf final results — will retry automatically."
+  }
+  if (status === "skipped" && reason === "no_inventory") {
+    return "Auto-grade skipped: no pick inventory captured for the completed event."
+  }
+  if (status === "skipped" && reason === "already_graded") {
+    return null
+  }
+  return null
+}
+
 /**
  * Trust strip metrics for /grading and /track-record.
  * +EV-only: persisted picks are already ev > 0; ungraded gap uses pick vs outcome counts.
@@ -32,6 +57,7 @@ function ungradedFromTournament(row: GradedTournamentSummary | null | undefined)
 export function buildGradingTrustMetrics(
   history: GradingHistoryResponse | undefined,
   dashboard: DashboardState | undefined,
+  liveRefreshStatus?: LiveRefreshRuntimeStatus,
 ): GradingTrustMetrics {
   const tournaments = history?.tournaments ?? []
   const summaryPicks = history?.summary?.combined?.picks
@@ -62,5 +88,6 @@ export function buildGradingTrustMetrics(
     positiveEvPickCount,
     ungradedPositiveEvCount,
     showUngradedBanner: ungradedPositiveEvCount > 0,
+    autoGradeMessage: formatAutoGradeMessage(liveRefreshStatus),
   }
 }

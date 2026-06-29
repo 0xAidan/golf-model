@@ -302,8 +302,9 @@ export function PredictionWorkspacePage({
       buildPickColumnsForWorkspace({
         isPastTab,
         pastLeaderboardForGrades: pastReplay.pastLeaderboardForGrades,
+        completedReplay: Boolean(pastReplay.pastSnapshotSection?.completed_replay),
       }),
-    [isPastTab, pastReplay.pastLeaderboardForGrades],
+    [isPastTab, pastReplay.pastLeaderboardForGrades, pastReplay.pastSnapshotSection?.completed_replay],
   )
 
   const secondaryColumns = useMemo(
