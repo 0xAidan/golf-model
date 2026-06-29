@@ -172,6 +172,9 @@ export function AppContent({
     () => false,
   )
 
+  const snapshotNotice = snapshotNoticeBase
+  const { predictionTab, setPredictionTab } = usePredictionTab(isLiveActive)
+
   const dashboardQuery = useQuery({
     queryKey: ["dashboard-state"],
     queryFn: api.getDashboardState,
@@ -179,7 +182,9 @@ export function AppContent({
   })
   const gradingHistoryPickSource = labRouteActive ? "lab" : "cockpit"
   const needsGradingPicks =
-    location.pathname.startsWith("/results") || location.pathname === "/system"
+    location.pathname.startsWith("/results") ||
+    location.pathname === "/system" ||
+    predictionTab === "past"
   const gradingHistoryQuery = useQuery({
     queryKey: ["grading-season", gradingHistoryPickSource, needsGradingPicks],
     queryFn: () =>
@@ -202,8 +207,6 @@ export function AppContent({
       ((liveSnapshot.lab_upcoming_tournament != null && liveSnapshot.lab_live_tournament == null) ||
         (liveSnapshot.lab_upcoming_tournament == null && liveSnapshot.lab_live_tournament != null)),
   )
-  const snapshotNotice = snapshotNoticeBase
-  const { predictionTab, setPredictionTab } = usePredictionTab(isLiveActive)
 
   const hydratedRun = useMemo(() => {
     if (predictionTab === "past") return null

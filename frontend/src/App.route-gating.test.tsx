@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "@/App"
 import { ThemeProvider } from "@/components/theme-provider"
+import { usePredictionTab } from "@/hooks/use-prediction-tab"
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -34,10 +35,10 @@ vi.mock("@/hooks/use-prediction-tab", async () => {
 
   return {
     ...actual,
-    usePredictionTab: () => ({
-      predictionTab: "past" as const,
+    usePredictionTab: vi.fn(() => ({
+      predictionTab: "upcoming" as const,
       setPredictionTab: vi.fn(),
-    }),
+    })),
   }
 })
 
@@ -104,6 +105,20 @@ describe("App legacy route replay gating", () => {
 
   it("loads grading-season with picks on /results", async () => {
     renderAppAtRoute("/results")
+
+    await waitFor(() => {
+      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
+        expect.objectContaining({ includePicks: true, limit: 100 }),
+      )
+    })
+  })
+
+  it("loads grading-season with picks when past replay tab is active", async () => {
+    vi.mocked(usePredictionTab).mockReturnValue({
+      predictionTab: "past",
+      setPredictionTab: vi.fn(),
+    })
+    renderAppAtRoute("/")
 
     await waitFor(() => {
       expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
