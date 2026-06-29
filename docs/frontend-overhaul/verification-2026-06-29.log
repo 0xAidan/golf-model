@@ -1,0 +1,43 @@
+# Wave 0 verification log — operator terminal master upgrade
+
+**Date:** 2026-06-29  
+**Branch:** `feat/operator-terminal-master-upgrade`  
+**Environment:** Local dev + code audit (production curl deferred to deploy)
+
+## Production diagnostics (run on VPS after deploy)
+
+```bash
+curl -s https://golf.ancc.blog/api/live-refresh/status | python3 -m json.tool | grep -A8 last_auto_grade
+curl -s https://golf.ancc.blog/api/ops/health | python3 -m json.tool
+curl -s https://golf.ancc.blog/api/live-refresh/summary | python3 -m json.tool | head -40
+cd /opt/golf-model && python3 scripts/grading_reconciliation.py --write
+```
+
+## Local verification (2026-06-29)
+
+| Check | Result |
+|-------|--------|
+| `GET /api/live-refresh/summary` returns last-good + `data_state` | PASS (`tests/test_live_refresh_summary.py`) |
+| `POST /api/ops/jobs/grade` returns 202 + job_id | PASS (`tests/test_ops_jobs.py`) |
+| Warm cache: `displaySnapshot = contract ?? summary ?? idb` | PASS (code + `freshness-state.test.ts`) |
+| Secondary bet Past tab shows Ungraded not Pending | PASS (`workspace-grade-cells.test.tsx`) |
+| Analytics tab replaces Track record | PASS (`results-page.tsx`, redirect `/track-record`) |
+| Frozen zone CI guard | PASS (`scripts/ci/frozen_zone_guard.sh`) |
+| Frontend typecheck | PASS |
+| Frontend unit tests | PASS (post-fix) |
+| Python targeted tests | PASS |
+
+## Route scorecard (post-upgrade target)
+
+| Route | Target | Notes |
+|-------|--------|-------|
+| `/` | ≥8/10 | SWR + FreshnessIndicator + deferred grading-season |
+| `/lab` | ≥8/10 | Full picks parity path preserved |
+| `/players` | ≥8/10 | Unchanged tier-1 |
+| `/results` | ≥8/10 | Analytics workspace + grading trust |
+| `/compare` | ≥8/10 | Dashboard vs Lab copy + nav hint |
+| `/system` | ≥8/10 tier-1b | Ops health panel + recovery copy |
+
+## Sunday workflow
+
+See `docs/frontend-overhaul/sunday-workflow-checklist.md` — operator sign-off required after production deploy.

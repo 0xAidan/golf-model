@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-06-10 on `program/engine-scale-wave-1`. `python3 -m pytest tests/` — 492 passed, 1 skipped. Frontend: `npm run test` — 121 passed (34 files); `typecheck` / `build` / `bundle:budget` / `test:a11y` green. app.py: ~4260 lines (decomposition into `src/routes/` tracked under the engine-scale program). React 19 + Vite + TypeScript + product command-center shell (PR #145).
+**Last verified:** 2026-06-29 on `feat/operator-terminal-master-upgrade`. Operator terminal master: hybrid SWR (`/api/live-refresh/summary` + IndexedDB), `FreshnessIndicator`, background grade jobs (`ops_jobs`), Analytics on `/results`, frozen-zone CI guard, `App.tsx` shell split (`app/app-content.tsx`). Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
 
 **Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
@@ -770,7 +770,11 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Pipeline orchestration | `src/services/golf_model_service.py` |
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
-| Frontend dashboard (React SPA) | `frontend/src/App.tsx` |
+| Frontend dashboard (React SPA) | `frontend/src/App.tsx` (shell) + `frontend/src/app/app-content.tsx` (routes/data) |
+| Live snapshot SWR | `frontend/src/providers/live-snapshot-provider.tsx`, `GET /api/live-refresh/summary` |
+| Background grade jobs | `src/ops_jobs.py`, `src/routes/ops_jobs.py`, `POST /api/ops/jobs/grade` |
+| Analytics workspace | `frontend/src/pages/analytics-workspace-page.tsx`, `src/routes/analytics.py` |
+| Frozen zone guard | `docs/frozen-zone-paths.txt`, `scripts/ci/frozen_zone_guard.sh` |
 | Monitoring shell / bento primitives | `frontend/src/components/monitoring/` |
 | Live snapshot context (poll without flash) | `frontend/src/providers/live-snapshot-provider.tsx` |
 | Monitoring V3 typography + turf CSS | `frontend/src/styles/fonts.css`, `terminal-monitoring-v3.css`, `public/fonts/` |

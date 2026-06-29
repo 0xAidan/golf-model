@@ -26,6 +26,7 @@ const toSeasonFixture = (
   lane,
   events: fixture.tournaments.map((event) => ({
     ...event,
+    has_results: true,
     lanes: {
       dashboard: {
         inventory_count: event.graded_pick_count ?? 0,
@@ -125,7 +126,11 @@ function renderGradingPage() {
 
 describe("GradingPage", () => {
   it("renders trust strip, source toggle, and ungraded banner", async () => {
-    apiMock.getGradingSeason.mockResolvedValue(toSeasonFixture(gradingHistoryFixture))
+    const season = toSeasonFixture(gradingHistoryFixture)
+    if (season.events[0]?.lanes?.dashboard) {
+      season.events[0].lanes.dashboard.ungraded_positive_ev_count = 2
+    }
+    apiMock.getGradingSeason.mockResolvedValue(season)
 
     renderGradingPage()
 

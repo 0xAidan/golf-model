@@ -208,7 +208,7 @@ export function EvalPage() {
       <TerminalPageHeader
         eyebrow="Model validity"
         title="Eval"
-        description="Prove the challenger before promoting it. Champion vs challenger evidence and gated promotion."
+        description="Promotion gates and champion vs challenger evidence before you promote Lab to Dashboard."
       />
       <div className="mt-4 flex gap-2" role="tablist" aria-label="Eval sections">
         {TABS.map((t) => (

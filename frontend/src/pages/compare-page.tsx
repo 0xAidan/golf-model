@@ -111,8 +111,8 @@ export function ComparePage() {
     <div className="compare-page product-page product-page--satellite" data-testid="compare-page">
       <TerminalPageHeader
         eyebrow="Research"
-        title="Track comparison"
-        description="Champion vs challenger on any tournament — rankings, picks, and graded outcomes."
+        title="Dashboard vs Lab"
+        description="Compare model lanes in depth — picks, rankings, and markets to tune Lab."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <TrackBadge

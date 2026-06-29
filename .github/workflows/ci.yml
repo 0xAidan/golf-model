@@ -36,6 +36,19 @@ jobs:
       - run: pip install ruff
       - run: ruff check --output-format=github .
 
+  frozen-zone-guard:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Frozen zone guard
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_PULL_REQUEST_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: bash scripts/ci/frozen_zone_guard.sh
+
   frontend:
     runs-on: ubuntu-latest
     steps:

@@ -155,6 +155,12 @@ export const api = {
       undefined,
       LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS,
     ),
+  getLiveRefreshSummary: () =>
+    request<LiveRefreshSnapshotResponse>(
+      "/api/live-refresh/summary",
+      undefined,
+      LIVE_REFRESH_SNAPSHOT_TIMEOUT_MS,
+    ),
   getLiveRefreshPastEvents: () =>
     request<PastSnapshotEventsResponse>("/api/live-refresh/past-events", undefined, PAST_REPLAY_TIMEOUT_MS),
   getLiveRefreshPastSnapshot: (
@@ -282,6 +288,71 @@ export const api = {
       },
       GRADE_TOURNAMENT_TIMEOUT_MS,
     ),
+  startGradeJob: (payload?: Partial<EventSummary>) =>
+    request<{ job_id: string; status: string; message?: string }>(
+      "/api/ops/jobs/grade",
+      {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify(payload ?? {}),
+      },
+      15_000,
+    ),
+  getOpsJob: (jobId: string) =>
+    request<{
+      id: string
+      status: string
+      progress_pct: number
+      message?: string
+      result?: Record<string, unknown>
+      error?: string
+    }>(`/api/ops/jobs/${encodeURIComponent(jobId)}`),
+  getAnalyticsSummary: (params: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== "") qs.set(k, String(v))
+    })
+    return request<{
+      pick_count: number
+      wins: number
+      losses: number
+      pushes: number
+      graded_count: number
+      profit_units: number
+      win_rate_pct: number
+      roi_pct: number
+    }>(`/api/analytics/summary?${qs.toString()}`)
+  },
+  getAnalyticsPicks: (params: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== "") qs.set(k, String(v))
+    })
+    return request<{ total: number; limit: number; offset: number; picks: Record<string, unknown>[] }>(
+      `/api/analytics/picks?${qs.toString()}`,
+    )
+  },
+  getAnalyticsRollup: (params: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== "") qs.set(k, String(v))
+    })
+    return request<{ group_by: string; rows: Record<string, unknown>[] }>(
+      `/api/analytics/picks/rollup?${qs.toString()}`,
+    )
+  },
+  exportAnalyticsCsv: (params: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== "") qs.set(k, String(v))
+    })
+    qs.set("format", "csv")
+    qs.set("limit", "5000")
+    return fetch(`/api/analytics/picks?${qs.toString()}`).then(async (r) => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.text()
+    })
+  },
   getCalibrationByMarket: () =>
     request<CalibrationByMarketResponse>(
       "/api/calibration/by-market",

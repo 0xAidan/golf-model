@@ -571,6 +571,20 @@
   margin-bottom: 8px;
 }
 
+.monitoring-shell-nav .nav-item__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.2;
+}
+
+.monitoring-shell-nav .nav-item__hint {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  letter-spacing: 0.01em;
+}
+
 .monitoring-shell-drawer__status {
   margin-top: auto;
   padding: 12px 8px;
@@ -663,5 +677,54 @@
   .monitor-records-page .monitoring-bento-grid--cols-2 {
     grid-template-columns: 1fr;
   }
+}
+
+/* Freshness indicator (canonical shell status) */
+.freshness-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.freshness-indicator--good {
+  color: var(--green);
+  border-color: var(--green-dim);
+  background: var(--green-bg);
+}
+
+.freshness-indicator--warn {
+  color: var(--amber);
+  border-color: rgba(245, 158, 11, 0.25);
+  background: var(--amber-bg);
+}
+
+.freshness-indicator--bad {
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.25);
+  background: var(--red-bg);
+}
+
+.freshness-indicator__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.freshness-indicator__spin {
+  animation: spin 1s linear infinite;
+}
+
+.freshness-indicator__details {
+  margin-left: 4px;
+  font-weight: 500;
 }
 
