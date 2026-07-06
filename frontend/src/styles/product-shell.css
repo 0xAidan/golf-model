@@ -240,6 +240,48 @@
   background: var(--amber-bg);
 }
 
+.cockpit-lab-lane-stripe {
+  height: 4px;
+  background: linear-gradient(90deg, rgba(245, 180, 24, 0.9), rgba(180, 83, 9, 0.65));
+}
+
+.cockpit-lab-secondary-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.cockpit-lab-secondary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 83, 9, 0.28);
+  background: var(--gold-bg);
+  color: var(--gold);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.cockpit-lab-secondary-chip:hover,
+.cockpit-lab-secondary-chip:focus-visible {
+  color: var(--gold);
+  border-color: rgba(180, 83, 9, 0.4);
+  outline: none;
+}
+
+.cockpit-lab-instrumentation {
+  margin: 16px var(--product-page-pad) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--product-section-radius);
+  background: var(--surface);
+}
+
 .trust-status-banner--danger {
   border-color: rgba(220, 38, 38, 0.2);
   background: var(--red-bg);

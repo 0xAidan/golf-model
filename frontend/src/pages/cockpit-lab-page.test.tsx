@@ -111,10 +111,13 @@ describe("LabBoardPage (CockpitLabPage)", () => {
     renderLab()
 
     expect(screen.getByTestId("lab-board-banner-wrap")).toHaveTextContent(/lab_live_tournament/i)
+    expect(screen.getByTestId("lab-board-lane-stripe")).toBeInTheDocument()
+    expect(screen.getByTestId("lab-board-secondary-chip")).toHaveTextContent(/validation pending/i)
     expect(screen.getByTestId("lab-board-workspace-stub")).toBeInTheDocument()
+    expect(screen.getByTestId("lab-board-instrumentation-section")).toBeInTheDocument()
     expect(screen.queryByTestId("lab-board-banner")).not.toBeInTheDocument()
     expect(screen.queryByTestId("lab-board-partial-sections-banner")).not.toBeInTheDocument()
-
+    expect(screen.queryByTestId("lab-board-research-pane")).not.toBeInTheDocument()
     expect(screen.getByTestId("lab-board-research-toggle")).toHaveTextContent(/research instrumentation/i)
     expect(screen.queryByText(/calibration \(by market\)/i)).not.toBeInTheDocument()
 
