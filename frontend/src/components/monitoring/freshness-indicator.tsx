@@ -16,6 +16,9 @@ export type FreshnessIndicatorProps = {
   splitBrain?: boolean
   onRetry?: () => void
   onRefresh?: () => void
+  /** Extra lines shown in the header popover (snapshot age, heartbeat, etc.) */
+  detailLines?: string[]
+  variant?: "default" | "compact"
   className?: string
 }
 
@@ -47,6 +50,8 @@ export function FreshnessIndicator({
   splitBrain = false,
   onRetry,
   onRefresh,
+  detailLines,
+  variant = "default",
   className,
 }: FreshnessIndicatorProps) {
   const state = deriveFreshnessState({
@@ -61,21 +66,71 @@ export function FreshnessIndicator({
   })
   const tone = toneForState(state)
   const label = freshnessLabel(state, ageSeconds, formatAgeLabel)
+  const showDetails = (detailLines?.length ?? 0) > 0 || state === "error" || state === "stale"
 
-  return (
-    <div
-      className={cn("freshness-indicator", `freshness-indicator--${tone}`, className)}
-      data-testid="freshness-indicator"
-      data-state={state}
-      role="status"
-      aria-live="polite"
-    >
+  const chipBody = (
+    <>
       {state === "updating" ? (
         <RefreshCw className="freshness-indicator__spin" size={12} aria-hidden />
       ) : (
         <span className="freshness-indicator__dot" aria-hidden />
       )}
       <span className="freshness-indicator__label">{label}</span>
+    </>
+  )
+
+  if (variant === "compact" && showDetails) {
+    return (
+      <details
+        className={cn(
+          "freshness-indicator freshness-indicator--compact",
+          `freshness-indicator--${tone}`,
+          className,
+        )}
+        data-testid="freshness-indicator"
+        data-state={state}
+      >
+        <summary className="freshness-indicator__summary" aria-live="polite">
+          {chipBody}
+        </summary>
+        <div className="freshness-indicator__popover" role="status">
+          {detailLines?.map((line) => (
+            <p key={line} className="freshness-indicator__detail-line">
+              {line}
+            </p>
+          ))}
+          <Link to="/system" className="freshness-indicator__details link-subtle">
+            Open System
+          </Link>
+          {onRetry && (state === "error" || state === "offline") ? (
+            <button type="button" className="btn btn-ghost btn-xs" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
+          {onRefresh && state === "stale" ? (
+            <button type="button" className="btn btn-ghost btn-xs" onClick={onRefresh}>
+              Refresh
+            </button>
+          ) : null}
+        </div>
+      </details>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        "freshness-indicator",
+        variant === "compact" && "freshness-indicator--compact",
+        `freshness-indicator--${tone}`,
+        className,
+      )}
+      data-testid="freshness-indicator"
+      data-state={state}
+      role="status"
+      aria-live="polite"
+    >
+      {chipBody}
       {state === "error" ? (
         <Link to="/system" className="freshness-indicator__details link-subtle">
           Details
