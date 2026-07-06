@@ -596,6 +596,13 @@ export type GradingSeasonEvent = {
     picks_only_lab: number
     overlap_matchups: number
   }
+  grading_report?: {
+    status?: string
+    scored_count?: number
+    voided_count?: number
+    skipped_count?: number
+    message?: string | null
+  } | null
   id?: number
   name: string
   course?: string | null
@@ -666,7 +673,7 @@ export type TrackRecordPick = {
   profit: number
   actual_finish?: string | null
   graded_at?: string | null
-  outcome?: "win" | "loss" | "push"
+  outcome?: "win" | "loss" | "push" | "void"
 }
 
 export type TrackRecordEvent = {
