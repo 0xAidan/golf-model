@@ -76,6 +76,44 @@ def evaluate(*, heartbeat_stale_seconds: int, snapshot_stale_seconds: int) -> di
     }
 
 
+def _run_grading_sweep(*, year: int | None, emit_json: bool) -> tuple[dict, int]:
+    from scripts.grading_sweep import run_grading_sweep
+
+    payload = run_grading_sweep(year=year)
+    if emit_json:
+        print(json.dumps({"grading_sweep": payload}, indent=2, default=str))
+    elif not payload.get("ok"):
+        reconciliation = payload.get("reconciliation") or {}
+        print(
+            "grading sweep reported issues "
+            f"(reconciliation={reconciliation.get('status')})",
+            file=sys.stderr,
+        )
+    return payload, 0 if payload.get("ok") else 1
+
+
+def _restart_worker() -> int:
+    reset = subprocess.run(
+        ["systemctl", "reset-failed", "golf-live-refresh.service"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if reset.returncode != 0:
+        print(reset.stderr or reset.stdout, file=sys.stderr)
+        return reset.returncode
+
+    proc = subprocess.run(
+        ["systemctl", "restart", "golf-live-refresh.service"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        print(proc.stderr or proc.stdout, file=sys.stderr)
+    return proc.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Live-refresh worker watchdog")
     parser.add_argument(
@@ -99,53 +137,36 @@ def main() -> int:
     parser.add_argument(
         "--ensure-grading",
         action="store_true",
-        help="Run ensure_completed_event_grading after watchdog check",
+        help="After watchdog check, run grading sweep (advisory; does not block restart)",
     )
     parser.add_argument("--grading-year", type=int, default=None, help="Year for --ensure-grading")
     args = parser.parse_args()
-
-    if args.ensure_grading:
-        from src.event_pick_freeze import ensure_all_completed_pga_events_graded
-        from src.grading_reconciliation import reconcile_grading
-
-        grading_report = ensure_all_completed_pga_events_graded(year=args.grading_year)
-        reconciliation = reconcile_grading(limit_events=10)
-        grading_payload = {"grading": grading_report, "reconciliation": reconciliation}
-        if args.json:
-            print(json.dumps(grading_payload, indent=2, default=str))
-        elif not grading_report.get("ok"):
-            print("grading ensure reported failures", file=sys.stderr)
-            return 1
-        if reconciliation.get("status") == "discrepancies":
-            print("grading reconciliation reported discrepancies", file=sys.stderr)
-            return 1
 
     result = evaluate(
         heartbeat_stale_seconds=max(900, args.heartbeat_stale_seconds),
         snapshot_stale_seconds=max(900, args.snapshot_stale_seconds),
     )
-    if args.json:
+    if args.json and not args.ensure_grading:
         print(json.dumps(result, indent=2))
 
-    if not result["restart"]:
-        return 0
+    exit_code = 0
+    if result["restart"]:
+        message = "; ".join(result["reasons"])
+        if not args.restart:
+            print(f"watchdog would restart worker: {message}", file=sys.stderr)
+            exit_code = 2
+        else:
+            print(f"watchdog restarting golf-live-refresh: {message}", file=sys.stderr)
+            exit_code = _restart_worker()
+    elif args.json:
+        print(json.dumps(result, indent=2))
 
-    message = "; ".join(result["reasons"])
-    if not args.restart:
-        print(f"watchdog would restart worker: {message}", file=sys.stderr)
-        return 2
+    if args.ensure_grading:
+        _, grading_exit = _run_grading_sweep(year=args.grading_year, emit_json=args.json)
+        if exit_code == 0 and not (result["restart"] and args.restart):
+            exit_code = grading_exit
 
-    print(f"watchdog restarting golf-live-refresh: {message}", file=sys.stderr)
-    proc = subprocess.run(
-        ["systemctl", "restart", "golf-live-refresh.service"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        print(proc.stderr or proc.stdout, file=sys.stderr)
-        return proc.returncode
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

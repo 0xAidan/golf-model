@@ -1,5 +1,5 @@
 [Unit]
-Description=Golf Model Live Refresh Watchdog
+Description=Golf Model completed-event grading sweep
 After=network.target
 
 [Service]
@@ -8,7 +8,9 @@ WorkingDirectory=/opt/golf-model
 Environment=GOLF_APP_ROOT=/opt/golf-model
 Environment=GOLF_DATA_DIR=/opt/golf-model/data
 EnvironmentFile=-/opt/golf-model/.env
-ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/live_refresh_watchdog.py --restart --json
+Nice=10
+MemoryMax=3G
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/grading_sweep.py --year 2026 --json
 
 [Install]
 WantedBy=multi-user.target
