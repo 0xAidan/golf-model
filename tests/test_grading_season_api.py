@@ -127,6 +127,47 @@ def test_grading_season_returns_lane_split(monkeypatch, tmp_path):
     assert payload["summary"]["lab"]["losses"] == 1
 
 
+def test_grading_season_exposes_voided_count(tmp_db, monkeypatch, tmp_path):
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_season_void.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "Void Season Open", "Test Course", 2026, "9010"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+            opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "baseline", "cockpit", "matchup", "void_player", "Void Player", "opp", "Opp", "-110", "fanduel", 0.55, 0.05),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes (pick_id, hit, model_hit, profit, grading_authority, notes)
+           VALUES (?, 0, 0, 0, 'void', 'unresolved: test')""",
+        (1,),
+    )
+    conn.execute(
+        "INSERT INTO results (tournament_id, player_key, finish_position, made_cut) VALUES (?, 'other', 1, 1)",
+        (1,),
+    )
+    conn.commit()
+    conn.close()
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/season?year=2026")
+    assert response.status_code == 200
+    event = next((row for row in response.json()["events"] if row["event_id"] == "9010"), None)
+    assert event is not None
+    assert event["lanes"]["dashboard"]["voided_count"] == 1
+
+
 def test_grading_season_lane_filter_dashboard(monkeypatch, tmp_path):
     import app as app_module
     from src import db as db_module

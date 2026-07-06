@@ -190,6 +190,107 @@ def _resolve_pick_result_key(
         result_dg_to_key=resolution_context.get("result_dg_to_key", {}),
     )
 
+
+def _compute_pick_key_for_outcome(
+    conn: sqlite3.Connection,
+    pick: dict,
+    tournament_id: int,
+    bet_type: str,
+) -> str:
+    from src.pick_ledger import compute_pick_key, normalize_american_odds
+
+    t_row = conn.execute(
+        "SELECT event_id FROM tournaments WHERE id = ?", (tournament_id,)
+    ).fetchone()
+    event_id = str(t_row["event_id"] or "") if t_row else ""
+    return compute_pick_key(
+        event_id=event_id,
+        lane="cockpit" if pick.get("source") in ("cockpit", "ui_display") else "lab",
+        section="upcoming",
+        phase="pre_tournament",
+        bet_type=str(bet_type or "matchup"),
+        player_key=str(pick.get("player_key") or ""),
+        opponent_key=str(pick.get("opponent_key") or ""),
+        book=str(pick.get("market_book") or ""),
+        odds=normalize_american_odds(pick.get("market_odds")),
+        snapshot_id=f"pick_{pick['id']}",
+    )
+
+
+def _persist_void_outcome(
+    conn: sqlite3.Connection,
+    *,
+    pick: dict,
+    tournament_id: int,
+    reason: str,
+    force_audit: bool = False,
+    audit_reason: str | None = None,
+) -> bool:
+    """Persist a void outcome for a +EV pick that cannot be graded."""
+    from src.pick_ledger import log_grading_audit
+
+    existing = conn.execute(
+        """SELECT id, model_hit, outcome_locked, hit, profit, grading_authority, pick_key
+           FROM pick_outcomes WHERE pick_id = ?""",
+        (pick["id"],),
+    ).fetchone()
+    if existing and int(existing["outcome_locked"] or 0) == 1 and not force_audit:
+        return False
+
+    pick_key = existing["pick_key"] if existing and existing["pick_key"] else _compute_pick_key_for_outcome(
+        conn, pick, tournament_id, str(pick.get("bet_type") or "matchup")
+    )
+    notes = f"unresolved: {reason}"
+    odds_decimal = parse_odds_to_decimal(pick.get("market_odds"))
+
+    if existing and force_audit:
+        log_grading_audit(
+            pick_id=pick["id"],
+            pick_key=pick_key,
+            tournament_id=tournament_id,
+            action="regrade",
+            reason=audit_reason or "force_audit",
+            previous=dict(existing),
+            new={
+                "hit": 0,
+                "model_hit": 0,
+                "profit": 0.0,
+                "grading_authority": "void",
+            },
+        )
+        conn.execute(
+            """UPDATE pick_outcomes SET
+                   hit = 0, model_hit = 0, actual_finish = ?, odds_decimal = ?,
+                   stake = 1.0, profit = 0, notes = ?, grading_authority = 'void',
+                   pick_key = ?, outcome_locked = 0
+               WHERE id = ?""",
+            ("VOID", odds_decimal, notes, pick_key, existing["id"]),
+        )
+        return True
+
+    if not existing:
+        conn.execute(
+            """INSERT INTO pick_outcomes
+               (pick_id, pick_key, hit, model_hit, actual_finish, odds_decimal, stake, profit,
+                notes, grading_authority, outcome_locked)
+               VALUES (?, ?, 0, 0, ?, ?, 1.0, 0, ?, 'void', 0)""",
+            (pick["id"], pick_key, "VOID", odds_decimal, notes),
+        )
+        return True
+
+    if str(existing["grading_authority"] or "").lower() != "void":
+        conn.execute(
+            """UPDATE pick_outcomes SET
+                   hit = 0, model_hit = 0, actual_finish = ?, odds_decimal = ?,
+                   stake = 1.0, profit = 0, notes = ?, grading_authority = 'void',
+                   pick_key = ?
+               WHERE id = ? AND COALESCE(outcome_locked, 0) = 0""",
+            ("VOID", odds_decimal, notes, pick_key, existing["id"]),
+        )
+        return True
+    return False
+
+
 def score_picks_for_tournament(
     tournament_id: int,
     *,
@@ -228,12 +329,14 @@ def score_picks_for_tournament(
         return 1 if bet_hit else 0
 
     scored = 0
+    voided = 0
     model_hits = 0
     bet_hits = 0
     resolved = 0
     skipped_non_positive_ev = 0
     skipped_locked = 0
     total_profit = 0.0
+    voided_picks: list[dict] = []
     resolution_methods = {
         "direct": 0,
         "normalize_name": 0,
@@ -266,15 +369,30 @@ def score_picks_for_tournament(
         resolved_player_key = resolution["key"]
         r = result_map.get(resolved_player_key) if resolved_player_key else None
         if not r:
+            reason = f"player_not_in_results (method={resolution['method']})"
             logger.warning(
-                "Scoring skip: no results for player_key=%s bet_type=%s method=%s player_display=%s",
+                "Scoring void: no results for player_key=%s bet_type=%s method=%s player_display=%s",
                 pk,
                 bt,
                 resolution["method"],
                 pick.get("player_display"),
             )
+            if _persist_void_outcome(
+                conn,
+                pick=pick,
+                tournament_id=tournament_id,
+                reason=reason,
+                force_audit=force_audit,
+                audit_reason=audit_reason,
+            ):
+                voided += 1
+                voided_picks.append({
+                    "pick_id": pick["id"],
+                    "player_key": pk,
+                    "bet_type": bt,
+                    "reason": reason,
+                })
             continue
-        resolved += 1
 
         finish = r.get("finish_position")
         finish_text = r.get("finish_text")
@@ -293,9 +411,34 @@ def score_picks_for_tournament(
             )
             opponent_resolution_methods[opponent_resolution["method"]] += 1
             opp_result = result_map.get(opponent_resolution["key"]) if opponent_resolution["key"] else None
-            opp_finish = opp_result.get("finish_position") if opp_result else None
-            opp_finish_text = opp_result.get("finish_text") if opp_result else None
+            if not opp_result:
+                reason = f"opponent_not_in_results (method={opponent_resolution['method']})"
+                logger.warning(
+                    "Scoring void: no results for opponent_key=%s player_key=%s",
+                    pick.get("opponent_key"),
+                    pk,
+                )
+                if _persist_void_outcome(
+                    conn,
+                    pick=pick,
+                    tournament_id=tournament_id,
+                    reason=reason,
+                    force_audit=force_audit,
+                    audit_reason=audit_reason,
+                ):
+                    voided += 1
+                    voided_picks.append({
+                        "pick_id": pick["id"],
+                        "player_key": pk,
+                        "opponent_key": pick.get("opponent_key"),
+                        "bet_type": bt,
+                        "reason": reason,
+                    })
+                continue
+            opp_finish = opp_result.get("finish_position")
+            opp_finish_text = opp_result.get("finish_text")
 
+        resolved += 1
         outcome = determine_outcome(
             bt, finish, finish_text, made_cut, all_results_list,
             opponent_finish=opp_finish,
@@ -331,25 +474,9 @@ def score_picks_for_tournament(
             actual_finish = f"{r.get('finish_text')} vs {opp_finish_text}"
             notes = f"Matchup result: {pick.get('player_display')} {r.get('finish_text')} vs {pick.get('opponent_display')} {opp_finish_text}"
 
-        pick_key = existing["pick_key"] if existing else None
-        if not pick_key:
-            from src.pick_ledger import compute_pick_key, normalize_american_odds
-            t_row = conn.execute(
-                "SELECT event_id FROM tournaments WHERE id = ?", (tournament_id,)
-            ).fetchone()
-            event_id = str(t_row["event_id"] or "") if t_row else ""
-            pick_key = compute_pick_key(
-                event_id=event_id,
-                lane="cockpit" if pick.get("source") in ("cockpit", "ui_display") else "lab",
-                section="upcoming",
-                phase="pre_tournament",
-                bet_type=str(bt or "matchup"),
-                player_key=str(pick.get("player_key") or ""),
-                opponent_key=str(pick.get("opponent_key") or ""),
-                book=str(pick.get("market_book") or ""),
-                odds=normalize_american_odds(pick.get("market_odds")),
-                snapshot_id=f"pick_{pick['id']}",
-            )
+        pick_key = existing["pick_key"] if existing and existing["pick_key"] else _compute_pick_key_for_outcome(
+            conn, pick, tournament_id, bt
+        )
 
         if existing and force_audit:
             log_grading_audit(
@@ -448,6 +575,11 @@ def score_picks_for_tournament(
         "skipped_non_positive_ev": skipped_non_positive_ev,
         "skipped_locked": skipped_locked,
         "scored": scored,
+        "scored_count": scored,
+        "voided": voided,
+        "voided_count": voided,
+        "voided_picks": voided_picks,
+        "skipped_unresolved": voided_picks,
         "hits": model_hits,
         "misses": resolved - model_hits,
         "hit_rate": round(model_hits / resolved, 3) if resolved else 0,

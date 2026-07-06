@@ -55,6 +55,37 @@ def test_grade_tournament_endpoint_maps_error_status_to_422(monkeypatch):
     assert response.json()["status"] == "error"
 
 
+def test_grade_tournament_endpoint_maps_partial_status(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "scripts.grade_tournament.grade_tournament",
+        lambda event_id, year, event_name=None: {
+            "status": "partial",
+            "event_id": event_id,
+            "year": year,
+            "grading_report": {
+                "status": "partial",
+                "scored_count": 2,
+                "voided_count": 1,
+                "skipped_count": 0,
+            },
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.post(
+        "/api/grade-tournament",
+        json={"event_id": "34", "year": 2026},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "partial"
+    assert body["grading_report"]["voided_count"] == 1
+
+
 def test_grade_tournament_endpoint_returns_500_on_exception(monkeypatch):
     import app as app_module
 

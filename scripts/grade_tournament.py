@@ -33,6 +33,32 @@ logger = logging.getLogger("grade_tournament")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 
+def build_grading_report(score_result: dict, reconciliation: dict) -> dict:
+    """Summarize a grading run for UI/ops surfaces."""
+    scored = int(score_result.get("scored_count") or score_result.get("scored") or 0)
+    voided = int(score_result.get("voided_count") or score_result.get("voided") or 0)
+    events = reconciliation.get("events") or []
+    event_row = events[0] if events else {}
+    ungraded = int(event_row.get("ungraded_positive_ev_picks") or 0)
+    recon_status = reconciliation.get("status", "ok")
+    status = "complete" if ungraded == 0 and recon_status == "ok" else "partial"
+    message = None
+    if status == "partial":
+        if ungraded > 0:
+            message = f"{ungraded} +EV pick(s) still ungraded after scoring"
+        elif recon_status != "ok":
+            message = "Grading reconciliation reported discrepancies"
+    return {
+        "status": status,
+        "scored_count": scored,
+        "voided_count": voided,
+        "skipped_count": ungraded,
+        "ungraded_positive_ev": ungraded,
+        "voided_picks": score_result.get("voided_picks") or [],
+        "message": message,
+    }
+
+
 def fetch_matchup_outcomes(event_id: str, year: int, book: str = "bet365") -> list[dict]:
     """Fetch matchup outcomes from DG historical-odds/matchups."""
     try:
@@ -249,6 +275,14 @@ def grade_tournament(
     }
     report["calibration"] = learn_result.get("calibration", {})
 
+    from src.grading_reconciliation import reconcile_grading
+
+    reconciliation = reconcile_grading(tournament_id=tournament_id)
+    report["steps"]["reconciliation"] = reconciliation
+    grading_report = build_grading_report(score_result, reconciliation)
+    report["grading_report"] = grading_report
+    report["status"] = grading_report["status"]
+
     # 8. Cold archive tournament tables (includes pick_ledger)
     try:
         import os
@@ -274,7 +308,7 @@ def grade_tournament(
         report["steps"]["tournament_archive"] = {"ok": False, "error": str(exc)}
 
     report["status"] = "complete"
-    print(f"  Grading complete for tournament {tournament_id}")
+    print(f"  Grading complete for tournament {tournament_id} ({report['status']})")
     return report
 
 

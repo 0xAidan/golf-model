@@ -125,7 +125,14 @@ def format_graded_pick_rows(rows: list[dict]) -> list[dict]:
     for pick in rows:
         profit = one_unit_profit(dict(pick))
         hit = int(pick.get("hit") or 0)
-        outcome = "win" if hit == 1 else ("push" if profit == 0 else "loss")
+        if str(pick.get("grading_authority") or "").lower() == "void":
+            outcome = "void"
+        elif hit == 1:
+            outcome = "win"
+        elif round(profit, 8) == 0:
+            outcome = "push"
+        else:
+            outcome = "loss"
         payloads.append({
             **dict(pick),
             "profit": round(profit, 2),
