@@ -5,10 +5,15 @@ First step of the incremental app.py -> src/routes/ decomposition (H).
 """
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["ops"])
 
 _HEARTBEAT_STALE_SECONDS = 900
+
+
+class WorkerRestartRequest(BaseModel):
+    requested_by: str = Field(default="api")
 
 
 def _snapshot_stale_after_seconds() -> int:
@@ -24,7 +29,9 @@ def _snapshot_stale_after_seconds() -> int:
 async def get_ops_health():
     """Production identity, worker heartbeat, and split-brain diagnostics (non-secret)."""
     from src.db import ensure_initialized
-    from src.runtime_paths import detect_split_brain, get_runtime_identity, read_heartbeat
+    from src.disk_guard import get_disk_state
+    from src.runtime_paths import detect_split_brain, get_app_root, get_runtime_identity, read_heartbeat
+    from src.worker_restart import read_worker_restart_request
     from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
     from src.runtime_health import recent_strategy_config_errors
 
@@ -40,6 +47,8 @@ async def get_ops_health():
     stale_after_seconds = _snapshot_stale_after_seconds()
     heartbeat_age_seconds = split.get("heartbeat_age_seconds")
     heartbeat_running = bool((heartbeat or {}).get("running"))
+    disk = get_disk_state(str(get_app_root()))
+    worker_restart_request = read_worker_restart_request()
 
     # Track-registry state (active config hashes per track) for incident triage without SSH.
     track_state: dict = {}
@@ -105,6 +114,8 @@ async def get_ops_health():
         "strategy_config_errors": strategy_config_errors,
         "tracks": track_state,
         "grading": grading_health,
+        "disk": disk,
+        "worker_restart_request": worker_restart_request,
         "live_refresh": {
             "running": bool(status.get("running")),
             "refresh_state": (status.get("progress") or {}).get("refresh_state"),
@@ -113,5 +124,22 @@ async def get_ops_health():
             "snapshot_generated_at": generated_at,
             "snapshot_age_seconds": snapshot_age_seconds,
             "stale_after_seconds": stale_after_seconds,
+            "last_auto_grade_at": status.get("last_auto_grade_at"),
+            "last_auto_grade_status": status.get("last_auto_grade_status"),
         },
+    }
+
+
+@router.post("/api/ops/worker/restart")
+async def post_worker_restart(payload: WorkerRestartRequest | None = None):
+    """Queue a live-refresh worker restart for the next watchdog pass."""
+    from src.worker_restart import request_worker_restart
+
+    body = payload or WorkerRestartRequest()
+    request = request_worker_restart(requested_by=body.requested_by)
+    return {
+        "ok": True,
+        "status": "queued",
+        "request": request,
+        "message": "Worker restart queued for the next watchdog cycle (within ~5 minutes).",
     }

@@ -37,3 +37,47 @@ def warn_if_low_disk(path: str, *, context: str) -> dict[str, Any] | None:
         )
         return {"warned": True, "free_mb": free_mb, "threshold_mb": threshold_mb, "path": path}
     return {"warned": False, "free_mb": free_mb, "threshold_mb": threshold_mb, "path": path}
+
+
+def get_disk_state(path: str) -> dict[str, Any]:
+    """Return free-space snapshot and warn/hard thresholds for ops surfaces."""
+    warn_raw = (os.environ.get("DISK_FREE_MB_WARN") or "").strip()
+    hard_raw = (os.environ.get("DISK_FREE_MB_HARD") or "").strip()
+    try:
+        warn_mb = int(warn_raw) if warn_raw else None
+    except ValueError:
+        warn_mb = None
+    try:
+        hard_mb = int(hard_raw) if hard_raw else None
+    except ValueError:
+        hard_mb = None
+    if warn_mb is not None and warn_mb <= 0:
+        warn_mb = None
+    if hard_mb is not None and hard_mb <= 0:
+        hard_mb = None
+
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError as exc:
+        return {
+            "free_mb": None,
+            "warn_mb": warn_mb,
+            "hard_mb": hard_mb,
+            "state": "unknown",
+            "error": str(exc),
+            "path": path,
+        }
+
+    free_mb = int(usage.free // (1024 * 1024))
+    state = "healthy"
+    if hard_mb is not None and free_mb < hard_mb:
+        state = "critical"
+    elif warn_mb is not None and free_mb < warn_mb:
+        state = "warn"
+    return {
+        "free_mb": free_mb,
+        "warn_mb": warn_mb,
+        "hard_mb": hard_mb,
+        "state": state,
+        "path": path,
+    }
