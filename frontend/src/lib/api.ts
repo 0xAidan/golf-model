@@ -378,6 +378,7 @@ export const api = {
     ),
   getClvSummary: () =>
     request<ClvSummaryResponse>("/api/clv/summary", undefined, RESEARCH_INSTRUMENTATION_TIMEOUT_MS),
+  getOpsHealth: () => request<Record<string, unknown>>("/api/ops/health"),
   getResearchAbReport: (eventId: string, options?: { persist?: boolean }) => {
     const params = new URLSearchParams({
       event_id: eventId,
