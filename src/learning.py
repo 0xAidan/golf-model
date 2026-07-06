@@ -405,6 +405,28 @@ def score_picks_for_tournament(
             return 0
         return 1 if bet_hit else 0
 
+    def _resolve_pick_outcome_key(pick: dict, existing_pick_key: str | None) -> str:
+        if existing_pick_key:
+            return existing_pick_key
+        from src.pick_ledger import compute_pick_key, normalize_american_odds
+
+        t_row = conn.execute(
+            "SELECT event_id FROM tournaments WHERE id = ?", (tournament_id,)
+        ).fetchone()
+        event_id = str(t_row["event_id"] or "") if t_row else ""
+        return compute_pick_key(
+            event_id=event_id,
+            lane="cockpit" if pick.get("source") in ("cockpit", "ui_display") else "lab",
+            section="upcoming",
+            phase="pre_tournament",
+            bet_type=str(pick.get("bet_type") or "matchup"),
+            player_key=str(pick.get("player_key") or ""),
+            opponent_key=str(pick.get("opponent_key") or ""),
+            book=str(pick.get("market_book") or ""),
+            odds=normalize_american_odds(pick.get("market_odds")),
+            snapshot_id=f"pick_{pick['id']}",
+        )
+
     scored = 0
     voided = 0
     model_hits = 0
@@ -669,8 +691,9 @@ def score_picks_for_tournament(
         if actual_finish is None and r is not None:
             actual_finish = r.get("finish_text")
 
-        pick_key = existing["pick_key"] if existing and existing["pick_key"] else _compute_pick_key_for_outcome(
-            conn, pick, tournament_id, bt
+        pick_key = _resolve_pick_outcome_key(
+            pick,
+            existing["pick_key"] if existing else None,
         )
 
         if existing and force_audit:
