@@ -24,6 +24,12 @@ from src import db
 from src.player_key_resolver import resolve_player_key
 from src.player_normalizer import display_name, normalize_name
 from src.scoring import determine_outcome, compute_profit, parse_odds_to_decimal
+from src.matchup_outcome_store import (
+    lookup_any_matchup_for_player,
+    lookup_matchup_outcome,
+    outcome_from_stored_matchup,
+    threeball_group_opponent_keys,
+)
 
 logger = logging.getLogger("learning")
 
@@ -291,6 +297,77 @@ def _persist_void_outcome(
     return False
 
 
+def _matchup_grading_mode(pick: dict, bet_type: str) -> str | None:
+    """Return round_matchups, tournament_matchups, or None when not a matchup pick."""
+    market_type = str(pick.get("market_type") or "").strip().lower()
+    bt = str(bet_type or "").strip().lower()
+    if market_type == "round_matchups":
+        return "round_matchups"
+    if market_type in {"tournament_matchups", "72hole", "72_hole"}:
+        return "tournament_matchups"
+    if bt == "matchup":
+        return "tournament_matchups"
+    return None
+
+
+def _is_3ball_pick(pick: dict, bet_type: str) -> bool:
+    bt = str(bet_type or "").strip().lower()
+    market_type = str(pick.get("market_type") or "").strip().lower()
+    return bt in {"3ball", "3_ball", "3_balls", "group"} or market_type in {
+        "3ball",
+        "3_balls",
+        "group",
+    }
+
+
+def _threeball_opponent_finishes(
+    conn: sqlite3.Connection,
+    tournament_id: int,
+    pick: dict,
+    player_key: str,
+    result_map: dict,
+    resolution_context: dict,
+) -> list[int | None]:
+    opponent_keys = threeball_group_opponent_keys(
+        conn,
+        tournament_id,
+        player_key,
+        pick_opponent_key=str(pick.get("opponent_key") or "").strip() or None,
+    )
+    finishes: list[int | None] = []
+    for opp_key in opponent_keys:
+        opp_resolution = _resolve_pick_result_key(
+            pick={"player_key": opp_key, "player_display": pick.get("opponent_display")},
+            result_map=result_map,
+            resolution_context=resolution_context,
+        )
+        opp_result = result_map.get(opp_resolution["key"]) if opp_resolution["key"] else None
+        finishes.append(opp_result.get("finish_position") if opp_result else None)
+    return finishes
+
+
+def _notes_from_stored_matchup(row: dict, pick: dict, pick_player_key: str) -> tuple[str | None, str | None]:
+    flipped = bool(row.get("_flipped"))
+    if flipped:
+        p_text = row.get("p2_outcome_text")
+        o_text = row.get("p1_outcome_text")
+        p_name = pick.get("player_display") or pick_player_key
+        o_name = pick.get("opponent_display") or row.get("player_key")
+    elif str(row.get("player_key") or "") == str(pick_player_key or ""):
+        p_text = row.get("p1_outcome_text")
+        o_text = row.get("p2_outcome_text")
+        p_name = pick.get("player_display") or pick_player_key
+        o_name = pick.get("opponent_display") or row.get("opponent_key")
+    else:
+        p_text = row.get("p2_outcome_text")
+        o_text = row.get("p1_outcome_text")
+        p_name = pick.get("player_display") or pick_player_key
+        o_name = pick.get("opponent_display") or row.get("player_key")
+    actual_finish = f"{p_text or '?'} vs {o_text or '?'}"
+    notes = f"DG matchup: {p_name} {p_text} vs {o_name} {o_text}"
+    return actual_finish, notes
+
+
 def score_picks_for_tournament(
     tournament_id: int,
     *,
@@ -360,63 +437,62 @@ def score_picks_for_tournament(
             continue
         pk = pick["player_key"]
         bt = pick["bet_type"]
-        resolution = _resolve_pick_result_key(
-            pick=pick,
-            result_map=result_map,
-            resolution_context=resolution_context,
-        )
-        resolution_methods[resolution["method"]] += 1
-        resolved_player_key = resolution["key"]
-        r = result_map.get(resolved_player_key) if resolved_player_key else None
-        if not r:
-            reason = f"player_not_in_results (method={resolution['method']})"
-            logger.warning(
-                "Scoring void: no results for player_key=%s bet_type=%s method=%s player_display=%s",
-                pk,
-                bt,
-                resolution["method"],
-                pick.get("player_display"),
-            )
-            if _persist_void_outcome(
+        matchup_mode = _matchup_grading_mode(pick, bt)
+        is_3ball = _is_3ball_pick(pick, bt)
+        grading_authority = "computed"
+        outcome = None
+        actual_finish = None
+        notes = None
+        r = None
+
+        if matchup_mode == "round_matchups":
+            stored = lookup_matchup_outcome(
                 conn,
+                tournament_id,
+                str(pk or ""),
+                str(pick.get("opponent_key") or ""),
+                "round_matchups",
+                pick.get("market_book"),
+            )
+            if not stored:
+                reason = "no_stored_round_matchup_outcome"
+                if _persist_void_outcome(
+                    conn,
+                    pick=pick,
+                    tournament_id=tournament_id,
+                    reason=reason,
+                    force_audit=force_audit,
+                    audit_reason=audit_reason,
+                ):
+                    voided += 1
+                    voided_picks.append({
+                        "pick_id": pick["id"],
+                        "player_key": pk,
+                        "bet_type": bt,
+                        "market_type": "round_matchups",
+                        "reason": reason,
+                    })
+                continue
+            outcome = outcome_from_stored_matchup(stored, str(pk or ""))
+            grading_authority = "matchup_outcome"
+            actual_finish, notes = _notes_from_stored_matchup(stored, pick, str(pk or ""))
+        else:
+            resolution = _resolve_pick_result_key(
                 pick=pick,
-                tournament_id=tournament_id,
-                reason=reason,
-                force_audit=force_audit,
-                audit_reason=audit_reason,
-            ):
-                voided += 1
-                voided_picks.append({
-                    "pick_id": pick["id"],
-                    "player_key": pk,
-                    "bet_type": bt,
-                    "reason": reason,
-                })
-            continue
-
-        finish = r.get("finish_position")
-        finish_text = r.get("finish_text")
-        made_cut = r.get("made_cut", 0)
-
-        opp_finish = None
-        opp_finish_text = None
-        if bt == "matchup":
-            opponent_resolution = _resolve_pick_result_key(
-                pick={
-                    "player_key": pick.get("opponent_key"),
-                    "player_display": pick.get("opponent_display"),
-                },
                 result_map=result_map,
                 resolution_context=resolution_context,
             )
-            opponent_resolution_methods[opponent_resolution["method"]] += 1
-            opp_result = result_map.get(opponent_resolution["key"]) if opponent_resolution["key"] else None
-            if not opp_result:
-                reason = f"opponent_not_in_results (method={opponent_resolution['method']})"
+            resolution_methods[resolution["method"]] += 1
+            resolved_player_key = resolution["key"]
+            r = result_map.get(resolved_player_key) if resolved_player_key else None
+            if not r and not is_3ball:
+                reason = f"player_not_in_results (method={resolution['method']})"
                 logger.warning(
-                    "Scoring void: no results for opponent_key=%s player_key=%s",
-                    pick.get("opponent_key"),
+                    "Scoring void: no results for player_key=%s bet_type=%s method=%s player_display=%s",
                     pk,
+                    bt,
+                    resolution["method"],
+                    pick.get("player_display"),
                 )
                 if _persist_void_outcome(
                     conn,
@@ -430,19 +506,141 @@ def score_picks_for_tournament(
                     voided_picks.append({
                         "pick_id": pick["id"],
                         "player_key": pk,
-                        "opponent_key": pick.get("opponent_key"),
                         "bet_type": bt,
                         "reason": reason,
                     })
                 continue
-            opp_finish = opp_result.get("finish_position")
-            opp_finish_text = opp_result.get("finish_text")
+
+            if is_3ball:
+                if not r:
+                    reason = f"player_not_in_results (method={resolution['method']})"
+                    if _persist_void_outcome(
+                        conn,
+                        pick=pick,
+                        tournament_id=tournament_id,
+                        reason=reason,
+                        force_audit=force_audit,
+                        audit_reason=audit_reason,
+                    ):
+                        voided += 1
+                        voided_picks.append({
+                            "pick_id": pick["id"],
+                            "player_key": pk,
+                            "bet_type": bt,
+                            "reason": reason,
+                        })
+                    continue
+                finish = r.get("finish_position")
+                finish_text = r.get("finish_text")
+                made_cut = r.get("made_cut", 0)
+                stored = lookup_any_matchup_for_player(
+                    conn,
+                    tournament_id,
+                    str(pk or ""),
+                    "3_balls",
+                    pick.get("market_book"),
+                )
+                if stored:
+                    outcome = outcome_from_stored_matchup(stored, str(pk or ""))
+                    grading_authority = "matchup_outcome"
+                    actual_finish, notes = _notes_from_stored_matchup(stored, pick, str(pk or ""))
+                else:
+                    group_finishes = _threeball_opponent_finishes(
+                        conn,
+                        tournament_id,
+                        pick,
+                        str(pk or ""),
+                        result_map,
+                        resolution_context,
+                    )
+                    outcome = determine_outcome(
+                        "3ball",
+                        finish,
+                        finish_text,
+                        made_cut,
+                        all_results_list,
+                        group_opponent_finishes=group_finishes,
+                    )
+                    actual_finish = finish_text
+            elif matchup_mode == "tournament_matchups":
+                finish = r.get("finish_position")
+                finish_text = r.get("finish_text")
+                made_cut = r.get("made_cut", 0)
+                opponent_resolution = _resolve_pick_result_key(
+                    pick={
+                        "player_key": pick.get("opponent_key"),
+                        "player_display": pick.get("opponent_display"),
+                    },
+                    result_map=result_map,
+                    resolution_context=resolution_context,
+                )
+                opponent_resolution_methods[opponent_resolution["method"]] += 1
+                opp_result = result_map.get(opponent_resolution["key"]) if opponent_resolution["key"] else None
+                if opp_result:
+                    opp_finish = opp_result.get("finish_position")
+                    opp_finish_text = opp_result.get("finish_text")
+                    outcome = determine_outcome(
+                        "matchup",
+                        finish,
+                        finish_text,
+                        made_cut,
+                        all_results_list,
+                        opponent_finish=opp_finish,
+                    )
+                    actual_finish = f"{r.get('finish_text')} vs {opp_finish_text}"
+                    notes = (
+                        f"Matchup result: {pick.get('player_display')} {r.get('finish_text')} "
+                        f"vs {pick.get('opponent_display')} {opp_finish_text}"
+                    )
+                else:
+                    stored = lookup_matchup_outcome(
+                        conn,
+                        tournament_id,
+                        str(pk or ""),
+                        str(pick.get("opponent_key") or ""),
+                        "tournament_matchups",
+                        pick.get("market_book"),
+                    )
+                    if not stored:
+                        reason = f"opponent_not_in_results (method={opponent_resolution['method']})"
+                        logger.warning(
+                            "Scoring void: no results for opponent_key=%s player_key=%s",
+                            pick.get("opponent_key"),
+                            pk,
+                        )
+                        if _persist_void_outcome(
+                            conn,
+                            pick=pick,
+                            tournament_id=tournament_id,
+                            reason=reason,
+                            force_audit=force_audit,
+                            audit_reason=audit_reason,
+                        ):
+                            voided += 1
+                            voided_picks.append({
+                                "pick_id": pick["id"],
+                                "player_key": pk,
+                                "opponent_key": pick.get("opponent_key"),
+                                "bet_type": bt,
+                                "reason": reason,
+                            })
+                        continue
+                    outcome = outcome_from_stored_matchup(stored, str(pk or ""))
+                    grading_authority = "matchup_outcome"
+                    actual_finish, notes = _notes_from_stored_matchup(stored, pick, str(pk or ""))
+            else:
+                finish = r.get("finish_position")
+                finish_text = r.get("finish_text")
+                made_cut = r.get("made_cut", 0)
+                outcome = determine_outcome(
+                    bt, finish, finish_text, made_cut, all_results_list,
+                )
+                actual_finish = r.get("finish_text")
+
+        if outcome is None:
+            continue
 
         resolved += 1
-        outcome = determine_outcome(
-            bt, finish, finish_text, made_cut, all_results_list,
-            opponent_finish=opp_finish,
-        )
         hit = outcome["hit"]
         fraction = outcome["fraction"]
         is_push = outcome["is_push"]
@@ -468,11 +666,8 @@ def score_picks_for_tournament(
                 bet_hits += 1
             continue
 
-        actual_finish = r.get("finish_text")
-        notes = None
-        if bt == "matchup" and opp_finish_text:
-            actual_finish = f"{r.get('finish_text')} vs {opp_finish_text}"
-            notes = f"Matchup result: {pick.get('player_display')} {r.get('finish_text')} vs {pick.get('opponent_display')} {opp_finish_text}"
+        if actual_finish is None and r is not None:
+            actual_finish = r.get("finish_text")
 
         pick_key = existing["pick_key"] if existing and existing["pick_key"] else _compute_pick_key_for_outcome(
             conn, pick, tournament_id, bt
@@ -490,16 +685,16 @@ def score_picks_for_tournament(
                     "hit": hit,
                     "model_hit": model_hit,
                     "profit": profit,
-                    "grading_authority": "computed",
+                    "grading_authority": grading_authority,
                 },
             )
             conn.execute(
-                """UPDATE pick_outcomes SET
+                f"""UPDATE pick_outcomes SET
                        hit = ?, model_hit = ?, actual_finish = ?, odds_decimal = ?,
-                       stake = ?, profit = ?, notes = ?, grading_authority = 'computed',
+                       stake = ?, profit = ?, notes = ?, grading_authority = ?,
                        pick_key = ?, outcome_locked = 0
                    WHERE id = ?""",
-                (hit, model_hit, actual_finish, odds_decimal, stake, profit, notes, pick_key, existing["id"]),
+                (hit, model_hit, actual_finish, odds_decimal, stake, profit, notes, grading_authority, pick_key, existing["id"]),
             )
             scored += 1
             if model_hit:
@@ -513,9 +708,9 @@ def score_picks_for_tournament(
                 """INSERT INTO pick_outcomes
                    (pick_id, pick_key, hit, model_hit, actual_finish, odds_decimal, stake, profit,
                     notes, grading_authority, outcome_locked)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'computed', 0)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""",
                 (pick["id"], pick_key, hit, model_hit, actual_finish,
-                 odds_decimal, stake, profit, notes),
+                 odds_decimal, stake, profit, notes, grading_authority),
             )
             scored += 1
             if model_hit:

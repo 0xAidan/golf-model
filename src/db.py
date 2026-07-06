@@ -1269,6 +1269,15 @@ def _run_migrations(conn: sqlite3.Connection):
     _ensure_pre_teeoff_tables(conn)
     _ensure_pick_ledger_tables(conn)
 
+    try:
+        from src.matchup_outcome_store import ensure_matchup_outcome_table
+
+        ensure_matchup_outcome_table(conn)
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "matchup_outcome_results migration skipped", exc_info=True
+        )
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS shadow_event_simulations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -119,7 +119,8 @@ def determine_outcome(bet_type: str,
                       finish_text: Optional[str],
                       made_cut: int,
                       all_results: list[dict],
-                      opponent_finish: Optional[int] = None) -> dict:
+                      opponent_finish: Optional[int] = None,
+                      group_opponent_finishes: list[int | None] | None = None) -> dict:
     """
     Determine the outcome of a bet.
 
@@ -142,6 +143,30 @@ def determine_outcome(bet_type: str,
 
     # Normalize bet_type to handle both formats (top5 and top_5)
     bt = bet_type.lower().strip()
+
+    # 3-ball: lowest finish among the picked player and listed opponents wins.
+    if bt in {"3ball", "3_balls", "group"}:
+        if finish_position is None:
+            return result
+        contenders = [finish_position]
+        if group_opponent_finishes:
+            contenders.extend(f for f in group_opponent_finishes if f is not None)
+        if not contenders:
+            return result
+        best = min(contenders)
+        if finish_position > best:
+            return result
+        if finish_position < best:
+            result["hit"] = 1
+            result["fraction"] = 1.0
+            return result
+        tied_at_best = sum(1 for f in contenders if f == best)
+        if tied_at_best > 1:
+            result["is_push"] = True
+            return result
+        result["hit"] = 1
+        result["fraction"] = 1.0
+        return result
 
     # Matchup handling
     if bt == "matchup":
