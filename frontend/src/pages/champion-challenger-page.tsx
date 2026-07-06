@@ -2,8 +2,9 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 
-import { BentoGrid, BentoPanel, HeroBand, HeroDataGrid } from "@/components/monitoring"
-import { Skeleton } from "@/components/ui/skeleton"
+import { BentoGrid, BentoPanel, HeroDataGrid } from "@/components/monitoring"
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback-state"
+import { PageHeader } from "@/components/ui/page-header"
 import { api } from "@/lib/api"
 import { CHAMPION_TABLE_TOOLTIPS } from "@/lib/metric-tooltips"
 import type { ChampionChallengerModelSummary, ChampionChallengerSummary } from "@/lib/types"
@@ -84,28 +85,31 @@ export function ChampionChallengerPage() {
     [],
   )
 
+  const hasData = Boolean(data)
+
   return (
-    <div className="monitor-research-page monitor-scroll-region" data-testid="champion-challenger-page">
-      <HeroBand
-        eyebrow="Research"
-        title="Champion / Challenger"
-        meta="Shadow-mode evaluation. Challengers never price live bets. Trailing Brier, matchup ROI, and CLV."
-      />
+    <div
+      className="monitor-research-page monitor-scroll-region product-page--satellite"
+      data-testid="champion-challenger-page"
+    >
+      <div className="px-5 pt-5">
+        <PageHeader
+          eyebrow="Research"
+          title="Champion / Challenger"
+          description="Shadow-mode evaluation only. Challengers never price live bets; this page tracks trailing Brier, matchup ROI, and CLV."
+        />
+      </div>
 
-      {summaryQuery.isLoading && (
-        <div className="research-page-loading" aria-busy="true">
-          <Skeleton className="h-8 w-full max-w-md" />
-          <Skeleton className="h-48 w-full" />
-        </div>
-      )}
+      <div className="px-5 pb-5 pt-4">
+        {summaryQuery.isLoading ? <LoadingState message="Loading champion / challenger summary…" /> : null}
+        {summaryQuery.isError ? (
+          <ErrorState message="Failed to load champion / challenger summary." className="mt-0" />
+        ) : null}
+        {!summaryQuery.isLoading && !summaryQuery.isError && !hasData ? (
+          <EmptyState message="No champion / challenger summary is available yet." />
+        ) : null}
 
-      {summaryQuery.isError && (
-        <p className="research-page-error" data-testid="champion-challenger-error">
-          Failed to load summary.
-        </p>
-      )}
-
-      {data && (
+        {data ? (
         <BentoGrid columns={1} testId="champion-challenger-bento">
           <BentoPanel title="Model roster" span={12}>
             <p className="research-page-meta">
@@ -128,7 +132,8 @@ export function ChampionChallengerPage() {
             />
           </BentoPanel>
         </BentoGrid>
-      )}
+        ) : null}
+      </div>
     </div>
   )
 }
