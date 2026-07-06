@@ -378,18 +378,6 @@ export const api = {
     ),
   getClvSummary: () =>
     request<ClvSummaryResponse>("/api/clv/summary", undefined, RESEARCH_INSTRUMENTATION_TIMEOUT_MS),
-  getOpsHealth: () => request<Record<string, unknown>>("/api/ops/health"),
-  getResearchAbReport: (eventId: string, options?: { persist?: boolean }) => {
-    const params = new URLSearchParams({
-      event_id: eventId,
-      persist: options?.persist === false ? "false" : "true",
-    })
-    return request<ResearchAbReportResponse>(
-      `/api/research/ab-report?${params.toString()}`,
-      undefined,
-      RESEARCH_INSTRUMENTATION_TIMEOUT_MS,
-    )
-  },
   getOpsHealth: () =>
     request<{
       ok: boolean
@@ -404,6 +392,17 @@ export const api = {
       grading?: Record<string, unknown>
       live_refresh?: Record<string, unknown>
     }>("/api/ops/health"),
+  getResearchAbReport: (eventId: string, options?: { persist?: boolean }) => {
+    const params = new URLSearchParams({
+      event_id: eventId,
+      persist: options?.persist === false ? "false" : "true",
+    })
+    return request<ResearchAbReportResponse>(
+      `/api/research/ab-report?${params.toString()}`,
+      undefined,
+      RESEARCH_INSTRUMENTATION_TIMEOUT_MS,
+    )
+  },
   requestWorkerRestart: (payload?: { requested_by?: string }) =>
     request<{
       ok: boolean
