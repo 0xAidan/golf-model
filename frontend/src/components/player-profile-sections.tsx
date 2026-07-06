@@ -7,6 +7,7 @@ import {
   SparklineChart,
 } from "@/components/charts"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback-state"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { formatNumber } from "@/lib/format"
 import {
@@ -450,29 +451,26 @@ export function PlayerProfileSections({
   onRetry?: () => void
 }) {
   if (profileState === "loading") {
-    return (
-      <div className="profile-state-card profile-state-card--loading">
-        <span className="players-profile-loading-pulse" />
-        Loading profile…
-      </div>
-    )
+    return <LoadingState message="Loading profile…" className="profile-state-card profile-state-card--loading" />
   }
 
   if (profileState === "error") {
     return (
-      <div className="profile-state-card">
-        <span>Profile failed to load. {errorMessage ?? "Please retry."}</span>
-        {onRetry ? (
-          <button type="button" className="btn btn-ghost profile-retry-btn" onClick={onRetry}>
-            Retry profile
-          </button>
-        ) : null}
-      </div>
+      <ErrorState
+        message={`Profile failed to load. ${errorMessage ?? "Please retry."}`}
+        onRetry={onRetry}
+        className="profile-state-card"
+      />
     )
   }
 
   if (profileState !== "ready" || !profile) {
-    return <div className="profile-state-card">Profile unavailable for this event context.</div>
+    return (
+      <EmptyState
+        message="Profile unavailable for this event context."
+        className="profile-state-card"
+      />
+    )
   }
 
   return (
