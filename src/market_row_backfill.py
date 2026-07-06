@@ -84,8 +84,14 @@ def _row_to_pick(
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
     model_variant = str(payload.get("model_variant") or default_model_variant).strip().lower()
     market_family = str(row.get("market_family") or "").strip().lower()
-    market_type = normalize_market_type(row.get("market_type") or market_family)
-    bet_type = "matchup" if market_family == "matchup" else market_type
+    raw_market_type = row.get("market_type") or payload.get("market_type") or market_family
+    normalized_market_type = normalize_market_type(raw_market_type)
+    if market_family == "matchup":
+        bet_type = "matchup"
+        market_type = normalized_market_type
+    else:
+        bet_type = str(row.get("bet_type") or normalized_market_type).strip().lower()
+        market_type = ""
     provenance = "market_prediction_rows"
     if row.get("snapshot_id"):
         provenance = f"{provenance}:{row.get('snapshot_id')}"

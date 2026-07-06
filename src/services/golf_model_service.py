@@ -1250,6 +1250,7 @@ class GolfModelService:
             if not pick_key:
                 continue
             opponent_key = (bet.get("opponent_key") or "").strip() or normalize_name(str(bet.get("opponent", "")))
+            market_type = str(bet.get("market_type") or "tournament_matchups").strip().lower()
             comp = comp_lookup.get(pick_key, {})
             odds_val = bet.get("odds")
             odds_text = None
@@ -1263,6 +1264,7 @@ class GolfModelService:
                 "model_variant": self.model_variant,
                 "source": "cockpit",
                 "bet_type": "matchup",
+                "market_type": market_type,
                 "player_key": pick_key,
                 "player_display": bet.get("pick") or display_name(pick_key),
                 "opponent_key": opponent_key,
@@ -1326,7 +1328,7 @@ class GolfModelService:
                     "lifecycle": "displayed",
                     "bet_type": row.get("bet_type"),
                     "market_family": row.get("bet_type"),
-                    "market_type": row.get("bet_type"),
+                    "market_type": row.get("market_type") or row.get("bet_type"),
                     "player_key": row.get("player_key"),
                     "player_display": row.get("player_display"),
                     "opponent_key": row.get("opponent_key"),
