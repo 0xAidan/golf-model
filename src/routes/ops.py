@@ -103,6 +103,9 @@ async def get_ops_health():
     except Exception as exc:
         grading_health = {"status": "error", "message": str(exc)}
 
+    if disk.get("guard_state") == "hard":
+        summary = "disk_floor_breached"
+
     return {
         "ok": ok,
         "summary": summary,
