@@ -169,6 +169,7 @@ defaults = {
     "DISK_FREE_MB_WARN": "10240",
     "DISK_FREE_MB_HARD": "5120",
     "SNAPSHOT_HISTORY_RETAIN_DAYS": "210",
+    "MARKET_PREDICTION_SLIM_PAYLOAD": "1",
 }
 appended: list[str] = []
 for key, value in defaults.items():
@@ -177,7 +178,7 @@ for key, value in defaults.items():
         continue
     appended.append(f"{key}={value}")
 if appended:
-    block = "\n# Deploy defaults (disk guards + snapshot retention). See docs/storage-retention.md\n"
+    block = "\n# Deploy defaults (disk guards + snapshot retention + slim market payloads). See docs/storage-retention.md\n"
     block += "\n".join(appended) + "\n"
     env_path.write_text(prior + block, encoding="utf-8")
     print("[deploy] appended env keys:", ", ".join(appended))
