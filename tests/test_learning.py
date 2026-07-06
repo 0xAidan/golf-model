@@ -154,6 +154,154 @@ def test_score_picks_falls_back_to_rounds_when_results_missing(tmp_db):
     assert stored["c"] == 1
 
 
+def test_score_picks_resolves_via_normalized_display_name(tmp_db):
+    """Scoring should recover when the stored key is wrong but the display name is right."""
+    from src.learning import score_picks_for_tournament
+
+    tid = tmp_db.get_or_create_tournament("Resolver Open", year=2026, event_id="701")
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "jj_spaun",
+                "player_display": "J.J. Spaun",
+                "finish_position": 12,
+                "finish_text": "T12",
+                "made_cut": 1,
+            }
+        ],
+    )
+    tmp_db.store_picks(
+        [
+            {
+                "tournament_id": tid,
+                "model_variant": "baseline",
+                "source": "cockpit",
+                "bet_type": "top20",
+                "player_key": "jj_spaun_wrong",
+                "player_display": "J.J. Spaun",
+                "opponent_key": None,
+                "opponent_display": None,
+                "composite_score": None,
+                "course_fit_score": None,
+                "form_score": None,
+                "momentum_score": None,
+                "model_prob": 0.25,
+                "market_odds": "+160",
+                "market_book": "bet365",
+                "market_implied_prob": 0.3846,
+                "ev": 0.08,
+                "confidence": "medium",
+                "reasoning": "display-name resolver test",
+            }
+        ]
+    )
+
+    result = score_picks_for_tournament(tid)
+
+    assert result["status"] == "ok"
+    assert result["scored"] == 1
+    assert result["bet_hits"] == 1
+    assert result["resolution_methods"]["normalize_name"] == 1
+
+
+def test_score_picks_resolves_via_dg_id_alias(tmp_db):
+    """Scoring should bridge old and new player keys through a shared dg_id."""
+    from src.learning import score_picks_for_tournament
+
+    tid = tmp_db.get_or_create_tournament("Alias Classic", year=2026, event_id="702")
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "rasmus_neergaardpetersen",
+                "player_display": "Rasmus Neergaard-Petersen",
+                "finish_position": 18,
+                "finish_text": "T18",
+                "made_cut": 1,
+            }
+        ],
+    )
+    tmp_db.store_picks(
+        [
+            {
+                "tournament_id": tid,
+                "model_variant": "baseline",
+                "source": "cockpit",
+                "bet_type": "top20",
+                "player_key": "rasmus_neergaard_petersen",
+                "player_display": "Rasmus Neergaard Petersen",
+                "opponent_key": None,
+                "opponent_display": None,
+                "composite_score": None,
+                "course_fit_score": None,
+                "form_score": None,
+                "momentum_score": None,
+                "model_prob": 0.18,
+                "market_odds": "+210",
+                "market_book": "bet365",
+                "market_implied_prob": 0.3226,
+                "ev": 0.07,
+                "confidence": "medium",
+                "reasoning": "dg-id resolver test",
+            }
+        ]
+    )
+
+    conn = tmp_db.get_conn()
+    conn.execute(
+        """
+        INSERT INTO rounds (
+            dg_id, player_name, player_key, tour, season, year, event_id, event_name,
+            event_completed, round_num, fin_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            424242,
+            "Neergaard-Petersen, Rasmus",
+            "rasmus_neergaardpetersen",
+            "pga",
+            2026,
+            2026,
+            "702",
+            "Alias Classic",
+            "2026-06-01",
+            4,
+            "T18",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO rounds (
+            dg_id, player_name, player_key, tour, season, year, event_id, event_name,
+            event_completed, round_num, fin_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            424242,
+            "Rasmus Neergaard Petersen",
+            "rasmus_neergaard_petersen",
+            "pga",
+            2025,
+            2025,
+            "555",
+            "Earlier Event",
+            "2025-08-01",
+            4,
+            "T22",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = score_picks_for_tournament(tid)
+
+    assert result["status"] == "ok"
+    assert result["scored"] == 1
+    assert result["bet_hits"] == 1
+    assert result["resolution_methods"]["dg_id"] == 1
+
+
 def test_store_results_upserts_existing_rows(tmp_db):
     """Final grading should overwrite stale result rows for completed events."""
     tid = tmp_db.get_or_create_tournament(

@@ -59,7 +59,7 @@ def fetch_event_results(event_id: str, year: int) -> list[dict]:
         results.append(
             {
                 "player_key": player_key,
-                "player_display": display_name(player_key),
+                "player_display": display_name(player_name),
                 "dg_id": dg_id,
                 "finish_position": finish_pos,
                 "finish_text": fin_text,
