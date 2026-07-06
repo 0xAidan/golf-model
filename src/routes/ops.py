@@ -91,10 +91,17 @@ async def get_ops_health():
         from src.grading_reconciliation import reconcile_grading
 
         reconciliation = reconcile_grading(limit_events=5)
+        events = reconciliation.get("events") or []
+        void_positive_ev_picks = sum(int(e.get("void_positive_ev_picks") or 0) for e in events)
+        ungraded_positive_ev_picks = sum(
+            int(e.get("ungraded_positive_ev_picks") or 0) for e in events
+        )
         grading_health = {
             "status": reconciliation.get("status"),
             "events_with_ungraded_positive_ev": reconciliation.get("events_with_ungraded_positive_ev"),
             "orphan_outcomes": reconciliation.get("orphan_outcomes"),
+            "void_positive_ev_picks": void_positive_ev_picks,
+            "ungraded_positive_ev_picks": ungraded_positive_ev_picks,
             "last_auto_grade_at": status.get("last_auto_grade_at"),
             "last_auto_grade_status": status.get("last_auto_grade_status"),
         }

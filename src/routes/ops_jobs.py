@@ -61,6 +61,7 @@ def _run_grade_job(job_id: str, event_id: str, year: int, event_name: str | None
         update_job(conn, job_id, progress_pct=10, message="Grading tournament…")
         report = grade_tournament(event_id, year, event_name=event_name)
         status = str(report.get("status", "")).lower()
+        grading_report = report.get("grading_report") or {}
         if status == "error" or report.get("error"):
             update_job(
                 conn,
@@ -70,6 +71,15 @@ def _run_grade_job(job_id: str, event_id: str, year: int, event_name: str | None
                 message="Grading failed",
                 result=report,
                 error=str(report.get("error") or report.get("message") or "Grading failed"),
+            )
+        elif status == "partial":
+            update_job(
+                conn,
+                job_id,
+                status="partial",
+                progress_pct=100,
+                message=grading_report.get("message") or "Grading partial",
+                result=report,
             )
         else:
             update_job(

@@ -317,3 +317,59 @@ def test_grading_event_picks_returns_single_event(monkeypatch, tmp_path):
     assert body.get("graded_pick_count") == 1
     assert len(body.get("picks") or []) == 1
 
+
+def test_grading_season_includes_event_grading_report(monkeypatch, tmp_path):
+    import app as app_module
+    from src import db as db_module
+
+    db_path = tmp_path / "grading_report_season.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    db_module.init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO tournaments (id, name, course, year, event_id) VALUES (?, ?, ?, ?, ?)",
+        (1, "Report Season Open", "Test Course", 2026, "9010"),
+    )
+    conn.execute(
+        """INSERT INTO picks
+           (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+            opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 1, "baseline", "cockpit", "matchup", "player_a", "Player A", "player_b", "Player B", "-110", "fanduel", 0.55, 0.05),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes
+           (pick_id, hit, model_hit, profit, odds_decimal, stake, grading_authority, entered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (1, 0, 0, 0.0, 1.91, 1.0, "void", "2026-06-01 10:00:00"),
+    )
+    conn.execute(
+        "INSERT INTO results (tournament_id, player_key, finish_position) VALUES (?, ?, ?)",
+        (1, "player_a", 1),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        "src.routes.grading_season._discover_season_events",
+        lambda conn, year, tour=None: {
+            "9010": {
+                "event_id": "9010",
+                "name": "Report Season Open",
+                "year": 2026,
+                "tournament_id": 1,
+                "event_date": "2026-06-01",
+            }
+        },
+    )
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/grading/season?year=2026&include_picks=false")
+    assert response.status_code == 200
+    events = response.json().get("events") or []
+    assert events
+    report = events[0].get("grading_report") or {}
+    assert report.get("voided_count") == 1
+    assert report.get("scored_count") == 0
