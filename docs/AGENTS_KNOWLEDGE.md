@@ -770,6 +770,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Pipeline orchestration | `src/services/golf_model_service.py` |
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
+| UI design contract (tokens, shell, one-metric-one-home) | `docs/design/ui-design-contract.md` |
 | Frontend dashboard (React SPA) | `frontend/src/App.tsx` (shell) + `frontend/src/app/app-content.tsx` (routes/data) |
 | Live snapshot SWR | `frontend/src/providers/live-snapshot-provider.tsx`, `GET /api/live-refresh/summary` |
 | Background grade jobs | `src/ops_jobs.py`, `src/routes/ops_jobs.py`, `POST /api/ops/jobs/grade` |
