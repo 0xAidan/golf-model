@@ -32,6 +32,7 @@ def reconcile_grading(
     conn: sqlite3.Connection | None = None,
     *,
     source: str | None = None,
+    tournament_id: int | None = None,
     limit_events: int | None = None,
 ) -> dict[str, Any]:
     """Reconcile displayed +EV picks against graded outcomes per event.
@@ -52,7 +53,17 @@ def reconcile_grading(
             source_clause = " AND p.source = ?"
             params.append(source)
 
+        tournament_clause = ""
+        if tournament_id is not None:
+            tournament_clause = " AND t.id = ?"
+
         # Per-event +EV pick counts vs graded counts, only for events that have results.
+        query_params: list[Any] = []
+        if source:
+            query_params.extend([source, source, source])
+        if tournament_id is not None:
+            query_params.append(int(tournament_id))
+
         rows = connection.execute(
             f"""
             SELECT
@@ -64,11 +75,16 @@ def reconcile_grading(
                    WHERE p.tournament_id = t.id AND p.ev > 0{source_clause}) AS positive_ev_picks,
                 (SELECT COUNT(*) FROM picks p
                    JOIN pick_outcomes po ON po.pick_id = p.id
-                   WHERE p.tournament_id = t.id AND p.ev > 0{source_clause}) AS graded_positive_ev_picks
+                   WHERE p.tournament_id = t.id AND p.ev > 0{source_clause}) AS graded_positive_ev_picks,
+                (SELECT COUNT(*) FROM picks p
+                   JOIN pick_outcomes po ON po.pick_id = p.id
+                   WHERE p.tournament_id = t.id AND p.ev > 0{source_clause}
+                     AND LOWER(COALESCE(po.grading_authority, '')) = 'void') AS void_positive_ev_picks
             FROM tournaments t
+            WHERE 1=1{tournament_clause}
             ORDER BY t.id DESC
             """,
-            params * 2,
+            query_params,
         ).fetchall()
 
         event_reports: list[dict[str, Any]] = []
@@ -77,6 +93,7 @@ def reconcile_grading(
             results_count = row["results_count"] or 0
             positive_ev = row["positive_ev_picks"] or 0
             graded = row["graded_positive_ev_picks"] or 0
+            voided = row["void_positive_ev_picks"] or 0
             # Only events that have completed (results present) AND showed +EV picks can be
             # "ungraded". Pre-results events are legitimately ungraded.
             ungraded = max(0, positive_ev - graded) if results_count > 0 else 0
@@ -90,6 +107,7 @@ def reconcile_grading(
                 "results_count": results_count,
                 "positive_ev_picks": positive_ev,
                 "graded_positive_ev_picks": graded,
+                "void_positive_ev_picks": voided,
                 "ungraded_positive_ev_picks": ungraded,
                 "has_discrepancy": has_discrepancy,
             })
@@ -111,6 +129,7 @@ def reconcile_grading(
         return {
             "status": status,
             "source": source or "all",
+            "tournament_id": tournament_id,
             "events_with_ungraded_positive_ev": events_with_ungraded,
             "orphan_outcomes": orphan_outcomes,
             "events": event_reports,

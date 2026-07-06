@@ -339,6 +339,7 @@ def _build_lane_payload(
     rollup_record: dict | None,
     has_results: bool = True,
 ) -> dict[str, Any]:
+    lane_sql = pick_lane_sql(lane)
     inventory_count, positive_ev_inventory = _lane_inventory_counts(
         conn,
         event_id,
@@ -355,6 +356,21 @@ def _build_lane_payload(
         if positive_ev_inventory and has_results
         else 0
     )
+
+    voided_count = 0
+    if tournament_id:
+        void_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS c
+            FROM picks p
+            JOIN pick_outcomes po ON po.pick_id = p.id
+            WHERE p.tournament_id = ? {lane_sql}
+              AND COALESCE(p.ev, 0) > 0
+              AND LOWER(COALESCE(po.grading_authority, '')) = 'void'
+            """,
+            (int(tournament_id),),
+        ).fetchone()
+        voided_count = int(void_row["c"] or 0) if void_row else 0
 
     record = {
         "wins": combined["wins"],
@@ -390,6 +406,7 @@ def _build_lane_payload(
         "inventory_count": inventory_count,
         "graded_pick_count": graded_pick_count,
         "ungraded_positive_ev_count": ungraded,
+        "voided_count": voided_count,
         "status": status,
         "record": record,
         "market_stats": summary,

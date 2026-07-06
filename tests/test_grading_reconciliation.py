@@ -71,6 +71,31 @@ def test_reconcile_ok_when_all_positive_ev_graded(tmp_db):
     assert report["orphan_outcomes"] == 0
 
 
+def test_reconcile_counts_void_outcomes_as_graded(tmp_db):
+    conn = db.get_conn()
+    tid = db.get_or_create_tournament("Void Graded Event", year=2026)
+    pick_id = _seed_pick(conn, tid, "void_player", 0.09)
+    conn.execute(
+        "INSERT INTO results (tournament_id, player_key, player_display, finish_position, made_cut) VALUES (?, 'other', 'o', 1, 1)",
+        (tid,),
+    )
+    conn.execute(
+        """INSERT INTO pick_outcomes (pick_id, hit, model_hit, profit, grading_authority, notes)
+           VALUES (?, 0, 0, 0, 'void', 'unresolved: player_not_in_results')""",
+        (pick_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    report = reconcile_grading(tournament_id=tid, source="cockpit")
+    assert report["status"] == "ok"
+    event = report["events"][0]
+    assert event["positive_ev_picks"] == 1
+    assert event["graded_positive_ev_picks"] == 1
+    assert event["void_positive_ev_picks"] == 1
+    assert event["ungraded_positive_ev_picks"] == 0
+
+
 def test_reconcile_ignores_events_without_results(tmp_db):
     conn = db.get_conn()
     tid = db.get_or_create_tournament("Upcoming Event", year=2026)

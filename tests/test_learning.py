@@ -345,6 +345,53 @@ def test_store_results_upserts_existing_rows(tmp_db):
     assert row["finish_text"] == "T8"
 
 
+def test_score_picks_creates_void_when_player_missing_from_results(tmp_db):
+    """Unresolvable +EV picks become explicit void outcomes, never silent skips."""
+    from src.learning import score_picks_for_tournament
+
+    tid = tmp_db.get_or_create_tournament("Void Open", year=2026, event_id="801")
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "winner",
+                "player_display": "Winner",
+                "finish_position": 1,
+                "finish_text": "1",
+                "made_cut": 1,
+            }
+        ],
+    )
+    tmp_db.store_picks(
+        [
+            _pick_row(tid, "ghost_player", "winner", ev=0.06),
+        ]
+    )
+
+    result = score_picks_for_tournament(tid)
+
+    assert result["status"] == "ok"
+    assert result["voided_count"] == 1
+    assert result["scored"] == 0
+
+    conn = tmp_db.get_conn()
+    row = conn.execute(
+        """
+        SELECT po.hit, po.profit, po.grading_authority, po.notes
+        FROM pick_outcomes po
+        JOIN picks p ON p.id = po.pick_id
+        WHERE p.tournament_id = ? AND p.player_key = 'ghost_player'
+        """,
+        (tid,),
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row["hit"] == 0
+    assert row["profit"] == 0
+    assert row["grading_authority"] == "void"
+    assert "unresolved:" in (row["notes"] or "")
+
+
 def test_score_skips_non_positive_ev_picks(tmp_db):
     """Only +EV picks are scored; zero/negative/missing EV are skipped."""
     from src.learning import score_picks_for_tournament
