@@ -1293,6 +1293,88 @@ def _parse_schedule_start_date(event_row: dict) -> date | None:
         return None
 
 
+def _parse_schedule_end_date(event_row: dict) -> date | None:
+    raw = event_row.get("end_date")
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _resolve_schedule_year(event_row: dict, *, end_date: date | None = None) -> int | None:
+    for raw in (event_row.get("year"), event_row.get("event_year")):
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            continue
+    if end_date is not None:
+        return end_date.year
+    return None
+
+
+def _event_has_persisted_results(event_id: str, year: int) -> bool:
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM results r
+            JOIN tournaments t ON t.id = r.tournament_id
+            WHERE t.event_id = ? AND t.year = ?
+            LIMIT 1
+            """,
+            (event_id, year),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _event_has_rounds_evidence(event_id: str, year: int) -> bool:
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM rounds
+            WHERE event_id = ? AND year = ?
+              AND COALESCE(TRIM(event_completed), '') != ''
+            LIMIT 1
+            """,
+            (event_id, year),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _remote_event_results_available(event_id: str, year: int) -> bool:
+    raw = _call_api(
+        "historical-event-data/events",
+        {
+            "tour": "pga",
+            "event_id": event_id,
+            "year": year,
+        },
+    )
+    if not raw:
+        return False
+    players = raw if isinstance(raw, list) else raw.get("results", raw.get("players", []))
+    if isinstance(raw, dict) and not players:
+        for value in raw.values():
+            if isinstance(value, list) and value:
+                players = value
+                break
+    for player in players:
+        if not isinstance(player, dict):
+            continue
+        if str(player.get("player_name") or "").strip() and str(player.get("fin_text") or "").strip():
+            return True
+    return False
+
+
 def is_schedule_event_live(event_row: dict, *, today: date | None = None) -> bool:
     """True when the DG schedule marks an event in progress."""
     status = normalize_schedule_status(event_row)
@@ -1330,6 +1412,34 @@ def is_schedule_event_completed(event_row: dict, *, today: date | None = None) -
     return end_date <= ref
 
 
+def is_event_gradeable(event_row: dict, *, today: date | None = None) -> bool:
+    """True when an event is finished enough that grading should proceed."""
+    status = normalize_schedule_status(event_row)
+    if status == "completed":
+        return True
+
+    end_date = _parse_schedule_end_date(event_row)
+    ref = today or date.today()
+    if end_date is None or end_date > ref:
+        return False
+
+    event_id = str(event_row.get("event_id") or "").strip()
+    year = _resolve_schedule_year(event_row, end_date=end_date)
+    if not event_id or year is None:
+        return False
+
+    if _event_has_persisted_results(event_id, year):
+        return True
+    if _event_has_rounds_evidence(event_id, year):
+        return True
+
+    try:
+        return _remote_event_results_available(event_id, year)
+    except Exception:
+        logger.info("Remote results signal unavailable for delayed event %s/%s", event_id, year, exc_info=True)
+        return False
+
+
 def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None) -> dict | None:
     """Return the latest completed event from the full DG schedule for a tour."""
     try:
@@ -1339,6 +1449,28 @@ def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None
             return None
 
         today = as_of or date.today()
+
+        def _sort_date_for_event(event: dict) -> date:
+            sort_date = _parse_schedule_start_date(event)
+            if sort_date is not None:
+                return sort_date
+            end_date = _parse_schedule_end_date(event)
+            if end_date is not None:
+                return end_date
+            return today
+
+        ordered = sorted(events, key=_sort_date_for_event, reverse=True)
+
+        for event in ordered:
+            if not is_event_gradeable(event, today=today):
+                continue
+            normalized = dict(event)
+            if normalized.get("year") in (None, ""):
+                resolved_year = _resolve_schedule_year(normalized, end_date=_parse_schedule_end_date(normalized))
+                if resolved_year is not None:
+                    normalized["year"] = resolved_year
+            return normalized
+
         completed: list[tuple[date, dict]] = []
         for event in events:
             if not is_schedule_event_completed(event, today=today):

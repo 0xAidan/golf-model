@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 ET_ZONE = ZoneInfo("America/New_York")
 VALID_MODES = ("off_window", "upcoming_window", "live_window", "settlement_window")
+AUTO_GRADE_RETRY_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,11 @@ def resolve_cadence(settings: dict | None, *, now: datetime | None = None) -> Li
         ingest_seconds=int(block["ingest_seconds"]),
         recompute_seconds=int(block["recompute_seconds"]),
     )
+
+
+def get_auto_grade_retry_seconds() -> int:
+    """Bounded faster retry interval while waiting on post-event settlement results."""
+    return AUTO_GRADE_RETRY_SECONDS
 
 
 def detect_window_mode(*, now: datetime | None = None) -> str:

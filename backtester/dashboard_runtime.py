@@ -13,7 +13,7 @@ import time
 import uuid
 import fcntl
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.live_stats_source import live_sg_trajectory_trend, parse_live_stats_from_in_play
 from src.disk_guard import warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
-from src.live_refresh_policy import resolve_cadence
+from src.live_refresh_policy import get_auto_grade_retry_seconds, resolve_cadence
 from src.player_normalizer import normalize_name
 from src.runtime_paths import (
     detect_split_brain,
@@ -74,6 +74,9 @@ def _default_state() -> dict[str, Any]:
         "last_auto_grade_status": None,
         "auto_grade_awaiting_event_id": None,
         "auto_grade_awaiting_year": None,
+        "auto_grade_awaiting_since_at": None,
+        "auto_grade_awaiting_end_date": None,
+        "auto_grade_awaiting_retry_after_at": None,
         "refresh_state": "idle",
         "phase": None,
         "phase_detail": None,
@@ -400,6 +403,27 @@ def _parse_iso_date(value: str | None) -> date | None:
         return datetime.strptime(value[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _clear_auto_grade_awaiting_state() -> None:
+    with _state_lock:
+        _state["auto_grade_awaiting_event_id"] = None
+        _state["auto_grade_awaiting_year"] = None
+        _state["auto_grade_awaiting_since_at"] = None
+        _state["auto_grade_awaiting_end_date"] = None
+        _state["auto_grade_awaiting_retry_after_at"] = None
 
 
 def _is_live_schedule_event(event_row: dict[str, Any], *, today: date) -> bool:
@@ -2177,6 +2201,8 @@ def _run_ingest(tour: str) -> dict[str, Any]:
         "latest_completed_event_id": latest_completed.get("event_id"),
         "latest_completed_event_year": latest_completed.get("year"),
         "latest_completed_event_course": latest_completed.get("course"),
+        "latest_completed_event_end_date": latest_completed.get("end_date"),
+        "latest_completed_event_status": latest_completed.get("status"),
         "upcoming_event_names": [row.get("event_name") for row in upcoming_schedule[:3] if row.get("event_name")],
         "market_counts": {
             "tournament_matchups": {
@@ -2216,14 +2242,66 @@ def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[st
     """Backfill + grade +EV inventory for the latest completed event."""
     event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
     raw_year = ingest_summary.get("latest_completed_event_year")
+    end_date_raw = str(ingest_summary.get("latest_completed_event_end_date") or "").strip() or None
     if not event_id:
         return None
     try:
         year = int(raw_year)
     except (TypeError, ValueError):
         year = datetime.now(timezone.utc).year
+    now = _utc_now()
+    today = now.date()
 
     from src.event_pick_freeze import _inventory_exists, freeze_completed_event_picks
+    from src.datagolf import is_event_gradeable
+
+    event_row = {
+        "event_id": event_id,
+        "event_name": ingest_summary.get("latest_completed_event_name"),
+        "year": year,
+        "end_date": end_date_raw,
+        "status": ingest_summary.get("latest_completed_event_status") or "completed",
+    }
+
+    with _state_lock:
+        awaiting_id = str(_state.get("auto_grade_awaiting_event_id") or "").strip()
+        awaiting_year = _state.get("auto_grade_awaiting_year")
+        awaiting_end_date_raw = str(_state.get("auto_grade_awaiting_end_date") or "").strip() or end_date_raw
+        awaiting_retry_after_raw = str(_state.get("auto_grade_awaiting_retry_after_at") or "").strip() or None
+    if awaiting_id == event_id and awaiting_year == year:
+        awaiting_end_date = _parse_iso_date(awaiting_end_date_raw)
+        if awaiting_end_date is not None:
+            retry_window_expires_at = datetime.combine(
+                awaiting_end_date + timedelta(days=2),
+                datetime.min.time(),
+                tzinfo=timezone.utc,
+            )
+            if now > retry_window_expires_at:
+                _clear_auto_grade_awaiting_state()
+                return {
+                    "status": "skipped",
+                    "reason": "awaiting_retry_window_expired",
+                    "event_id": event_id,
+                    "year": year,
+                }
+        retry_after_at = _parse_iso_datetime(awaiting_retry_after_raw)
+        if retry_after_at is not None and now < retry_after_at:
+            return {
+                "status": "skipped",
+                "reason": "awaiting_retry_scheduled",
+                "event_id": event_id,
+                "year": year,
+                "retry_after_at": retry_after_at.isoformat(),
+                "retry_after_seconds": max(1, int((retry_after_at - now).total_seconds())),
+            }
+
+    if not is_event_gradeable(event_row, today=today):
+        return {
+            "status": "skipped",
+            "reason": "event_not_gradeable",
+            "event_id": event_id,
+            "year": year,
+        }
 
     ledger_count, mpr_count = _inventory_exists(event_id)
 
@@ -2304,21 +2382,26 @@ def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[st
             event_name=ingest_summary.get("latest_completed_event_name"),
         )
         if result.get("reason") == "awaiting_results":
+            retry_after_seconds = get_auto_grade_retry_seconds()
+            retry_after_at = now + timedelta(seconds=retry_after_seconds)
             with _state_lock:
                 _state["auto_grade_awaiting_event_id"] = event_id
                 _state["auto_grade_awaiting_year"] = year
+                _state["auto_grade_awaiting_since_at"] = _state.get("auto_grade_awaiting_since_at") or now.isoformat()
+                _state["auto_grade_awaiting_end_date"] = end_date_raw
+                _state["auto_grade_awaiting_retry_after_at"] = retry_after_at.isoformat()
+            result = {
+                **result,
+                "retry_after_at": retry_after_at.isoformat(),
+                "retry_after_seconds": retry_after_seconds,
+            }
         elif result.get("status") in {"complete", "skipped", "ok", "success"}:
-            with _state_lock:
-                if str(_state.get("auto_grade_awaiting_event_id") or "") == event_id:
-                    _state["auto_grade_awaiting_event_id"] = None
-                    _state["auto_grade_awaiting_year"] = None
+            if awaiting_id == event_id or str(_state.get("auto_grade_awaiting_event_id") or "") == event_id:
+                _clear_auto_grade_awaiting_state()
         elif result.get("status") == "error":
             _logger.error("Auto-grade failed for %s/%s: %s", event_id, year, result)
         return result
 
-    with _state_lock:
-        awaiting_id = str(_state.get("auto_grade_awaiting_event_id") or "").strip()
-        awaiting_year = _state.get("auto_grade_awaiting_year")
     if awaiting_id == event_id and awaiting_year == year:
         _logger.info("Retrying auto-grade for awaiting-results event %s/%s", event_id, year)
         result = freeze_completed_event_picks(
@@ -2326,10 +2409,18 @@ def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[st
             year=year,
             event_name=ingest_summary.get("latest_completed_event_name"),
         )
-        if result.get("reason") != "awaiting_results":
+        if result.get("reason") == "awaiting_results":
+            retry_after_seconds = get_auto_grade_retry_seconds()
+            retry_after_at = now + timedelta(seconds=retry_after_seconds)
             with _state_lock:
-                _state["auto_grade_awaiting_event_id"] = None
-                _state["auto_grade_awaiting_year"] = None
+                _state["auto_grade_awaiting_retry_after_at"] = retry_after_at.isoformat()
+            result = {
+                **result,
+                "retry_after_at": retry_after_at.isoformat(),
+                "retry_after_seconds": retry_after_seconds,
+            }
+        else:
+            _clear_auto_grade_awaiting_state()
         return result
 
     return {
@@ -3855,6 +3946,18 @@ def _run_loop(tour: str) -> None:
                     _persist_auto_grade_metadata(auto_grade_result)
                     if isinstance(auto_grade_result, dict) and auto_grade_result.get("status") == "error":
                         _logger.error("Auto-grading returned error: %s", auto_grade_result)
+                    retry_after_at = None
+                    if isinstance(auto_grade_result, dict):
+                        retry_after_at = _parse_iso_datetime(auto_grade_result.get("retry_after_at"))
+                    if retry_after_at is not None:
+                        retry_epoch = retry_after_at.timestamp()
+                        if retry_epoch < next_recompute:
+                            next_recompute = retry_epoch
+                            with _state_lock:
+                                _state["next_recompute_at"] = datetime.fromtimestamp(
+                                    retry_epoch,
+                                    timezone.utc,
+                                ).isoformat()
                 except Exception as exc:  # pragma: no cover - defensive
                     _logger.error("Auto-grading check failed: %s", exc)
                     error_status = {"status": "error", "message": str(exc)}
