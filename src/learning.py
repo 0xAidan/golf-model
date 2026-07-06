@@ -16,11 +16,13 @@ calibration/course-learning tables.
 import json
 import logging
 import math
+import sqlite3
 from datetime import datetime
 from typing import Optional
 
 from src import db
-from src.player_normalizer import display_name
+from src.player_key_resolver import resolve_player_key
+from src.player_normalizer import display_name, normalize_name
 from src.scoring import determine_outcome, compute_profit, parse_odds_to_decimal
 
 logger = logging.getLogger("learning")
@@ -94,6 +96,100 @@ def _load_results_for_tournament(conn, tournament_id: int) -> tuple[list[dict], 
     db.store_results(tournament_id, fallback_results)
     return fallback_results, "rounds"
 
+
+def _build_result_resolution_context(
+    conn: sqlite3.Connection,
+    tournament_id: int,
+    result_map: dict[str, dict],
+) -> dict[str, dict]:
+    """Collect alias and dg_id indexes for result-key resolution."""
+    tournament = conn.execute(
+        "SELECT event_id, name, year FROM tournaments WHERE id = ?",
+        (tournament_id,),
+    ).fetchone()
+    if not tournament or not result_map:
+        return {"alias_to_dg": {}, "result_dg_to_key": {}}
+
+    if tournament["event_id"]:
+        event_rounds = conn.execute(
+            """
+            SELECT DISTINCT dg_id, player_key, player_name
+            FROM rounds
+            WHERE event_id = ? AND year = ?
+            """,
+            (str(tournament["event_id"]), tournament["year"]),
+        ).fetchall()
+    else:
+        event_rounds = conn.execute(
+            """
+            SELECT DISTINCT dg_id, player_key, player_name
+            FROM rounds
+            WHERE event_name = ? AND year = ?
+            """,
+            (tournament["name"], tournament["year"]),
+        ).fetchall()
+
+    alias_to_dg: dict[str, int] = {}
+    result_dg_to_key: dict[int, str] = {}
+    participant_dg_ids: list[int] = []
+
+    for row in event_rounds:
+        dg_id = row["dg_id"]
+        if dg_id is None:
+            continue
+        participant_dg_ids.append(int(dg_id))
+        player_key = str(row["player_key"] or "").strip()
+        if player_key in result_map:
+            result_dg_to_key.setdefault(int(dg_id), player_key)
+
+    if not participant_dg_ids:
+        return {"alias_to_dg": alias_to_dg, "result_dg_to_key": result_dg_to_key}
+
+    placeholders = ",".join("?" for _ in participant_dg_ids)
+    alias_rows = conn.execute(
+        f"""
+        SELECT DISTINCT dg_id, player_key, player_name
+        FROM rounds
+        WHERE dg_id IN ({placeholders})
+        """,
+        participant_dg_ids,
+    ).fetchall()
+
+    for row in alias_rows:
+        dg_id = row["dg_id"]
+        if dg_id is None:
+            continue
+        for alias in (row["player_key"], row["player_name"]):
+            normalized = normalize_name(str(alias or ""))
+            if normalized:
+                alias_to_dg.setdefault(normalized, int(dg_id))
+
+    return {"alias_to_dg": alias_to_dg, "result_dg_to_key": result_dg_to_key}
+
+
+def _resolve_pick_result_key(
+    *,
+    pick: dict,
+    result_map: dict[str, dict],
+    resolution_context: dict[str, dict],
+) -> dict[str, str | None]:
+    alias_to_dg = resolution_context.get("alias_to_dg", {})
+    player_dg_id = None
+
+    for candidate in (pick.get("player_key"), pick.get("player_display")):
+        alias = normalize_name(str(candidate or ""))
+        if alias in alias_to_dg:
+            player_dg_id = alias_to_dg[alias]
+            break
+
+    return resolve_player_key(
+        player_key=pick.get("player_key"),
+        player_display=pick.get("player_display"),
+        player_dg_id=player_dg_id,
+        result_keys=result_map.keys(),
+        result_dg_to_key=resolution_context.get("result_dg_to_key", {}),
+    )
+
 def score_picks_for_tournament(
     tournament_id: int,
     *,
@@ -123,6 +219,7 @@ def score_picks_for_tournament(
         return {"status": "no_results", "message": "No results entered yet."}
 
     result_map = {r["player_key"]: dict(r) for r in results}
+    resolution_context = _build_result_resolution_context(conn, tournament_id, result_map)
     all_results_list = [dict(r) for r in results]
 
     def _grade_model_hit(*, bet_hit: int, is_push: bool) -> int:
@@ -137,6 +234,20 @@ def score_picks_for_tournament(
     skipped_non_positive_ev = 0
     skipped_locked = 0
     total_profit = 0.0
+    resolution_methods = {
+        "direct": 0,
+        "normalize_name": 0,
+        "dg_id": 0,
+        "fuzzy": 0,
+        "unresolved": 0,
+    }
+    opponent_resolution_methods = {
+        "direct": 0,
+        "normalize_name": 0,
+        "dg_id": 0,
+        "fuzzy": 0,
+        "unresolved": 0,
+    }
 
     for raw_pick in picks:
         pick = dict(raw_pick)
@@ -146,9 +257,22 @@ def score_picks_for_tournament(
             continue
         pk = pick["player_key"]
         bt = pick["bet_type"]
-        r = result_map.get(pk)
+        resolution = _resolve_pick_result_key(
+            pick=pick,
+            result_map=result_map,
+            resolution_context=resolution_context,
+        )
+        resolution_methods[resolution["method"]] += 1
+        resolved_player_key = resolution["key"]
+        r = result_map.get(resolved_player_key) if resolved_player_key else None
         if not r:
-            logger.warning("Scoring skip: no results for player_key=%s bet_type=%s", pk, bt)
+            logger.warning(
+                "Scoring skip: no results for player_key=%s bet_type=%s method=%s player_display=%s",
+                pk,
+                bt,
+                resolution["method"],
+                pick.get("player_display"),
+            )
             continue
         resolved += 1
 
@@ -159,8 +283,16 @@ def score_picks_for_tournament(
         opp_finish = None
         opp_finish_text = None
         if bt == "matchup":
-            opp_key = pick.get("opponent_key")
-            opp_result = result_map.get(opp_key)
+            opponent_resolution = _resolve_pick_result_key(
+                pick={
+                    "player_key": pick.get("opponent_key"),
+                    "player_display": pick.get("opponent_display"),
+                },
+                result_map=result_map,
+                resolution_context=resolution_context,
+            )
+            opponent_resolution_methods[opponent_resolution["method"]] += 1
+            opp_result = result_map.get(opponent_resolution["key"]) if opponent_resolution["key"] else None
             opp_finish = opp_result.get("finish_position") if opp_result else None
             opp_finish_text = opp_result.get("finish_text") if opp_result else None
 
@@ -311,6 +443,8 @@ def score_picks_for_tournament(
     return {
         "status": "ok",
         "result_source": result_source,
+        "resolution_methods": resolution_methods,
+        "opponent_resolution_methods": opponent_resolution_methods,
         "skipped_non_positive_ev": skipped_non_positive_ev,
         "skipped_locked": skipped_locked,
         "scored": scored,
