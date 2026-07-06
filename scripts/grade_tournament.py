@@ -26,64 +26,11 @@ except ImportError:
     pass
 
 from src import db
+from src.event_results import fetch_event_results
 from src.datagolf import _call_api
-from src.player_normalizer import normalize_name, display_name
 
 logger = logging.getLogger("grade_tournament")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
-
-
-def fetch_event_results(event_id: str, year: int) -> list[dict]:
-    """Fetch final results from DG historical-event-data/events."""
-    raw = _call_api("historical-event-data/events", {
-        "tour": "pga",
-        "event_id": event_id,
-        "year": year,
-    })
-    if not raw:
-        return []
-
-    results = []
-    players = raw if isinstance(raw, list) else raw.get("results", raw.get("players", []))
-    if isinstance(raw, dict) and not players:
-        for key in raw:
-            if isinstance(raw[key], list) and len(raw[key]) > 0:
-                players = raw[key]
-                break
-
-    for p in players:
-        fin_text = str(p.get("fin_text", "")).strip()
-        player_name = p.get("player_name", "")
-        dg_id = p.get("dg_id")
-
-        if not player_name or not fin_text:
-            continue
-
-        finish_pos = None
-        made_cut = 1
-        fin_upper = fin_text.upper().replace(" ", "")
-
-        if fin_upper in ("CUT", "MC"):
-            made_cut = 0
-        elif fin_upper in ("WD", "W/D", "DQ"):
-            made_cut = 0
-        else:
-            try:
-                finish_pos = int(fin_upper.replace("T", ""))
-            except ValueError:
-                pass
-
-        pk = normalize_name(player_name)
-        results.append({
-            "player_key": pk,
-            "player_display": display_name(pk),
-            "dg_id": dg_id,
-            "finish_position": finish_pos,
-            "finish_text": fin_text,
-            "made_cut": made_cut,
-        })
-
-    return results
 
 
 def fetch_matchup_outcomes(event_id: str, year: int, book: str = "bet365") -> list[dict]:

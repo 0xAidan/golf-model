@@ -252,6 +252,26 @@ def freeze_completed_event_picks(
     conn.close()
 
     if not has_results:
+        from src.event_results import acquire_event_results
+
+        acquisition = acquire_event_results(
+            event_id,
+            year,
+            tournament_id=tournament_id,
+        )
+        if acquisition.get("status") == "ok":
+            conn = db.get_conn()
+            has_results = _event_has_results(conn, tournament_id)
+            conn.close()
+        else:
+            logger.info(
+                "Results acquisition pending for event %s/%s: %s",
+                event_id,
+                year,
+                acquisition,
+            )
+
+    if not has_results:
         return {
             "status": "captured",
             "reason": "awaiting_results",
@@ -408,12 +428,38 @@ def ensure_event_grading_readiness(
     }
 
 
-def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[str, Any]:
-    """Backfill + grade every completed PGA event that still has ungraded +EV picks."""
-    db.ensure_initialized()
-    conn = db.get_conn()
-    current_year = year or __import__("datetime").datetime.now().year
-    rows = conn.execute(
+def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
+    """Completed PGA events from DG schedule, rounds, or tournaments with +EV picks."""
+    from src.datagolf import is_schedule_event_completed
+
+    by_key: dict[tuple[str, int], dict[str, Any]] = {}
+
+    def _add(event_id: str, event_year: int, event_name: str | None) -> None:
+        normalized_id = str(event_id or "").strip()
+        if not normalized_id:
+            return
+        key = (normalized_id, int(event_year))
+        by_key[key] = {
+            "event_id": normalized_id,
+            "event_name": event_name or "",
+            "year": int(event_year),
+        }
+
+    pick_rows = conn.execute(
+        """
+        SELECT DISTINCT t.event_id, t.name AS event_name, t.year
+        FROM picks p
+        JOIN tournaments t ON t.id = p.tournament_id
+        WHERE t.year = ?
+          AND t.event_id IS NOT NULL AND TRIM(t.event_id) != ''
+          AND p.ev IS NOT NULL AND p.ev > 0
+        """,
+        (year,),
+    ).fetchall()
+    for row in pick_rows:
+        _add(str(row["event_id"]), int(row["year"] or year), str(row["event_name"] or ""))
+
+    round_rows = conn.execute(
         """
         SELECT r.event_id, r.event_name, r.year
         FROM rounds r
@@ -422,10 +468,40 @@ def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[s
           AND r.event_id IS NOT NULL AND TRIM(r.event_id) != ''
           AND r.event_completed IS NOT NULL
         GROUP BY r.event_id, r.event_name, r.year
-        ORDER BY MIN(r.event_completed) ASC, r.event_name ASC
         """,
-        (current_year,),
+        (year,),
     ).fetchall()
+    for row in round_rows:
+        _add(str(row["event_id"]), int(row["year"] or year), str(row["event_name"] or ""))
+
+    try:
+        from src.datagolf import _call_api
+
+        schedule = _call_api("get-schedule", {"tour": "pga"})
+        events = schedule if isinstance(schedule, list) else schedule.get("schedule", [])
+        for event in events or []:
+            event_year = int(event.get("calendar_year") or event.get("year") or year)
+            if event_year != year:
+                continue
+            if not is_schedule_event_completed(event):
+                continue
+            _add(
+                str(event.get("event_id", "")),
+                event_year,
+                str(event.get("event_name") or event.get("name") or ""),
+            )
+    except Exception as exc:
+        logger.warning("DG schedule sweep source failed: %s", exc)
+
+    return sorted(by_key.values(), key=lambda row: (row.get("event_name") or "", row["event_id"]))
+
+
+def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[str, Any]:
+    """Backfill + grade every completed PGA event that still has ungraded +EV picks."""
+    db.ensure_initialized()
+    conn = db.get_conn()
+    current_year = year or __import__("datetime").datetime.now().year
+    rows = _completed_events_for_sweep(conn, year=current_year)
     conn.close()
 
     results: list[dict[str, Any]] = []
