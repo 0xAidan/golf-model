@@ -148,8 +148,8 @@ export function WorkspaceLeftRail({
               )}
 
               <CollapsibleSection
-                title="Course & weather"
-                description="Secondary context"
+                title="Event context"
+                description="Course, weather, and field notes"
                 defaultOpen={isNarrow}
                 testId="intel-course-weather"
               >

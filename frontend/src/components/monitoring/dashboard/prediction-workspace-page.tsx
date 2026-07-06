@@ -411,6 +411,7 @@ export function PredictionWorkspacePage({
       predictionTabPast={predictionTab === "past"}
       pastGradedMatchups={predictionTab === "past" ? pastReplay.pastMatchups : undefined}
       pastGradedSecondaryBets={predictionTab === "past" ? pastReplay.pastSecondaryBets : undefined}
+      pastPicksLoading={predictionTab === "past" ? pastReplay.pastEventPicksLoading : false}
     />
   )
 

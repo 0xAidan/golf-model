@@ -13,10 +13,16 @@ import { useSearchParams } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 
 import { MatchupExpandDetail } from "@/components/cockpit/matchup-expand-detail"
+import {
+  WorkspaceEmptyState,
+  WorkspaceErrorState,
+  WorkspaceLoadingState,
+} from "@/components/monitoring/dashboard/workspace-grade-cells"
 import { BarTrendChart } from "@/components/charts"
 import { EdgeBadge, TierBadge } from "@/components/ui/edge-badge"
 import { FilterBar } from "@/components/ui/filter-bar"
 import { FilterSheet } from "@/components/ui/filter-sheet"
+import { PickRow } from "@/components/ui/pick-row"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import {
   buildFailedCandidateColumns,
@@ -66,6 +72,10 @@ type PicksPageProps = {
   lane?: "production" | "lab"
   /** Embedded in dashboard Full picks tab — hides page chrome. */
   embedded?: boolean
+  embeddedLoading?: boolean
+  embeddedLoadingMessage?: string
+  embeddedErrorMessage?: string
+  secondaryEmptyMessage?: string
 }
 
 type AvailabilityFilter = "all" | "available" | "unavailable"
@@ -360,11 +370,13 @@ function MatchupsBoard({
   emptyMessage,
   diagnostics,
   minEdgePct,
+  embedded = false,
 }: {
   matchups: MatchupBet[]
   emptyMessage: string
   diagnostics?: MatchupDiagnostics
   minEdgePct: number
+  embedded?: boolean
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const failedCandidates = (diagnostics?.failed_candidates ?? []) as FailedMatchupCandidate[]
@@ -411,28 +423,50 @@ function MatchupsBoard({
       )}
       <div className="card">
         {matchups.length > 0 ? (
-          <ProDataGrid
-            data={matchups}
-            columns={matchupColumns}
-            density="compact"
-            virtualizeAfter={80}
-            getRowId={(m) => buildMatchupKey(m)}
-            getRowTestId={(m) => `matchup-row-${buildMatchupKey(m)}`}
-            expandedRowId={expandedKey}
-            onRowClick={(m) => {
-              const key = buildMatchupKey(m)
-              setExpandedKey(expandedKey === key ? null : key)
-            }}
-            renderSubRow={renderMatchupSubRow}
-            testId="picks-matchups-grid"
-          />
+          embedded ? (
+            <div className="workspace-top-plays" data-testid="picks-embedded-matchups">
+              {matchups.map((matchup) => {
+                const key = buildMatchupKey(matchup)
+                return (
+                  <PickRow
+                    key={key}
+                    bet={matchup}
+                    expanded={expandedKey === key}
+                    onExpand={() => {
+                      setExpandedKey((current) => (current === key ? null : key))
+                    }}
+                  />
+                )
+              })}
+            </div>
+          ) : (
+            <ProDataGrid
+              data={matchups}
+              columns={matchupColumns}
+              density="compact"
+              virtualizeAfter={80}
+              getRowId={(m) => buildMatchupKey(m)}
+              getRowTestId={(m) => `matchup-row-${buildMatchupKey(m)}`}
+              expandedRowId={expandedKey}
+              onRowClick={(m) => {
+                const key = buildMatchupKey(m)
+                setExpandedKey(expandedKey === key ? null : key)
+              }}
+              renderSubRow={renderMatchupSubRow}
+              testId="picks-matchups-grid"
+            />
+          )
         ) : (
           <div className="card-body">
-            <EmptyState
-              message={emptyMessage}
-              description="Try lowering the min edge threshold or selecting more books on the dashboard."
-              className="empty-state--padded"
-            />
+            {embedded ? (
+              <WorkspaceEmptyState message={emptyMessage} />
+            ) : (
+              <EmptyState
+                message={emptyMessage}
+                description="Try lowering the min edge threshold or selecting more books on the dashboard."
+                className="empty-state--padded"
+              />
+            )}
           </div>
         )}
       </div>
@@ -449,10 +483,14 @@ function SecondaryBoard({
   bets,
   onPlayerSelect,
   isPast = false,
+  embedded = false,
+  emptyMessage = "No secondary-market edges available right now.",
 }: {
   bets: FlattenedSecondaryBet[]
   onPlayerSelect?: (playerKey: string) => void
   isPast?: boolean
+  embedded?: boolean
+  emptyMessage?: string
 }) {
   const grouped = useMemo(() => {
     const map = new Map<string, FlattenedSecondaryBet[]>()
@@ -480,11 +518,15 @@ function SecondaryBoard({
     return (
       <div className="card">
         <div className="card-body">
-          <EmptyState
-            message="No secondary-market edges available right now."
-            description="Top-finish, make-cut, and outright markets are scanned every refresh. Edges appear when book pricing diverges from the model."
-            className="empty-state--padded"
-          />
+          {embedded ? (
+            <WorkspaceEmptyState message={emptyMessage} />
+          ) : (
+            <EmptyState
+              message={emptyMessage}
+              description="Top-finish, make-cut, and outright markets are scanned every refresh. Edges appear when book pricing diverges from the model."
+              className="empty-state--padded"
+            />
+          )}
         </div>
       </div>
     )
@@ -530,6 +572,10 @@ export function PicksPage({
   marketRowsError,
   lane = "production",
   embedded = false,
+  embeddedLoading = false,
+  embeddedLoadingMessage = "Loading picks for this board…",
+  embeddedErrorMessage,
+  secondaryEmptyMessage,
 }: PicksPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab: PicksTab = searchParams.get("tab") === "secondary" ? "secondary" : "matchups"
@@ -598,6 +644,9 @@ export function PicksPage({
       ? `${matchupSource.length} tracked matchup lines · click any row to expand`
       : `${secondarySource.length} tracked secondary lines across top-finish, make-cut & outright markets`
 
+  const stateLoading = embeddedLoading || marketRowsLoading
+  const stateErrorMessage = embeddedErrorMessage ?? (marketRowsError ? `Inventory history unavailable: ${marketRowsError}` : null)
+
   return (
     <div className={embedded ? "picks-page-embed" : "page-shell picks-page-shell"}>
       {!embedded ? (
@@ -640,11 +689,19 @@ export function PicksPage({
         />
       </FilterSheet>
       </div>
-      {marketRowsLoading ? (
-        <LoadingState message="Syncing tracked pick inventory…" />
+      {stateLoading ? (
+        embedded ? (
+          <WorkspaceLoadingState message={embeddedLoadingMessage} />
+        ) : (
+          <LoadingState message="Syncing tracked pick inventory…" />
+        )
       ) : null}
-      {marketRowsError ? (
-        <ErrorState message={`Inventory history unavailable: ${marketRowsError}`} />
+      {stateErrorMessage ? (
+        embedded ? (
+          <WorkspaceErrorState message={stateErrorMessage} />
+        ) : (
+          <ErrorState message={stateErrorMessage} />
+        )
       ) : null}
 
       {tab === "matchups" ? (
@@ -653,9 +710,15 @@ export function PicksPage({
           emptyMessage={matchupsEmptyMessage}
           diagnostics={matchupDiagnostics}
           minEdgePct={minEdgePct}
+          embedded={embedded}
         />
       ) : (
-        <SecondaryBoard bets={secondarySource} onPlayerSelect={onPlayerSelect} />
+        <SecondaryBoard
+          bets={secondarySource}
+          onPlayerSelect={onPlayerSelect}
+          embedded={embedded}
+          emptyMessage={secondaryEmptyMessage}
+        />
       )}
     </div>
   )
