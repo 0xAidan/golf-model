@@ -239,7 +239,7 @@ Description=Golf Model Database Backup
 Type=oneshot
 WorkingDirectory=/opt/golf-model
 Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
-ExecStart=/bin/bash -lc 'set -a; [ -f /opt/golf-model/.env ] && . /opt/golf-model/.env; set +a; exec /opt/golf-model/venv/bin/python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-4}"'
+ExecStart=/bin/bash -lc 'set -a; [ -f /opt/golf-model/.env ] && . /opt/golf-model/.env; set +a; exec /opt/golf-model/venv/bin/python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-4}" --compress'
 SVC
 
         cat > /etc/systemd/system/golf-backup.timer << 'SVC'

@@ -148,6 +148,32 @@ else:
     print("[deploy] appended LIVE_REFRESH_LAB_PROFILE_ENABLED=1 to .env")
 PY
 
+# Disk guards: enable warn/hard floors unless operator already configured them.
+venv/bin/python - <<'PY'
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+env_path = Path(".env")
+prior = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+defaults = {
+    "DISK_FREE_MB_WARN": "10240",
+    "DISK_FREE_MB_HARD": "5120",
+}
+appended: list[str] = []
+for key, value in defaults.items():
+    if re.search(rf"^\s*{re.escape(key)}\s*=", prior, flags=re.MULTILINE):
+        print(f"[deploy] {key} already present in .env; leaving unchanged.")
+        continue
+    appended.append(f"{key}={value}")
+if appended:
+    block = "\n# Disk guards (MB free). Backup aborts below HARD; ops/data-health warn below WARN.\n"
+    block += "\n".join(appended) + "\n"
+    env_path.write_text(prior + block, encoding="utf-8")
+    print("[deploy] appended disk guard env keys:", ", ".join(appended))
+PY
+
 restart_services
 trap - EXIT
 

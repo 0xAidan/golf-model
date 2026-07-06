@@ -41,12 +41,107 @@ DB_PATH = _current_db_path()
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
 
 
-def _backup_globs() -> tuple[str, str]:
-    """Patterns for timestamped backup artifacts (plain DB and optional gzip)."""
+def _backup_globs() -> tuple[str, ...]:
+    """Patterns for timestamped backup artifacts and SQLite sidecars."""
     return (
         os.path.join(BACKUP_DIR, "golf_model_*.db"),
         os.path.join(BACKUP_DIR, "golf_model_*.db.gz"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db-shm"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db-wal"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db-journal"),
     )
+
+
+def _backup_db_basename(path: str) -> str | None:
+    """Return ``golf_model_<timestamp>.db`` stem for a backup or sidecar path."""
+    name = os.path.basename(path)
+    if name.endswith(".db.gz"):
+        return name[: -len(".gz")]
+    for suffix in (".db", ".db-shm", ".db-wal", ".db-journal"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)] + ".db"
+    return None
+
+
+def _sidecar_paths_for_backup(backup_path: str) -> list[str]:
+    base = _backup_db_basename(backup_path)
+    if not base:
+        return []
+    directory = os.path.dirname(backup_path)
+    stem = base[: -len(".db")]
+    return [
+        os.path.join(directory, f"{stem}.db-shm"),
+        os.path.join(directory, f"{stem}.db-wal"),
+        os.path.join(directory, f"{stem}.db-journal"),
+    ]
+
+
+def _remove_backup_artifacts(path: str) -> None:
+    """Remove a backup file and any SQLite sidecars tied to the same timestamp."""
+    targets = [path, *_sidecar_paths_for_backup(path)]
+    for target in targets:
+        try:
+            os.remove(target)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            print(f"  Warning: could not remove {target}: {exc}")
+
+
+def _live_backup_basenames() -> set[str]:
+    basenames: set[str] = set()
+    for pattern in (
+        os.path.join(BACKUP_DIR, "golf_model_*.db"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db.gz"),
+    ):
+        for path in glob.glob(pattern):
+            base = _backup_db_basename(path)
+            if base:
+                basenames.add(base)
+    return basenames
+
+
+def sweep_orphan_sidecars() -> list[str]:
+    """Remove sidecar files that no longer have a matching backup .db/.db.gz."""
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+
+    live = _live_backup_basenames()
+    removed: list[str] = []
+    for suffix in (".db-shm", ".db-wal", ".db-journal"):
+        for path in glob.glob(os.path.join(BACKUP_DIR, f"golf_model_*{suffix}")):
+            base = _backup_db_basename(path)
+            if base and base in live:
+                continue
+            try:
+                os.remove(path)
+                removed.append(path)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                print(f"  Warning: could not remove orphan sidecar {path}: {exc}")
+    return removed
+
+
+def prune_old_backups(keep: int, *, before_create: bool = False) -> list[str]:
+    """Drop oldest backups (and sidecars) to respect retention.
+
+    When ``before_create`` is True, prune until fewer than ``keep`` copies remain
+    so a new backup can be added without exceeding the retention cap.
+    """
+    backups = _sorted_backup_paths()
+    removed: list[str] = []
+    while backups:
+        if before_create:
+            if len(backups) < int(keep):
+                break
+        elif len(backups) <= int(keep):
+            break
+        oldest = backups.pop(0)
+        _remove_backup_artifacts(oldest)
+        removed.append(oldest)
+    removed.extend(sweep_orphan_sidecars())
+    return removed
 
 
 def _enforce_disk_hard_floor(path: str) -> None:
@@ -69,9 +164,12 @@ def _enforce_disk_hard_floor(path: str) -> None:
 
 
 def _sorted_backup_paths() -> list[str]:
-    """Oldest first (mtime) for rotation."""
+    """Oldest first (mtime) for rotation — DB artifacts only, not sidecars."""
     paths: list[str] = []
-    for pattern in _backup_globs():
+    for pattern in (
+        os.path.join(BACKUP_DIR, "golf_model_*.db"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db.gz"),
+    ):
         paths.extend(glob.glob(pattern))
     paths = list(set(paths))
     return sorted(paths, key=lambda p: os.path.getmtime(p))
@@ -150,14 +248,8 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     # Prune *before* creating a new file so peak disk use stays at ~`keep` full
     # copies (not `keep` + 1). Small VPS volumes often fail sqlite backup with
     # "database or disk is full" when rotation ran only after the new backup.
-    backups = _sorted_backup_paths()
-    while len(backups) >= int(keep):
-        oldest = backups.pop(0)
-        try:
-            os.remove(oldest)
-            print(f"  Removed old backup to free space: {oldest}")
-        except OSError as exc:
-            print(f"  Warning: could not remove {oldest}: {exc}")
+    for removed in prune_old_backups(int(keep), before_create=True):
+        print(f"  Removed old backup to free space: {removed}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
@@ -186,9 +278,8 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
         final_path = gz_path
 
     # Rotate old backups (safety if keep changed or races added files)
-    backups = _sorted_backup_paths()
-    while len(backups) > int(keep):
-        os.remove(backups.pop(0))
+    for removed in prune_old_backups(int(keep)):
+        print(f"  Removed excess backup: {removed}")
 
     size_mb = os.path.getsize(final_path) / (1024 * 1024)
     retained = len(_sorted_backup_paths())
@@ -240,7 +331,10 @@ def list_backups() -> list[dict]:
         return []
 
     paths: list[str] = []
-    for pattern in _backup_globs():
+    for pattern in (
+        os.path.join(BACKUP_DIR, "golf_model_*.db"),
+        os.path.join(BACKUP_DIR, "golf_model_*.db.gz"),
+    ):
         paths.extend(glob.glob(pattern))
     paths = list(set(paths))
     backups = sorted(paths, key=lambda p: os.path.getmtime(p), reverse=True)
