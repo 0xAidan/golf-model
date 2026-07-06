@@ -324,6 +324,17 @@ export const api = {
       result?: Record<string, unknown>
       error?: string
     }>(`/api/ops/jobs/${encodeURIComponent(jobId)}`),
+  getLatestOpsJob: (jobType: string) =>
+    request<{
+      job: {
+        id: string
+        status: string
+        progress_pct: number
+        message?: string
+        error?: string
+        updated_at?: string
+      } | null
+    }>(`/api/ops/jobs/latest/${encodeURIComponent(jobType)}`),
   getAnalyticsSummary: (params: Record<string, string | number | undefined>) => {
     const qs = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {

@@ -1,19 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 
+import { useOpsHealth } from "@/hooks/use-ops-health"
+import { api } from "@/lib/api"
 import { formatDateTime } from "@/lib/format"
-
-type OpsHealthPayload = {
-  grading?: {
-    status?: string
-    last_auto_grade_at?: string
-    last_auto_grade_status?: string
-    reconciliation?: { status?: string }
-  }
-  live_refresh?: {
-    running?: boolean
-    last_recompute_at?: string
-  }
-}
 
 type OpsJobSummary = {
   id: string
@@ -25,15 +14,10 @@ type OpsJobSummary = {
 }
 
 export function OpsHealthPanel() {
-  const healthQuery = useQuery({
-    queryKey: ["ops-health"],
-    queryFn: () => fetch("/api/ops/health").then((r) => r.json()) as Promise<OpsHealthPayload>,
-    refetchInterval: 30_000,
-  })
+  const healthQuery = useOpsHealth()
   const gradeJobQuery = useQuery({
     queryKey: ["ops-job-latest-grade"],
-    queryFn: () =>
-      fetch("/api/ops/jobs/latest/grade").then((r) => r.json()) as Promise<{ job: OpsJobSummary | null }>,
+    queryFn: () => api.getLatestOpsJob("grade") as Promise<{ job: OpsJobSummary | null }>,
     refetchInterval: 5_000,
   })
 

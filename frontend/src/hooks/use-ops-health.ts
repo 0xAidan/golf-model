@@ -19,11 +19,16 @@ export type OpsHealthResponse = {
     snapshot_age_seconds?: number
   }
   disk?: {
-    status?: string
+    state?: string
     free_mb?: number
     warn_mb?: number
     hard_mb?: number
   }
+  worker_restart_request?: {
+    requested_at?: string
+    requested_by?: string
+    status?: string
+  } | null
 }
 
 const OPS_HEALTH_QUERY_KEY = ["ops-health"] as const
@@ -40,7 +45,8 @@ export function useOpsHealth(pollMs = 30_000) {
 export function opsHealthSeverity(data: OpsHealthResponse | undefined): "good" | "warn" | "bad" {
   if (!data) return "warn"
   if (data.ok === false) return "bad"
-  if (data.disk?.status === "hard" || data.disk?.status === "warn") return "warn"
+  if (data.disk?.state === "hard") return "bad"
+  if (data.disk?.state === "warn") return "warn"
   if ((data.grading?.events_with_ungraded_positive_ev ?? 0) > 0) return "warn"
   return "good"
 }
