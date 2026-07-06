@@ -1,12 +1,16 @@
-"""Durable operator job queue (grade, refresh) for background UI progress."""
+"""Durable operator job queue (grade, cleanup) for background UI progress."""
 
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -107,6 +111,92 @@ def get_job(conn: sqlite3.Connection, job_id: str) -> dict[str, Any] | None:
             except json.JSONDecodeError:
                 data[key.replace("_json", "")] = None
     return data
+
+
+def remove_stale_db_recovery_copies(db_path: str) -> list[str]:
+    """Remove leftover reclaim/restore temp files when the live DB passes quick_check."""
+    if not os.path.isfile(db_path):
+        return []
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
+        try:
+            row = conn.execute("PRAGMA quick_check").fetchone()
+            if not row or str(row[0]) != "ok":
+                return []
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        _logger.warning("refusing stale DB copy cleanup; quick_check failed: %s", exc)
+        return []
+
+    removed: list[str] = []
+    for suffix in (".pre_reclaim", ".pre_restore", ".vacuum_into"):
+        path = db_path + suffix
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+            removed.append(path)
+        except OSError as exc:
+            _logger.warning("could not remove stale DB copy %s: %s", path, exc)
+    return removed
+
+
+def run_storage_cleanup(
+    *,
+    vacuum: bool = True,
+    retain_days: int | None = None,
+) -> dict[str, Any]:
+    """Idempotent storage maintenance for operator cleanup jobs."""
+    from src import db
+    from src.backup import sweep_orphan_sidecars
+
+    report: dict[str, Any] = {
+        "ok": True,
+        "steps": {},
+    }
+
+    sidecars_removed = sweep_orphan_sidecars()
+    report["steps"]["sidecar_sweep"] = {"removed": sidecars_removed, "count": len(sidecars_removed)}
+
+    stale_removed = remove_stale_db_recovery_copies(db.DB_PATH)
+    report["steps"]["stale_db_copies"] = {"removed": stale_removed, "count": len(stale_removed)}
+
+    conn = db.get_conn()
+    try:
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.commit()
+            wal_ok = True
+            wal_error = None
+        except sqlite3.OperationalError as exc:
+            wal_ok = False
+            wal_error = str(exc)
+    finally:
+        conn.close()
+    report["steps"]["wal_checkpoint"] = {"ok": wal_ok, "error": wal_error}
+
+    from scripts.run_retention_cycle import run_retention_cycle
+
+    retention = run_retention_cycle(
+        retain_days=retain_days,
+        dry_run=False,
+        vacuum=False,
+    )
+    report["steps"]["retention"] = retention
+    if not retention.get("ok", False) and not retention.get("skipped"):
+        report["ok"] = False
+
+    if vacuum:
+        reclaim = db.reclaim_database_disk()
+        report["steps"]["reclaim"] = reclaim
+        if not reclaim.get("ok", False) and not reclaim.get("skipped"):
+            report["ok"] = False
+    else:
+        report["steps"]["reclaim"] = {"skipped": True, "reason": "vacuum disabled"}
+
+    return report
 
 
 def latest_job_by_type(conn: sqlite3.Connection, job_type: str) -> dict[str, Any] | None:

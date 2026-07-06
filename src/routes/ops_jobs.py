@@ -144,3 +144,87 @@ async def start_grade_job(request: Request):
             "message": "Grading started in background",
         },
     )
+
+
+def _run_cleanup_job(job_id: str, vacuum: bool, retain_days: int | None) -> None:
+    from src.ops_jobs import run_storage_cleanup
+
+    conn = get_conn()
+    try:
+        update_job(conn, job_id, progress_pct=10, message="Sweeping backup sidecars…")
+        update_job(conn, job_id, progress_pct=35, message="Running retention cycle…")
+        report = run_storage_cleanup(vacuum=vacuum, retain_days=retain_days)
+        if report.get("ok"):
+            update_job(
+                conn,
+                job_id,
+                status="complete",
+                progress_pct=100,
+                message="Cleanup complete",
+                result=report,
+            )
+        else:
+            update_job(
+                conn,
+                job_id,
+                status="error",
+                progress_pct=100,
+                message="Cleanup finished with errors",
+                result=report,
+                error="One or more cleanup steps failed; see result.steps",
+            )
+    except Exception as exc:
+        update_job(
+            conn,
+            job_id,
+            status="error",
+            progress_pct=100,
+            message="Cleanup failed",
+            error=str(exc),
+        )
+    finally:
+        conn.close()
+
+
+@router.post("/api/ops/jobs/cleanup")
+async def start_cleanup_job(request: Request):
+    """Queue storage cleanup as a background job; returns immediately."""
+    payload: dict[str, Any] = {}
+    try:
+        body = await request.body()
+        if body:
+            payload = await request.json()
+    except Exception:
+        payload = {}
+
+    ensure_initialized()
+
+    vacuum = payload.get("vacuum", True)
+    if isinstance(vacuum, str):
+        vacuum = vacuum.strip().lower() not in {"0", "false", "no", "off"}
+    retain_days = payload.get("retain_days")
+    if retain_days is not None:
+        retain_days = int(retain_days)
+
+    conn = get_conn()
+    try:
+        job_id = create_job(
+            conn,
+            "cleanup",
+            {"vacuum": bool(vacuum), "retain_days": retain_days},
+        )
+    finally:
+        conn.close()
+
+    asyncio.create_task(
+        asyncio.to_thread(_run_cleanup_job, job_id, bool(vacuum), retain_days)
+    )
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "status": "running",
+            "message": "Cleanup started in background",
+        },
+    )
