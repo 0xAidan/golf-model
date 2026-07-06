@@ -14,7 +14,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency in some environments
     load_dotenv = None
 
-from backtester.dashboard_runtime import start_live_refresh, stop_live_refresh
+from backtester.dashboard_runtime import (
+    runtime_thread_alive,
+    start_live_refresh,
+    stop_live_refresh,
+)
 from src.autoresearch_settings import get_settings
 from src.db import ensure_initialized
 
@@ -116,8 +120,14 @@ def main() -> int:
     _write_pidfile(pidfile)
     try:
         start_live_refresh(tour=tour)
+        log = logging.getLogger("live_refresh_worker")
 
         while not _shutdown:
+            if not runtime_thread_alive():
+                log.critical(
+                    "Live refresh runtime thread died unexpectedly; exiting for systemd restart"
+                )
+                return 1
             time.sleep(1.0)
 
         stop_live_refresh()

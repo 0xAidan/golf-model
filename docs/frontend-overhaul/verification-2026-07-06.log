@@ -1,0 +1,154 @@
+=== S0 recovery started 2026-07-06T20:53:07Z ===
+restart issued
+no manual trigger file
+--- post-restart status 2026-07-06T20:53:46Z ---
+{
+    "status": {
+        "running": true,
+        "tour": "pga",
+        "cadence_mode": "off_window",
+        "ingest_seconds": 3600,
+        "recompute_seconds": 3600,
+        "run_count": 0,
+        "last_started_at": null,
+        "last_finished_at": null,
+        "last_error": null,
+        "next_ingest_at": null,
+        "next_recompute_at": null,
+        "last_ingest_summary": null,
+        "last_snapshot_generated_at": null,
+        "last_auto_grade_at": null,
+        "last_auto_grade_status": null,
+        "auto_grade_awaiting_event_id": null,
+        "auto_grade_awaiting_year": null,
+        "refresh_state": "running",
+        "phase": "recompute",
+        "phase_detail": null,
+        "progress_updated_at": null,
+        "progress_started_at": null,
+        "recompute_percent": null,
+        "snapshot_age_seconds": 67124,
+        "snapshot_available": true,
+        "progress": {
+            "refresh_state": "running",
+            "phase": "recompute",
+            "phase_detail": null,
+            "progress_updated_at": null,
+            "progress_started_at": null,
+            "percent": null,
+            "last_error": null
+--- grade John Deere event 30 2026-07-06T20:54:22Z ---
+==================================================
+  Tournament Grading Pipeline
+==================================================
+  Fetching results for event 30 / 2026...
+  Found 144 players
+  Matched to tournament ID 26: John Deere Classic
+  Storing 144 results...
+  Fetching matchup outcomes...
+  Found 219 matchup records
+  Backfilling completed market rows into gradeable picks...
+Traceback (most recent call last):
+  File "/opt/golf-model/scripts/grade_tournament.py", line 414, in <module>
+    main()
+  File "/opt/golf-model/scripts/grade_tournament.py", line 388, in main
+    report = grade_tournament(
+             ^^^^^^^^^^^^^^^^^
+  File "/opt/golf-model/scripts/grade_tournament.py", line 243, in grade_tournament
+    dashboard_backfilled = backfill_completed_market_rows_into_picks(
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/golf-model/src/market_row_backfill.py", line 52, in backfill_completed_market_rows_into_picks
+    db.store_picks(positive_ev_rows)
+  File "/opt/golf-model/src/db.py", line 1815, in store_picks
+    conn.execute(insert_sql, row)
+sqlite3.OperationalError: database is locked
+--- retry grade John Deere 2026-07-06T20:55:22Z ---
+2026-07-06 20:55:24,225 [learning] Scoring skip: no results for player_key=aaron_rai bet_type=matchup
+2026-07-06 20:55:24,225 [learning] Scoring skip: no results for player_key=aaron_rai bet_type=matchup
+2026-07-06 20:55:24,227 [learning] Scoring skip: no results for player_key=jj_spaun bet_type=matchup
+2026-07-06 20:55:24,227 [learning] Scoring skip: no results for player_key=jj_spaun bet_type=matchup
+2026-07-06 20:55:24,227 [learning] Scoring skip: no results for player_key=justin_rose bet_type=matchup
+2026-07-06 20:55:24,228 [learning] Scoring skip: no results for player_key=kristoffer_reitan bet_type=matchup
+2026-07-06 20:55:24,228 [learning] Scoring skip: no results for player_key=kurt_kitayama bet_type=matchup
+2026-07-06 20:55:24,228 [learning] Scoring skip: no results for player_key=maverick_mcnealy bet_type=matchup
+2026-07-06 20:55:24,229 [learning] Scoring skip: no results for player_key=min_woo_lee bet_type=matchup
+2026-07-06 20:55:24,229 [learning] Scoring skip: no results for player_key=nico_echavarria bet_type=top20
+2026-07-06 20:55:24,230 [learning] Scoring skip: no results for player_key=ryan_fox bet_type=matchup
+2026-07-06 20:55:24,230 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,230 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,230 [learning] Scoring skip: no results for player_key=shane_lowry bet_type=matchup
+2026-07-06 20:55:24,231 [learning] Scoring skip: no results for player_key=alex_fitzpatrick bet_type=matchup
+2026-07-06 20:55:24,231 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,231 [learning] Scoring skip: no results for player_key=aaron_rai bet_type=matchup
+2026-07-06 20:55:24,233 [learning] Scoring skip: no results for player_key=bud_cauley bet_type=matchup
+2026-07-06 20:55:24,233 [learning] Scoring skip: no results for player_key=bud_cauley bet_type=matchup
+2026-07-06 20:55:24,233 [learning] Scoring skip: no results for player_key=collin_morikawa bet_type=matchup
+2026-07-06 20:55:24,235 [learning] Scoring skip: no results for player_key=jj_spaun bet_type=matchup
+2026-07-06 20:55:24,236 [learning] Scoring skip: no results for player_key=justin_rose bet_type=matchup
+2026-07-06 20:55:24,236 [learning] Scoring skip: no results for player_key=kristoffer_reitan bet_type=matchup
+2026-07-06 20:55:24,236 [learning] Scoring skip: no results for player_key=kurt_kitayama bet_type=matchup
+2026-07-06 20:55:24,237 [learning] Scoring skip: no results for player_key=matt_fitzpatrick bet_type=matchup
+2026-07-06 20:55:24,237 [learning] Scoring skip: no results for player_key=maverick_mcnealy bet_type=matchup
+2026-07-06 20:55:24,238 [learning] Scoring skip: no results for player_key=min_woo_lee bet_type=matchup
+2026-07-06 20:55:24,238 [learning] Scoring skip: no results for player_key=ryan_fox bet_type=matchup
+2026-07-06 20:55:24,239 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,239 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,239 [learning] Scoring skip: no results for player_key=shane_lowry bet_type=matchup
+2026-07-06 20:55:24,239 [learning] Scoring skip: no results for player_key=si_woo_kim bet_type=matchup
+2026-07-06 20:55:24,258 [learning] Scoring skip: no results for player_key=aaron_rai bet_type=matchup
+2026-07-06 20:55:24,258 [learning] Scoring skip: no results for player_key=aaron_rai bet_type=matchup
+2026-07-06 20:55:24,260 [learning] Scoring skip: no results for player_key=jj_spaun bet_type=matchup
+2026-07-06 20:55:24,260 [learning] Scoring skip: no results for player_key=jj_spaun bet_type=matchup
+2026-07-06 20:55:24,260 [learning] Scoring skip: no results for player_key=justin_rose bet_type=matchup
+2026-07-06 20:55:24,261 [learning] Scoring skip: no results for player_key=kristoffer_reitan bet_type=matchup
+2026-07-06 20:55:24,261 [learning] Scoring skip: no results for player_key=kurt_kitayama bet_type=matchup
+2026-07-06 20:55:24,261 [learning] Scoring skip: no results for player_key=maverick_mcnealy bet_type=matchup
+2026-07-06 20:55:24,262 [learning] Scoring skip: no results for player_key=min_woo_lee bet_type=matchup
+2026-07-06 20:55:24,262 [learning] Scoring skip: no results for player_key=nico_echavarria bet_type=top20
+2026-07-06 20:55:24,263 [learning] Scoring skip: no results for player_key=ryan_fox bet_type=matchup
+2026-07-06 20:55:24,263 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,263 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,263 [learning] Scoring skip: no results for player_key=shane_lowry bet_type=matchup
+2026-07-06 20:55:24,264 [learning] Scoring skip: no results for player_key=alex_fitzpatrick bet_type=matchup
+2026-07-06 20:55:24,264 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,264 [learning] Scoring skip: no results for player_key=aaron_rai bet_type=matchup
+2026-07-06 20:55:24,265 [learning] Scoring skip: no results for player_key=bud_cauley bet_type=matchup
+2026-07-06 20:55:24,266 [learning] Scoring skip: no results for player_key=bud_cauley bet_type=matchup
+2026-07-06 20:55:24,266 [learning] Scoring skip: no results for player_key=collin_morikawa bet_type=matchup
+2026-07-06 20:55:24,268 [learning] Scoring skip: no results for player_key=jj_spaun bet_type=matchup
+2026-07-06 20:55:24,268 [learning] Scoring skip: no results for player_key=justin_rose bet_type=matchup
+2026-07-06 20:55:24,268 [learning] Scoring skip: no results for player_key=kristoffer_reitan bet_type=matchup
+2026-07-06 20:55:24,268 [learning] Scoring skip: no results for player_key=kurt_kitayama bet_type=matchup
+2026-07-06 20:55:24,269 [learning] Scoring skip: no results for player_key=matt_fitzpatrick bet_type=matchup
+2026-07-06 20:55:24,269 [learning] Scoring skip: no results for player_key=maverick_mcnealy bet_type=matchup
+2026-07-06 20:55:24,270 [learning] Scoring skip: no results for player_key=min_woo_lee bet_type=matchup
+2026-07-06 20:55:24,270 [learning] Scoring skip: no results for player_key=ryan_fox bet_type=matchup
+2026-07-06 20:55:24,270 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,270 [learning] Scoring skip: no results for player_key=ryan_gerard bet_type=matchup
+2026-07-06 20:55:24,271 [learning] Scoring skip: no results for player_key=shane_lowry bet_type=matchup
+2026-07-06 20:55:24,271 [learning] Scoring skip: no results for player_key=si_woo_kim bet_type=matchup
+==================================================
+  Tournament Grading Pipeline
+==================================================
+  Fetching results for event 30 / 2026...
+  Found 144 players
+  Matched to tournament ID 26: John Deere Classic
+  Storing 144 results...
+  Fetching matchup outcomes...
+  Found 219 matchup records
+  Backfilling completed market rows into gradeable picks...
+  Backfilled picks: dashboard=4, lab=0
+  Removed 4 duplicate pick row(s); kept 258
+  Scoring picks...
+  Scoring: ok
+  Running post-tournament learning pipeline...
+  Grading complete for tournament 26
+
+==================================================
+  Status: COMPLETE
+  Picks scored: 226
+  Wins: 102
+  Losses: 124
+  Profit: -10.12u
+==================================================
+--- season sweep 2026-07-06T20:55:33Z ---
