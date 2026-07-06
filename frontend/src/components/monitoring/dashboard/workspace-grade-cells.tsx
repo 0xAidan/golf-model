@@ -4,6 +4,24 @@ import type { FlattenedSecondaryBet, LiveLeaderboardRow, MatchupBet } from "@/li
 
 import { PanelBackfill } from "../panel-backfill"
 
+const AWAITING_RESULTS_TITLE = "Awaiting final results before this pick can be graded."
+
+function AwaitingResultsLabel() {
+  return (
+    <span className="text-pending" title={AWAITING_RESULTS_TITLE} aria-label="Awaiting results">
+      Awaiting results
+    </span>
+  )
+}
+
+function UngradedLabel({ title }: { title: string }) {
+  return (
+    <span className="text-pending" title={title} aria-label="Ungraded">
+      Ungraded
+    </span>
+  )
+}
+
 export function PastPickGradeCell({
   matchup,
   leaderboard,
@@ -23,18 +41,10 @@ export function PastPickGradeCell({
     )
   }
   if (g.kind === "pending") {
-    return (
-      <span className="text-pending" title={g.title}>
-        Pending
-      </span>
-    )
+    return <AwaitingResultsLabel />
   }
   if (g.kind === "ungraded") {
-    return (
-      <span className="text-pending" title={g.title} aria-label={g.title}>
-        Ungraded
-      </span>
-    )
+    return <UngradedLabel title={g.title} />
   }
   return (
     <span className="num num-faint" title={g.title} aria-label={g.title}>
@@ -76,17 +86,9 @@ export function PastSecondaryGradeCell({
 
   if (!leaderboard || leaderboard.length === 0) {
     if (completedReplay) {
-      return (
-        <span className="text-pending" title="No graded outcome stored for this pick" aria-label="Ungraded">
-          Ungraded
-        </span>
-      )
+      return <UngradedLabel title="No graded outcome stored for this pick yet. Use Grade event to reconcile it." />
     }
-    return (
-      <span style={{ fontSize: 11, color: "var(--text-muted)" }} title="Waiting for final leaderboard">
-        Pending
-      </span>
-    )
+    return <AwaitingResultsLabel />
   }
   const graded = gradeSecondaryBetFromLeaderboard(bet, leaderboard)
   if (graded) {
@@ -102,12 +104,14 @@ export function PastSecondaryGradeCell({
       </span>
     )
   }
+  if (completedReplay) {
+    return <UngradedLabel title="No graded outcome stored for this pick yet. Use Grade event to reconcile it." />
+  }
   return (
     <span
       className="num"
-      style={{ color: "var(--text-faint)" }}
-      title="Not graded — unsupported market (e.g. FRL) or player missing from leaderboard"
-      aria-label="Not graded"
+      title="Unsupported market for replay grading, or the player is still missing from the final leaderboard."
+      aria-label="Unavailable"
     >
       —
     </span>
@@ -123,5 +127,11 @@ export function WorkspaceEmptyState({ message }: { message: string }) {
 export function WorkspaceLoadingState({ message }: { message: string }) {
   return (
     <PanelBackfill message={message} loading testId="workspace-loading-state" />
+  )
+}
+
+export function WorkspaceErrorState({ message }: { message: string }) {
+  return (
+    <PanelBackfill message={message} loading={false} testId="workspace-error-state" />
   )
 }

@@ -9,37 +9,17 @@ export function WorkspaceFullPicksPanel({
   predictionTabPast,
   pastGradedMatchups,
   pastGradedSecondaryBets,
+  pastPicksLoading = false,
 }: {
   fullPicks?: WorkspaceFullPicksEmbed
   predictionTabPast: boolean
   pastGradedMatchups?: WorkspaceFullPicksProduction["matchups"]
   pastGradedSecondaryBets?: WorkspaceFullPicksProduction["secondaryBets"]
+  pastPicksLoading?: boolean
 }) {
-  if (!fullPicks) {
-    return (
-      <PanelBackfill
-        message="Full picks unavailable"
-        detail="Pick inventory loads when a live or upcoming event is active."
-        loading={false}
-        testId="workspace-full-picks-backfill"
-      />
-    )
-  }
-
   if (predictionTabPast) {
     const pastMatchups = pastGradedMatchups ?? []
     const pastSecondary = pastGradedSecondaryBets ?? []
-    if (pastMatchups.length === 0 && pastSecondary.length === 0) {
-      return (
-        <PanelBackfill
-          message="Past replay lives on the board tabs"
-          detail="Switch to Top picks or use Recent results in Intel for graded history."
-          loading={false}
-          testId="workspace-full-picks-past-backfill"
-        />
-      )
-    }
-
     return (
       <div className="workspace-full-picks-embed" data-testid="workspace-full-picks-past">
         <PicksPage
@@ -50,8 +30,22 @@ export function WorkspaceFullPicksPanel({
           minEdgePct={0}
           secondaryBets={pastSecondary}
           onPlayerSelect={fullPicks?.onPlayerSelect}
+          embeddedLoading={pastPicksLoading}
+          embeddedLoadingMessage="Loading graded picks for this event…"
+          secondaryEmptyMessage="No graded secondary picks for this event."
         />
       </div>
+    )
+  }
+
+  if (!fullPicks) {
+    return (
+      <PanelBackfill
+        message="Full picks unavailable"
+        detail="Pick inventory loads when a live or upcoming event is active."
+        loading={false}
+        testId="workspace-full-picks-backfill"
+      />
     )
   }
 

@@ -59,7 +59,7 @@ export const MATCHUP_TABLE_TOOLTIPS = {
   ev: "Expected value vs posted implied probability using the model's ev_prob (calibrated, placement dead-heat when applicable) — not vs de-vigged fair odds.",
   winPct: "Blended model win probability for the pick side (DG + model where applicable). EV uses the same mass as this display unless the row exposes ev_prob for audit.",
   result:
-    "Past events only: graded head-to-head result from final finishes (W/L), push (P), Pending when data is incomplete, or unavailable (—) for markets we do not derive here.",
+    "Past events only: graded head-to-head result from final finishes (W/L), push (P), Awaiting results while the event is still resolving, Ungraded when the DB has not reconciled the pick yet, or unavailable (—) for markets we do not derive here.",
   lane: "Bet type or pipeline lane (e.g. matchup vs alternate line).",
   market: "Secondary market type (top 5, top 10, etc.).",
   player: "Player named on the prop or finishing market.",

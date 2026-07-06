@@ -42,4 +42,16 @@ describe("selectDefaultPastEvent", () => {
 
     expect(selected?.event_id).toBe("34")
   })
+
+  it("falls back to the first event with snapshots when no graded history exists", () => {
+    const options = [
+      { event_id: "41", event_name: "Genesis Scottish Open", snapshot_count: 0 },
+      { event_id: "40", event_name: "Rocket Classic", snapshot_count: 12 },
+      { event_id: "39", event_name: "RBC Canadian Open", snapshot_count: 4 },
+    ]
+
+    const selected = selectDefaultPastEvent(options)
+
+    expect(selected?.event_id).toBe("40")
+  })
 })
