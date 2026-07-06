@@ -2,7 +2,9 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { useMemo } from "react"
 import { Link } from "react-router-dom"
 
-import { BentoGrid, BentoPanel, HeroBand, HeroDataGrid } from "@/components/monitoring"
+import { BentoGrid, BentoPanel, HeroDataGrid } from "@/components/monitoring"
+import { EmptyState, ErrorState } from "@/components/ui/feedback-state"
+import { PageHeader } from "@/components/ui/page-header"
 import type { LiveRefreshSnapshot } from "@/lib/types"
 
 type LegacyRanking = {
@@ -109,71 +111,71 @@ export function LegacyModelPage({ liveSnapshot }: { liveSnapshot: LiveRefreshSna
   const matchupColumns = useMemo(() => buildLegacyMatchupColumns(), [])
 
   return (
-    <div className="monitor-research-page monitor-scroll-region" data-testid="legacy-model-page">
-      <HeroBand
-        eyebrow="Research"
-        title="Legacy model (baseline)"
-        meta="Read-only fallback lane for last month's baseline model."
-        action={
-          <Link to="/" className="btn btn-ghost btn-sm">
-            Back to cockpit
-          </Link>
-        }
-      />
+    <div
+      className="monitor-research-page monitor-scroll-region product-page--satellite"
+      data-testid="legacy-model-page"
+    >
+      <div className="px-5 pt-5">
+        <PageHeader
+          eyebrow="Research"
+          title="Legacy model (baseline)"
+          description="Read-only fallback lane for the previous baseline snapshot."
+          action={
+            <Link to="/" className="btn btn-ghost btn-sm">
+              Back to cockpit
+            </Link>
+          }
+        />
+      </div>
 
-      <BentoGrid columns={2} testId="legacy-model-bento">
-        <BentoPanel title="Snapshot" span={12}>
-          {!legacy ? (
-            <div className="term-notice">
-              Legacy baseline snapshot is not available yet. Refresh the live snapshot and try again.
-            </div>
-          ) : (
-            <>
+      <div className="px-5 pb-5 pt-4">
+        {!legacy ? (
+          <EmptyState
+            message="Legacy baseline snapshot is not available yet."
+            description="Refresh the live snapshot and try again."
+          />
+        ) : (
+          <BentoGrid columns={2} testId="legacy-model-bento">
+            <BentoPanel title="Snapshot" span={12}>
               <div className="term-notice">
                 Event: {legacy.event_name ?? "Unknown"} · Variant: {legacy.model_variant ?? "baseline"} ·
                 Source: {legacy.generated_from ?? "legacy_baseline_model"}
               </div>
               {diagnosticsErrors.length > 0 ? (
-                <div className="term-notice" role="alert">
-                  {diagnosticsErrors.join(" ")}
-                </div>
+                <ErrorState message={diagnosticsErrors.join(" ")} className="mt-3" />
               ) : null}
-            </>
-          )}
-        </BentoPanel>
+            </BentoPanel>
 
-        <BentoPanel title="Top legacy rankings" span={6}>
-          {!legacy || rankings.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-title">No baseline rankings in this snapshot.</div>
-            </div>
-          ) : (
-            <HeroDataGrid
-              data={rankings}
-              columns={rankingColumns}
-              density="compact"
-              getRowId={(row) => `${row.player_key ?? row.player}-${row.rank}`}
-              testId="legacy-rankings-grid"
-            />
-          )}
-        </BentoPanel>
+            <BentoPanel title="Top legacy rankings" span={6}>
+              {rankings.length === 0 ? (
+                <EmptyState message="No baseline rankings in this snapshot." />
+              ) : (
+                <HeroDataGrid
+                  data={rankings}
+                  columns={rankingColumns}
+                  density="compact"
+                  getRowId={(row) => `${row.player_key ?? row.player}-${row.rank}`}
+                  testId="legacy-rankings-grid"
+                />
+              )}
+            </BentoPanel>
 
-        <BentoPanel title="Legacy matchup edges" span={6}>
-          {!legacy || matchupBets.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-title">No baseline matchup edges in this snapshot.</div>
-            </div>
-          ) : (
-            <HeroDataGrid
-              data={matchupBets}
-              columns={matchupColumns}
-              density="compact"
-              getRowId={(row) => `${row.pick_key}-${row.opponent_key}-${row.book}-${row.odds}`}
-              testId="legacy-matchups-grid"
-            />
-          )}
-        </BentoPanel>
-      </BentoGrid>
+            <BentoPanel title="Legacy matchup edges" span={6}>
+              {matchupBets.length === 0 ? (
+                <EmptyState message="No baseline matchup edges in this snapshot." />
+              ) : (
+                <HeroDataGrid
+                  data={matchupBets}
+                  columns={matchupColumns}
+                  density="compact"
+                  getRowId={(row) => `${row.pick_key}-${row.opponent_key}-${row.book}-${row.odds}`}
+                  testId="legacy-matchups-grid"
+                />
+              )}
+            </BentoPanel>
+          </BentoGrid>
+        )}
+      </div>
     </div>
   )
 }

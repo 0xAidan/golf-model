@@ -2,9 +2,11 @@ import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, XCircle } from "lucide-react"
 
-import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { MetricCell, TrackMetricsCard } from "@/components/compare/track-metrics-card"
+import { ErrorState, LoadingState } from "@/components/ui/feedback-state"
+import { PageHeader } from "@/components/ui/page-header"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 const CONFIRM_PHRASE = "PROMOTE"
 
@@ -60,6 +62,14 @@ function PromotionTab() {
   const enabled = data?.promotion_enabled ?? false
   const gatesPass = data?.passed ?? false
   const canPromote = enabled && gatesPass && confirm === CONFIRM_PHRASE && reason.trim().length > 0
+
+  if (readiness.isLoading) {
+    return <LoadingState message="Loading promotion readiness…" />
+  }
+
+  if (readiness.isError) {
+    return <ErrorState message="Failed to load promotion readiness." />
+  }
 
   return (
     <div className="flex flex-col gap-4" data-testid="eval-promotion-tab">
@@ -161,6 +171,15 @@ function TrackCompareTab() {
     refetchInterval: 60_000,
   })
   const data = query.data
+
+  if (query.isLoading) {
+    return <LoadingState message="Loading track comparison…" />
+  }
+
+  if (query.isError) {
+    return <ErrorState message="Failed to load track comparison." />
+  }
+
   return (
     <div className="flex flex-col gap-4" data-testid="eval-track-compare-tab">
       <div className="flex items-center gap-2">
@@ -204,30 +223,46 @@ const TABS = [
 export function EvalPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("compare")
   return (
-    <div className="product-page product-page--satellite" data-testid="eval-page">
-      <TerminalPageHeader
-        eyebrow="Model validity"
-        title="Eval"
-        description="Promotion gates and champion vs challenger evidence before you promote Lab to Dashboard."
-      />
-      <div className="mt-4 flex gap-2" role="tablist" aria-label="Eval sections">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={`filter-chip${tab === t.id ? " active" : ""}`}
-            onClick={() => setTab(t.id)}
-            data-testid={`eval-tab-${t.id}`}
-          >
-            {t.label}
-          </button>
-        ))}
+    <div
+      className="monitor-research-page monitor-scroll-region product-page--satellite"
+      data-testid="eval-page"
+    >
+      <div className="px-5 pt-5">
+        <PageHeader
+          eyebrow="Model validity"
+          title="Eval"
+          description="Promotion gates and champion-vs-challenger evidence before you move Lab into the dashboard slot."
+        />
       </div>
-      <div className="mt-4">
-        {tab === "promotion" ? <PromotionTab /> : null}
-        {tab === "compare" ? <TrackCompareTab /> : null}
+      <div className="px-5 pb-5 pt-4">
+        <div
+          className="inline-flex flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1"
+          role="tablist"
+          aria-label="Eval sections"
+        >
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                tab === t.id
+                  ? "border-[var(--green)] bg-[var(--green-bg)] text-[var(--green)]"
+                  : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+              )}
+              onClick={() => setTab(t.id)}
+              data-testid={`eval-tab-${t.id}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4">
+          {tab === "promotion" ? <PromotionTab /> : null}
+          {tab === "compare" ? <TrackCompareTab /> : null}
+        </div>
       </div>
     </div>
   )
