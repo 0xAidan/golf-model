@@ -96,6 +96,7 @@ const { apiMock } = vi.hoisted(() => ({
         year: 2026,
       },
     })),
+    getLiveRefreshStatus: vi.fn(async () => ({ status: {} })),
   },
 }))
 
@@ -153,5 +154,25 @@ describe("GradingPage", () => {
         expect.objectContaining({ lane: "lab", year: 2026 }),
       )
     })
+  })
+
+  it("renders the season grid and expands pick detail rows", async () => {
+    apiMock.getGradingSeason.mockResolvedValue(toSeasonFixture(gradingHistoryFixture))
+    const user = userEvent.setup()
+
+    renderGradingPage()
+
+    expect(await screen.findByTestId("grading-season-grid")).toBeInTheDocument()
+
+    const firstEvent = gradingHistoryFixture.tournaments[0]
+    expect(firstEvent).toBeDefined()
+
+    const detailToggle = await screen.findByTestId(
+      `grading-detail-toggle-${firstEvent?.event_id}-${firstEvent?.year}`,
+    )
+    await user.click(detailToggle)
+
+    expect(await screen.findByText("Dashboard picks")).toBeInTheDocument()
+    expect(await screen.findAllByTestId("pick-row")).not.toHaveLength(0)
   })
 })
