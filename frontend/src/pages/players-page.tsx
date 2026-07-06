@@ -15,11 +15,14 @@ import {
   HistoryTable,
 } from "@/components/charts-v2"
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
+import { BentoPanel } from "@/components/monitoring"
 import { PlayersKpiCell } from "@/components/players-kpi-cell"
 import { FieldBoardPanel } from "@/components/players/field-board-panel"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { EmptyState } from "@/components/ui/empty-state"
-import { HeroBand, HeroDataGrid } from "@/components/monitoring"
+import { ErrorState, LoadingState } from "@/components/ui/feedback-state"
+import { HeroDataGrid } from "@/components/monitoring"
+import { PageHeader } from "@/components/ui/page-header"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import type { CompositePlayer, StandalonePlayerProfile, StandaloneRecentRoundSample } from "@/lib/types"
@@ -259,21 +262,19 @@ function PlayerProfileView({
 
   if (profileQuery.isLoading) {
     return (
-      <div className="players-profile-loading">
-        <div className="players-profile-loading-pulse" />
-        <div className="players-profile-loading-label">Loading {playerDisplay}…</div>
-      </div>
+      <LoadingState
+        message={`Loading ${playerDisplay}…`}
+        className="players-profile-loading"
+      />
     )
   }
 
   if (profileQuery.isError || !p) {
     return (
-      <div className="players-profile-error">
-        <div className="players-profile-error-title">Failed to load profile</div>
-        <div className="players-sidebar-empty">
-          Check that the backend is running and the player key is valid.
-        </div>
-      </div>
+      <ErrorState
+        message="Failed to load profile. Check that the backend is running and the player key is valid."
+        className="players-profile-error"
+      />
     )
   }
 
@@ -543,33 +544,27 @@ function PlayerProfileView({
 
               if (!arcBuckets.length) return null
               return (
-                <div className="profile-panel-card">
-                  <div className="panel-header">
-                    <span className="panel-label">Approach by Distance</span>
-                    <span className="panel-label-dim">
-                      Semicircle arc per yardage bucket — tick marks = tour average
-                    </span>
-                  </div>
+                <BentoPanel title="Approach by Distance" span={12} testId="players-profile-approach-panel">
+                  <p className="panel-label-dim mb-3 block">
+                    Semicircle arc per yardage bucket. Tick marks show tour average.
+                  </p>
                   <div className="profile-panel-card-body">
                     <ApproachArcGauges buckets={arcBuckets} />
                   </div>
-                </div>
+                </BentoPanel>
               )
             })()
           : null}
 
         {p.recent_events.length > 0 ? (
-          <div className="profile-panel-card">
-            <div className="panel-header">
-              <span className="panel-label">Tournament History</span>
-              <span className="panel-label-dim">
-                Win = gold · Top 10 = green · MC = red — inline SG bars per category
-              </span>
-            </div>
+          <BentoPanel title="Tournament History" span={12} testId="players-profile-history-panel">
+            <p className="panel-label-dim mb-3 block">
+              Win = gold. Top 10 = green. MC = red. Inline bars show SG by category.
+            </p>
             <div className="profile-panel-card-body">
               <HistoryTable events={p.recent_events as HistoryEvent[]} maxRows={16} />
             </div>
-          </div>
+          </BentoPanel>
         ) : null}
 
         {!p.has_skill_data && !p.has_ranking_data && !p.has_approach_data && p.recent_events.length === 0 ? (
@@ -638,48 +633,42 @@ export function PlayersPage({
   }, [effectiveKey])
 
   return (
-    <div className="players-page-shell monitor-players-page" data-testid="players-page">
-      <HeroBand
-        eyebrow="Field intelligence"
-        title="Players"
-        meta="Deep-dive profiles independent of active tournament context."
-      >
-        <div className="terminal-kpi-strip monitoring-macro-kpi-strip players-page-kpis">
-          <span className="terminal-kpi monitoring-macro-kpi-cell">
-            <span className="terminal-kpi-label monitoring-macro-kpi-label">Field</span>
-            <span className="terminal-kpi-value monitoring-macro-kpi-value num">{players.length}</span>
-          </span>
-          {effectiveKey ? (
-            <span className="terminal-kpi monitoring-macro-kpi-cell">
-              <span className="terminal-kpi-label monitoring-macro-kpi-label">Selected</span>
-              <span className="terminal-kpi-value monitoring-macro-kpi-value">{effectiveDisplay}</span>
-            </span>
-          ) : null}
-        </div>
-      </HeroBand>
-      <div className="mb-4">
+    <div
+      className="monitor-research-page monitor-scroll-region product-page--satellite"
+      data-testid="players-page"
+    >
+      <div className="px-5 pt-5">
+        <PageHeader
+          eyebrow="Field intelligence"
+          title="Players"
+          description="Deep-dive standalone profiles with field-board context and theme-aware charts."
+        />
+      </div>
+      <div className="px-5 pb-4 pt-4">
         <FieldBoardPanel onSelect={handleSelect} />
       </div>
-      <div className="players-layout players-layout--full-width">
-      <PlayerSearchSidebar
-        activePlayers={players}
-        selectedKey={effectiveKey}
-        onSelect={handleSelect}
-        trajectoryBounds={trajectoryBounds}
-      />
-
-      <div className="players-layout-main">
-        {effectiveKey ? (
-          <PlayerProfileView
-            key={effectiveKey}
-            playerKey={effectiveKey}
-            playerDisplay={effectiveDisplay}
+      <div className="px-5 pb-5">
+        <div className="players-layout players-layout--full-width">
+          <PlayerSearchSidebar
             activePlayers={players}
+            selectedKey={effectiveKey}
+            onSelect={handleSelect}
+            trajectoryBounds={trajectoryBounds}
           />
-        ) : (
-          <PlayersEmptyPrompt />
-        )}
-      </div>
+
+          <div className="players-layout-main">
+            {effectiveKey ? (
+              <PlayerProfileView
+                key={effectiveKey}
+                playerKey={effectiveKey}
+                playerDisplay={effectiveDisplay}
+                activePlayers={players}
+              />
+            ) : (
+              <PlayersEmptyPrompt />
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

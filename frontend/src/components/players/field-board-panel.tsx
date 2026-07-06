@@ -2,6 +2,8 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 
+import { BentoPanel } from "@/components/monitoring"
+import { ErrorState } from "@/components/ui/feedback-state"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { api } from "@/lib/api"
 import { POLLING } from "@/lib/query-polling"
@@ -36,12 +38,14 @@ export function FieldBoardPanel({
         id: "player",
         header: "Player",
         accessorKey: "player",
-        cell: ({ row }) => <span className="text-[var(--text-primary)]">{row.original.player}</span>,
+        meta: { label: "Player", sticky: true },
+        cell: ({ row }) => <span className="font-medium text-[var(--text-primary)]">{row.original.player}</span>,
       },
       {
         id: "champion_rank",
         header: "Champ #",
         accessorFn: (r) => r.champion_rank ?? Number.MAX_SAFE_INTEGER,
+        meta: { label: "Champ #", align: "right", mono: true },
         cell: ({ row }) => <span className="num">{row.original.champion_rank ?? "—"}</span>,
       },
     ]
@@ -51,12 +55,14 @@ export function FieldBoardPanel({
           id: "challenger_rank",
           header: "Chlgr #",
           accessorFn: (r) => r.challenger_rank ?? Number.MAX_SAFE_INTEGER,
+          meta: { label: "Chlgr #", align: "right", mono: true },
           cell: ({ row }) => <span className="num">{row.original.challenger_rank ?? "—"}</span>,
         },
         {
           id: "rank_delta",
           header: "Δ",
           accessorFn: (r) => (r.rank_delta == null ? 0 : Math.abs(r.rank_delta)),
+          meta: { label: "Rank delta", align: "right", mono: true },
           cell: ({ row }) => {
             const d = row.original.rank_delta
             if (d == null) return <span className="num text-[var(--text-faint)]">—</span>
@@ -67,15 +73,46 @@ export function FieldBoardPanel({
       )
     }
     cols.push(
-      { id: "composite", header: "Composite", accessorFn: (r) => r.composite ?? 0, cell: ({ row }) => <span className="num">{fmt(row.original.composite)}</span> },
-      { id: "form", header: "Form", accessorFn: (r) => r.form ?? 0, cell: ({ row }) => <span className="num">{fmt(row.original.form)}</span> },
-      { id: "course_fit", header: "Course", accessorFn: (r) => r.course_fit ?? 0, cell: ({ row }) => <span className="num">{fmt(row.original.course_fit)}</span> },
-      { id: "momentum", header: "Mom.", accessorFn: (r) => r.momentum ?? 0, cell: ({ row }) => <span className="num">{fmt(row.original.momentum, 2)}</span> },
-      { id: "matchup_count", header: "Matchups", accessorFn: (r) => r.matchup_count, cell: ({ row }) => <span className="num">{row.original.matchup_count || "—"}</span> },
+      {
+        id: "composite",
+        header: "Composite",
+        accessorFn: (r) => r.composite ?? 0,
+        meta: { label: "Composite", align: "right", mono: true },
+        cell: ({ row }) => <span className="num">{fmt(row.original.composite)}</span>,
+      },
+      {
+        id: "form",
+        header: "Form",
+        accessorFn: (r) => r.form ?? 0,
+        meta: { label: "Form", align: "right", mono: true },
+        cell: ({ row }) => <span className="num">{fmt(row.original.form)}</span>,
+      },
+      {
+        id: "course_fit",
+        header: "Course",
+        accessorFn: (r) => r.course_fit ?? 0,
+        meta: { label: "Course", align: "right", mono: true },
+        cell: ({ row }) => <span className="num">{fmt(row.original.course_fit)}</span>,
+      },
+      {
+        id: "momentum",
+        header: "Mom.",
+        accessorFn: (r) => r.momentum ?? 0,
+        meta: { label: "Momentum", align: "right", mono: true },
+        cell: ({ row }) => <span className="num">{fmt(row.original.momentum, 2)}</span>,
+      },
+      {
+        id: "matchup_count",
+        header: "Matchups",
+        accessorFn: (r) => r.matchup_count,
+        meta: { label: "Matchups", align: "right", mono: true },
+        cell: ({ row }) => <span className="num">{row.original.matchup_count || "—"}</span>,
+      },
       {
         id: "in_positive_ev",
         header: "+EV",
         accessorFn: (r) => (r.in_positive_ev ? 1 : 0),
+        meta: { label: "+EV", align: "center" },
         cell: ({ row }) =>
           row.original.in_positive_ev ? (
             <span className="filter-chip active" aria-label="In a positive-EV pick">+EV</span>
@@ -89,28 +126,29 @@ export function FieldBoardPanel({
 
   if (query.isError) {
     return (
-      <div className="card" data-testid="field-board-error">
-        <div className="card-body text-sm text-[var(--text-secondary)]">
-          Field board unavailable. Ensure the live-refresh snapshot has a current field.
-        </div>
-      </div>
+      <BentoPanel title="Field board" span={12} testId="field-board-panel">
+        <ErrorState
+          message="Field board unavailable. Ensure the live-refresh snapshot has a current field."
+          className="min-h-0"
+        />
+      </BentoPanel>
     )
   }
 
   const players = query.data?.players ?? []
+  const subtitle = `${query.data?.player_count ?? 0} players · ${query.data?.section ?? "—"}${labAvailable ? " · champion vs challenger" : " · champion only (lab lane off)"}`
 
   return (
-    <section className="card" data-testid="field-board-panel">
-      <div className="card-header">
-        <div className="card-title">
-          Field board{query.data?.event_name ? ` — ${query.data.event_name}` : ""}
-        </div>
-        <div className="text-xs text-[var(--text-faint)]">
-          {query.data?.player_count ?? 0} players · {query.data?.section ?? "—"}
-          {labAvailable ? " · champion vs challenger" : " · champion only (lab lane off)"}
-        </div>
-      </div>
-      <div className="card-body">
+    <BentoPanel
+      title={`Field board${query.data?.event_name ? ` — ${query.data.event_name}` : ""}`}
+      action={<span className="text-xs text-[var(--text-faint)]">{subtitle}</span>}
+      span={12}
+      testId="field-board-panel"
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-[var(--text-secondary)]">
+          Full-field view across both tracks. Select a row to open that player below.
+        </p>
         <ProDataGrid<FieldBoardPlayer>
           data={players}
           columns={columns}
@@ -121,9 +159,10 @@ export function FieldBoardPanel({
           emptyMessage="No field loaded yet. Field appears once the live-refresh snapshot has an event."
           getRowTestId={(row) => `field-board-row-${row.player_key}`}
           onRowClick={(row) => onSelect?.(row.player_key, row.player)}
+          showDensityToggle
           testId="field-board-grid"
         />
       </div>
-    </section>
+    </BentoPanel>
   )
 }
