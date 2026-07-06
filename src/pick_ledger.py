@@ -79,6 +79,17 @@ def _section_to_phase(section: str) -> str:
     return "in_play"
 
 
+def _serialize_payload_for_lifecycle(
+    *,
+    row: dict[str, Any],
+    payload: dict[str, Any],
+    lifecycle: str,
+) -> str:
+    if str(lifecycle or "").strip().lower() == "generated":
+        return "{}"
+    return json.dumps(payload or row)
+
+
 def _ledger_row_from_market_row(
     row: dict[str, Any],
     *,
@@ -159,7 +170,7 @@ def _ledger_row_from_market_row(
         "snapshot_id": snapshot_id,
         "generated_at": row.get("generated_at") or datetime.now(timezone.utc).isoformat(),
         "source_origin": source_origin,
-        "payload_json": json.dumps(payload or row),
+        "payload_json": _serialize_payload_for_lifecycle(row=row, payload=payload, lifecycle=lifecycle),
     }
 
 

@@ -6,6 +6,7 @@ from src import db
 from src.pick_ledger import (
     compute_pick_key,
     insert_authoritative_pick_outcome,
+    persist_pick_ledger_from_market_rows,
     persist_pick_ledger_rows,
     result_to_hit,
 )
@@ -190,3 +191,85 @@ def test_authoritative_outcome_locked(tmp_db, sample_tournament):
     assert int(row["outcome_locked"]) == 1
     assert float(row["profit"]) == 1.03
     assert row["grading_authority"] == "trackRecord_json"
+
+
+def test_generated_market_rows_store_slim_payload_json(tmp_db, sample_tournament):
+    _, tid = sample_tournament
+    market_rows = [{
+        "snapshot_id": "snap-generated",
+        "generated_at": "2026-06-01T12:00:00+00:00",
+        "section": "upcoming",
+        "event_id": "99",
+        "event_name": "Test Open",
+        "market_family": "matchup",
+        "market_type": "tournament_matchups",
+        "player_key": "player_a",
+        "player_display": "Player A",
+        "opponent_key": "player_b",
+        "opponent_display": "Player B",
+        "book": "draftkings",
+        "odds": "+110",
+        "model_prob": 0.55,
+        "implied_prob": 0.48,
+        "ev": 0.07,
+        "is_value": 1,
+        "payload_json": '{"full": true, "book": "draftkings"}',
+    }]
+
+    inserted = persist_pick_ledger_from_market_rows(
+        market_rows,
+        lifecycle="generated",
+        tournament_id=tid,
+        year=2026,
+    )
+
+    assert inserted == 1
+    conn = db.get_conn()
+    row = conn.execute(
+        "SELECT lifecycle, payload_json FROM pick_ledger WHERE snapshot_id = ?",
+        ("snap-generated",),
+    ).fetchone()
+    conn.close()
+    assert row["lifecycle"] == "generated"
+    assert row["payload_json"] == "{}"
+
+
+def test_canonical_market_rows_keep_full_payload_json(tmp_db, sample_tournament):
+    _, tid = sample_tournament
+    market_rows = [{
+        "snapshot_id": "snap-canonical",
+        "generated_at": "2026-06-01T12:00:00+00:00",
+        "section": "upcoming",
+        "event_id": "99",
+        "event_name": "Test Open",
+        "market_family": "matchup",
+        "market_type": "tournament_matchups",
+        "player_key": "player_a",
+        "player_display": "Player A",
+        "opponent_key": "player_b",
+        "opponent_display": "Player B",
+        "book": "draftkings",
+        "odds": "+110",
+        "model_prob": 0.55,
+        "implied_prob": 0.48,
+        "ev": 0.07,
+        "is_value": 1,
+        "payload_json": '{"full": true, "book": "draftkings"}',
+    }]
+
+    inserted = persist_pick_ledger_from_market_rows(
+        market_rows,
+        lifecycle="canonical",
+        tournament_id=tid,
+        year=2026,
+    )
+
+    assert inserted == 1
+    conn = db.get_conn()
+    row = conn.execute(
+        "SELECT lifecycle, payload_json FROM pick_ledger WHERE snapshot_id = ?",
+        ("snap-canonical",),
+    ).fetchone()
+    conn.close()
+    assert row["lifecycle"] == "canonical"
+    assert row["payload_json"] == '{"full": true, "book": "draftkings"}'
