@@ -107,7 +107,7 @@ install_systemd_units() {
         echo "[deploy] deploy/systemd missing; skipping unit sync"
         return 0
     fi
-    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer; do
+    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer; do
         if [ -f "${DEPLOY_PATH}/deploy/systemd/${unit}" ]; then
             cp "${DEPLOY_PATH}/deploy/systemd/${unit}" "/etc/systemd/system/${unit}"
             echo "[deploy] synced ${unit}"
@@ -117,6 +117,10 @@ install_systemd_units() {
     if systemctl list-unit-files golf-live-refresh-watchdog.timer >/dev/null 2>&1; then
         systemctl enable --now golf-live-refresh-watchdog.timer || true
         echo "[deploy] enabled golf-live-refresh-watchdog.timer"
+    fi
+    if systemctl list-unit-files golf-grading-sweep.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-grading-sweep.timer || true
+        echo "[deploy] enabled golf-grading-sweep.timer"
     fi
 }
 
