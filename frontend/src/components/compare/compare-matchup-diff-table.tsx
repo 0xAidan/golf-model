@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import type { MatchupBucket, MatchupDiffRow } from "@/components/compare/compare-types"
 import { filterMatchupDiffRows } from "@/components/compare/compare-utils"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
+import { PickRow } from "@/components/ui/pick-row"
 
 const BUCKETS: { id: MatchupBucket; label: string }[] = [
   { id: "both", label: "Both" },
@@ -23,29 +24,31 @@ export function CompareMatchupDiffTable({ rows }: { rows: MatchupDiffRow[] }) {
       {
         id: "pick",
         header: "Pick",
-        accessorKey: "pick",
+        accessorKey: "key",
+        meta: { label: "Pick", sticky: true },
         cell: ({ row }) => (
-          <span className="text-[var(--text-primary)]">{row.original.pick}</span>
+          <PickRow bet={row.original.sourceBet} />
         ),
       },
-      { id: "opponent", header: "Opponent", accessorKey: "opponent" },
-      { id: "book", header: "Book", accessorKey: "book" },
       {
         id: "championEv",
         header: "Champ EV",
         accessorFn: (r) => r.championEv ?? -999,
+        meta: { label: "Champ EV", align: "right", mono: true },
         cell: ({ row }) => <span className="num">{fmtEv(row.original.championEv)}</span>,
       },
       {
         id: "challengerEv",
         header: "Chlgr EV",
         accessorFn: (r) => r.challengerEv ?? -999,
+        meta: { label: "Chlgr EV", align: "right", mono: true },
         cell: ({ row }) => <span className="num">{fmtEv(row.original.challengerEv)}</span>,
       },
       {
         id: "evDelta",
         header: "Δ EV",
         accessorFn: (r) => Math.abs(r.evDelta ?? 0),
+        meta: { label: "EV delta", align: "right", mono: true },
         cell: ({ row }) => {
           const d = row.original.evDelta
           if (d == null) return <span className="num text-[var(--text-faint)]">—</span>
@@ -62,12 +65,14 @@ export function CompareMatchupDiffTable({ rows }: { rows: MatchupDiffRow[] }) {
         id: "championProb",
         header: "Champ prob",
         accessorFn: (r) => r.championProb ?? 0,
+        meta: { label: "Champ prob", align: "right", mono: true },
         cell: ({ row }) => <span className="num">{fmtProb(row.original.championProb)}</span>,
       },
       {
         id: "challengerProb",
         header: "Chlgr prob",
         accessorFn: (r) => r.challengerProb ?? 0,
+        meta: { label: "Chlgr prob", align: "right", mono: true },
         cell: ({ row }) => <span className="num">{fmtProb(row.original.challengerProb)}</span>,
       },
     ],
