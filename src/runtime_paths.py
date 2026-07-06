@@ -21,6 +21,7 @@ HEARTBEAT_FILENAME = "live_refresh_heartbeat.json"
 SNAPSHOT_FILENAME = "live_refresh_snapshot.json"
 CYCLE_LOCK_FILENAME = "live_refresh_cycle.lock"
 MANUAL_TRIGGER_FILENAME = "live_refresh_manual_trigger.json"
+WORKER_RESTART_REQUEST_FILENAME = "live_refresh_worker_restart_request.json"
 
 
 def get_app_root() -> Path:
@@ -58,6 +59,10 @@ def get_cycle_lock_path() -> Path:
 
 def get_manual_trigger_path() -> Path:
     return get_data_dir() / MANUAL_TRIGGER_FILENAME
+
+
+def get_worker_restart_request_path() -> Path:
+    return get_data_dir() / WORKER_RESTART_REQUEST_FILENAME
 
 
 def is_production_deployment() -> bool:

@@ -389,4 +389,29 @@ export const api = {
       RESEARCH_INSTRUMENTATION_TIMEOUT_MS,
     )
   },
+  getOpsHealth: () =>
+    request<{
+      ok: boolean
+      summary: string
+      disk?: {
+        free_mb: number | null
+        warn_mb: number | null
+        hard_mb: number | null
+        state: string
+      }
+      worker_restart_request?: Record<string, unknown> | null
+      grading?: Record<string, unknown>
+      live_refresh?: Record<string, unknown>
+    }>("/api/ops/health"),
+  requestWorkerRestart: (payload?: { requested_by?: string }) =>
+    request<{
+      ok: boolean
+      status: string
+      message?: string
+      request?: Record<string, unknown>
+    }>("/api/ops/worker/restart", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload ?? {}),
+    }),
 }
