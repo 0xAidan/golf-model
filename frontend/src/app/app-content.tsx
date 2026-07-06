@@ -15,7 +15,7 @@ import { api } from "@/lib/api"
 import { markAutoStaleRefresh, shouldAutoStaleRefresh } from "@/lib/auto-stale-refresh"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { formatDateTime } from "@/lib/format"
-import { seasonEventsToGradingHistory } from "@/lib/grading-season"
+import { pickLatestGradedSeasonEvent, seasonEventsToGradingHistory } from "@/lib/grading-season"
 import { formatAgeLabel } from "@/lib/snapshot-chip"
 import { lazyWithRetry } from "@/lib/lazy-import"
 import {
@@ -729,6 +729,34 @@ export function AppContent({
   )
   const gradingHistory = gradingHistoryData.tournaments ?? []
   const gradingRecordSummary = gradingHistoryData.summary
+  const lastEventChip = useMemo(() => {
+    const seasonEvents = gradingHistoryQuery.data?.events ?? []
+    const latestSeasonEvent =
+      [...seasonEvents]
+        .reverse()
+        .find((event) => {
+          const lane =
+            gradingHistoryPickSource === "lab" ? event.lanes?.lab : event.lanes?.dashboard
+          return (
+            (lane?.inventory_count ?? 0) > 0 ||
+            (lane?.graded_pick_count ?? 0) > 0 ||
+            event.has_results
+          )
+        }) ?? pickLatestGradedSeasonEvent(seasonEvents, gradingHistoryPickSource)
+
+    if (!latestSeasonEvent) return null
+
+    const lane =
+      gradingHistoryPickSource === "lab"
+        ? latestSeasonEvent.lanes?.lab
+        : latestSeasonEvent.lanes?.dashboard
+
+    return {
+      eventName: latestSeasonEvent.name,
+      gradedCount: Number(lane?.graded_pick_count ?? latestSeasonEvent.graded_pick_count ?? 0),
+      ungradedPositiveEvCount: Number(lane?.ungraded_positive_ev_count ?? 0),
+    }
+  }, [gradingHistoryPickSource, gradingHistoryQuery.data?.events])
   const dashboard = dashboardQuery.data
   const preferredPastEventId = dashboard?.latest_completed_event?.event_id
     ? String(dashboard.latest_completed_event.event_id)
@@ -775,6 +803,7 @@ export function AppContent({
       filteredMatchups,
       gradingHistory,
       gradingRecordSummary,
+      lastEventChip,
       players,
       predictionRun: effectivePredictionRun,
       selectedPlayerKey,
@@ -834,6 +863,7 @@ export function AppContent({
       dashboardPowerRankingsSubtitle,
       handlePastEventContextChange,
       preferredPastEventId,
+      lastEventChip,
       liveSnapshot,
       matchupsPageEmptyMessage,
       picksMarketRows,
@@ -879,6 +909,7 @@ export function AppContent({
       filteredMatchups: labFilteredMatchups,
       gradingHistory,
       gradingRecordSummary,
+      lastEventChip,
       players: labPlayers,
       predictionRun: labWorkspaceHydrated,
       selectedPlayerKey,
@@ -938,6 +969,7 @@ export function AppContent({
       labSecondaryBets,
       labPowerRankingsSubtitle,
       preferredPastEventId,
+      lastEventChip,
       liveSnapshot,
       labMatchupsEmptyMessage,
       labPicksMarketRows,

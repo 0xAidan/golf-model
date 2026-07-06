@@ -9,6 +9,7 @@ type CockpitBoardStackProps = {
   leaderboard?: ReactNode
   fullPicks?: ReactNode
   fullPicksTabLabel?: string
+  hideTopPicksTab?: boolean
   /** Live / past: show leaderboard panel. Upcoming: omit fourth panel. */
   showLeaderboard: boolean
   /** Narrow viewports: vertical scroll stack instead of tabs. */
@@ -27,16 +28,22 @@ export function CockpitResizableStack({
   leaderboard,
   fullPicks,
   fullPicksTabLabel = "Full picks",
+  hideTopPicksTab = false,
   showLeaderboard,
   layout = "panels",
   compactView,
   defaultTabId,
 }: CockpitBoardStackProps) {
-  const tabs: CockpitTabOption[] = [
-    { id: "picks", label: "Top picks", content: topPicks },
-    { id: "rankings", label: "Rankings", content: rankings },
-    { id: "markets", label: "Markets", content: secondary },
-  ]
+  const tabs: CockpitTabOption[] = hideTopPicksTab
+    ? [
+        { id: "rankings", label: "Rankings", content: rankings },
+        { id: "markets", label: "Markets", content: secondary },
+      ]
+    : [
+        { id: "picks", label: "Top picks", content: topPicks },
+        { id: "rankings", label: "Rankings", content: rankings },
+        { id: "markets", label: "Markets", content: secondary },
+      ]
   if (showLeaderboard && leaderboard != null) {
     tabs.push({ id: "board", label: "Leaderboard", content: leaderboard })
   }
@@ -79,7 +86,7 @@ export function CockpitResizableStack({
   if (layout === "stack") {
     return (
       <div className="cockpit-stack-scroll">
-        {topPicks}
+        {!hideTopPicksTab ? topPicks : null}
         {rankings}
         {secondary}
         {showLeaderboard && leaderboard != null ? leaderboard : null}
@@ -92,7 +99,7 @@ export function CockpitResizableStack({
     <CockpitTabbedStack
       className="cockpit-center-tabbed-stack"
       tabs={tabs}
-      defaultTabId={defaultTabId ?? "picks"}
+      defaultTabId={defaultTabId ?? (hideTopPicksTab ? "rankings" : "picks")}
       ariaLabel="Dashboard boards"
     />
   )
