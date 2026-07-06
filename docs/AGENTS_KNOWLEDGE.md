@@ -796,6 +796,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Frontend API client / types | `frontend/src/lib/api.ts`, `frontend/src/lib/types.ts` |
 | Frontend UI components | `frontend/src/components/` |
 | Frontend overhaul evidence / DoD | `docs/frontend-overhaul/` (DEFINITION_OF_DONE.md, 09-evidence-packet-index.md) |
+| UI-first recovery program (2026-07) | `origin/plan/ui-first-recovery`, `docs/frontend-overhaul/verification-2026-07-06.log`, `docs/design/ui-design-contract.md`; stabilizer S1–S5, UI U1–U12, storage D1–D5, grading G1–G5 all on `main` |
 | V3 screenshot baseline | `docs/screenshots/ui-overhaul-v3/` |
 | Frontend build config | `frontend/vite.config.ts`, `frontend/tailwind.config.ts` |
 | Backtest strategy replay | `backtester/strategy.py`, `backtester/pit_models.py` |

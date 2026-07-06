@@ -162,3 +162,15 @@ sqlite3.OperationalError: database is locked
   - `cd frontend && npm run typecheck`
   - `cd frontend && npm run test`
   - `cd frontend && npm run build`
+
+=== Program exit / Checkpoint C 2026-07-06T23:45:00Z ===
+- G5 (#215) merged after rebase: freeze completeness + market_type persist + void regression tests.
+- Deploy `./deploy.sh --update-local`: SUCCESS (ops_verify all checks passed after worker warm-up).
+- Grading reconciliation: cockpit ok (0 ungraded +EV), lab ok (0 ungraded +EV) after re-grade Travelers (event 34) + U.S. Open (event 26).
+- Retention dry-run: ok (SNAPSHOT_HISTORY_RETAIN_DAYS=210, snapshot_history + research_rotation).
+- Orphan sidecar sweep: [] (none).
+- Timers: golf-grading-sweep.timer active; golf-retention.timer active.
+- Frontend gate: typecheck pass; 203 vitest pass; production build via deploy.
+- Python: G5 + grading subset 14 pass; full suite slow on VPS (>8 min at 10%); known pre-existing failure in tests/test_ab_compare.py (not recovery-related).
+- Screenshot baseline: docs/screenshots/ui-overhaul-v3/ (prior matrix; U12 cohesion docs in ui-design-contract appendix).
+- UI-first recovery program: COMPLETE (S0–S5, U1–U12, D1–D5, G1–G5 merged to main).
