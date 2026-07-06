@@ -22,7 +22,7 @@ from src.atomic_io import atomic_write_json
 from src.autoresearch_settings import get_settings
 from src.datagolf import fetch_in_play_predictions, parse_in_play_leaderboard
 from src.live_stats_source import live_sg_trajectory_trend, parse_live_stats_from_in_play
-from src.disk_guard import warn_if_low_disk
+from src.disk_guard import disk_state, warn_if_low_disk
 from src.lab_profile import resolve_lab_model_variant
 from src.live_refresh_policy import get_auto_grade_retry_seconds, resolve_cadence
 from src.player_normalizer import normalize_name
@@ -363,6 +363,140 @@ def _trim_snapshot_section_for_memory(section: dict[str, Any]) -> dict[str, Any]
         )
         trimmed["diagnostics"] = diag_copy
     return trimmed
+
+
+def _record_grading_readiness(snapshot: dict[str, Any]) -> None:
+    try:
+        from src.event_pick_freeze import ensure_event_grading_readiness
+
+        live_section = snapshot.get("live_tournament") or {}
+        readiness_event_id = str(live_section.get("source_event_id") or "").strip()
+        if readiness_event_id:
+            readiness = ensure_event_grading_readiness(
+                readiness_event_id,
+                year=int(live_section.get("year") or datetime.now(timezone.utc).year),
+                event_name=str(live_section.get("event_name") or "").strip() or None,
+            )
+            snapshot.setdefault("diagnostics", {})["grading_readiness"] = readiness
+    except Exception as readiness_exc:
+        _logger.warning("Grading readiness check failed: %s", readiness_exc)
+        snapshot.setdefault("diagnostics", {})["grading_readiness_error"] = str(readiness_exc)
+
+
+def _persist_snapshot_tail(
+    *,
+    snapshot: dict[str, Any],
+    snapshot_id: str,
+    generated_at: str,
+    tour: str,
+    cadence_mode: str,
+    live_result: dict[str, Any],
+    live_diag: dict[str, Any],
+    upcoming_result: dict[str, Any] | None,
+    legacy_result: dict[str, Any] | None,
+    lab_rows_extra: list[dict[str, Any]],
+) -> None:
+    diagnostics = snapshot.setdefault("diagnostics", {})
+    if disk_state(str(get_data_dir())) == "hard":
+        diagnostics["disk_guard"] = "shedding"
+        diagnostics["history_rows_written"] = 0
+        diagnostics["market_rows_written"] = 0
+        diagnostics["pick_ledger_written"] = 0
+        _record_grading_readiness(snapshot)
+        return
+
+    try:
+        history_count = db.store_live_snapshot_sections(
+            snapshot_id,
+            generated_at=generated_at,
+            tour=tour,
+            cadence_mode=cadence_mode,
+            live_section=snapshot.get("live_tournament"),
+            upcoming_section=snapshot.get("upcoming_tournament"),
+        )
+        diagnostics["history_rows_written"] = history_count
+    except Exception as exc:
+        _logger.warning("Failed to persist snapshot history rows: %s", exc)
+        diagnostics["history_rows_written"] = 0
+        diagnostics["history_write_error"] = str(exc)
+
+    try:
+        market_rows = []
+        live_market_section = dict(snapshot.get("live_tournament") or {})
+        live_market_section["matchup_bets_all_books"] = (
+            live_result.get("matchup_bets_all_books") or live_result.get("matchup_bets") or []
+        )
+        live_market_section["all_value_bets"] = live_result.get("value_bets") or {}
+        live_market_section["all_failed_candidates"] = (live_diag or {}).get("failed_candidates") or []
+        upcoming_market_section = dict(snapshot.get("upcoming_tournament") or {})
+        upcoming_market_section["matchup_bets_all_books"] = (
+            (upcoming_result or {}).get("matchup_bets_all_books")
+            or (upcoming_result or {}).get("matchup_bets")
+            or []
+        )
+        upcoming_market_section["all_value_bets"] = (upcoming_result or {}).get("value_bets") or {}
+        upcoming_market_section["all_failed_candidates"] = (
+            ((upcoming_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
+        )
+        legacy_market_section = dict(snapshot.get("legacy_tournament") or {})
+        legacy_market_section["matchup_bets_all_books"] = (
+            (legacy_result or {}).get("matchup_bets_all_books")
+            or (legacy_result or {}).get("matchup_bets")
+            or []
+        )
+        legacy_market_section["all_value_bets"] = (legacy_result or {}).get("value_bets") or {}
+        legacy_market_section["all_failed_candidates"] = (
+            ((legacy_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
+        )
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="live",
+                section_payload=live_market_section,
+            )
+        )
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="upcoming",
+                section_payload=upcoming_market_section,
+            )
+        )
+        market_rows.extend(
+            _build_market_prediction_rows(
+                snapshot_id=snapshot_id,
+                generated_at=generated_at,
+                tour=tour,
+                section_name="legacy",
+                section_payload=legacy_market_section,
+            )
+        )
+        if lab_rows_extra:
+            market_rows.extend(lab_rows_extra)
+        market_rows_written = db.store_market_prediction_rows(market_rows)
+        diagnostics["market_rows_written"] = market_rows_written
+        try:
+            from src.pick_ledger import persist_pick_ledger_from_market_rows
+
+            ledger_written = persist_pick_ledger_from_market_rows(
+                market_rows,
+                lifecycle="generated",
+                source_origin="live_refresh",
+            )
+            diagnostics["pick_ledger_written"] = ledger_written
+        except Exception as ledger_exc:
+            _logger.warning("Failed to persist pick ledger rows: %s", ledger_exc)
+            diagnostics["pick_ledger_write_error"] = str(ledger_exc)
+    except Exception as exc:
+        _logger.warning("Failed to persist market prediction rows: %s", exc)
+        diagnostics["market_rows_written"] = 0
+        diagnostics["market_rows_write_error"] = str(exc)
+
+    _record_grading_readiness(snapshot)
 
 
 def _maybe_prune_snapshot_history_tables(snapshot: dict[str, Any]) -> None:
@@ -3703,113 +3837,19 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             snapshot[section_key] = _trim_snapshot_section_for_memory(section_payload)
     _touch_progress(phase="publish", phase_detail="writing live snapshot")
     _write_snapshot(snapshot)
-    try:
-        _touch_progress(phase="persist", phase_detail="sqlite history + market rows")
-        history_count = db.store_live_snapshot_sections(
-            snapshot_id,
-            generated_at=generated_at,
-            tour=tour,
-            cadence_mode=cadence_mode,
-            live_section=snapshot.get("live_tournament"),
-            upcoming_section=snapshot.get("upcoming_tournament"),
-        )
-        snapshot.setdefault("diagnostics", {})["history_rows_written"] = history_count
-    except Exception as exc:
-        _logger.warning("Failed to persist snapshot history rows: %s", exc)
-        snapshot.setdefault("diagnostics", {})["history_rows_written"] = 0
-        snapshot.setdefault("diagnostics", {})["history_write_error"] = str(exc)
-    try:
-        market_rows = []
-        live_market_section = dict(snapshot.get("live_tournament") or {})
-        live_market_section["matchup_bets_all_books"] = (
-            live_result.get("matchup_bets_all_books") or live_result.get("matchup_bets") or []
-        )
-        live_market_section["all_value_bets"] = live_result.get("value_bets") or {}
-        live_market_section["all_failed_candidates"] = (live_diag or {}).get("failed_candidates") or []
-        upcoming_market_section = dict(snapshot.get("upcoming_tournament") or {})
-        upcoming_market_section["matchup_bets_all_books"] = (
-            (upcoming_result or {}).get("matchup_bets_all_books")
-            or (upcoming_result or {}).get("matchup_bets")
-            or []
-        )
-        upcoming_market_section["all_value_bets"] = (upcoming_result or {}).get("value_bets") or {}
-        upcoming_market_section["all_failed_candidates"] = (
-            ((upcoming_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
-        )
-        legacy_market_section = dict(snapshot.get("legacy_tournament") or {})
-        legacy_market_section["matchup_bets_all_books"] = (
-            (legacy_result or {}).get("matchup_bets_all_books")
-            or (legacy_result or {}).get("matchup_bets")
-            or []
-        )
-        legacy_market_section["all_value_bets"] = (legacy_result or {}).get("value_bets") or {}
-        legacy_market_section["all_failed_candidates"] = (
-            ((legacy_result or {}).get("matchup_diagnostics") or {}).get("failed_candidates") or []
-        )
-        market_rows.extend(
-            _build_market_prediction_rows(
-                snapshot_id=snapshot_id,
-                generated_at=generated_at,
-                tour=tour,
-                section_name="live",
-                section_payload=live_market_section,
-            )
-        )
-        market_rows.extend(
-            _build_market_prediction_rows(
-                snapshot_id=snapshot_id,
-                generated_at=generated_at,
-                tour=tour,
-                section_name="upcoming",
-                section_payload=upcoming_market_section,
-            )
-        )
-        market_rows.extend(
-            _build_market_prediction_rows(
-                snapshot_id=snapshot_id,
-                generated_at=generated_at,
-                tour=tour,
-                section_name="legacy",
-                section_payload=legacy_market_section,
-            )
-        )
-        if lab_rows_extra:
-            market_rows.extend(lab_rows_extra)
-        market_rows_written = db.store_market_prediction_rows(market_rows)
-        snapshot.setdefault("diagnostics", {})["market_rows_written"] = market_rows_written
-        try:
-            from src.pick_ledger import persist_pick_ledger_from_market_rows
-
-            ledger_written = persist_pick_ledger_from_market_rows(
-                market_rows,
-                lifecycle="generated",
-                source_origin="live_refresh",
-            )
-            snapshot.setdefault("diagnostics", {})["pick_ledger_written"] = ledger_written
-        except Exception as ledger_exc:
-            _logger.warning("Failed to persist pick ledger rows: %s", ledger_exc)
-            snapshot.setdefault("diagnostics", {})["pick_ledger_write_error"] = str(ledger_exc)
-        try:
-            from datetime import datetime, timezone
-
-            from src.event_pick_freeze import ensure_event_grading_readiness
-
-            live_section = snapshot.get("live_tournament") or {}
-            readiness_event_id = str(live_section.get("source_event_id") or "").strip()
-            if readiness_event_id:
-                readiness = ensure_event_grading_readiness(
-                    readiness_event_id,
-                    year=int(live_section.get("year") or datetime.now(timezone.utc).year),
-                    event_name=str(live_section.get("event_name") or "").strip() or None,
-                )
-                snapshot.setdefault("diagnostics", {})["grading_readiness"] = readiness
-        except Exception as readiness_exc:
-            _logger.warning("Grading readiness check failed: %s", readiness_exc)
-            snapshot.setdefault("diagnostics", {})["grading_readiness_error"] = str(readiness_exc)
-    except Exception as exc:
-        _logger.warning("Failed to persist market prediction rows: %s", exc)
-        snapshot.setdefault("diagnostics", {})["market_rows_written"] = 0
-        snapshot.setdefault("diagnostics", {})["market_rows_write_error"] = str(exc)
+    _touch_progress(phase="persist", phase_detail="sqlite history + market rows")
+    _persist_snapshot_tail(
+        snapshot=snapshot,
+        snapshot_id=snapshot_id,
+        generated_at=generated_at,
+        tour=tour,
+        cadence_mode=cadence_mode,
+        live_result=live_result,
+        live_diag=live_diag,
+        upcoming_result=upcoming_result,
+        legacy_result=legacy_result,
+        lab_rows_extra=lab_rows_extra,
+    )
     _maybe_prune_snapshot_history_tables(snapshot)
     try:
         _touch_progress(phase="shadow_mc", phase_detail="shadow monte carlo batch")
