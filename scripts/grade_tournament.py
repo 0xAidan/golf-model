@@ -189,9 +189,20 @@ def grade_tournament(
     # 4. Fetch matchup outcomes for grading
     print("  Fetching matchup outcomes...")
     matchup_outcomes = fetch_matchup_outcomes(event_id, year)
-    report["steps"]["matchup_outcomes"] = {"count": len(matchup_outcomes)}
+    from src.matchup_outcome_store import store_matchup_outcomes
+
+    stored_matchup_outcomes = store_matchup_outcomes(
+        tournament_id,
+        event_id,
+        year,
+        matchup_outcomes,
+    )
+    report["steps"]["matchup_outcomes"] = {
+        "count": len(matchup_outcomes),
+        "stored": stored_matchup_outcomes,
+    }
     if matchup_outcomes:
-        print(f"  Found {len(matchup_outcomes)} matchup records")
+        print(f"  Found {len(matchup_outcomes)} matchup records ({stored_matchup_outcomes} stored)")
     else:
         print("  No matchup outcomes available (normal for some events)")
 
