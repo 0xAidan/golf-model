@@ -50,6 +50,45 @@ def test_ensure_event_grading_readiness_backfills_ledger_from_picks(tmp_db):
     assert int(ledger) >= 1
 
 
+def test_ensure_all_completed_pga_events_graded_includes_picks_without_rounds(monkeypatch, tmp_db):
+    from src.event_pick_freeze import ensure_all_completed_pga_events_graded
+
+    event_id = "30"
+    year = 2026
+    tid = db.get_or_create_tournament("John Deere Classic", year=year, event_id=event_id)
+    db.store_picks(
+        [
+            {
+                "tournament_id": tid,
+                "model_variant": "v5",
+                "source": "cockpit",
+                "bet_type": "top20",
+                "player_key": "scottie_scheffler",
+                "player_display": "Scottie Scheffler",
+                "opponent_key": "",
+                "opponent_display": "",
+                "model_prob": 0.2,
+                "market_odds": "+400",
+                "market_book": "draftkings",
+                "market_implied_prob": 0.15,
+                "ev": 0.05,
+            }
+        ]
+    )
+
+    seen: list[str] = []
+
+    def _freeze(event_id, *, year, event_name=None):
+        seen.append(str(event_id))
+        return {"status": "complete", "event_id": event_id, "year": year}
+
+    monkeypatch.setattr("src.event_pick_freeze.freeze_completed_event_picks", _freeze)
+
+    report = ensure_all_completed_pga_events_graded(year=year)
+    assert report["ok"] is True
+    assert "30" in seen
+
+
 def test_ensure_all_completed_pga_events_graded_accepts_complete_status(monkeypatch, tmp_db):
     from src.event_pick_freeze import ensure_all_completed_pga_events_graded
 
