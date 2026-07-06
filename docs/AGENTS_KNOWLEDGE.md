@@ -207,15 +207,19 @@ golf-model/
 │   ├── index.html            # Vite entry HTML
 │   └── src/
 │       ├── main.tsx          # React root mount
-│       ├── App.tsx           # Routes, MonitoringShell, LiveSnapshotProvider, lane switcher
+│       ├── App.tsx           # Thin provider composition only (InteractionProvider + LiveSnapshotProvider)
+│       ├── app/
+│       │   └── app-content.tsx  # Real route map, MonitoringShell wiring, shell actions, lab/dashboard hydration
 │       ├── providers/
 │       │   ├── live-snapshot-provider.tsx  # Snapshot context; keepPreviousData on poll
 │       │   └── interaction-provider.tsx      # prefers-reduced-motion for MotionCursor / NumberFlow
 │       ├── styles/
 │       │   ├── fonts.css                  # Self-hosted Zodiak / Switzer / Fragment Mono @font-face
+│       │   ├── page-layouts.css           # Shared page width / gutter / table edge spacing tokens
+│       │   ├── product-shell.css          # Product command-center layout primitives
 │       │   ├── terminal-monitoring-v3.css   # Turf palette + bento shell (after terminal-visual-v2)
 │       │   └── themes.css                 # --font-display / --font-body / --font-mono tokens
-│       ├── public/fonts/     # woff2 assets (no Fontshare / Google Fonts CDN)
+│       ├── pages/            # Route-level screens: prediction, lab, compare, players, results, system, eval
 │       ├── lib/
 │       │   ├── api.ts        # API client (fetch wrappers for /api/* endpoints)
 │       │   ├── types.ts      # TypeScript types for all API responses and domain models
@@ -224,12 +228,18 @@ golf-model/
 │       │   ├── format.ts     # Number/date formatting helpers
 │       │   └── storage.ts    # useLocalStorageState hook
 │       ├── components/
-│       │   ├── monitoring/   # MonitoringShell, HeroBand, MacroKpiStrip, BentoGrid, HeroDataGrid, …
-│       │   ├── shell.tsx     # Legacy SuiteShell (tests); production uses MonitoringShell
+│       │   ├── monitoring/   # MonitoringShell, FreshnessIndicator, workspace rails, HeroBand, grids
+│       │   ├── product/      # Product command surfaces: headers, trust banners, track badges, drawers
+│       │   ├── compare/      # Dashboard-vs-Lab compare tables/charts/panels
+│       │   ├── players/      # Player/field board panels
+│       │   ├── cockpit/      # Board tabs, detail drawers, lab instrumentation, shared board modules
+│       │   ├── system/       # System-status panels / ops widgets
+│       │   ├── shell.tsx     # Legacy SuiteShell alias (tests only); production uses MonitoringShell
 │       │   ├── charts.tsx    # Chart components (ECharts wrappers)
 │       │   └── ui/           # shadcn/ui primitives (button, etc.)
 │       └── data/
 │           └── trackRecord.json  # Static fallback for track record (API is primary source)
+│   ├── public/fonts/         # woff2 assets (no Fontshare / Google Fonts CDN)
 │
 │ ── DATA / OUTPUT / DOCS ──────────────────────────────────────
 ├── data/
@@ -367,7 +377,7 @@ Before treating the Lab board as broken or “same as production”, verify on t
 - **Live:** Leaderboard prefers Data Golf `preds/in-play` when available (`leaderboard_source: datagolf_in_play`); otherwise aggregates from `rounds`. Power rankings use point-in-time adjustment (`live_rankings`, `live_point_in_time_source` on `live_tournament`). Live rows are enriched with movement/baseline fields used by Dashboard + Lab parity UI: `start_rank`, `current_rank`, `rank_delta`, `start_composite`, `start_leaderboard_position`, `leaderboard_delta`, `leaderboard_baseline_source`, plus section-level `frozen_pre_teeoff_rankings`, `live_player_board`, `live_opportunity_alerts`, and `ranking_fallback_reason`.
 - **Upcoming:** Pre-tournament model from `upcoming_tournament`.
 - **Completed:** `GET /api/live-refresh/past-snapshot?section=completed&source=dashboard|lab` merges the final pre-teeoff board with the latest stored `live` leaderboard for that event. `source=dashboard` uses the main `upcoming`/frozen lane; `source=lab` uses the independent `lab_upcoming` lane.
-- **Shell (Product + Monitoring V3):** `MonitoringShell` (`frontend/src/components/monitoring/monitoring-shell.tsx`) wraps the SPA — primary nav **Dashboard / Lab / Compare / Players / Results / System** (legacy aliases: `/grading`, `/track-record`, `/research/diagnostics`, `/matchups`, `/lab/picks`). **`/compare`** (`frontend/src/pages/compare-page.tsx`, shown when the Lab lane is enabled) is a read-only same-event Dashboard-vs-Lab view: ranking disagreements, matchup pick overlap, and `TrackBadge` provenance (champion vs challenger, variant, `config_hash`). `/` and `/lab` stay separate first-class lanes. Product command centers use `ModelCommandLayout` + `frontend/src/components/product/` and `frontend/src/styles/product-shell.css` — picks-first vertical sections, player insight drawer, trust banners. `LiveSnapshotProvider` (`frontend/src/providers/live-snapshot-provider.tsx`) owns live-refresh snapshot queries with `keepPreviousData` so 10s polls do not flash the full app. Rebuild docs: `docs/frontend-rebuild/`. Typography: self-hosted **Zodiak** (display), **Switzer** (body), **Fragment Mono** (`.num` / KPI / table numerics only).
+- **Shell (Product + Monitoring V3):** `App.tsx` is intentionally thin; the real shell/router lives in `frontend/src/app/app-content.tsx`, which mounts `MonitoringShell` (`frontend/src/components/monitoring/monitoring-shell.tsx`), wires shell actions (Refresh, Grade, command menu), and routes **`/`**, **`/lab`**, **`/players`**, **`/compare`**, **`/eval`**, **`/results`**, **`/system`**, **`/research/legacy-model`**, and **`/research/champion-challenger`**. Primary nav stays **Dashboard / Lab / Compare / Players / Results / System**; legacy aliases redirect (`/grading`, `/track-record`, `/research/diagnostics`, `/matchups`, `/lab/picks`, `/cockpit-lab`). **`/compare`** (`frontend/src/pages/compare-page.tsx`, shown when the Lab lane is enabled) is a read-only same-event Dashboard-vs-Lab view: ranking disagreements, matchup pick overlap, and `TrackBadge` provenance (champion vs challenger, variant, `config_hash`). Product command centers use `ModelCommandLayout` + `frontend/src/components/product/` and `frontend/src/styles/product-shell.css` — picks-first vertical sections, player insight drawer, trust banners. `LiveSnapshotProvider` (`frontend/src/providers/live-snapshot-provider.tsx`) owns live-refresh snapshot queries with `keepPreviousData` so 10s polls do not flash the full app. Typography: self-hosted **Zodiak** (display), **Switzer** (body), **Fragment Mono** (`.num` / KPI / table numerics only).
 - **Layout:** `CockpitWorkspace` (`frontend/src/components/cockpit/workspace.tsx`) uses a fixed **CSS grid** (no drag resize handles). Center column: **segment tabs** (`CockpitResizableStack` / `CockpitSegmentTabs`) for Top picks, Rankings, Markets, Leaderboard — desktop defaults to Top picks; click **Rankings** for power rankings. Left rail uses the same tab pattern. Visual regression: `cd frontend && npm run screenshots:matrix:v3` → `docs/screenshots/ui-overhaul-v3/`; v2 matrix remains at `screenshots:matrix` for historical comparison.
 - **Rankings columns:** `buildUpcomingRankingsColumns` (upcoming + past) vs `buildLiveRankingsColumns` (live only) in `frontend/src/lib/cockpit-columns.tsx`. Hydration rules in `frontend/src/lib/prediction-board.ts` (`hydration_section`, upcoming never uses `live_player_board`).
 - **Lab — `/lab`:** Hydrates boards from **`lab_live_tournament` / `lab_upcoming_tournament`** on the snapshot (same JSON shape as production) when the worker has computed them. **Default is on:** `live_refresh.lab_profile_enabled` defaults **true** in `src/live_refresh_policy.py`; **`LIVE_REFRESH_LAB_PROFILE_ENABLED`** in `.env` overrides persisted JSON when set (`1`/`true` on, `0`/`false` off). **`live_refresh.lab_profile_name`** maps to `profiles.yaml` (e.g. `lab_sandbox`). **`scripts/deploy-update-steps.sh`** appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` on deploy if the key is absent so existing hosts pick up the lab lane without manual toggles. **CPU:** each enabled tick runs extra `run_snapshot_analysis` passes for the lab model variant — set env to `0` on very small VPS if needed. Parallel rows in **`market_prediction_rows`** use **`section` `lab_live` / `lab_upcoming`** so AB / v5 pairing ignores them. Lab Past requests `source=lab` and never mixes Dashboard `upcoming` rows into Lab generated picks. **`/cockpit-lab`** redirects to **`/lab`** (bookmarks).
@@ -771,12 +781,14 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
 | UI design contract (tokens, shell, one-metric-one-home) | `docs/design/ui-design-contract.md` |
-| Frontend dashboard (React SPA) | `frontend/src/App.tsx` (shell) + `frontend/src/app/app-content.tsx` (routes/data) |
+| Frontend dashboard (React SPA) | `frontend/src/App.tsx` (providers only) + `frontend/src/app/app-content.tsx` (shell, routes, refresh/grade actions, dashboard/lab hydration) |
 | Live snapshot SWR | `frontend/src/providers/live-snapshot-provider.tsx`, `GET /api/live-refresh/summary` |
 | Background grade jobs | `src/ops_jobs.py`, `src/routes/ops_jobs.py`, `POST /api/ops/jobs/grade` |
 | Analytics workspace | `frontend/src/pages/analytics-workspace-page.tsx`, `src/routes/analytics.py` |
 | Frozen zone guard | `docs/frozen-zone-paths.txt`, `scripts/ci/frozen_zone_guard.sh` |
 | Monitoring shell / bento primitives | `frontend/src/components/monitoring/` |
+| Frontend route homes | `frontend/src/pages/` for route screens; route map/redirects live in `frontend/src/app/app-content.tsx` |
+| Frontend component homes | `frontend/src/components/monitoring/`, `product/`, `compare/`, `players/`, `cockpit/`, `system/`, `ui/` |
 | Live snapshot context (poll without flash) | `frontend/src/providers/live-snapshot-provider.tsx` |
 | Monitoring V3 typography + turf CSS | `frontend/src/styles/fonts.css`, `terminal-monitoring-v3.css`, `public/fonts/` |
 | Grading trust strip (+EV metrics) | `frontend/src/components/monitoring/grading-trust-strip.tsx`, `frontend/src/lib/grading-trust.ts` |

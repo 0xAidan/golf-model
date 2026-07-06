@@ -149,3 +149,26 @@ Files: `monitoring-shell.tsx`, `terminal-monitoring-v3.css`, `page-layouts.css`.
 - Monitoring design system: `docs/frontend-overhaul/11-monitoring-design-system.md`
 - Grading trust: `docs/frontend-overhaul/14-grading-trust-contract.md`
 - Agent quick reference: `docs/AGENTS_KNOWLEDGE.md` §12
+
+---
+
+## Appendix A. Cohesion Audit 2026-07-06
+
+Scope: U12 cohesion pass against the live frontend structure on branch `impl/u12-cohesion`.
+
+### Verified as cohesive
+
+- Shell ownership is clean: `frontend/src/app/app-content.tsx` owns route wiring, shell actions, and dashboard/lab hydration; `frontend/src/App.tsx` is now just provider composition.
+- Primary navigation matches the contract: `MonitoringShell` exposes Dashboard, Lab, Compare, Players, Results, and System, with Research collapsed behind its own section.
+- Route homes are consistent with the one-page-one-header model: route screens live in `frontend/src/pages/`, reusable shell/product primitives live under `frontend/src/components/`.
+- Global actions stay in the shell: Refresh and Grade are mounted in `MonitoringShell` header actions rather than duplicated across the main route pages.
+
+### Drift found
+
+- `docs/AGENTS_KNOWLEDGE.md` had stale frontend home references: it still described `App.tsx` as the shell/route owner, omitted `app/app-content.tsx`, and listed the fonts path under `frontend/src/` instead of `frontend/public/`.
+
+### Fixes applied in this pass
+
+- Updated `docs/AGENTS_KNOWLEDGE.md` frontend sections to reflect the real shell split, route map, component homes, and fonts path.
+- Added checkpoint-C verification notes to `docs/frontend-overhaul/verification-2026-07-06.log`.
+- No frontend code changes were required for this cohesion pass; the issues found were documentation drift, not runtime contract violations.

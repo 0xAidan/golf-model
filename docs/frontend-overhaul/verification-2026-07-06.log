@@ -152,3 +152,13 @@ sqlite3.OperationalError: database is locked
   Profit: -10.12u
 ==================================================
 --- season sweep 2026-07-06T20:55:33Z ---
+
+--- checkpoint C cohesion summary 2026-07-06T23:00:00Z ---
+- U12 cohesion pass merged documentation drift only; no runtime/frontend code changes were needed.
+- Confirmed shell split already landed in code: `frontend/src/App.tsx` is providers-only, `frontend/src/app/app-content.tsx` owns `MonitoringShell`, route wiring, redirects, Refresh/Grade actions, and dashboard/lab hydration.
+- Confirmed first-class product routes remain `/`, `/lab`, `/compare`, `/players`, `/results`, `/system`, `/eval`, `/research/champion-challenger`, and `/research/legacy-model`; legacy aliases still redirect.
+- Updated `docs/design/ui-design-contract.md` with cohesion appendix and refreshed `docs/AGENTS_KNOWLEDGE.md` frontend sections (shell, routes, component homes, fonts path).
+- Validation run for this checkpoint:
+  - `cd frontend && npm run typecheck`
+  - `cd frontend && npm run test`
+  - `cd frontend && npm run build`
