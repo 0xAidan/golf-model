@@ -56,6 +56,9 @@ def run_retention_cycle(
         report["archive_exists"] = verified_archive_exists_for_cutoff(cutoff, exports_dir=exports_dir)
         prune_preview = db.prune_snapshot_history_tables(retain_days=int(days), require_archive=True)
         report["prune_preview"] = prune_preview
+        from src.output_manager import rotate_research_artifacts
+
+        report["research_rotation"] = rotate_research_artifacts(dry_run=True)
         return report
 
     export_result = export_tick_tables_before_cutoff(
@@ -77,6 +80,13 @@ def run_retention_cycle(
 
     if vacuum and not prune_result.get("skipped"):
         report["reclaim"] = db.reclaim_database_disk()
+
+    from src.output_manager import rotate_research_artifacts
+
+    research_rotation = rotate_research_artifacts(dry_run=False)
+    report["research_rotation"] = research_rotation
+    if not research_rotation.get("ok", True) and not research_rotation.get("skipped"):
+        report["ok"] = False
 
     return report
 

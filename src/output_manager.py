@@ -8,11 +8,27 @@ output/archive/.
 """
 
 import glob
+import gzip
 import logging
 import os
 import shutil
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("output_manager")
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_DEFAULT_RESEARCH_DIR = _REPO_ROOT / "output" / "research"
+_DEFAULT_RESEARCH_ARCHIVE = _REPO_ROOT / "data" / "exports" / "research_archive"
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(_REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 def archive_previous(output_dir: str, safe_name: str, file_type: str = "card") -> int:
@@ -123,3 +139,116 @@ def cleanup_output_directory(output_dir: str = "output") -> dict:
             actions["archived"].append(basename)
 
     return actions
+
+
+def rotate_research_artifacts(
+    *,
+    research_dir: str | os.PathLike[str] | None = None,
+    archive_dir: str | os.PathLike[str] | None = None,
+    retain_days: int = 90,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Archive-first rotation for autoresearch artifacts older than ``retain_days``.
+
+    Files under ``output/research/`` are gzip-compressed into
+    ``data/exports/research_archive/``; originals are removed only after the
+    archive file is written successfully.
+    """
+    research_path = Path(research_dir) if research_dir else _DEFAULT_RESEARCH_DIR
+    archive_path = Path(archive_dir) if archive_dir else _DEFAULT_RESEARCH_ARCHIVE
+
+    if not research_path.is_dir():
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "research directory missing",
+            "research_dir": str(research_path),
+            "archived": [],
+            "dry_run": dry_run,
+        }
+
+    archive_path.mkdir(parents=True, exist_ok=True)
+    cutoff_ts = time.time() - (int(retain_days) * 86400)
+    archived: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    for source in sorted(research_path.rglob("*")):
+        if not source.is_file():
+            continue
+        if source.suffix == ".gz":
+            continue
+        try:
+            mtime = source.stat().st_mtime
+        except OSError as exc:
+            errors.append(f"stat failed for {source}: {exc}")
+            continue
+        if mtime >= cutoff_ts:
+            continue
+
+        stamp = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y%m%d")
+        dest_name = f"{stamp}_{source.name}.gz"
+        dest = archive_path / dest_name
+        entry = {
+            "source": _display_path(source),
+            "archive": _display_path(dest),
+        }
+        if dry_run:
+            archived.append(entry)
+            continue
+
+        try:
+            with open(source, "rb") as raw, gzip.open(dest, "wb", compresslevel=6) as gz:
+                shutil.copyfileobj(raw, gz)
+            if dest.stat().st_size <= 0:
+                raise OSError("empty gzip archive")
+            source.unlink()
+            archived.append(entry)
+            logger.info("Archived research artifact %s -> %s", source.name, dest.name)
+        except OSError as exc:
+            errors.append(f"archive failed for {source}: {exc}")
+            if dest.exists():
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+
+    return {
+        "ok": not errors,
+        "dry_run": dry_run,
+        "retain_days": int(retain_days),
+        "research_dir": str(research_path),
+        "archive_dir": str(archive_path),
+        "archived": archived,
+        "archived_count": len(archived),
+        "errors": errors,
+    }
+
+
+def summarize_research_output(research_dir: str | os.PathLike[str] | None = None) -> dict[str, Any]:
+    """Byte/file totals for ``output/research`` (read-only audit helper)."""
+    research_path = Path(research_dir) if research_dir else _DEFAULT_RESEARCH_DIR
+    if not research_path.is_dir():
+        return {
+            "path": str(research_path),
+            "file_count": 0,
+            "bytes": 0,
+            "mb": 0.0,
+        }
+
+    file_count = 0
+    total_bytes = 0
+    for path in research_path.rglob("*"):
+        if not path.is_file():
+            continue
+        file_count += 1
+        try:
+            total_bytes += path.stat().st_size
+        except OSError:
+            continue
+
+    return {
+        "path": _display_path(research_path),
+        "file_count": file_count,
+        "bytes": total_bytes,
+        "mb": round(total_bytes / (1024 * 1024), 2),
+    }
