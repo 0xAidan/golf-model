@@ -37,6 +37,11 @@ def build_grading_report(score_result: dict, reconciliation: dict) -> dict:
     """Summarize a grading run for UI/ops surfaces."""
     scored = int(score_result.get("scored_count") or score_result.get("scored") or 0)
     voided = int(score_result.get("voided_count") or score_result.get("voided") or 0)
+    voided_picks = list(score_result.get("voided_picks") or [])
+    skipped_unresolved = list(
+        score_result.get("skipped_unresolved") or score_result.get("skipped_picks") or voided_picks
+    )
+    skipped_non_positive_ev = int(score_result.get("skipped_non_positive_ev") or 0)
     events = reconciliation.get("events") or []
     event_row = events[0] if events else {}
     ungraded = int(event_row.get("ungraded_positive_ev_picks") or 0)
@@ -50,11 +55,19 @@ def build_grading_report(score_result: dict, reconciliation: dict) -> dict:
             message = "Grading reconciliation reported discrepancies"
     return {
         "status": status,
+        "scoring": {
+            "scored_count": scored,
+            "voided_count": voided,
+            "voided": voided_picks,
+            "skipped_unresolved": skipped_unresolved,
+            "skipped_non_positive_ev": skipped_non_positive_ev,
+        },
         "scored_count": scored,
         "voided_count": voided,
         "skipped_count": ungraded,
         "ungraded_positive_ev": ungraded,
-        "voided_picks": score_result.get("voided_picks") or [],
+        "voided_picks": voided_picks,
+        "skipped_picks": skipped_unresolved,
         "message": message,
     }
 
@@ -318,7 +331,6 @@ def grade_tournament(
     except Exception as exc:
         report["steps"]["tournament_archive"] = {"ok": False, "error": str(exc)}
 
-    report["status"] = "complete"
     print(f"  Grading complete for tournament {tournament_id} ({report['status']})")
     return report
 

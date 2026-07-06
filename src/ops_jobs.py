@@ -90,7 +90,7 @@ def update_job(
     if error is not None:
         fields.append("error = ?")
         params.append(error)
-    if status in {"complete", "error", "failed"}:
+    if status in {"complete", "partial", "error", "failed"}:
         fields.append("completed_at = ?")
         params.append(_now_iso())
     params.append(job_id)

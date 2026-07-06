@@ -358,6 +358,7 @@ def _build_lane_payload(
     )
 
     voided_count = 0
+    scored_count = 0
     if tournament_id:
         void_row = conn.execute(
             f"""
@@ -371,6 +372,30 @@ def _build_lane_payload(
             (int(tournament_id),),
         ).fetchone()
         voided_count = int(void_row["c"] or 0) if void_row else 0
+        scored_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS c
+            FROM picks p
+            JOIN pick_outcomes po ON po.pick_id = p.id
+            WHERE p.tournament_id = ? {lane_sql}
+              AND COALESCE(p.ev, 0) > 0
+              AND LOWER(COALESCE(po.grading_authority, '')) != 'void'
+            """,
+            (int(tournament_id),),
+        ).fetchone()
+        scored_count = int(scored_row["c"] or 0) if scored_row else 0
+
+    grading_report = {
+        "status": "partial" if ungraded > 0 else "complete",
+        "scored_count": scored_count,
+        "voided_count": voided_count,
+        "skipped_count": ungraded,
+        "message": (
+            f"{ungraded} +EV pick(s) still ungraded"
+            if ungraded > 0
+            else None
+        ),
+    }
 
     record = {
         "wins": combined["wins"],
@@ -407,12 +432,38 @@ def _build_lane_payload(
         "graded_pick_count": graded_pick_count,
         "ungraded_positive_ev_count": ungraded,
         "voided_count": voided_count,
+        "grading_report": grading_report,
         "status": status,
         "record": record,
         "market_stats": summary,
         "picks": picks,
         "hits": combined["wins"],
         "total_profit": combined["profit"],
+    }
+
+
+def _event_grading_report(
+    dashboard_lane: dict[str, Any],
+    lab_lane: dict[str, Any],
+) -> dict[str, Any]:
+    """Aggregate lane-level grading summaries for the season event card."""
+    dashboard_report = dashboard_lane.get("grading_report") or {}
+    lab_report = lab_lane.get("grading_report") or {}
+    scored_count = int(dashboard_report.get("scored_count") or 0) + int(lab_report.get("scored_count") or 0)
+    voided_count = int(dashboard_report.get("voided_count") or 0) + int(lab_report.get("voided_count") or 0)
+    skipped_count = int(dashboard_lane.get("ungraded_positive_ev_count") or 0) + int(
+        lab_lane.get("ungraded_positive_ev_count") or 0
+    )
+    status = "partial" if skipped_count > 0 else "complete"
+    message = None
+    if skipped_count > 0:
+        message = f"{skipped_count} +EV pick(s) still ungraded"
+    return {
+        "status": status,
+        "scored_count": scored_count,
+        "voided_count": voided_count,
+        "skipped_count": skipped_count,
+        "message": message,
     }
 
 
@@ -513,6 +564,7 @@ async def get_grading_season(
             "inventory_count": int(meta.get("inventory_count") or 0),
             "has_results": has_results,
             "last_graded_at": last_graded_at,
+            "grading_report": _event_grading_report(dashboard_lane, lab_lane),
             "lanes": {
                 "dashboard": dashboard_lane,
                 "lab": lab_lane,
