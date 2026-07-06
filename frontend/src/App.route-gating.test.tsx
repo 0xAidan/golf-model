@@ -85,6 +85,30 @@ describe("App legacy route replay gating", () => {
     })
   })
 
+  it("redirects /track-record to results analytics", async () => {
+    renderAppAtRoute("/track-record")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("results-page")).toBeInTheDocument()
+    })
+  })
+
+  it("redirects diagnostics aliases to /system", async () => {
+    renderAppAtRoute("/research/diagnostics")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-page")).toBeInTheDocument()
+    })
+  })
+
+  it("redirects /research/diagnostics-legacy to /system", async () => {
+    renderAppAtRoute("/research/diagnostics-legacy")
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-page")).toBeInTheDocument()
+    })
+  })
+
   it("renders /system health page", async () => {
     renderAppAtRoute("/system")
 

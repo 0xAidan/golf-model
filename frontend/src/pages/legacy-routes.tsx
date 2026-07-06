@@ -8,8 +8,6 @@ import {
   BentoGrid,
   BentoPanel,
   GradingTrustStrip,
-  HeroBand,
-  HeroDataGrid,
   MacroKpiStrip,
   type MacroKpiItem,
 } from "@/components/monitoring"
@@ -18,16 +16,12 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { PickRow } from "@/components/ui/pick-row"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { StatusBanner } from "@/components/ui/status-banner"
-import { buildTrackRecordPickColumns } from "@/lib/records-columns"
 import { api } from "@/lib/api"
 import { formatDateTime, formatUnits } from "@/lib/format"
 import { buildGradingTrustMetrics } from "@/lib/grading-trust"
 import { formatSeasonEventDate, laneStatusLabel, pickLatestGradedSeasonEvent, recentGradedSeasonEventsForTrend, seasonEventsToGradingHistory, seasonLaneFromPickSource } from "@/lib/grading-season"
 import type { GradingSeasonEvent, MatchupBet, TrackRecordPick } from "@/lib/types"
-import { mergeTrackRecordEvents, type MergedTrackRecordEvent } from "@/lib/track-record"
 import { cn } from "@/lib/utils"
-
-const trackRecordPickColumns = buildTrackRecordPickColumns()
 const statusToneClass = {
   good: "good",
   warn: "warn",
@@ -607,180 +601,6 @@ export function GradingPage() {
               />
             )}
           </div>
-        </BentoPanel>
-      </BentoGrid>
-    </div>
-  )
-}
-
-export function TrackRecordPage() {
-  const trackRecordQuery = useQuery({
-    queryKey: ["track-record"],
-    queryFn: api.getTrackRecord,
-  })
-  const gradingHistoryQuery = useQuery({
-    queryKey: ["grading-history", "all"],
-    queryFn: () => api.getGradingHistory({ pickSource: "all" }),
-  })
-  const seasonQuery = useQuery({
-    queryKey: ["grading-season", "all"],
-    queryFn: () =>
-      api.getGradingSeason({
-        year: 2026,
-        lane: "all",
-        includePicks: false,
-        includeReconciliation: false,
-        limit: 100,
-      }),
-  })
-  const dashboardQuery = useQuery({
-    queryKey: ["dashboard-state"],
-    queryFn: api.getDashboardState,
-    staleTime: 60_000,
-  })
-  const liveRefreshStatusQuery = useQuery({
-    queryKey: ["live-refresh-status"],
-    queryFn: api.getLiveRefreshStatus,
-    staleTime: 30_000,
-  })
-  const trustMetrics = useMemo(
-    () =>
-      buildGradingTrustMetrics(
-        gradingHistoryQuery.data,
-        dashboardQuery.data,
-        liveRefreshStatusQuery.data?.status,
-        seasonQuery.data,
-        "all",
-      ),
-    [gradingHistoryQuery.data, dashboardQuery.data, liveRefreshStatusQuery.data?.status, seasonQuery.data],
-  )
-
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
-  const mergedResult = mergeTrackRecordEvents(trackRecordQuery.data?.events ?? [])
-  const events: MergedTrackRecordEvent[] = Array.isArray(mergedResult)
-    ? (mergedResult as MergedTrackRecordEvent[])
-    : ((mergedResult as { events: MergedTrackRecordEvent[] }).events ?? [])
-
-  const totalProfit = events.reduce((s, e) => s + Number(e.profit ?? 0), 0)
-  const totalWins = events.reduce((s, e) => s + (e.wins ?? 0), 0)
-  const totalPicks = events.reduce((s, e) => s + (e.wins ?? 0) + (e.losses ?? 0) + (e.pushes ?? 0), 0)
-
-  const summaryKpis = useMemo((): MacroKpiItem[] => {
-    return [
-      {
-        id: "pnl",
-        label: "Total P&L",
-        value: formatUnits(totalProfit),
-        tone: totalProfit >= 0 ? "positive" : "negative",
-      },
-      { id: "events", label: "Tournaments", value: String(events.length) },
-      {
-        id: "win-rate",
-        label: "Win rate",
-        value: totalPicks > 0 ? `${((totalWins / totalPicks) * 100).toFixed(0)}%` : "—",
-        suffix: totalPicks > 0 ? `${totalWins}/${totalPicks}` : undefined,
-      },
-      { id: "wins", label: "Wins", value: String(totalWins), tone: "positive" },
-    ]
-  }, [events, totalPicks, totalProfit, totalWins])
-
-  if (trackRecordQuery.isLoading) {
-    return <div className="records-loading monitor-scroll-region">Loading track record…</div>
-  }
-
-  return (
-    <div className="monitor-records-page monitor-scroll-region" data-testid="track-record-page">
-      <HeroBand
-        eyebrow="Records"
-        title="Track record"
-        meta="Official Dashboard betting record (+EV picks). Compare Lab on the Grading tab."
-      />
-
-      <GradingTrustStrip
-        metrics={trustMetrics}
-        pickSource="all"
-        onPickSourceChange={() => {}}
-        isFetching={gradingHistoryQuery.isFetching}
-        showSourceToggle={false}
-      />
-
-      <MacroKpiStrip items={summaryKpis} testId="track-record-summary-kpis" />
-
-      <BentoGrid columns={1} testId="track-record-bento">
-        <BentoPanel title="Tournament history" span={12}>
-        <div className="records-event-stack">
-          {events.length > 0 ? (
-            events.map((event, idx) => {
-              const isExpanded = expandedIdx === idx
-              const profit = Number(event.profit ?? 0)
-              const picks = event.picks ?? []
-              const eventTotal = (event.wins ?? 0) + (event.losses ?? 0) + (event.pushes ?? 0)
-              const hr =
-                eventTotal > 0 ? `${(((event.wins ?? 0) / eventTotal) * 100).toFixed(0)}%` : "—"
-
-              return (
-                <div key={`${event.name}-${idx}`} className="tr-event">
-                  <div
-                    className="tr-event-header"
-                    onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-                    onKeyDown={(keyEvent) => {
-                      if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-                        keyEvent.preventDefault()
-                        setExpandedIdx(isExpanded ? null : idx)
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    data-testid={`track-record-event-${idx}`}
-                  >
-                    <div className="tr-event-meta">
-                      <div className="tr-event-name">{event.name}</div>
-                      <div className="tr-event-sub">
-                        {event.wins ?? 0}W / {event.losses ?? 0}L / {event.pushes ?? 0}P · {hr}
-                        {event.course ? ` · ${event.course}` : ""}
-                      </div>
-                    </div>
-                    <div className="tr-event-actions">
-                      <span
-                        className={cn(
-                          "tr-event-profit",
-                          profit >= 0 ? "tr-event-profit--pos" : "tr-event-profit--neg",
-                        )}
-                      >
-                        {formatUnits(profit)}
-                      </span>
-                      <ChevronDown
-                        size={13}
-                        className={cn("tr-event-chevron", isExpanded && "tr-event-chevron--open")}
-                      />
-                    </div>
-                  </div>
-
-                  {isExpanded && picks.length > 0 && (
-                    <div className="tr-event-body">
-                      <HeroDataGrid
-                        data={picks}
-                        columns={trackRecordPickColumns}
-                        getRowId={(row) => `${row.pick}-${row.opponent}-${row.odds}`}
-                        getRowTestId={(row) => `pick-row-${row.pick}`}
-                        density="compact"
-                        testId={`track-record-picks-${idx}`}
-                      />
-                    </div>
-                  )}
-
-                  {isExpanded && picks.length === 0 && (
-                    <div className="tr-event-body">
-                      <EmptyState message="No pick detail available for this tournament." />
-                    </div>
-                  )}
-                </div>
-              )
-            })
-          ) : (
-            <EmptyState message="No track record data yet. Grade tournaments to build your history." />
-          )}
-        </div>
         </BentoPanel>
       </BentoGrid>
     </div>

@@ -34,18 +34,15 @@ import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pa
 
 // Code-split heavy / rarely-visited routes. The default "/" route
 // (PredictionWorkspacePage) and the primary Picks route stay eager so the
-// dashboard boots without a Suspense flicker. Players, Grading,
-// Track Record, and Champion-Challenger are all secondary nav targets — the
-// operator clicks into them, so a single network round-trip on first visit
-// is acceptable and trims ~400-600 kB off the initial bundle.
+// dashboard boots without a Suspense flicker. Players, Results,
+// and Champion-Challenger are all secondary nav targets — the operator
+// clicks into them, so a single network round-trip on first visit is
+// acceptable and trims ~400-600 kB off the initial bundle.
 const PlayersPage = lazyWithRetry(() =>
   import("@/pages/players-page").then((mod) => ({ default: mod.PlayersPage })),
 )
 const GradingPage = lazyWithRetry(() =>
   import("@/pages/legacy-routes").then((mod) => ({ default: mod.GradingPage })),
-)
-const TrackRecordPage = lazyWithRetry(() =>
-  import("@/pages/legacy-routes").then((mod) => ({ default: mod.TrackRecordPage })),
 )
 const ChampionChallengerPage = lazyWithRetry(() =>
   import("@/pages/champion-challenger-page").then((mod) => ({
@@ -54,9 +51,6 @@ const ChampionChallengerPage = lazyWithRetry(() =>
 )
 const LegacyModelPage = lazyWithRetry(() =>
   import("@/pages/legacy-model-page").then((mod) => ({ default: mod.LegacyModelPage })),
-)
-const DiagnosticsPage = lazyWithRetry(() =>
-  import("@/pages/diagnostics-page").then((mod) => ({ default: mod.DiagnosticsPage })),
 )
 const ResultsPage = lazyWithRetry(() =>
   import("@/pages/results-page").then((mod) => ({ default: mod.ResultsPage })),
@@ -1246,22 +1240,7 @@ export function AppContent({
           }
         />
         <Route path="/research/diagnostics" element={<Navigate to="/system" replace />} />
-        <Route
-          path="/research/diagnostics-legacy"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <DiagnosticsPage
-                dashboard={dashboard}
-                liveSnapshot={liveSnapshot}
-                predictionTab={predictionTab}
-                isLiveActive={isLiveActive}
-                gradingHistory={gradingHistory}
-                predictionRun={effectivePredictionRun}
-                secondaryBets={secondaryBets}
-              />
-            </Suspense>
-          }
-        />
+        <Route path="/research/diagnostics-legacy" element={<Navigate to="/system" replace />} />
       </Routes>
       </RouteErrorBoundaryGate>
     </MonitoringShell>
