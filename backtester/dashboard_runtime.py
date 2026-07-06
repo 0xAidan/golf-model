@@ -2199,6 +2199,19 @@ def _ingest_has_event_context(ingest_summary: dict[str, Any]) -> bool:
     )
 
 
+def _persist_auto_grade_metadata(result: dict[str, Any] | None) -> None:
+    try:
+        db.set_app_metadata(
+            "live_refresh_last_auto_grade",
+            {
+                "last_auto_grade_at": _iso_now(),
+                "last_auto_grade_status": result,
+            },
+        )
+    except Exception as exc:
+        _logger.warning("Failed to persist auto-grade metadata: %s", exc)
+
+
 def _maybe_auto_grade_completed_event(ingest_summary: dict[str, Any]) -> dict[str, Any] | None:
     """Backfill + grade +EV inventory for the latest completed event."""
     event_id = str(ingest_summary.get("latest_completed_event_id") or "").strip()
@@ -3839,13 +3852,16 @@ def _run_loop(tour: str) -> None:
                     with _state_lock:
                         _state["last_auto_grade_at"] = _iso_now()
                         _state["last_auto_grade_status"] = auto_grade_result
+                    _persist_auto_grade_metadata(auto_grade_result)
                     if isinstance(auto_grade_result, dict) and auto_grade_result.get("status") == "error":
                         _logger.error("Auto-grading returned error: %s", auto_grade_result)
                 except Exception as exc:  # pragma: no cover - defensive
                     _logger.error("Auto-grading check failed: %s", exc)
+                    error_status = {"status": "error", "message": str(exc)}
                     with _state_lock:
                         _state["last_auto_grade_at"] = _iso_now()
-                        _state["last_auto_grade_status"] = {"status": "error", "message": str(exc)}
+                        _state["last_auto_grade_status"] = error_status
+                    _persist_auto_grade_metadata(error_status)
         except Exception as exc:
             _logger.exception("Live refresh cycle failed")
             with _state_lock:
@@ -3926,6 +3942,15 @@ def get_live_refresh_status() -> dict[str, Any]:
     status["split_brain_suspected"] = split["split_brain_suspected"]
     status["split_brain_reasons"] = split["reasons"]
     status["heartbeat_age_seconds"] = split["heartbeat_age_seconds"]
+    try:
+        persisted = db.get_app_metadata("live_refresh_last_auto_grade")
+        if isinstance(persisted, dict):
+            if persisted.get("last_auto_grade_at"):
+                status["last_auto_grade_at"] = persisted["last_auto_grade_at"]
+            if persisted.get("last_auto_grade_status") is not None:
+                status["last_auto_grade_status"] = persisted["last_auto_grade_status"]
+    except Exception:
+        pass
     return status
 
 

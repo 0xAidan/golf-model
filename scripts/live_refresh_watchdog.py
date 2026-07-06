@@ -142,10 +142,19 @@ def main() -> int:
     parser.add_argument("--grading-year", type=int, default=None, help="Year for --ensure-grading")
     args = parser.parse_args()
 
+    from src.worker_restart import acknowledge_worker_restart_request, read_worker_restart_request
+
+    restart_request = read_worker_restart_request()
     result = evaluate(
         heartbeat_stale_seconds=max(900, args.heartbeat_stale_seconds),
         snapshot_stale_seconds=max(900, args.snapshot_stale_seconds),
     )
+    if restart_request:
+        result["restart"] = True
+        result["reasons"].insert(
+            0,
+            f"operator worker restart requested ({restart_request.get('requested_at')})",
+        )
     if args.json and not args.ensure_grading:
         print(json.dumps(result, indent=2))
 
@@ -158,6 +167,8 @@ def main() -> int:
         else:
             print(f"watchdog restarting golf-live-refresh: {message}", file=sys.stderr)
             exit_code = _restart_worker()
+            if exit_code == 0 and restart_request:
+                acknowledge_worker_restart_request(restart_request.get("request_id"))
     elif args.json:
         print(json.dumps(result, indent=2))
 

@@ -457,6 +457,12 @@ def init_db():
         );
         INSERT OR IGNORE INTO schema_version (id, version) VALUES (1, 1);
 
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
         -- ═══ Pipeline run logging ═══
         CREATE TABLE IF NOT EXISTS runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3550,6 +3556,49 @@ def ensure_initialized():
     if not _DB_INITIALIZED:
         init_db()
         _DB_INITIALIZED = True
+
+
+def get_app_metadata(key: str) -> Any | None:
+    """Return a JSON-deserialized app_metadata value or None."""
+    import json
+
+    ensure_initialized()
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT value_json FROM app_metadata WHERE key = ?",
+            (key,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        return json.loads(row["value_json"])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def set_app_metadata(key: str, value: Any) -> None:
+    """Persist a JSON-serializable app_metadata value."""
+    import json
+
+    ensure_initialized()
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO app_metadata (key, value_json, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value_json = excluded.value_json,
+                updated_at = datetime('now')
+            """,
+            (key, json.dumps(value, default=str)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # Lazy initialization: ensure tables exist on first connection use.
