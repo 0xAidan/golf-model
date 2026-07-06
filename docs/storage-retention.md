@@ -33,9 +33,16 @@ python3 scripts/export_tournament_archive.py --tick-before-days 210
 python3 scripts/export_tournament_archive.py --tournament-id 12
 ```
 
-**Prune:** live-refresh worker (every 6h) or manual:
+**Prune:** live-refresh worker (every 6h), weekly systemd timer, or manual:
 
 ```bash
+# Full cycle: export → verify manifest → prune (recommended)
+python3 scripts/run_retention_cycle.py
+
+# Dry-run only (no export/delete)
+python3 scripts/run_retention_cycle.py --dry-run
+
+# Legacy prune script
 SNAPSHOT_HISTORY_RETAIN_DAYS=210 python3 scripts/prune_snapshot_history.py --vacuum
 ```
 

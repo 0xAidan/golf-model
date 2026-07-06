@@ -135,12 +135,37 @@ def _manifest_is_valid(manifest_path: Path) -> bool:
     return True
 
 
+def _parse_cutoff_utc(value: str) -> datetime | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _manifest_covers_cutoff(manifest_before_utc: str, cutoff_utc: str) -> bool:
+    """Return True when archive window starts at or after the prune cutoff (covering semantics)."""
+    manifest_dt = _parse_cutoff_utc(manifest_before_utc)
+    cutoff_dt = _parse_cutoff_utc(cutoff_utc)
+    if manifest_dt is None or cutoff_dt is None:
+        return str(manifest_before_utc) == str(cutoff_utc)
+    if manifest_dt.tzinfo is None:
+        manifest_dt = manifest_dt.replace(tzinfo=timezone.utc)
+    if cutoff_dt.tzinfo is None:
+        cutoff_dt = cutoff_dt.replace(tzinfo=timezone.utc)
+    return manifest_dt >= cutoff_dt
+
+
 def verified_archive_exists_for_cutoff(
     cutoff_utc: str,
     *,
     exports_dir: str | os.PathLike[str] | None = None,
 ) -> bool:
-    """Return True when a checksum-valid manifest covers ``before_utc == cutoff_utc``."""
+    """Return True when a checksum-valid manifest covers rows before ``cutoff_utc``."""
     root = _exports_root(exports_dir)
     if not root.is_dir():
         return False
@@ -154,7 +179,9 @@ def verified_archive_exists_for_cutoff(
             continue
         window = manifest.get("time_window") or {}
         before = str(window.get("before_utc") or "")
-        if before != target:
+        if not before:
+            continue
+        if not _manifest_covers_cutoff(before, target):
             continue
         if _manifest_is_valid(manifest_path):
             return True
