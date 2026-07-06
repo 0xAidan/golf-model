@@ -7,15 +7,19 @@ import type { MatchupBet } from "@/lib/types"
 import { normalizeSportsbook } from "@/lib/prediction-board"
 
 const TIER_STYLE: Record<string, string> = {
-  STRONG: "bg-emerald-400/12 text-emerald-300",
-  GOOD: "bg-green-500/12 text-green-400",
-  LEAN: "bg-slate-400/10 text-slate-400",
+  STRONG: "tier-badge tier-badge--strong",
+  GOOD: "tier-badge tier-badge--good",
+  LEAN: "tier-badge tier-badge--lean",
 }
 
 export const getTierStyle = (tier?: string) => TIER_STYLE[tier ?? ""] ?? TIER_STYLE.LEAN
 
 export function EmptyState({ message }: { message: string }) {
-  return <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-slate-400">{message}</div>
+  return (
+    <div className="empty-state empty-state--legacy-dashed" data-testid="page-shared-empty-state">
+      <div className="empty-state-title">{message}</div>
+    </div>
+  )
 }
 
 export function InfoRow({
