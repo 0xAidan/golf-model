@@ -9,7 +9,8 @@ export function ChartThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.dataset.chartTheme = resolvedDark ? "dark" : "light"
-    void readCssVar("--text", "#e8ecef")
+    void readCssVar("--text", "")
+    void readCssVar("--accent-positive", "")
   }, [resolvedDark])
 
   return children

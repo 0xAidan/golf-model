@@ -179,7 +179,7 @@ export function GradingPage() {
       <BentoGrid columns={2} testId="grading-bento">
         <BentoPanel title="Season P&L trend" span={6}>
           {profits.length > 0 ? (
-            <BarTrendChart labels={labels} values={profits} color="#22C55E" />
+            <BarTrendChart labels={labels} values={profits} color="var(--accent-positive)" />
           ) : (
             <RecordsEmptyState message="Grade a tournament to start the season trend view." />
           )}
