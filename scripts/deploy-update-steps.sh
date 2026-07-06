@@ -107,7 +107,7 @@ install_systemd_units() {
         echo "[deploy] deploy/systemd missing; skipping unit sync"
         return 0
     fi
-    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer; do
+    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer; do
         if [ -f "${DEPLOY_PATH}/deploy/systemd/${unit}" ]; then
             cp "${DEPLOY_PATH}/deploy/systemd/${unit}" "/etc/systemd/system/${unit}"
             echo "[deploy] synced ${unit}"
@@ -121,6 +121,10 @@ install_systemd_units() {
     if systemctl list-unit-files golf-grading-sweep.timer >/dev/null 2>&1; then
         systemctl enable --now golf-grading-sweep.timer || true
         echo "[deploy] enabled golf-grading-sweep.timer"
+    fi
+    if systemctl list-unit-files golf-retention.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-retention.timer || true
+        echo "[deploy] enabled golf-retention.timer"
     fi
 }
 
@@ -152,7 +156,7 @@ else:
     print("[deploy] appended LIVE_REFRESH_LAB_PROFILE_ENABLED=1 to .env")
 PY
 
-# Disk guards: enable warn/hard floors unless operator already configured them.
+# Disk guards + snapshot retention defaults (append to .env when absent).
 venv/bin/python - <<'PY'
 from __future__ import annotations
 
@@ -164,6 +168,7 @@ prior = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
 defaults = {
     "DISK_FREE_MB_WARN": "10240",
     "DISK_FREE_MB_HARD": "5120",
+    "SNAPSHOT_HISTORY_RETAIN_DAYS": "210",
 }
 appended: list[str] = []
 for key, value in defaults.items():
@@ -172,10 +177,10 @@ for key, value in defaults.items():
         continue
     appended.append(f"{key}={value}")
 if appended:
-    block = "\n# Disk guards (MB free). Backup aborts below HARD; ops/data-health warn below WARN.\n"
+    block = "\n# Deploy defaults (disk guards + snapshot retention). See docs/storage-retention.md\n"
     block += "\n".join(appended) + "\n"
     env_path.write_text(prior + block, encoding="utf-8")
-    print("[deploy] appended disk guard env keys:", ", ".join(appended))
+    print("[deploy] appended env keys:", ", ".join(appended))
 PY
 
 restart_services

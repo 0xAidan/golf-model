@@ -1,0 +1,13 @@
+[Unit]
+Description=Golf Model weekly snapshot retention (archive then prune)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+EnvironmentFile=-/opt/golf-model/.env
+Nice=10
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/run_retention_cycle.py --vacuum
+
+[Install]
+WantedBy=multi-user.target
