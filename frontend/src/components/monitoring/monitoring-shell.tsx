@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState, type ElementType, type MouseEvent, ty
 import { NavLink, useLocation } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import {
-  Activity,
   Beaker,
+  ChevronDown,
+  ChevronRight,
   FlaskConical,
   GitCompare,
   History,
@@ -24,7 +25,7 @@ import type { WorkspaceId } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
-  id: WorkspaceId | "lab-picks" | "diagnostics-legacy" | "compare" | "eval"
+  id: WorkspaceId | "lab-picks" | "compare" | "eval"
   label: string
   href: string
   icon: ElementType
@@ -34,13 +35,12 @@ type NavItem = {
 
 const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
-const PRIMARY_NAV: NavItem[] = [
+const PRODUCT_NAV: NavItem[] = [
   { id: "prediction", label: "Dashboard", href: "/", icon: LayoutDashboard, prefetch: true },
   ...(COCKPIT_LAB_ENABLED
     ? ([
         { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true },
         { id: "compare", label: "Compare", href: "/compare", icon: GitCompare, hint: "Dashboard vs Lab" },
-        { id: "eval", label: "Eval", href: "/eval", icon: FlaskConical, hint: "Promotion gates" },
       ] as NavItem[])
     : []),
   { id: "players", label: "Players", href: "/players", icon: Users, prefetch: true },
@@ -49,9 +49,11 @@ const PRIMARY_NAV: NavItem[] = [
 ]
 
 const RESEARCH_NAV: NavItem[] = [
+  ...(COCKPIT_LAB_ENABLED
+    ? ([{ id: "eval", label: "Eval", href: "/eval", icon: FlaskConical, hint: "Promotion gates" }] as NavItem[])
+    : []),
+  { id: "champion-challenger", label: "Champ / Challenger", href: "/research/champion-challenger", icon: FlaskConical },
   { id: "legacy-model", label: "Legacy Model", href: "/research/legacy-model", icon: History },
-  { id: "champion-challenger", label: "Champ/Chlgr", href: "/research/champion-challenger", icon: FlaskConical },
-  { id: "diagnostics-legacy", label: "Diagnostics (legacy)", href: "/research/diagnostics", icon: Activity },
 ]
 
 function LogoMark({ size = 28 }: { size?: number }) {
@@ -74,7 +76,6 @@ function LogoMark({ size = 28 }: { size?: number }) {
 
 function navTestId(id: NavItem["id"]) {
   if (id === "lab-board") return "nav-lab-board"
-  if (id === "diagnostics-legacy") return "nav-diagnostics"
   return `nav-${id}`
 }
 
@@ -117,6 +118,18 @@ function MonitoringDrawerNav({
   onNavigate?: (event: React.MouseEvent<HTMLElement>) => void
   onPrefetch: (href: string) => void
 }) {
+  const [researchOpen, setResearchOpen] = useState(false)
+  const location = useLocation()
+
+  useEffect(() => {
+    const onResearchRoute = RESEARCH_NAV.some((item) => location.pathname.startsWith(item.href))
+    if (onResearchRoute) setResearchOpen(true)
+  }, [location.pathname])
+
+  const handleToggleResearch = useCallback(() => {
+    setResearchOpen((open) => !open)
+  }, [])
+
   return (
     <nav className="monitoring-shell-nav" onClick={onNavigate}>
       <div className="monitoring-shell-nav__brand">
@@ -128,14 +141,23 @@ function MonitoringDrawerNav({
       </div>
 
       <div className="sidebar-section-label">Product</div>
-      {PRIMARY_NAV.map((item) => (
+      {PRODUCT_NAV.map((item) => (
         <NavItemLink key={item.href} {...item} onPrefetch={onPrefetch} />
       ))}
 
-      <div className="sidebar-section-label sidebar-section-label--spaced">Research</div>
-      {RESEARCH_NAV.map((item) => (
-        <NavItemLink key={item.href} {...item} onPrefetch={onPrefetch} />
-      ))}
+      <button
+        type="button"
+        className="sidebar-section-label sidebar-section-label--spaced sidebar-section-label--toggle"
+        onClick={handleToggleResearch}
+        aria-expanded={researchOpen}
+        data-testid="nav-research-toggle"
+      >
+        {researchOpen ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
+        Research
+      </button>
+      {researchOpen
+        ? RESEARCH_NAV.map((item) => <NavItemLink key={item.href} {...item} onPrefetch={onPrefetch} />)
+        : null}
     </nav>
   )
 }
@@ -145,7 +167,9 @@ export type MonitoringShellProps = {
   headline: string
   subheadline?: string
   laneSwitcher?: ReactNode
+  /** @deprecated Use headerStatus — drawer-bottom slot removed in U3 */
   frameStatus?: ReactNode
+  headerStatus?: ReactNode
   actions?: ReactNode
   className?: string
   testId?: string
@@ -157,6 +181,7 @@ export function MonitoringShell({
   subheadline,
   laneSwitcher,
   frameStatus,
+  headerStatus,
   actions,
   className,
   testId = "monitoring-shell",
@@ -165,6 +190,7 @@ export function MonitoringShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
   const queryClient = useQueryClient()
+  const statusChip = headerStatus ?? frameStatus
 
   const handleCloseDrawer = useCallback(() => setDrawerOpen(false), [])
   const handleToggleDrawer = useCallback(() => setDrawerOpen((open) => !open), [])
@@ -254,6 +280,7 @@ export function MonitoringShell({
           ) : null}
 
           <div className="header-actions">
+            {statusChip ? <div className="header-freshness-slot">{statusChip}</div> : null}
             <ThemeToggle />
             {actions}
           </div>
@@ -271,7 +298,6 @@ export function MonitoringShell({
             : {})}
         >
           <MonitoringDrawerNav onNavigate={handleDrawerNavigate} onPrefetch={handlePrefetch} />
-          {frameStatus ? <div className="monitoring-shell-drawer__status">{frameStatus}</div> : null}
         </aside>
 
         {drawerOpen && isNarrow ? (

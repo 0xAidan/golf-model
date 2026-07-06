@@ -16,6 +16,7 @@ import { markAutoStaleRefresh, shouldAutoStaleRefresh } from "@/lib/auto-stale-r
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { formatDateTime } from "@/lib/format"
 import { seasonEventsToGradingHistory } from "@/lib/grading-season"
+import { formatAgeLabel } from "@/lib/snapshot-chip"
 import { lazyWithRetry } from "@/lib/lazy-import"
 import {
   buildHydratedPredictionRun,
@@ -966,6 +967,35 @@ export function AppContent({
     return field != null ? `${course} · ${field} players` : course
   })()
 
+  const showBoardModeSwitch = location.pathname === "/" || location.pathname === "/lab"
+
+  const freshnessDetailLines = useMemo(() => {
+    const lines: string[] = []
+    if (snapshotAgeSeconds != null) {
+      lines.push(`Snapshot saved ${formatAgeLabel(snapshotAgeSeconds)} ago`)
+    }
+    const heartbeatAge = liveRefreshStatus?.status?.heartbeat_age_seconds
+    if (heartbeatAge != null) {
+      lines.push(`Worker heartbeat ${formatAgeLabel(heartbeatAge)} old`)
+    }
+    if (liveRuntimeRunning === false) {
+      lines.push("Background worker is not running.")
+    }
+    if (splitBrainSuspected) {
+      lines.push("Split-brain suspected — check System for worker identity.")
+    }
+    if (liveProgress?.last_error) {
+      lines.push(`Last refresh error: ${liveProgress.last_error}`)
+    }
+    return lines
+  }, [
+    liveProgress?.last_error,
+    liveRefreshStatus?.status?.heartbeat_age_seconds,
+    liveRuntimeRunning,
+    snapshotAgeSeconds,
+    splitBrainSuspected,
+  ])
+
   useEffect(() => {
     const suffix = "Golf Model"
     const path = location.pathname
@@ -1001,14 +1031,17 @@ export function AppContent({
       headline={shellEventName}
       subheadline={shellEventMeta}
       laneSwitcher={
-        <CockpitModeSwitch
-          value={predictionTab}
-          onChange={setPredictionTab}
-          liveActive={isLiveActive}
-        />
+        showBoardModeSwitch ? (
+          <CockpitModeSwitch
+            value={predictionTab}
+            onChange={setPredictionTab}
+            liveActive={isLiveActive}
+          />
+        ) : undefined
       }
-      frameStatus={
+      headerStatus={
         <FreshnessIndicator
+          variant="compact"
           dataState={dataState}
           ageSeconds={snapshotAgeSeconds}
           staleAfterSeconds={staleAfterSeconds}
@@ -1016,6 +1049,7 @@ export function AppContent({
           refreshQueued={refreshQueued || refreshSnapshotMutation.isPending}
           isError={snapshotIsError}
           splitBrain={splitBrainSuspected}
+          detailLines={freshnessDetailLines}
           onRetry={() => {
             void queryClient.invalidateQueries({ queryKey: ["live-refresh-snapshot"] })
             void queryClient.invalidateQueries({ queryKey: ["live-refresh-summary"] })
@@ -1099,7 +1133,7 @@ export function AppContent({
         <Route
           path="/players"
           element={
-            <div className="route-page-shell">
+            <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <PlayersPage players={players} />
               </Suspense>
@@ -1109,7 +1143,7 @@ export function AppContent({
         <Route
           path="/players/:playerKey"
           element={
-            <div className="route-page-shell">
+            <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <PlayersDeepLink players={players} />
               </Suspense>
@@ -1120,7 +1154,7 @@ export function AppContent({
         <Route
           path="/compare"
           element={
-            <div className="route-page-shell">
+            <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <ComparePage />
               </Suspense>
@@ -1130,7 +1164,7 @@ export function AppContent({
         <Route
           path="/eval"
           element={
-            <div className="route-page-shell">
+            <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <EvalPage />
               </Suspense>
