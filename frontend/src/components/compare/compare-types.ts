@@ -1,4 +1,10 @@
-import type { FieldBoardPlayer, LiveRankingRow, LiveTournamentSnapshot, MatchupBet } from "@/lib/types"
+import type {
+  FieldBoardPlayer,
+  LiveRankingRow,
+  LiveTournamentSnapshot,
+  MatchupBet,
+  TrackRecordPick,
+} from "@/lib/types"
 
 export type CompareScope = "event" | "history"
 
@@ -73,6 +79,7 @@ export type MatchupDiffRow = {
   opponent: string
   opponentKey: string
   book: string
+  sourceBet: MatchupBet
   championEv: number | null
   challengerEv: number | null
   evDelta: number | null
@@ -105,6 +112,7 @@ export type GradedPickDiffRow = {
   opponent: string
   betType: string
   book: string
+  sourcePick: TrackRecordPick
   championEv: number | null
   challengerEv: number | null
   championProfit: number | null

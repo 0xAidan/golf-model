@@ -241,10 +241,10 @@ describe("ComparePage", () => {
         ],
         matchup_bets: [
           {
-            pick: "C",
-            pick_key: "c",
-            opponent: "D",
-            opponent_key: "d",
+            pick: "A",
+            pick_key: "a",
+            opponent: "B",
+            opponent_key: "b",
             odds: "+120",
             model_win_prob: 0.5,
             implied_prob: 0.45,
@@ -264,6 +264,7 @@ describe("ComparePage", () => {
     expect(screen.getByTestId("compare-kpi-band")).toBeInTheDocument()
     expect(screen.getByTestId("compare-matchup-diff")).toBeInTheDocument()
     expect(screen.getByTestId("compare-matchup-grid")).toBeInTheDocument()
+    expect(screen.getAllByTestId("pick-row").length).toBeGreaterThan(0)
     expect(screen.getByText("Champ EV")).toBeInTheDocument()
     expect(screen.getByTestId("track-badge-dashboard")).toBeInTheDocument()
     expect(screen.getByTestId("track-badge-lab")).toBeInTheDocument()

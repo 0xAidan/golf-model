@@ -14,11 +14,12 @@ import {
 } from "@/components/compare/use-compare-event-data"
 import { TrackBadge } from "@/components/product/track-badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
+import { PageHeader } from "@/components/ui/page-header"
 import { api } from "@/lib/api"
 import { POLLING } from "@/lib/query-polling"
 import { useLiveSnapshot } from "@/providers/live-snapshot-provider"
 import type { LiveTournamentSnapshot } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const SCOPES: { id: CompareScope; label: string }[] = [
   { id: "event", label: "This event" },
@@ -108,100 +109,116 @@ export function ComparePage() {
   }
 
   return (
-    <div className="compare-page product-page product-page--satellite" data-testid="compare-page">
-      <TerminalPageHeader
-        eyebrow="Research"
-        title="Dashboard vs Lab"
-        description="Compare model lanes in depth — picks, rankings, and markets to tune Lab."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <TrackBadge
-              track="dashboard"
-              variant={eventData.tracks.champion?.model_variant ?? dashboardTrack?.model_variant}
-              configHash={dashboardTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.dashboard}
-            />
-            <span aria-hidden className="text-[var(--text-tertiary)]">
-              vs
-            </span>
-            <TrackBadge
-              track="lab"
-              variant={eventData.tracks.challenger?.model_variant ?? labTrack?.model_variant}
-              configHash={labTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.lab}
-            />
-          </div>
-        }
-      />
-
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          {scope === "event" ? (
-            <CompareEventSelector
-              options={eventOptions}
-              value={selectedEventId}
-              disabled={eventOptionsLoading}
-              onChange={handleEventChange}
-            />
-          ) : null}
-          <p className="text-sm font-medium text-[var(--text-secondary)]">{contextLine}</p>
-        </div>
-        <div className="flex gap-2" role="tablist" aria-label="Compare scope">
-          {SCOPES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={scope === s.id}
-              className={`filter-chip${scope === s.id ? " active" : ""}`}
-              data-testid={`compare-scope-${s.id}`}
-              onClick={() => handleScopeChange(s.id)}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
+    <div
+      className="compare-page monitor-research-page monitor-scroll-region product-page--satellite"
+      data-testid="compare-page"
+    >
+      <div className="px-5 pt-5">
+        <PageHeader
+          eyebrow="Research"
+          title="Dashboard vs Lab"
+          description="Compare where the champion and challenger disagree on rankings, matchup edges, and event-level outcomes."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <TrackBadge
+                track="dashboard"
+                variant={eventData.tracks.champion?.model_variant ?? dashboardTrack?.model_variant}
+                configHash={dashboardTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.dashboard}
+              />
+              <span aria-hidden className="text-[var(--text-tertiary)]">
+                vs
+              </span>
+              <TrackBadge
+                track="lab"
+                variant={eventData.tracks.challenger?.model_variant ?? labTrack?.model_variant}
+                configHash={labTrack?.config_hash ?? tracksQuery.data?.effective_config_hash?.lab}
+              />
+            </div>
+          }
+        />
       </div>
 
-      {scope === "history" ? (
-        <CompareHistoryDashboard onSelectEvent={handleSelectEventFromHistory} />
-      ) : noEventLoaded ? (
-        <div data-testid="compare-no-event">
-          <EmptyState
-            message="No event loaded"
-            description="Switch the dashboard to Upcoming or Live, or pick a past tournament from the dropdown."
-            icon={<GitCompare size={24} aria-hidden />}
-          />
-        </div>
-      ) : labOff ? (
-        <div className="card compare-panel" data-testid="compare-lab-off">
-          <div className="card-body">
-            <p className="text-sm text-[var(--text-secondary)]">
-              Lab lane is off or has not produced a board for this event yet. Pick a past tournament
-              with both tracks, or enable the parallel lab lane and wait for the next live-refresh tick.
-            </p>
+      <div className="px-5 pb-5 pt-4">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            {scope === "event" ? (
+              <CompareEventSelector
+                options={eventOptions}
+                value={selectedEventId}
+                disabled={eventOptionsLoading}
+                onChange={handleEventChange}
+              />
+            ) : null}
+            <p className="text-sm font-medium text-[var(--text-secondary)]">{contextLine}</p>
+          </div>
+          <div
+            className="inline-flex flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1"
+            role="tablist"
+            aria-label="Compare scope"
+          >
+            {SCOPES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="tab"
+                aria-selected={scope === s.id}
+                className={cn(
+                  "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                  scope === s.id
+                    ? "border-[var(--green)] bg-[var(--green-bg)] text-[var(--green)]"
+                    : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+                )}
+                data-testid={`compare-scope-${s.id}`}
+                onClick={() => handleScopeChange(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
-      ) : (
-        <>
-          {!isCurrent && !eventData.isLoading && !eventData.hasRankings ? (
-            <div className="card compare-panel" data-testid="compare-past-missing">
-              <div className="card-body text-sm text-[var(--text-secondary)]">
-                Saved ranking boards are missing for this tournament, but graded pick comparison may
-                still be available below.
-              </div>
+
+        {scope === "history" ? (
+          <CompareHistoryDashboard onSelectEvent={handleSelectEventFromHistory} />
+        ) : noEventLoaded ? (
+          <div data-testid="compare-no-event">
+            <EmptyState
+              message="No event loaded"
+              description="Switch the dashboard to Upcoming or Live, or pick a past tournament from the dropdown."
+              icon={<GitCompare size={24} aria-hidden />}
+            />
+          </div>
+        ) : labOff ? (
+          <div className="card compare-panel" data-testid="compare-lab-off">
+            <div className="card-body">
+              <p className="text-sm text-[var(--text-secondary)]">
+                Lab lane is off or has not produced a board for this event yet. Pick a past tournament
+                with both tracks, or enable the parallel lab lane and wait for the next live-refresh tick.
+              </p>
             </div>
-          ) : null}
-          <CompareEventDashboard
-            tracks={eventData.tracks}
-            players={eventData.players}
-            gradingEvent={eventData.gradingEvent}
-            eventName={eventData.eventName}
-            eventMode={eventData.eventMode}
-            modeLabel={eventData.modeLabel}
-            isLoading={eventData.isLoading}
-            labAvailable={eventData.labAvailable}
-          />
-        </>
-      )}
+          </div>
+        ) : (
+          <>
+            {!isCurrent && !eventData.isLoading && !eventData.hasRankings ? (
+              <div className="card compare-panel" data-testid="compare-past-missing">
+                <div className="card-body text-sm text-[var(--text-secondary)]">
+                  Saved ranking boards are missing for this tournament, but graded pick comparison may
+                  still be available below.
+                </div>
+              </div>
+            ) : null}
+            <CompareEventDashboard
+              tracks={eventData.tracks}
+              players={eventData.players}
+              gradingEvent={eventData.gradingEvent}
+              eventName={eventData.eventName}
+              eventMode={eventData.eventMode}
+              modeLabel={eventData.modeLabel}
+              isLoading={eventData.isLoading}
+              labAvailable={eventData.labAvailable}
+            />
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,8 +1,6 @@
 import type { CompareKpiSummary } from "@/components/compare/compare-types"
 
 const fmt = (v: number | null, digits = 1) => (v == null ? "—" : v.toFixed(digits))
-const fmtSigned = (v: number | null, digits = 2) =>
-  v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}`
 
 function KpiTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -20,10 +18,7 @@ function KpiTile({ label, value, sub }: { label: string; value: string; sub?: st
 
 export function CompareKpiBand({ kpi }: { kpi: CompareKpiSummary }) {
   const maxDelta = kpi.maxDisagreement
-  const showGraded =
-    kpi.championGradedPnl != null ||
-    kpi.challengerGradedPnl != null ||
-    kpi.gradedProfitDelta != null
+  const exclusivePicks = kpi.overlapChampionOnly + kpi.overlapChallengerOnly
 
   return (
     <section
@@ -38,31 +33,21 @@ export function CompareKpiBand({ kpi }: { kpi: CompareKpiSummary }) {
       <KpiTile label="Mean |Δ rank|" value={fmt(kpi.meanAbsRankDelta)} />
       <KpiTile label="Median |Δ rank|" value={fmt(kpi.medianAbsRankDelta)} />
       <KpiTile
-        label="Model pick overlap"
-        value={`${kpi.overlapBoth}`}
-        sub={`${kpi.overlapChampionOnly} champ · ${kpi.overlapChallengerOnly} chlgr only`}
+        label="Shared picks"
+        value={String(kpi.overlapBoth)}
+        sub="Both tracks priced the same matchup edge"
+      />
+      <KpiTile
+        label="Track-only picks"
+        value={String(exclusivePicks)}
+        sub={`${kpi.overlapChampionOnly} champ only · ${kpi.overlapChallengerOnly} chlgr only`}
       />
       <KpiTile
         label="Biggest rank split"
         value={maxDelta ? maxDelta.player : "—"}
         sub={maxDelta ? `Δ ${maxDelta.delta > 0 ? "+" : ""}${maxDelta.delta}` : undefined}
       />
-      {showGraded ? (
-        <KpiTile
-          label="Graded P/L delta"
-          value={fmtSigned(kpi.gradedProfitDelta ?? null)}
-          sub={`Champ ${fmtSigned(kpi.championGradedPnl ?? null)}u · Chlgr ${fmtSigned(kpi.challengerGradedPnl ?? null)}u`}
-        />
-      ) : (
-        <KpiTile label="Mode" value={kpi.modeLabel} sub={kpi.eventName} />
-      )}
-      {showGraded ? (
-        <KpiTile
-          label="Event"
-          value={kpi.modeLabel}
-          sub={kpi.eventName}
-        />
-      ) : null}
+      <KpiTile label="Snapshot" value={kpi.modeLabel} sub={kpi.eventName} />
     </section>
   )
 }
