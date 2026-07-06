@@ -237,6 +237,15 @@ def _output_card_events() -> list[dict[str, str]]:
     return events
 
 
+def _investigate_table_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Row counts for INVESTIGATE-class tables (no automatic prune)."""
+    counts: dict[str, int] = {}
+    for table in sorted(INVESTIGATE):
+        counts[table] = _safe_count(conn, table)
+    counts["ops_jobs"] = _safe_count(conn, "ops_jobs")
+    return counts
+
+
 def _gaps_output_vs_db(conn: sqlite3.Connection, year: int) -> list[dict[str, str]]:
     gaps: list[dict[str, str]] = []
     for card in _output_card_events():
@@ -443,9 +452,12 @@ def build_data_health_report(
             summary_lines.append(storage_warnings[0])
 
         from src.cold_archive import list_archive_stats
+        from src.output_manager import summarize_research_output
 
         latest_backup = _latest_backup_info()
         archive_stats = list_archive_stats()
+        investigate_counts = _investigate_table_counts(conn)
+        research_output = summarize_research_output()
         slim_payload = (os.environ.get("MARKET_PREDICTION_SLIM_PAYLOAD") or "").strip().lower() in {
             "1", "true", "yes", "on",
         }
@@ -487,6 +499,8 @@ def build_data_health_report(
             },
             "latest_backup": latest_backup,
             "archive_stats": archive_stats,
+            "investigate_counts": investigate_counts,
+            "research_output": research_output,
             "monthly_coverage": monthly,
             "gaps": gaps,
             "autoresearch_data_health": autoresearch,

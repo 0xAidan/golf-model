@@ -60,3 +60,4 @@ def test_retention_cycle_dry_run(tmp_path, tmp_db, monkeypatch) -> None:
     out = run_retention_cycle(dry_run=True, retain_days=365)
     assert out["dry_run"] is True
     assert "prune_preview" in out
+    assert "research_rotation" in out

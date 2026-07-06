@@ -143,4 +143,21 @@ def test_data_health_api_endpoint(tmp_db) -> None:
     assert "retention_classifications" in body
     assert "latest_backup" in body
     assert "archive_stats" in body
+    assert "investigate_counts" in body
+    assert "research_output" in body
+
+
+def test_data_health_investigate_counts(tmp_db, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "backtester.autoresearch_data_health.validate_autoresearch_data_health",
+        lambda **kwargs: {"ok": True, "warnings": []},
+    )
+    monkeypatch.setattr("src.data_health._latest_backup_info", lambda backup_dir=None: None)
+    report = build_data_health_report(db_path=tmp_db.DB_PATH, year=2026)
+    counts = report.get("investigate_counts") or {}
+    for table in ("ai_decisions", "intel_events", "shadow_event_simulations", "challenger_predictions"):
+        assert table in counts
+        assert isinstance(counts[table], int)
+    assert "ops_jobs" in counts
+    assert "research_output" in report
 

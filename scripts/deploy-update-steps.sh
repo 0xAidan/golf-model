@@ -113,6 +113,13 @@ install_systemd_units() {
             echo "[deploy] synced ${unit}"
         fi
     done
+    if [ -f "${DEPLOY_PATH}/deploy/systemd/journald-golf-model.conf" ]; then
+        mkdir -p /etc/systemd/journald.conf.d
+        cp "${DEPLOY_PATH}/deploy/systemd/journald-golf-model.conf" "/etc/systemd/journald.conf.d/golf-model.conf"
+        systemctl restart systemd-journald || true
+        journalctl --vacuum-size=1G || true
+        echo "[deploy] applied journald SystemMaxUse=1G cap"
+    fi
     systemctl daemon-reload
     if systemctl list-unit-files golf-live-refresh-watchdog.timer >/dev/null 2>&1; then
         systemctl enable --now golf-live-refresh-watchdog.timer || true
