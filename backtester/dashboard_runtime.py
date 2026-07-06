@@ -152,7 +152,18 @@ def _write_heartbeat(**extra: Any) -> None:
         "last_error": last_error,
         **extra,
     }
-    atomic_write_json(get_heartbeat_path(), payload)
+    try:
+        atomic_write_json(get_heartbeat_path(), payload)
+    except OSError as exc:
+        _logger.warning("Failed to write live-refresh heartbeat: %s", exc)
+
+
+def runtime_thread_alive() -> bool:
+    """True when the in-process live-refresh runtime thread is running."""
+    thread = _thread
+    if thread is None:
+        return False
+    return thread.is_alive()
 
 
 def request_manual_refresh(*, requested_by: str = "api") -> dict[str, Any]:
