@@ -7,13 +7,14 @@ import { TeamEventNotice } from "@/components/cockpit/team-event-notice"
 import {
   DiagnosticsFunnel,
   EventCommandHeader,
+  LastEventChip,
   ModelCommandLayout,
   ModelCommandSection,
   ModelFilterToolbar,
   PlayerInsightDrawer,
-  ResultsPreview,
-  TrustStatusBanner,
 } from "@/components/product"
+import { PickRow } from "@/components/ui/pick-row"
+import { StatusBannerStack } from "@/components/ui/status-banner"
 import { buildLaneTrustState } from "@/features/model-workspace/use-lane-trust"
 import {
   buildCourseFeedModel,
@@ -21,12 +22,12 @@ import {
 } from "@/lib/cockpit-event-models"
 import { getMatchupStateMessage } from "@/lib/cockpit-matchups"
 import { isTeamEvent } from "@/lib/event-format"
-import { formatUnits } from "@/lib/format"
 import {
   getRawGeneratedMatchups,
   getRawGeneratedSecondaryBets,
 } from "@/lib/cockpit-picks"
 import {
+  buildMatchupKey,
   buildLiveRankingsColumns,
   buildUpcomingRankingsColumns,
 } from "@/lib/cockpit-columns"
@@ -39,7 +40,6 @@ import {
   resolveDisplayPredictionRun,
   useWorkspacePastReplay,
 } from "./use-workspace-past-replay"
-import { WorkspaceAlerts } from "./workspace-alerts"
 import {
   WorkspaceCenterBoard,
   WorkspaceLeaderboardModule,
@@ -47,10 +47,12 @@ import {
   buildSecondaryColumnsForWorkspace,
 } from "./workspace-center-board"
 import { WorkspaceFullPicksPanel } from "./workspace-full-picks-panel"
+import { WorkspaceEmptyState } from "./workspace-grade-cells"
 import { WorkspaceLeftRail } from "./workspace-left-rail"
 import { HIGH_EV_FLOOR, LIVE_OPPORTUNITY_PIN_MS } from "./workspace-constants"
 import { TopPicksPipelineHint } from "./workspace-pipeline-hint"
 import type { PredictionWorkspacePageProps } from "./workspace-types"
+import { buildWorkspaceAlertBanners } from "./workspace-alerts"
 
 export function PredictionWorkspacePage({
   liveSnapshot,
@@ -68,6 +70,7 @@ export function PredictionWorkspacePage({
   filteredMatchups,
   gradingHistory,
   gradingRecordSummary,
+  lastEventChip,
   players,
   predictionRun,
   selectedPlayerKey,
@@ -421,12 +424,14 @@ export function PredictionWorkspacePage({
 
   const renderCenterBoard = (
     compactView?: "picks" | "rankings" | "secondary" | "leaderboard" | "full-picks",
+    hideTopPicksTab = false,
   ) => (
     <WorkspaceCenterBoard
       predictionTab={predictionTab}
       isNarrow={isNarrow}
       compactView={compactView}
-      defaultTabId={urlBoardTab}
+      defaultTabId={urlBoardTab ?? (hideTopPicksTab ? "rankings" : undefined)}
+      hideTopPicksTab={hideTopPicksTab}
       showLeaderboard={predictionTab !== "upcoming"}
       displayPlayers={displayPlayers}
       rankingsColumns={rankingsColumns as ColumnDef<(typeof displayPlayers)[number], unknown>[]}
@@ -478,21 +483,50 @@ export function PredictionWorkspacePage({
     .filter(Boolean)
     .join(" · ")
 
-  const latestGradedEvent = useMemo(() => {
-    if (predictionTab === "past") {
-      const selected = gradingHistory.find(
-        (event) => String(event.event_id ?? "") === String(pastReplay.selectedPastEvent?.event_id ?? ""),
-      )
-      if (selected && (selected.graded_pick_count ?? 0) > 0) {
-        return selected
-      }
-    }
-    return (
-      gradingHistory.find((event) => (event.graded_pick_count ?? 0) > 0) ?? gradingHistory[0] ?? null
-    )
-  }, [gradingHistory, pastReplay.selectedPastEvent?.event_id, predictionTab])
-
   const toolbarBooks = predictionTab === "past" ? pastReplay.displayAvailableBooks : availableBooks
+  const topPlayRows = filteredTopPlays.slice(0, 8)
+
+  const workspaceBanners = buildWorkspaceAlertBanners({
+    displayPredictionRun,
+    shouldShowOpportunityAlertStrip,
+    liveOpportunityAlerts,
+    predictionTabPastLoading:
+      predictionTab === "past" &&
+      (pastReplay.pastEventsBootstrapping ||
+        (pastReplay.pastReplayLoading && !pastReplay.pastReplayHasData)),
+    predictionTabPastPicksLoading: pastReplay.pastEventPicksLoading,
+    pastEventName: pastReplay.selectedPastEvent?.event_name,
+    predictionTabPastError:
+      predictionTab === "past" &&
+      pastReplay.pastReplayHasError &&
+      !pastReplay.pastReplayLoading &&
+      !pastReplay.pastReplayHasData,
+    pastReplayErrorMessage: pastReplay.pastReplayErrorMessage ?? "Replay API request failed.",
+    predictionTabPastNoEvent:
+      predictionTab === "past" &&
+      !pastReplay.pastEventsBootstrapping &&
+      !pastReplay.pastReplayLoading &&
+      !pastReplay.pastReplayHasData &&
+      !pastReplay.pastReplayHasError &&
+      pastReplay.pastEventOptions.length === 0,
+  })
+
+  const bannerItems = useMemo(() => {
+    const items = [...workspaceBanners]
+
+    if (laneTrust?.title) {
+      items.push({
+        id: `lane-trust-${laneTrust.title}`,
+        tone:
+          laneTrust.tone === "danger" ? "danger" : laneTrust.tone === "warn" ? "warn" : "info",
+        title: laneTrust.title,
+        message: laneTrust.message,
+        systemLink: laneTrust.tone === "danger" || laneTrust.tone === "warn",
+      })
+    }
+
+    return items
+  }, [laneTrust, workspaceBanners])
 
   const contextSection = (
     <ModelCommandSection
@@ -526,13 +560,17 @@ export function PredictionWorkspacePage({
     </ModelCommandSection>
   )
 
-  const picksSection = (
+  const topPlaysSection = (
     <ModelCommandSection
-      id="picks"
-      title="Actionable plays"
-      description="+EV matchup picks and secondary markets for the active event."
+      id="top-plays"
+      title={predictionTab === "past" ? "Generated picks" : "Top +EV plays"}
+      description={
+        predictionTab === "past"
+          ? `${pastReplay.recordSummary.combined.picks} graded +EV matchup lines from the selected event.`
+          : `${topPlayRows.length} of ${filteredTopPlays.length} qualifying lines · edge ≥ ${(minEdge * 100).toFixed(0)}%`
+      }
       variant="picks"
-      testId="model-section-picks"
+      testId="model-section-top-plays"
     >
       <div className="mb-3">
         <ModelFilterToolbar
@@ -546,7 +584,56 @@ export function PredictionWorkspacePage({
           onMinEdgeChange={onMinEdgeChange}
         />
       </div>
-      {renderCenterBoard("picks")}
+      {predictionTab === "live" ? (
+        <div
+          className="filter-strip workspace-opportunity-filters workspace-top-plays__filters"
+          role="group"
+          aria-label="Live opportunity filters"
+        >
+          <button
+            type="button"
+            className={`filter-chip${opportunityFilter === "all" ? " active" : ""}`}
+            onClick={() => setOpportunityFilter("all")}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={`filter-chip${opportunityFilter === "new" ? " active" : ""}`}
+            onClick={() => setOpportunityFilter("new")}
+          >
+            New this refresh
+          </button>
+          <button
+            type="button"
+            className={`filter-chip${opportunityFilter === "high" ? " active" : ""}`}
+            onClick={() => setOpportunityFilter("high")}
+          >
+            High EV
+          </button>
+        </div>
+      ) : null}
+      {predictionTab === "live" && !isLiveActive ? (
+        <WorkspaceEmptyState message="No live event right now. Switch to Upcoming for pre-tournament picks." />
+      ) : topPlayRows.length > 0 ? (
+        <div className="workspace-top-plays" data-testid="workspace-top-plays">
+          {topPlayRows.map((matchup) => {
+            const key = buildMatchupKey(matchup)
+            return (
+              <PickRow
+                key={key}
+                bet={matchup}
+                expanded={expandedMatchupKey === key}
+                onExpand={() =>
+                  setExpandedMatchupKey((current) => (current === key ? null : key))
+                }
+              />
+            )
+          })}
+        </div>
+      ) : (
+        <WorkspaceEmptyState message={topPicksEmptyMessage} />
+      )}
     </ModelCommandSection>
   )
 
@@ -585,55 +672,53 @@ export function PredictionWorkspacePage({
     </ModelCommandSection>
   )
 
+  const boardsSection = (
+    <ModelCommandSection
+      id="boards"
+      title="Board tabs"
+      description="Rankings, secondary markets, leaderboard, and full card detail."
+    >
+      {renderCenterBoard(undefined, true)}
+    </ModelCommandSection>
+  )
+
   const diagnosticsSection = (
     <ModelCommandSection
       id="diagnostics"
       title="Market diagnostics"
       description="Why picks may be empty or filtered."
     >
-      <TopPicksPipelineHint
-        diagnostics={activeSection?.diagnostics}
-        predictionTab={predictionTab}
-        minEdge={minEdge}
-        selectedBooksLength={selectedBooks.length}
-        matchupSearchTrimmed={matchupSearch.trim()}
-      />
-      <DiagnosticsFunnel
-        diagnostics={activeSection?.diagnostics}
-        emptyMessage={filteredTopPlays.length === 0 ? topPicksEmptyMessage : undefined}
-      />
-    </ModelCommandSection>
-  )
-
-  const resultsSection = (
-    <ModelCommandSection id="results" title="Results preview" description="Latest graded performance.">
-      <ResultsPreview
-        latestEvent={latestGradedEvent}
-        pickSourceLabel={lane === "lab" ? "Lab" : "Dashboard"}
-      />
+      <details className="workspace-details">
+        <summary className="workspace-details__summary">Open diagnostics funnel</summary>
+        <div className="workspace-details__body">
+          <TopPicksPipelineHint
+            diagnostics={activeSection?.diagnostics}
+            predictionTab={predictionTab}
+            minEdge={minEdge}
+            selectedBooksLength={selectedBooks.length}
+            matchupSearchTrimmed={matchupSearch.trim()}
+          />
+          <DiagnosticsFunnel
+            diagnostics={activeSection?.diagnostics}
+            emptyMessage={filteredTopPlays.length === 0 ? topPicksEmptyMessage : undefined}
+          />
+        </div>
+      </details>
     </ModelCommandSection>
   )
 
   const mobileSections = [
-    { id: "picks", label: "Plays", badge: filteredTopPlays.length, content: picksSection },
     { id: "rankings", label: "Rankings", content: rankingsSection },
     { id: "markets", label: "Markets", badge: displaySecondaryBets.length || undefined, content: marketsSection },
     ...(leaderboardSection
       ? [{ id: "leaderboard", label: "Board", content: leaderboardSection }]
       : []),
+    { id: "full-picks", label: fullPicksTabLabel, content: fullPicksSection },
+    { id: "diagnostics", label: "Diagnostics", content: diagnosticsSection },
     { id: "context", label: "Filters", content: contextSection, desktopOnly: false },
   ]
 
-  const desktopSections = [
-    picksSection,
-    rankingsSection,
-    marketsSection,
-    ...(leaderboardSection ? [leaderboardSection] : []),
-    fullPicksSection,
-    diagnosticsSection,
-    contextSection,
-    resultsSection,
-  ]
+  const desktopSections = [boardsSection, diagnosticsSection, contextSection]
 
   return (
     <div
@@ -643,69 +728,20 @@ export function PredictionWorkspacePage({
           : "prediction-workspace prediction-workspace-root monitor-scroll-region"
       }
     >
-      <WorkspaceAlerts
-        displayPredictionRun={displayPredictionRun}
-        shouldShowOpportunityAlertStrip={shouldShowOpportunityAlertStrip}
-        liveOpportunityAlerts={liveOpportunityAlerts}
-        liveSnapshot={liveSnapshot}
-        onDismissOpportunityAlerts={() =>
-          setDismissedOpportunityGeneratedAt(liveSnapshot?.generated_at ?? null)
-        }
-        predictionTabPastLoading={
-          predictionTab === "past" &&
-          (pastReplay.pastEventsBootstrapping ||
-            (pastReplay.pastReplayLoading && !pastReplay.pastReplayHasData))
-        }
-        predictionTabPastPicksLoading={pastReplay.pastEventPicksLoading}
-        pastEventName={pastReplay.selectedPastEvent?.event_name}
-        predictionTabPastError={
-          predictionTab === "past" &&
-          pastReplay.pastReplayHasError &&
-          !pastReplay.pastReplayLoading &&
-          !pastReplay.pastReplayHasData
-        }
-        pastReplayErrorMessage={pastReplay.pastReplayErrorMessage ?? "Replay API request failed."}
-        predictionTabPastNoEvent={
-          predictionTab === "past" &&
-          !pastReplay.pastEventsBootstrapping &&
-          !pastReplay.pastReplayLoading &&
-          !pastReplay.pastReplayHasData &&
-          !pastReplay.pastReplayHasError &&
-          pastReplay.pastEventOptions.length === 0
-        }
-      />
-
       <div className="model-command-center">
         <EventCommandHeader
           lane={lane}
-          eventName={eventName}
           meta={eventMeta}
-          kpis={[
-            {
-              id: "combined",
-              label: "Combined P&L",
-              value: formatUnits(pastReplay.recordSummary.combined.profit),
-              tone: pastReplay.recordSummary.combined.profit >= 0 ? "positive" : "negative",
-            },
-            {
-              id: "picks",
-              label: "+EV picks",
-              value:
-                predictionTab === "past"
-                  ? String(pastReplay.recordSummary.combined.picks)
-                  : String(filteredTopPlays.length),
-            },
-            {
-              id: "field",
-              label: "Field",
-              value: fieldSize != null ? String(fieldSize) : "—",
-            },
-          ]}
+          trailing={
+            <LastEventChip
+              eventName={lastEventChip?.eventName}
+              gradedCount={lastEventChip?.gradedCount}
+              ungradedPositiveEvCount={lastEventChip?.ungradedPositiveEvCount}
+            />
+          }
         />
 
-        {laneTrust ? (
-          <TrustStatusBanner tone={laneTrust.tone} title={laneTrust.title} message={laneTrust.message} />
-        ) : null}
+        {bannerItems.length > 0 ? <StatusBannerStack banners={bannerItems} /> : null}
 
         {showTeamEventNotice ? (
           <TeamEventNotice
@@ -713,17 +749,15 @@ export function PredictionWorkspacePage({
             courseName={courseName}
             mode={predictionTab === "live" ? "live" : "upcoming"}
           />
-        ) : null}
+        ) : (
+          topPlaysSection
+        )}
 
         <ModelCommandLayout
-          defaultMobileSectionId="picks"
+          defaultMobileSectionId="rankings"
           sections={
             isNarrow
-              ? mobileSections.map((section) =>
-                  section.id === "rankings"
-                    ? { ...section, content: rankingsSection }
-                    : section,
-                )
+              ? mobileSections
               : desktopSections.map((content, index) => ({
                   id: `desktop-${index}`,
                   label: "",

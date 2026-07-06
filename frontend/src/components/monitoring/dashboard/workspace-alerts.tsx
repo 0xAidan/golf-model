@@ -1,11 +1,12 @@
+import type { StatusBannerProps } from "@/components/ui/status-banner"
 import type { LiveRefreshSnapshot, PredictionRunResponse } from "@/lib/types"
 
-export function WorkspaceAlerts({
+export type WorkspaceBanner = StatusBannerProps & { id: string }
+
+export function buildWorkspaceAlertBanners({
   displayPredictionRun,
   shouldShowOpportunityAlertStrip,
   liveOpportunityAlerts,
-  liveSnapshot,
-  onDismissOpportunityAlerts,
   predictionTabPastLoading,
   pastEventName,
   predictionTabPastError,
@@ -18,8 +19,6 @@ export function WorkspaceAlerts({
   liveOpportunityAlerts: NonNullable<
     NonNullable<LiveRefreshSnapshot["live_tournament"]>["live_opportunity_alerts"]
   >
-  liveSnapshot: LiveRefreshSnapshot | null
-  onDismissOpportunityAlerts: () => void
   predictionTabPastLoading: boolean
   pastEventName?: string
   predictionTabPastError: boolean
@@ -27,85 +26,71 @@ export function WorkspaceAlerts({
   predictionTabPastNoEvent?: boolean
   predictionTabPastPicksLoading?: boolean
 }) {
-  return (
-    <>
-      {predictionTabPastNoEvent ? (
-        <div
-          className="alert-banner alert-banner--warn"
-          role="status"
-          data-testid="past-replay-empty"
-        >
-          No completed events are available for replay yet. Once an event finishes and grading runs,
-          it will appear here automatically.
-        </div>
-      ) : null}
-      {displayPredictionRun?.hydration_section === "upcoming_fallback_live" ||
-      displayPredictionRun?.hydration_section === "live_fallback_upcoming" ? (
-        <div
-          className="alert-banner alert-banner--warn"
-          role="status"
-          data-testid="hydration-fallback-banner"
-        >
-          {displayPredictionRun.hydration_section === "upcoming_fallback_live"
-            ? "Upcoming view is showing live snapshot data — upcoming section unavailable."
-            : "Live view is showing upcoming snapshot data — live section unavailable."}
-        </div>
-      ) : null}
-      {(displayPredictionRun?.warnings ?? []).some((w) => /eligibility|withheld/i.test(w)) ? (
-        <div
-          className="alert-banner alert-banner--warn"
-          role="status"
-          data-testid="eligibility-warning-banner"
-        >
-          {(displayPredictionRun?.warnings ?? [])
-            .filter((w) => /eligibility|withheld/i.test(w))
-            .join(" ")}
-        </div>
-      ) : null}
-      {shouldShowOpportunityAlertStrip ? (
-        <div
-          className="alert-banner alert-banner--opportunity"
-          role="status"
-          aria-live="polite"
-          data-testid="live-opportunity-alert-strip"
-        >
-          <span className="live-opportunity-banner-title">
-            {liveOpportunityAlerts.length} new live opportunit
-            {liveOpportunityAlerts.length === 1 ? "y" : "ies"}
-          </span>
-          <span className="live-opportunity-banner-list">
-            {liveOpportunityAlerts
-              .slice(0, 3)
-              .map((alert) =>
-                `${alert.market_type ?? "market"} · ${alert.player ?? "player"} · ${(Number(alert.ev ?? 0) * 100).toFixed(1)}%`,
-              )
-              .join(" | ")}
-          </span>
-          <button
-            type="button"
-            className="btn btn-ghost btn-compact"
-            onClick={onDismissOpportunityAlerts}
-            aria-label="Dismiss live opportunity alerts"
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
-      {predictionTabPastPicksLoading ? (
-        <div className="alert-banner" role="status" aria-live="polite" data-testid="past-picks-loading">
-          Loading graded picks for {pastEventName ?? "selected event"}…
-        </div>
-      ) : null}
-      {predictionTabPastLoading ? (
-        <div className="alert-banner" role="status" aria-live="polite" data-testid="past-replay-loading">
-          Loading past tournament replay for {pastEventName ?? "selected event"}…
-        </div>
-      ) : null}
-      {predictionTabPastError ? (
-        <div className="alert-banner" role="alert" data-testid="past-replay-error">
-          Past replay failed: {pastReplayErrorMessage}. Try another event or use the Completed lane.
-        </div>
-      ) : null}
-    </>
+  const banners: WorkspaceBanner[] = []
+
+  if (predictionTabPastNoEvent) {
+    banners.push({
+      id: "past-replay-empty",
+      tone: "warn",
+      title: "Past replay unavailable",
+      message:
+        "No completed events are available for replay yet. Once an event finishes and grading runs, it will appear here automatically.",
+    })
+  }
+
+  const eligibilityWarnings = (displayPredictionRun?.warnings ?? []).filter((warning) =>
+    /eligibility|withheld/i.test(warning),
   )
+  if (eligibilityWarnings.length > 0) {
+    banners.push({
+      id: "eligibility-warning-banner",
+      tone: "warn",
+      title: "Rankings withheld",
+      message: eligibilityWarnings.join(" "),
+    })
+  }
+
+  if (shouldShowOpportunityAlertStrip) {
+    banners.push({
+      id: "live-opportunity-alert-strip",
+      tone: "info",
+      title: `${liveOpportunityAlerts.length} new live opportunit${liveOpportunityAlerts.length === 1 ? "y" : "ies"}`,
+      message: liveOpportunityAlerts
+        .slice(0, 3)
+        .map(
+          (alert) =>
+            `${alert.market_type ?? "market"} · ${alert.player ?? "player"} · ${(Number(alert.ev ?? 0) * 100).toFixed(1)}%`,
+        )
+        .join(" | "),
+    })
+  }
+
+  if (predictionTabPastPicksLoading) {
+    banners.push({
+      id: "past-picks-loading",
+      tone: "info",
+      title: "Loading graded picks",
+      message: `Loading graded picks for ${pastEventName ?? "selected event"}…`,
+    })
+  }
+
+  if (predictionTabPastLoading) {
+    banners.push({
+      id: "past-replay-loading",
+      tone: "info",
+      title: "Loading past replay",
+      message: `Loading past tournament replay for ${pastEventName ?? "selected event"}…`,
+    })
+  }
+
+  if (predictionTabPastError) {
+    banners.push({
+      id: "past-replay-error",
+      tone: "danger",
+      title: "Past replay failed",
+      message: `${pastReplayErrorMessage}. Try another event or use the Completed lane.`,
+    })
+  }
+
+  return banners
 }

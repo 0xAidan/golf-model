@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
@@ -192,11 +192,10 @@ describe("PredictionWorkspacePage live UX", () => {
     expect(screen.queryByText("To par")).not.toBeInTheDocument()
   })
 
-  it("shows alert strip count and NEW LIVE badges", () => {
+  it("shows live opportunities in the banner slot", () => {
     renderPage(buildProps())
 
-    expect(screen.getByTestId("live-opportunity-alert-strip")).toHaveTextContent(/1 new live opportunity/i)
-    expect(screen.getAllByText("NEW LIVE").length).toBeGreaterThan(0)
+    expect(screen.getByTestId("status-banner-stack")).toHaveTextContent(/1 new live opportunity/i)
     expect(screen.getByRole("button", { name: "New this refresh" })).toBeInTheDocument()
   })
 
@@ -246,7 +245,7 @@ describe("PredictionWorkspacePage live UX", () => {
     }
     renderPage(props)
 
-    expect(screen.getByTestId("hydration-fallback-banner")).toHaveTextContent(/upcoming view is showing live/i)
+    expect(screen.getByTestId("status-banner-stack")).toHaveTextContent(/upcoming view is showing live/i)
   })
 
   it("shows team event notice in live mode for team-format snapshots", () => {
@@ -281,7 +280,7 @@ describe("PredictionWorkspacePage live UX", () => {
     }
     renderPage(props)
 
-    expect(screen.getByTestId("eligibility-warning-banner")).toHaveTextContent(/eligibility not verified/i)
+    expect(screen.getByTestId("status-banner-stack")).toHaveTextContent(/eligibility not verified/i)
   })
 
   it("shows snapshot notice once via lane trust banner", () => {
@@ -289,7 +288,22 @@ describe("PredictionWorkspacePage live UX", () => {
     props.snapshotNotice = "Snapshot is stale — last refresh failed."
     renderPage(props)
 
-    expect(screen.getByTestId("trust-status-banner")).toHaveTextContent(/snapshot is stale/i)
+    expect(screen.getByTestId("status-banner-stack")).toHaveTextContent(/snapshot is stale/i)
     expect(screen.queryAllByText(/snapshot is stale/i)).toHaveLength(1)
+  })
+
+  it("prioritizes the highest-severity banner and collapses the rest", () => {
+    const props = buildProps()
+    props.snapshotNotice = "Snapshot is stale — last refresh failed."
+    props.predictionRun = {
+      ...props.predictionRun!,
+      warnings: ["Rankings withheld: field eligibility not verified."],
+    }
+    renderPage(props)
+
+    const stack = screen.getByTestId("status-banner-stack")
+    const banners = within(stack).getAllByTestId("status-banner")
+    expect(banners[0]).toHaveTextContent(/snapshot is stale/i)
+    expect(stack).toHaveTextContent("+ 2 more")
   })
 })

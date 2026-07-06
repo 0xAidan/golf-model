@@ -33,6 +33,7 @@ export type WorkspaceCenterBoardProps = {
   isNarrow: boolean
   compactView?: "picks" | "rankings" | "secondary" | "leaderboard" | "full-picks"
   defaultTabId?: string
+  hideTopPicksTab?: boolean
   showLeaderboard: boolean
   displayPlayers: CompositePlayer[]
   rankingsColumns: ColumnDef<CompositePlayer, unknown>[]
@@ -69,6 +70,7 @@ export function WorkspaceCenterBoard({
   isNarrow,
   compactView,
   defaultTabId,
+  hideTopPicksTab = false,
   showLeaderboard,
   displayPlayers,
   rankingsColumns,
@@ -334,6 +336,7 @@ export function WorkspaceCenterBoard({
       layout={compactView != null ? "stack" : isNarrow ? "stack" : "panels"}
       compactView={compactView}
       defaultTabId={defaultTabId}
+      hideTopPicksTab={hideTopPicksTab}
       showLeaderboard={showLeaderboard}
       fullPicksTabLabel={fullPicksTabLabel}
       rankings={rankings}

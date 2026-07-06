@@ -38,6 +38,12 @@ export type WorkspaceFullPicksEmbed =
   | ({ mode: "production" } & WorkspaceFullPicksProduction)
   | ({ mode: "lab" } & WorkspaceFullPicksLab)
 
+export type LastEventChipData = {
+  eventName: string
+  gradedCount: number
+  ungradedPositiveEvCount: number
+}
+
 export type PredictionWorkspacePageProps = {
   liveSnapshot: LiveRefreshSnapshot | null
   runtimeStatus: { label: string; tone: "good" | "warn" | "bad" }
@@ -78,4 +84,5 @@ export type PredictionWorkspacePageProps = {
   marketRows?: PastMarketPredictionRow[]
   marketRowsLoading?: boolean
   marketRowsError?: string
+  lastEventChip?: LastEventChipData | null
 }
