@@ -3530,13 +3530,33 @@ async def sync_datagolf(request: Request):
     if not tournament_name:
         return JSONResponse({"error": "Tournament name required"}, status_code=400)
 
-    tournament_id = get_or_create_tournament(tournament_name, course)
+    event_id = data.get("event_id")
+    tournament_id = get_or_create_tournament(
+        tournament_name,
+        course,
+        event_id=str(event_id) if event_id else None,
+    )
 
     results = {"tournament_id": tournament_id, "steps": {}}
 
     # 1. Sync DG predictions + field
     try:
-        sync_result = sync_tournament(tournament_id, tour=tour)
+        if not event_id:
+            conn = get_conn()
+            try:
+                t_row = conn.execute(
+                    "SELECT event_id FROM tournaments WHERE id = ?",
+                    (tournament_id,),
+                ).fetchone()
+            finally:
+                conn.close()
+            if t_row and t_row["event_id"]:
+                event_id = str(t_row["event_id"]).strip()
+        sync_result = sync_tournament(
+            tournament_id,
+            tour=tour,
+            event_id=str(event_id) if event_id else None,
+        )
         results["steps"]["dg_sync"] = sync_result
     except Exception as e:
         results["steps"]["dg_sync"] = {"error": str(e)}

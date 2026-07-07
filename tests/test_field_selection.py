@@ -369,3 +369,21 @@ def test_sync_tournament_forwards_event_id_to_datagolf_calls(monkeypatch):
     assert calls["preds"] == "12"
     assert calls["decomp"] == "12"
     assert calls["field"] == "12"
+
+
+def test_run_predictions_forwards_event_id_to_field_updates(monkeypatch):
+    """Field sync in run_predictions must pin DG field-updates to the detected event."""
+    captured: dict[str, str | None] = {"event_id": "unset"}
+
+    def _fake_fetch_field_updates(tour, event_id=None):
+        captured["event_id"] = event_id
+        return []
+
+    monkeypatch.setattr("src.datagolf.fetch_field_updates", _fake_fetch_field_updates)
+    monkeypatch.setattr("run_predictions._store_field_as_metrics", lambda field, tid: 0)
+
+    from run_predictions import safe_api_call
+    from src.datagolf import fetch_field_updates
+
+    safe_api_call("field", fetch_field_updates, "pga", event_id="30")
+    assert captured["event_id"] == "30"

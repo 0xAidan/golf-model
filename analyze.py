@@ -34,7 +34,7 @@ except ImportError:
     pass
 
 from src.csv_parser import ingest_folder
-from src.db import get_or_create_tournament, get_active_weights, get_all_players
+from src.db import get_conn, get_or_create_tournament, get_active_weights, get_all_players
 from src.models.composite import compute_composite
 from src.odds import fetch_odds_api, load_manual_odds, get_best_odds
 from src.value import find_value_bets
@@ -185,7 +185,24 @@ def main():
         from src.datagolf import sync_tournament
         from src.rolling_stats import compute_rolling_metrics, get_field_from_metrics
         try:
-            sync_result = sync_tournament(tournament_id, tour=args.tour)
+            conn = get_conn()
+            try:
+                t_row = conn.execute(
+                    "SELECT event_id FROM tournaments WHERE id = ?",
+                    (tournament_id,),
+                ).fetchone()
+            finally:
+                conn.close()
+            sync_event_id = (
+                str(t_row["event_id"]).strip()
+                if t_row and t_row["event_id"]
+                else None
+            )
+            sync_result = sync_tournament(
+                tournament_id,
+                tour=args.tour,
+                event_id=sync_event_id,
+            )
             total = sync_result.get("total_metrics", 0)
             print(f"  DG sync: {total} metrics stored")
 

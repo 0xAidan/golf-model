@@ -147,15 +147,14 @@ def store_matchup_outcomes(
     return stored
 
 
-def lookup_matchup_outcome(
+def _lookup_matchup_outcome_pair(
     conn: sqlite3.Connection,
     tournament_id: int,
     player_key: str,
     opponent_key: str,
     market_type: str,
-    book: str | None = None,
+    book: str | None,
 ) -> dict[str, Any] | None:
-    ensure_matchup_outcome_table(conn)
     params: list[Any] = [tournament_id, player_key, opponent_key, market_type]
     book_clause = ""
     if book:
@@ -191,6 +190,37 @@ def lookup_matchup_outcome(
     return data
 
 
+def lookup_matchup_outcome(
+    conn: sqlite3.Connection,
+    tournament_id: int,
+    player_key: str,
+    opponent_key: str,
+    market_type: str,
+    book: str | None = None,
+) -> dict[str, Any] | None:
+    ensure_matchup_outcome_table(conn)
+    stored = _lookup_matchup_outcome_pair(
+        conn,
+        tournament_id,
+        player_key,
+        opponent_key,
+        market_type,
+        book,
+    )
+    if stored:
+        return stored
+    if book:
+        return _lookup_matchup_outcome_pair(
+            conn,
+            tournament_id,
+            player_key,
+            opponent_key,
+            market_type,
+            None,
+        )
+    return None
+
+
 def lookup_any_matchup_for_player(
     conn: sqlite3.Connection,
     tournament_id: int,
@@ -215,6 +245,17 @@ def lookup_any_matchup_for_player(
         """,
         params,
     ).fetchone()
+    if not row and book:
+        row = conn.execute(
+            """
+            SELECT * FROM matchup_outcome_results
+            WHERE tournament_id = ?
+              AND market_type = ?
+              AND (player_key = ? OR opponent_key = ?)
+            ORDER BY id DESC LIMIT 1
+            """,
+            [tournament_id, market_type, player_key, player_key],
+        ).fetchone()
     if not row:
         return None
     data = dict(row)
