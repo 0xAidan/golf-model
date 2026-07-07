@@ -2530,17 +2530,6 @@ async def get_live_refresh_snapshot():
     )
     if not contract.get("ok"):
         return contract
-    live_section = contract["snapshot"].get("live_tournament", {}) if contract.get("snapshot") else {}
-    upcoming_section = contract["snapshot"].get("upcoming_tournament", {}) if contract.get("snapshot") else {}
-    verification_messages: list[str] = []
-    for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
-        eligibility = (section or {}).get("eligibility") or {}
-        if eligibility.get("verified") is False:
-            summary = str(eligibility.get("summary") or "Field verification failed").strip()
-            action = str(eligibility.get("action") or "").strip()
-            verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
-    if verification_messages and contract.get("stale_reason") is None:
-        contract["stale_reason"] = " | ".join(verification_messages)
     return contract
 
 

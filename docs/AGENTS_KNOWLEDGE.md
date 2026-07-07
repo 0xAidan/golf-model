@@ -545,6 +545,7 @@ These four stores work together; they are **not** interchangeable:
 - **Player normalization:** Always use `player_normalizer.normalize_name()` for keys and `display_name()` for output.
 - **Test fixtures:** Use `tmp_db` fixture for any test writing to DB. Defined in `tests/conftest.py`.
 - **Output naming:** Card: `{safe_name}_{YYYYMMDD}.md`. Methodology: `{safe_name}_methodology_{YYYYMMDD}.md`. `safe_name` = tournament name lowercased, spaces→underscores, apostrophes removed.
+- **Snapshot eligibility labels:** `_build_section_eligibility()` in `backtester/dashboard_runtime.py` must treat intentionally empty lanes (`code: no_live_event`, `team_event_not_applicable`) as `verified: true`. Never map skipped/empty live or team-format sections to `field_verification_failed` — that triggers a false operator banner while upcoming boards are healthy.
 
 ### Known Tech Debt (Do Not Assume Broken — These Are Intentional or In Progress)
 

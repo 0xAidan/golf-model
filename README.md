@@ -23,12 +23,22 @@ For a product-level overview, see [`ABOUT.md`](ABOUT.md).
 | `DATAGOLF_API_KEY` | Yes | [datagolf.com/api-access](https://datagolf.com/api-access) |
 | `OPENAI_API_KEY` | Optional | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | `ANTHROPIC_API_KEY` | Optional | [console.anthropic.com](https://console.anthropic.com) |
+| `ODDS_API_KEY` | Optional | [the-odds-api.com](https://the-odds-api.com/) — unlocks outright / top-5 / top-10 / make-cut picks; without it, only head-to-head matchup picks appear |
 
 Optional:
 - `AI_BRAIN_PROVIDER` (`openai`, `anthropic`, `gemini`)
 - `OPENAI_MODEL` (override default)
 - `QUIET_DEV_ACCESS_LOGS=1` (reduce local access-log noise)
 - `LIVE_REFRESH_ENABLED=0` (hard kill switch for live-refresh runtime)
+
+### Enable placement-market picks (`ODDS_API_KEY`)
+
+Matchup (head-to-head) picks use Data Golf odds and work with `DATAGOLF_API_KEY` alone. To also surface **outright winner**, **top 5**, **top 10**, and **make cut** value bets:
+
+1. Create a free account at [the-odds-api.com](https://the-odds-api.com/).
+2. Copy your API key from the dashboard.
+3. Open `.env` in the project root and add: `ODDS_API_KEY=your_key_here`
+4. Restart the backend (`python3 app.py` locally, or `systemctl restart golf-dashboard` on the server).
 
 ## Quick Start
 

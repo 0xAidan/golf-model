@@ -2573,6 +2573,25 @@ def _build_section_eligibility(
     source_event_id: str | None,
     tour: str,
 ) -> dict[str, Any]:
+    if analysis_result.get("event_format") == "team" or analysis_result.get("skipped_reason") == "team_event":
+        return {
+            "verified": True,
+            "field_event_id": str(source_event_id or ""),
+            "field_player_count": int(analysis_result.get("field_size") or 0),
+            "field_source": str(analysis_result.get("field_source") or "unknown"),
+            "failed_invariants": [],
+            "summary": "Team-format event; individual rankings and matchup picks are not applicable.",
+            "details": (
+                "This event uses team scoring. Individual field verification is skipped by design."
+            ),
+            "action": None,
+            "code": "team_event_not_applicable",
+            "retryable": False,
+            "major_event": False,
+            "cross_tour_backfill_used": False,
+            "observed_tour": tour,
+        }
+
     field_validation = analysis_result.get("field_validation") or {}
     verification_error = analysis_result.get("verification_error") or {}
     failed_invariants = list(
@@ -3587,6 +3606,22 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
         live_ranking_source = "no_live_event"
         live_event_name = ""
         live_source_event_id = ""
+        live_eligibility = {
+            "verified": True,
+            "field_event_id": "",
+            "field_player_count": 0,
+            "field_source": "no_live_event",
+            "failed_invariants": [],
+            "summary": "No tournament is live right now.",
+            "details": "The live lane is empty until a tournament is in progress.",
+            "action": None,
+            "code": "no_live_event",
+            "retryable": False,
+            "major_event": False,
+            "cross_tour_backfill_used": False,
+            "observed_tour": tour,
+        }
+        live_verification_error = None
         live_diag = {
             **(live_diag or {}),
             "next_event_name": upcoming_event_name or None,
