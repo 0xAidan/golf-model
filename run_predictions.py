@@ -813,7 +813,12 @@ def main():
     # Field updates
     print("  Fetching field updates...")
     from src.datagolf import fetch_field_updates
-    field_data = safe_api_call("field", fetch_field_updates, "pga")
+    field_data = safe_api_call(
+        "field",
+        fetch_field_updates,
+        "pga",
+        event_id=str(event_id) if event_id else None,
+    )
     n_field = 0
     if field_data:
         n_field = _store_field_as_metrics(field_data, tid)

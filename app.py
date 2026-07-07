@@ -2530,17 +2530,6 @@ async def get_live_refresh_snapshot():
     )
     if not contract.get("ok"):
         return contract
-    live_section = contract["snapshot"].get("live_tournament", {}) if contract.get("snapshot") else {}
-    upcoming_section = contract["snapshot"].get("upcoming_tournament", {}) if contract.get("snapshot") else {}
-    verification_messages: list[str] = []
-    for label, section in (("Live", live_section), ("Upcoming", upcoming_section)):
-        eligibility = (section or {}).get("eligibility") or {}
-        if eligibility.get("verified") is False:
-            summary = str(eligibility.get("summary") or "Field verification failed").strip()
-            action = str(eligibility.get("action") or "").strip()
-            verification_messages.append(f"{label}: {summary}{' ' + action if action else ''}")
-    if verification_messages and contract.get("stale_reason") is None:
-        contract["stale_reason"] = " | ".join(verification_messages)
     return contract
 
 
@@ -3541,13 +3530,33 @@ async def sync_datagolf(request: Request):
     if not tournament_name:
         return JSONResponse({"error": "Tournament name required"}, status_code=400)
 
-    tournament_id = get_or_create_tournament(tournament_name, course)
+    event_id = data.get("event_id")
+    tournament_id = get_or_create_tournament(
+        tournament_name,
+        course,
+        event_id=str(event_id) if event_id else None,
+    )
 
     results = {"tournament_id": tournament_id, "steps": {}}
 
     # 1. Sync DG predictions + field
     try:
-        sync_result = sync_tournament(tournament_id, tour=tour)
+        if not event_id:
+            conn = get_conn()
+            try:
+                t_row = conn.execute(
+                    "SELECT event_id FROM tournaments WHERE id = ?",
+                    (tournament_id,),
+                ).fetchone()
+            finally:
+                conn.close()
+            if t_row and t_row["event_id"]:
+                event_id = str(t_row["event_id"]).strip()
+        sync_result = sync_tournament(
+            tournament_id,
+            tour=tour,
+            event_id=str(event_id) if event_id else None,
+        )
         results["steps"]["dg_sync"] = sync_result
     except Exception as e:
         results["steps"]["dg_sync"] = {"error": str(e)}

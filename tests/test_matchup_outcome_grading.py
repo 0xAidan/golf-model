@@ -362,3 +362,126 @@ def test_store_matchup_outcomes_idempotent(tmp_db):
     conn.close()
     assert count == 1
     assert latest["p1_outcome_text"] == "loss"
+
+
+def test_lookup_matchup_outcome_prefers_exact_book(tmp_db):
+    from src.matchup_outcome_store import lookup_matchup_outcome, store_matchup_outcomes
+
+    tid = tmp_db.get_or_create_tournament("Book Pref Test", year=2026, event_id="906")
+    conn = tmp_db.get_conn()
+    row_template = {
+        "bet_type": "round_matchups",
+        "p1_name": "Player A",
+        "p2_name": "Player B",
+    }
+    store_matchup_outcomes(
+        tid,
+        "906",
+        2026,
+        [{**row_template, "p1_outcome_text": "win", "p2_outcome_text": "loss"}],
+        book="bet365",
+        conn=conn,
+    )
+    store_matchup_outcomes(
+        tid,
+        "906",
+        2026,
+        [{**row_template, "p1_outcome_text": "loss", "p2_outcome_text": "win"}],
+        book="draftkings",
+        conn=conn,
+    )
+
+    exact = lookup_matchup_outcome(
+        conn, tid, "player_a", "player_b", "round_matchups", "bet365"
+    )
+    conn.close()
+    assert exact is not None
+    assert exact["book"] == "bet365"
+    assert exact["p1_outcome_text"] == "win"
+
+
+def test_lookup_matchup_outcome_falls_back_to_any_book(tmp_db):
+    from src.matchup_outcome_store import lookup_matchup_outcome, store_matchup_outcomes
+
+    tid = tmp_db.get_or_create_tournament("Book Fallback Test", year=2026, event_id="907")
+    conn = tmp_db.get_conn()
+    store_matchup_outcomes(
+        tid,
+        "907",
+        2026,
+        [
+            {
+                "bet_type": "round_matchups",
+                "p1_name": "Player A",
+                "p2_name": "Player B",
+                "p1_outcome_text": "win",
+                "p2_outcome_text": "loss",
+            }
+        ],
+        book="bet365",
+        conn=conn,
+    )
+
+    fallback = lookup_matchup_outcome(
+        conn, tid, "player_a", "player_b", "round_matchups", "betcris"
+    )
+    conn.close()
+    assert fallback is not None
+    assert fallback["book"] == "bet365"
+    assert fallback["p1_outcome_text"] == "win"
+
+
+def test_round_matchup_grades_via_any_book_fallback(tmp_db):
+    """Round matchup on betcris should grade when only bet365 settlement row exists."""
+    from src.learning import score_picks_for_tournament
+
+    tid = tmp_db.get_or_create_tournament("Cross Book Grade", year=2026, event_id="908")
+    tmp_db.store_results(
+        tid,
+        [
+            {
+                "player_key": "player_a",
+                "player_display": "Player A",
+                "finish_position": 30,
+                "finish_text": "T30",
+                "made_cut": 1,
+            },
+            {
+                "player_key": "player_b",
+                "player_display": "Player B",
+                "finish_position": 5,
+                "finish_text": "T5",
+                "made_cut": 1,
+            },
+        ],
+    )
+    store_matchup_outcomes(
+        tid,
+        "908",
+        2026,
+        [
+            {
+                "bet_type": "round_matchups",
+                "p1_name": "Player A",
+                "p2_name": "Player B",
+                "p1_outcome_text": "win",
+                "p2_outcome_text": "loss",
+            }
+        ],
+        book="bet365",
+        conn=tmp_db.get_conn(),
+    )
+    tmp_db.store_picks(
+        [
+            _base_pick(
+                tournament_id=tid,
+                market_type="round_matchups",
+                market_book="betcris",
+            )
+        ]
+    )
+
+    result = score_picks_for_tournament(tid)
+    assert result["scored"] == 1
+    assert result["bet_hits"] == 1
+    assert result["voided_count"] == 0

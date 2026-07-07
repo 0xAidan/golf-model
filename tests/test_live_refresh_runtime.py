@@ -771,6 +771,9 @@ def test_run_recompute_withholds_unverified_rankings_when_not_live(monkeypatch, 
     assert live["matchups"] == []
     assert live["matchup_bets"] == []
     assert live["diagnostics"]["state"] == "no_live_event"
+    assert live["eligibility"]["verified"] is True
+    assert live["eligibility"]["code"] == "no_live_event"
+    assert "Field verification failed" not in (live["eligibility"].get("summary") or "")
 
 
 def test_run_recompute_completed_event_withholds_when_event_context_unverified(monkeypatch, tmp_path):
@@ -836,6 +839,8 @@ def test_run_recompute_completed_event_withholds_when_event_context_unverified(m
     live = snapshot["live_tournament"]
     assert live["rankings"] == []
     assert live["diagnostics"]["state"] == "no_live_event"
+    assert live["eligibility"]["verified"] is True
+    assert live["eligibility"]["code"] == "no_live_event"
 
 
 def test_run_recompute_does_not_use_markdown_card_rankings_for_live_surface(monkeypatch, tmp_path):
@@ -987,6 +992,9 @@ def test_run_recompute_off_window_empty_live_and_resolved_completed(monkeypatch,
     assert live["rankings"] == []
     assert live["diagnostics"]["state"] == "no_live_event"
     assert live["diagnostics"]["next_event_name"] == "U.S. Open"
+    assert live["eligibility"]["verified"] is True
+    assert live["eligibility"]["code"] == "no_live_event"
+    assert "Field verification failed" not in (live["eligibility"].get("summary") or "")
 
     upcoming = snapshot["upcoming_tournament"]
     assert upcoming["source_event_id"] == "26"
@@ -2179,6 +2187,9 @@ def test_run_recompute_live_team_event_surfaces_team_event_state(monkeypatch):
     # Critically: not any of the degraded states. app.py treats these two as
     # pipeline degradation and sets stale_reason accordingly.
     assert live["diagnostics"]["state"] not in {"pipeline_error", "eligibility_failed"}
+    assert live["eligibility"]["verified"] is True
+    assert live["eligibility"]["code"] == "team_event_not_applicable"
+    assert "Field verification failed" not in (live["eligibility"].get("summary") or "")
 
 
 def test_run_recompute_upcoming_team_event_surfaces_team_event_state(monkeypatch, tmp_path):
@@ -2255,6 +2266,9 @@ def test_run_recompute_upcoming_team_event_surfaces_team_event_state(monkeypatch
     assert upcoming["skipped_reason"] == "team_event"
     assert upcoming["diagnostics"]["state"] == "team_event"
     assert upcoming["diagnostics"]["state"] not in {"pipeline_error", "eligibility_failed"}
+    assert upcoming["eligibility"]["verified"] is True
+    assert upcoming["eligibility"]["code"] == "team_event_not_applicable"
+    assert "Field verification failed" not in (upcoming["eligibility"].get("summary") or "")
 
 
 def test_touch_progress_refreshes_heartbeat_while_running(monkeypatch, tmp_path):

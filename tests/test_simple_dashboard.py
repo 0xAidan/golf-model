@@ -318,6 +318,50 @@ def test_live_refresh_snapshot_endpoint_surfaces_field_verification_error(monkey
     assert body["fallback_reason"] is None
 
 
+def test_live_refresh_snapshot_endpoint_no_false_field_verification_when_no_live_event(monkeypatch):
+    """Off-window weeks must not surface 'Field verification failed' for the idle live lane."""
+    import app as app_module
+
+    recent = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {
+            "generated_at": recent,
+            "live_tournament": {
+                "active": False,
+                "ranking_source": "no_live_event",
+                "rankings": [],
+                "eligibility": {
+                    "verified": True,
+                    "code": "no_live_event",
+                    "summary": "No tournament is live right now.",
+                },
+                "diagnostics": {"state": "no_live_event"},
+            },
+            "upcoming_tournament": {
+                "active": True,
+                "eligibility": {
+                    "verified": True,
+                    "code": "field_verified",
+                    "summary": "Field verified for this event. Rankings are eligible for display.",
+                },
+                "diagnostics": {"state": "edges_available"},
+            },
+        },
+    )
+    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": {})
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/live-refresh/snapshot")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    stale_reason = body.get("stale_reason") or ""
+    assert "Field verification failed" not in stale_reason
+
+
 def test_latest_completed_event_endpoint_prefers_completed_schedule_event(monkeypatch):
     """The dashboard should expose the most recently completed event, not the next upcoming one."""
     import app as app_module

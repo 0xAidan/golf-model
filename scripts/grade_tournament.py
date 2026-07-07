@@ -32,6 +32,9 @@ from src.datagolf import _call_api
 logger = logging.getLogger("grade_tournament")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
+# Books to pull DG matchup settlement rows from (outcome is book-agnostic; more books = more coverage).
+MATCHUP_OUTCOME_BOOKS = ("bet365", "draftkings", "fanduel", "betmgm", "caesars")
+
 
 def build_grading_report(score_result: dict, reconciliation: dict) -> dict:
     """Summarize a grading run for UI/ops surfaces."""
@@ -199,23 +202,36 @@ def grade_tournament(
     db.store_results(tournament_id, results)
     report["steps"]["store_results"] = {"stored": len(results)}
 
-    # 4. Fetch matchup outcomes for grading
+    # 4. Fetch matchup outcomes for grading (multiple books for settlement coverage)
     print("  Fetching matchup outcomes...")
-    matchup_outcomes = fetch_matchup_outcomes(event_id, year)
     from src.matchup_outcome_store import store_matchup_outcomes
 
-    stored_matchup_outcomes = store_matchup_outcomes(
-        tournament_id,
-        event_id,
-        year,
-        matchup_outcomes,
-    )
+    matchup_outcomes: list[dict] = []
+    stored_matchup_outcomes = 0
+    books_fetched: list[str] = []
+    for book in MATCHUP_OUTCOME_BOOKS:
+        book_rows = fetch_matchup_outcomes(event_id, year, book=book)
+        if not book_rows:
+            continue
+        books_fetched.append(book)
+        matchup_outcomes.extend(book_rows)
+        stored_matchup_outcomes += store_matchup_outcomes(
+            tournament_id,
+            event_id,
+            year,
+            book_rows,
+            book=book,
+        )
     report["steps"]["matchup_outcomes"] = {
         "count": len(matchup_outcomes),
         "stored": stored_matchup_outcomes,
+        "books": books_fetched,
     }
     if matchup_outcomes:
-        print(f"  Found {len(matchup_outcomes)} matchup records ({stored_matchup_outcomes} stored)")
+        print(
+            f"  Found {len(matchup_outcomes)} matchup records "
+            f"({stored_matchup_outcomes} stored from {', '.join(books_fetched)})"
+        )
     else:
         print("  No matchup outcomes available (normal for some events)")
 
