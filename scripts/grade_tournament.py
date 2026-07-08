@@ -27,13 +27,22 @@ except ImportError:
 
 from src import db
 from src.event_results import fetch_event_results
-from src.datagolf import _call_api
+from src.datagolf import _call_api, BOOK_NAMES
 
 logger = logging.getLogger("grade_tournament")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
-# Books to pull DG matchup settlement rows from (outcome is book-agnostic; more books = more coverage).
-MATCHUP_OUTCOME_BOOKS = ("bet365", "draftkings", "fanduel", "betmgm", "caesars")
+# Books to pull DG matchup settlement rows from. The outcome itself is
+# book-agnostic (same round, same two players), but DG's historical-odds/matchups
+# endpoint only returns pairings that *that specific book* posted a line for, so
+# querying more books materially increases pairing coverage. Picks are sourced
+# from any book in BOOK_NAMES (src/datagolf.py) -- e.g. pinnacle, betcris, unibet,
+# bovada, betonline -- not just the five mainstream US books that were queried
+# here previously. Querying a narrower list caused legitimately-played matchups
+# to be voided as "no_stored_round_matchup_outcome" simply because none of the
+# five books queried happened to carry that exact pairing (see docs/AGENTS_KNOWLEDGE.md
+# grading section and the 2026-07 John Deere Classic void-rate investigation).
+MATCHUP_OUTCOME_BOOKS = tuple(BOOK_NAMES.keys())
 
 
 def build_grading_report(score_result: dict, reconciliation: dict) -> dict:
@@ -76,7 +85,14 @@ def build_grading_report(score_result: dict, reconciliation: dict) -> dict:
 
 
 def fetch_matchup_outcomes(event_id: str, year: int, book: str = "bet365") -> list[dict]:
-    """Fetch matchup outcomes from DG historical-odds/matchups."""
+    """Fetch matchup outcomes from DG historical-odds/matchups.
+
+    Books that never posted a matchup/3-ball market for the event (common
+    for smaller offshore books) return `odds` as a plain message string
+    (e.g. "we did not track any matchup or 3-ball bets from <book> at the
+    <event>") instead of a list -- that's a normal "no data for this book"
+    case, not an error, and must not be treated as a list of rows.
+    """
     try:
         raw = _call_api("historical-odds/matchups", {
             "tour": "pga",
@@ -92,8 +108,17 @@ def fetch_matchup_outcomes(event_id: str, year: int, book: str = "bet365") -> li
     if not raw:
         return []
 
-    matchups = raw if isinstance(raw, list) else raw.get("odds", [])
-    return matchups
+    if isinstance(raw, dict):
+        matchups = raw.get("odds", [])
+    elif isinstance(raw, list):
+        # Some DG endpoints wrap rows as [rows, metadata].
+        matchups = raw[0] if raw and isinstance(raw[0], list) else raw
+    else:
+        matchups = []
+
+    if not isinstance(matchups, list):
+        return []
+    return [m for m in matchups if isinstance(m, dict)]
 
 
 def resolve_tournament(event_name: str = None, event_id: str = None, year: int = None) -> dict | None:

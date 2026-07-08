@@ -500,9 +500,20 @@ def log_grading_audit(
     reason: str,
     previous: dict | None = None,
     new: dict | None = None,
+    conn: Any | None = None,
 ) -> None:
+    """Append a grading_audit_log row.
+
+    Pass an existing ``conn`` when the caller already holds an open write
+    transaction on the same database (e.g. inside score_picks_for_tournament's
+    scoring loop) -- opening a second connection there would otherwise block
+    on SQLite's single-writer lock until the outer transaction commits, which
+    can time out on a large database mid-loop.
+    """
     db.ensure_initialized()
-    conn = db.get_conn()
+    owns_conn = conn is None
+    if owns_conn:
+        conn = db.get_conn()
     try:
         conn.execute(
             """
@@ -520,9 +531,11 @@ def log_grading_audit(
                 json.dumps(new) if new else None,
             ),
         )
-        conn.commit()
+        if owns_conn:
+            conn.commit()
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def tournament_has_locked_outcomes(tournament_id: int) -> bool:
