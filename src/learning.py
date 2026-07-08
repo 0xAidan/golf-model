@@ -250,6 +250,16 @@ def _persist_void_outcome(
     odds_decimal = parse_odds_to_decimal(pick.get("market_odds"))
 
     if existing and force_audit:
+        # A void→void "regrade" on an already-unlocked row is a no-op: skip the
+        # write and the audit entry so re-running force_audit across a whole
+        # tournament doesn't spam grading_audit_log for picks that genuinely
+        # still can't be resolved (e.g. real withdrawals).
+        already_void_unlocked = (
+            int(existing["outcome_locked"] or 0) == 0
+            and str(existing["grading_authority"] or "").lower() == "void"
+        )
+        if already_void_unlocked:
+            return False
         log_grading_audit(
             pick_id=pick["id"],
             pick_key=pick_key,
@@ -263,6 +273,7 @@ def _persist_void_outcome(
                 "profit": 0.0,
                 "grading_authority": "void",
             },
+            conn=conn,
         )
         conn.execute(
             """UPDATE pick_outcomes SET
@@ -697,28 +708,44 @@ def score_picks_for_tournament(
         )
 
         if existing and force_audit:
-            log_grading_audit(
-                pick_id=pick["id"],
-                pick_key=pick_key,
-                tournament_id=tournament_id,
-                action="regrade",
-                reason=audit_reason or "force_audit",
-                previous=dict(existing),
-                new={
-                    "hit": hit,
-                    "model_hit": model_hit,
-                    "profit": profit,
-                    "grading_authority": grading_authority,
-                },
+            # Skip the write/audit entirely when the newly computed outcome is
+            # identical to what's already stored and the row isn't locked --
+            # otherwise a full-tournament force_audit regrade (used to recover
+            # incorrectly voided picks) would spam grading_audit_log with
+            # thousands of no-op "regrade" entries for picks that were already
+            # graded correctly. Locked rows always go through the write path
+            # below (preserves the existing manual-correction/unlock behavior).
+            unchanged = (
+                int(existing["outcome_locked"] or 0) == 0
+                and int(existing["hit"] or 0) == int(hit)
+                and int(existing["model_hit"] or 0) == int(model_hit)
+                and str(existing["grading_authority"] or "") == grading_authority
+                and abs(float(existing["profit"] or 0.0) - float(profit)) < 1e-9
             )
-            conn.execute(
-                f"""UPDATE pick_outcomes SET
-                       hit = ?, model_hit = ?, actual_finish = ?, odds_decimal = ?,
-                       stake = ?, profit = ?, notes = ?, grading_authority = ?,
-                       pick_key = ?, outcome_locked = 0
-                   WHERE id = ?""",
-                (hit, model_hit, actual_finish, odds_decimal, stake, profit, notes, grading_authority, pick_key, existing["id"]),
-            )
+            if not unchanged:
+                log_grading_audit(
+                    pick_id=pick["id"],
+                    pick_key=pick_key,
+                    tournament_id=tournament_id,
+                    action="regrade",
+                    reason=audit_reason or "force_audit",
+                    previous=dict(existing),
+                    new={
+                        "hit": hit,
+                        "model_hit": model_hit,
+                        "profit": profit,
+                        "grading_authority": grading_authority,
+                    },
+                    conn=conn,
+                )
+                conn.execute(
+                    f"""UPDATE pick_outcomes SET
+                           hit = ?, model_hit = ?, actual_finish = ?, odds_decimal = ?,
+                           stake = ?, profit = ?, notes = ?, grading_authority = ?,
+                           pick_key = ?, outcome_locked = 0
+                       WHERE id = ?""",
+                    (hit, model_hit, actual_finish, odds_decimal, stake, profit, notes, grading_authority, pick_key, existing["id"]),
+                )
             scored += 1
             if model_hit:
                 model_hits += 1
@@ -741,7 +768,42 @@ def score_picks_for_tournament(
             if hit:
                 bet_hits += 1
         else:
-            if existing["model_hit"] is None:
+            # A previously-void, unlocked pick that now resolves (e.g. matchup
+            # settlement data arrived from a book we didn't query the first
+            # time) must be written back even without force_audit -- void was
+            # never meant to be final, it just means "couldn't determine a
+            # winner yet". Picks that were already computed stay untouched
+            # here (unchanged conservative behavior) unless force_audit is set.
+            was_void_unlocked = (
+                int(existing["outcome_locked"] or 0) == 0
+                and str(existing["grading_authority"] or "").lower() == "void"
+            )
+            if was_void_unlocked:
+                log_grading_audit(
+                    pick_id=pick["id"],
+                    pick_key=pick_key,
+                    tournament_id=tournament_id,
+                    action="regrade",
+                    reason=audit_reason or "void_recovered",
+                    previous=dict(existing),
+                    new={
+                        "hit": hit,
+                        "model_hit": model_hit,
+                        "profit": profit,
+                        "grading_authority": grading_authority,
+                    },
+                    conn=conn,
+                )
+                conn.execute(
+                    """UPDATE pick_outcomes SET
+                           hit = ?, model_hit = ?, actual_finish = ?, odds_decimal = ?,
+                           stake = ?, profit = ?, notes = ?, grading_authority = ?,
+                           pick_key = ?
+                       WHERE id = ? AND COALESCE(outcome_locked, 0) = 0""",
+                    (hit, model_hit, actual_finish, odds_decimal, stake, profit, notes, grading_authority, pick_key, existing["id"]),
+                )
+                scored += 1
+            elif existing["model_hit"] is None:
                 conn.execute(
                     "UPDATE pick_outcomes SET model_hit = ? WHERE id = ? AND COALESCE(outcome_locked, 0) = 0",
                     (model_hit, existing["id"]),
