@@ -102,83 +102,116 @@ export function SystemPage({
   const opsHealth = opsHealthQuery.data
   const dataHealth = dataHealthQuery.data
   const latestGradeJob = latestGradeJobQuery.data?.job
+  const opsPending = opsHealthQuery.isPending && !opsHealth
+  const dataHealthPending = dataHealthQuery.isPending && !dataHealth
+  const jobsPending = latestGradeJobQuery.isPending && latestGradeJobQuery.data === undefined
 
   const workerRunning = opsHealth?.live_refresh?.running ?? false
-  const workerTone: "good" | "warn" | "bad" = workerRunning ? "good" : "bad"
+  const workerTone: "good" | "warn" | "bad" = opsPending
+    ? "warn"
+    : workerRunning
+      ? "good"
+      : "bad"
   const gradingGap = opsHealth?.grading?.events_with_ungraded_positive_ev ?? 0
-  const gradingTone: "good" | "warn" | "bad" = gradingGap > 0 ? "bad" : "good"
-  const storagePanelTone = storageTone(dataHealth)
-  const jobsPanelTone = jobTone(latestGradeJob?.status)
+  const gradingTone: "good" | "warn" | "bad" = opsPending
+    ? "warn"
+    : gradingGap > 0
+      ? "bad"
+      : "good"
+  const storagePanelTone: "good" | "warn" | "bad" = dataHealthPending
+    ? "warn"
+    : storageTone(dataHealth)
+  const jobsPanelTone: "good" | "warn" | "bad" = jobsPending
+    ? "warn"
+    : jobTone(latestGradeJob?.status)
 
-  const workerSummary = workerRunning
-    ? "The live refresh worker is running."
-    : "The live refresh worker is down, so fresh boards and auto-recovery are at risk."
-  const workerDetail = [
-    `Heartbeat age ${formatAge(opsHealth?.live_refresh?.heartbeat_age_seconds ?? null)}`,
-    `snapshot age ${formatAge(opsHealth?.live_refresh?.snapshot_age_seconds ?? null)}`,
-    opsHealth?.worker_restart_request?.requested_at
-      ? `restart requested by ${opsHealth.worker_restart_request.requested_by ?? "operator"}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ")
+  const workerSummary = opsPending
+    ? "Checking live refresh worker status…"
+    : workerRunning
+      ? "The live refresh worker is running."
+      : "The live refresh worker is down, so fresh boards and auto-recovery are at risk."
+  const workerDetail = opsPending
+    ? "Waiting for ops health…"
+    : [
+        `Heartbeat age ${formatAge(opsHealth?.live_refresh?.heartbeat_age_seconds ?? null)}`,
+        `snapshot age ${formatAge(opsHealth?.live_refresh?.snapshot_age_seconds ?? null)}`,
+        opsHealth?.worker_restart_request?.requested_at
+          ? `restart requested by ${opsHealth.worker_restart_request.requested_by ?? "operator"}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
 
-  const gradingSummary =
-    gradingGap > 0
+  const gradingSummary = opsPending
+    ? "Checking grading reconciliation…"
+    : gradingGap > 0
       ? `${gradingGap} completed event${gradingGap === 1 ? "" : "s"} still have ungraded +EV picks.`
       : "Grading reconciliation is clear."
-  const gradingDetail = [
-    `Status ${opsHealth?.grading?.status ?? "unknown"}`,
-    opsHealth?.grading?.last_auto_grade_status
-      ? `last auto-grade ${String(opsHealth.grading.last_auto_grade_status)}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ")
+  const gradingDetail = opsPending
+    ? "Waiting for ops health…"
+    : [
+        `Status ${opsHealth?.grading?.status ?? "unknown"}`,
+        opsHealth?.grading?.last_auto_grade_status
+          ? `last auto-grade ${String(opsHealth.grading.last_auto_grade_status)}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
 
-  const storageSummary =
-    storagePanelTone === "bad"
+  const storageSummary = dataHealthPending
+    ? "Checking storage and backups…"
+    : storagePanelTone === "bad"
       ? "Storage health is in a red state and needs operator attention."
       : storagePanelTone === "warn"
         ? "Storage health has warnings that should be reviewed soon."
         : "Database, backups, and archives look healthy."
-  const storageDetail = [
-    dataHealth?.file_sizes_human?.main ? `DB ${dataHealth.file_sizes_human.main}` : null,
-    dataHealth?.file_sizes_human?.wal ? `WAL ${dataHealth.file_sizes_human.wal}` : null,
-    dataHealth?.latest_backup?.name ? `backup ${dataHealth.latest_backup.name}` : "backup unknown",
-  ]
-    .filter(Boolean)
-    .join(" · ")
-
-  const jobsSummary = latestGradeJob
-    ? `Latest grade job is ${latestGradeJob.status}.`
-    : "No recent grade job is recorded yet."
-  const jobsDetail = latestGradeJob
-    ? [
-        latestGradeJob.progress_pct > 0 && latestGradeJob.progress_pct < 100
-          ? `${latestGradeJob.progress_pct}% complete`
-          : null,
-        latestGradeJob.message ?? null,
-        latestGradeJob.error ?? null,
+  const storageDetail = dataHealthPending
+    ? "Waiting for data-health audit…"
+    : [
+        dataHealth?.file_sizes_human?.main ? `DB ${dataHealth.file_sizes_human.main}` : null,
+        dataHealth?.file_sizes_human?.wal ? `WAL ${dataHealth.file_sizes_human.wal}` : null,
+        dataHealth?.latest_backup?.name
+          ? `backup ${dataHealth.latest_backup.name}`
+          : "no backup found",
       ]
         .filter(Boolean)
         .join(" · ")
-    : "The jobs panel will light up when grading or cleanup work runs."
 
-  const overallSummary =
-    workerTone === "good" &&
-    gradingTone === "good" &&
-    storagePanelTone === "good" &&
-    jobsPanelTone === "good"
-      ? "All four core systems are healthy: worker, grading, storage, and jobs are green."
-      : [
-          workerTone !== "good" ? "worker attention needed" : null,
-          gradingTone !== "good" ? "grading gap detected" : null,
-          storagePanelTone !== "good" ? "storage warnings present" : null,
-          jobsPanelTone !== "good" ? "jobs need review" : null,
+  const jobsSummary = jobsPending
+    ? "Checking recent grade jobs…"
+    : latestGradeJob
+      ? `Latest grade job is ${latestGradeJob.status}.`
+      : "No recent grade job is recorded yet."
+  const jobsDetail = jobsPending
+    ? "Waiting for jobs…"
+    : latestGradeJob
+      ? [
+          latestGradeJob.progress_pct > 0 && latestGradeJob.progress_pct < 100
+            ? `${latestGradeJob.progress_pct}% complete`
+            : null,
+          latestGradeJob.message ?? null,
+          latestGradeJob.error ?? null,
         ]
           .filter(Boolean)
           .join(" · ")
+      : "The jobs panel will light up when grading or cleanup work runs."
+
+  const overallSummary =
+    opsPending || dataHealthPending || jobsPending
+      ? "Loading system health…"
+      : workerTone === "good" &&
+          gradingTone === "good" &&
+          storagePanelTone === "good" &&
+          jobsPanelTone === "good"
+        ? "All four core systems are healthy: worker, grading, storage, and jobs are green."
+        : [
+            workerTone !== "good" ? "worker attention needed" : null,
+            gradingTone !== "good" ? "grading gap detected" : null,
+            storagePanelTone !== "good" ? "storage warnings present" : null,
+            jobsPanelTone !== "good" ? "jobs need review" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
 
   return (
     <div className="monitor-research-page monitor-scroll-region product-page--satellite" data-testid="system-page">

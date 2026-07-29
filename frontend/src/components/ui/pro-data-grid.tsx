@@ -167,11 +167,17 @@ export function ProDataGrid<T>({
   const tbodyContent = (() => {
     if (isLoading) {
       return (
-        <tr>
-          <td colSpan={columns.length} className="data-grid-loading" data-testid="data-grid-loading">
-            {loadingMessage}
-          </td>
-        </tr>
+        <>
+          {Array.from({ length: Math.min(8, Math.max(3, columns.length)) }, (_, rowIdx) => (
+            <tr key={`skeleton-${rowIdx}`} data-testid={rowIdx === 0 ? "data-grid-loading" : undefined} aria-busy={rowIdx === 0 ? true : undefined}>
+              {columns.map((col, colIdx) => (
+                <td key={String(col.id ?? `col-${colIdx}`)} className="data-grid-skeleton-cell" aria-hidden>
+                  <span className="data-grid-skeleton-bar" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </>
       )
     }
 

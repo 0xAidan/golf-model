@@ -84,5 +84,7 @@ export type PredictionWorkspacePageProps = {
   marketRows?: PastMarketPredictionRow[]
   marketRowsLoading?: boolean
   marketRowsError?: string
+  /** True while the live snapshot is first-loading with no display data yet. */
+  snapshotBootstrapping?: boolean
   lastEventChip?: LastEventChipData | null
 }

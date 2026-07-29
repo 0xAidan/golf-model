@@ -11,6 +11,8 @@ export type FreshnessIndicatorProps = {
   staleAfterSeconds?: number | null
   isFetching: boolean
   refreshQueued?: boolean
+  /** When true, background polls do not flip the chip to "Updating…". */
+  hasDisplayData?: boolean
   isOnline?: boolean
   isError?: boolean
   splitBrain?: boolean
@@ -45,6 +47,7 @@ export function FreshnessIndicator({
   staleAfterSeconds = null,
   isFetching,
   refreshQueued = false,
+  hasDisplayData = false,
   isOnline = typeof navigator !== "undefined" ? navigator.onLine : true,
   isError = false,
   splitBrain = false,
@@ -60,6 +63,7 @@ export function FreshnessIndicator({
     staleAfterSeconds,
     isFetching,
     refreshQueued,
+    hasDisplayData,
     isOnline,
     isError,
     splitBrain,

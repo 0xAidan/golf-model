@@ -227,6 +227,7 @@ export function useWorkspacePastReplay({
       ),
     enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   })
 
   const pastReplayHistoryLane = resolvePastHistoryLane(pastReplaySection, pastReplaySource)
@@ -260,6 +261,7 @@ export function useWorkspacePastReplay({
       }),
     enabled: predictionTab === "past" && Boolean(selectedPastEvent?.event_id),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   })
 
   const pastReplayHasError =
@@ -320,10 +322,8 @@ export function useWorkspacePastReplay({
   const pastReplayLoading =
     predictionTab === "past" &&
     Boolean(selectedPastEvent?.event_id) &&
-    (pastSnapshotQuery.isLoading ||
-      pastMarketRowsQuery.isLoading ||
-      pastSnapshotQuery.isFetching ||
-      pastMarketRowsQuery.isFetching)
+    ((pastSnapshotQuery.isPending && !pastSnapshotQuery.data) ||
+      (pastMarketRowsQuery.isPending && !pastMarketRowsQuery.data))
 
   const pastRecentResults = useMemo(() => {
     if (predictionTab !== "past") {

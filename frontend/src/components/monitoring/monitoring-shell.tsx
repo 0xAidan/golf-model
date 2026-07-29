@@ -45,7 +45,7 @@ const PRODUCT_NAV: NavItem[] = [
     : []),
   { id: "players", label: "Players", href: "/players", icon: Users, prefetch: true },
   { id: "grading", label: "Results", href: "/results", icon: Trophy, prefetch: true },
-  { id: "diagnostics", label: "System", href: "/system", icon: Settings2 },
+  { id: "diagnostics", label: "System", href: "/system", icon: Settings2, prefetch: true },
 ]
 
 const RESEARCH_NAV: NavItem[] = [
@@ -210,7 +210,14 @@ export function MonitoringShell({
 
   const handlePrefetch = useCallback(
     (href: string) => {
-      if (href === "/" || href === "/lab" || href === "/players") {
+      if (
+        href === "/" ||
+        href === "/lab" ||
+        href === "/players" ||
+        href === "/results" ||
+        href === "/system" ||
+        href === "/compare"
+      ) {
         void queryClient.prefetchQuery({
           queryKey: ["live-refresh-snapshot"],
           queryFn: api.getLiveRefreshSnapshot,
@@ -227,6 +234,29 @@ export function MonitoringShell({
       }
       if (href === "/players") {
         void import("@/pages/players-page")
+      }
+      if (href === "/results") {
+        void import("@/pages/results-page")
+      }
+      if (href === "/system") {
+        void import("@/pages/system-page")
+      }
+      if (href === "/compare") {
+        void import("@/pages/compare-page")
+      }
+      if (href === "/eval") {
+        void import("@/pages/eval-page")
+        void queryClient.prefetchQuery({
+          queryKey: ["promotion-readiness"],
+          queryFn: api.getPromotionReadiness,
+          staleTime: 15_000,
+        })
+      }
+      if (href === "/research/champion-challenger") {
+        void import("@/pages/champion-challenger-page")
+      }
+      if (href === "/research/legacy-model") {
+        void import("@/pages/legacy-model-page")
       }
     },
     [queryClient],

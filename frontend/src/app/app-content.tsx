@@ -18,6 +18,7 @@ import { formatDateTime } from "@/lib/format"
 import { pickLatestGradedSeasonEvent, seasonEventsToGradingHistory } from "@/lib/grading-season"
 import { formatAgeLabel } from "@/lib/snapshot-chip"
 import { lazyWithRetry } from "@/lib/lazy-import"
+import { PageSkeleton } from "@/components/ui/feedback-state"
 import {
   buildHydratedPredictionRun,
   collectBooksForFilter,
@@ -74,7 +75,7 @@ function PlayersDeepLink({ players }: { players: CompositePlayer[] }) {
 function RouteFallback() {
   return (
     <div className="route-suspense-fallback" data-testid="route-suspense-fallback">
-      Loading…
+      <PageSkeleton rows={6} />
     </div>
   )
 }
@@ -143,6 +144,7 @@ export function AppContent({
     ageSeconds: snapshotAgeSeconds,
     staleAfterSeconds,
     dataState,
+    isLoading: snapshotIsLoading,
     isFetching: snapshotIsFetching,
     isError: snapshotIsError,
     splitBrainSuspected,
@@ -812,6 +814,7 @@ export function AppContent({
       pastReplaySource: "dashboard",
       onPastEventContextChange: handlePastEventContextChange,
       preferredPastEventId,
+      snapshotBootstrapping: snapshotIsLoading,
       fullPicks: {
         mode: "production" as const,
         matchups: filteredMatchups,
@@ -824,7 +827,7 @@ export function AppContent({
         secondaryBets,
         onPlayerSelect: setSelectedPlayerKey,
         marketRows: picksMarketRows,
-        marketRowsLoading: picksMarketRowsQuery.isLoading || picksMarketRowsQuery.isFetching,
+        marketRowsLoading: picksMarketRowsQuery.isLoading && !picksMarketRowsQuery.data,
         marketRowsError: picksMarketRowsError,
       },
     }),
@@ -861,9 +864,10 @@ export function AppContent({
       liveSnapshot,
       matchupsPageEmptyMessage,
       picksMarketRows,
-      picksMarketRowsQuery.isFetching,
       picksMarketRowsQuery.isLoading,
+      picksMarketRowsQuery.data,
       picksMarketRowsError,
+      snapshotIsLoading,
     ],
   )
 
@@ -917,6 +921,7 @@ export function AppContent({
       powerRankingsSubtitle: labPowerRankingsSubtitle,
       pastReplaySource: "lab",
       preferredPastEventId,
+      snapshotBootstrapping: snapshotIsLoading,
       fullPicks: {
         mode: "lab" as const,
         matchups: labFilteredMatchups,
@@ -929,7 +934,7 @@ export function AppContent({
         secondaryBets: labSecondaryBets,
         onPlayerSelect: setSelectedPlayerKey,
         marketRows: labPicksMarketRows,
-        marketRowsLoading: labPicksMarketRowsQuery.isLoading || labPicksMarketRowsQuery.isFetching,
+        marketRowsLoading: labPicksMarketRowsQuery.isLoading && !labPicksMarketRowsQuery.data,
         marketRowsError: labPicksMarketRowsError,
         tournamentId: labTournamentIdForPicks,
         predictionRun: labWorkspaceHydrated,
@@ -967,10 +972,11 @@ export function AppContent({
       liveSnapshot,
       labMatchupsEmptyMessage,
       labPicksMarketRows,
-      labPicksMarketRowsQuery.isFetching,
       labPicksMarketRowsQuery.isLoading,
+      labPicksMarketRowsQuery.data,
       labPicksMarketRowsError,
       labTournamentIdForPicks,
+      snapshotIsLoading,
     ],
   )
 
@@ -979,7 +985,8 @@ export function AppContent({
       ? pastReplayHeadline.eventName
       : labRouteActive && labWorkspaceHydrated?.event_name
         ? labWorkspaceHydrated.event_name
-        : effectivePredictionRun?.event_name ?? "No event loaded"
+        : effectivePredictionRun?.event_name
+          ?? (snapshotIsLoading ? "Loading event…" : "No event loaded")
 
   const shellEventMeta = (() => {
     if (predictionTab === "past" && pastReplayHeadline?.courseName) {
@@ -1073,6 +1080,7 @@ export function AppContent({
           staleAfterSeconds={staleAfterSeconds}
           isFetching={snapshotIsFetching || Boolean(gradeJobId)}
           refreshQueued={refreshQueued || refreshSnapshotMutation.isPending}
+          hasDisplayData={Boolean(liveSnapshot)}
           isError={snapshotIsError}
           splitBrain={splitBrainSuspected}
           detailLines={freshnessDetailLines}

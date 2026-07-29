@@ -110,9 +110,11 @@ describe("LabBoardPage (CockpitLabPage)", () => {
     const user = userEvent.setup()
     renderLab()
 
-    expect(screen.getByTestId("lab-board-banner-wrap")).toHaveTextContent(/lab_live_tournament/i)
+    expect(screen.getByTestId("lab-board-banner-wrap")).toHaveTextContent(/research lane for the challenger model/i)
+    expect(screen.getByTestId("lab-board-banner-wrap")).not.toHaveTextContent(/lab_live_tournament/i)
     expect(screen.getByTestId("lab-board-lane-stripe")).toBeInTheDocument()
     expect(screen.getByTestId("lab-board-secondary-chip")).toHaveTextContent(/validation pending/i)
+    expect(screen.getByTestId("lab-board-workspace")).toBeInTheDocument()
     expect(screen.getByTestId("lab-board-workspace-stub")).toBeInTheDocument()
     expect(screen.getByTestId("lab-board-instrumentation-section")).toBeInTheDocument()
     expect(screen.queryByTestId("lab-board-banner")).not.toBeInTheDocument()

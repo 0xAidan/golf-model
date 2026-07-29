@@ -47,20 +47,19 @@ export function CockpitLabPage({
               className="cockpit-lab-secondary-chip"
               data-testid="lab-board-secondary-chip"
             >
-              Challenger - validation pending
+              Challenger — validation pending
             </Link>
             <p className="text-sm text-[var(--text-secondary)] max-w-3xl">
-              Research model via <code className="lab-code-inline">lab_live_tournament</code> /{" "}
-              <code className="lab-code-inline">lab_upcoming_tournament</code>.{" "}
+              Research lane for the challenger model.{" "}
               <Link to="/" className="link-subtle">
                 Dashboard
               </Link>{" "}
-              uses the production snapshot only.
+              stays on the production snapshot.
             </p>
           </div>
         </div>
 
-        <div className="cockpit-lab-workspace">
+        <div className="cockpit-lab-workspace" data-testid="lab-board-workspace">
           <PredictionWorkspacePage {...workspaceProps} />
         </div>
         <section
@@ -69,9 +68,6 @@ export function CockpitLabPage({
           data-research-expanded={researchExpanded ? "true" : "false"}
         >
           <div className="box-border h-full min-h-0 px-3 pb-3 pt-2">
-            <p className="mb-2 text-xs uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-              Secondary instrumentation
-            </p>
             <LabResearchInstrumentationPanel
               expanded={researchExpanded}
               onExpandedChange={handleResearchExpandedChange}

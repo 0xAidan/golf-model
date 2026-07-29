@@ -13,13 +13,39 @@ describe("deriveFreshnessState", () => {
     ).toBe("offline")
   })
 
-  it("returns updating when fetching", () => {
+  it("returns updating when fetching without usable display data", () => {
     expect(
       deriveFreshnessState({
         isFetching: true,
         isOnline: true,
         isError: false,
         dataState: "fresh",
+        hasDisplayData: false,
+      }),
+    ).toBe("updating")
+  })
+
+  it("stays fresh during background poll when display data exists", () => {
+    expect(
+      deriveFreshnessState({
+        isFetching: true,
+        isOnline: true,
+        isError: false,
+        dataState: "fresh",
+        hasDisplayData: true,
+      }),
+    ).toBe("fresh")
+  })
+
+  it("returns updating when refresh is queued even with display data", () => {
+    expect(
+      deriveFreshnessState({
+        isFetching: false,
+        refreshQueued: true,
+        isOnline: true,
+        isError: false,
+        dataState: "stale",
+        hasDisplayData: true,
       }),
     ).toBe("updating")
   })
