@@ -64,7 +64,11 @@ function PromotionTab() {
   const canPromote = enabled && gatesPass && confirm === CONFIRM_PHRASE && reason.trim().length > 0
 
   if (readiness.isLoading) {
-    return <LoadingState message="Loading promotion readiness…" />
+    return (
+      <div className="flex flex-col gap-4" data-testid="eval-promotion-tab">
+        <LoadingState message="Loading promotion readiness…" />
+      </div>
+    )
   }
 
   if (readiness.isError) {

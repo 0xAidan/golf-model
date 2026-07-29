@@ -1945,6 +1945,34 @@ body {
   font-size: var(--text-sm, 12px);
 }
 
+.data-grid-skeleton-cell {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.data-grid-skeleton-bar {
+  display: block;
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--surface-raised, #1a2228) 0%,
+    var(--border, #2a343c) 50%,
+    var(--surface-raised, #1a2228) 100%
+  );
+  background-size: 200% 100%;
+  animation: data-grid-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes data-grid-skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
 .page-skeleton {
   display: flex;
   flex-direction: column;
@@ -2038,45 +2066,29 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────
-   COCKPIT LAB — two-column layout + research pane tables
+   COCKPIT LAB — full-width stack (instrumentation under workspace)
+   Legacy 2-column grid treated the lane stripe as column 1 and
+   crammed all Lab UI into ~38vw — that produced the black void.
    ───────────────────────────────────────────────────── */
 .cockpit-lab-root {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, min(420px, 38vw));
-  grid-template-rows: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
 }
 
-@media (max-width: 1200px) {
-  .cockpit-lab-root {
-    grid-template-columns: 1fr;
-    /* Main cockpit gets remaining height; research band sizes to content when collapsed */
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .cockpit-lab-research-aside[data-research-expanded="true"] {
-    border-left: none !important;
-    border-top: 1px solid var(--border);
-    max-height: min(480px, 50vh);
-    overflow-y: auto;
-  }
-
-  .cockpit-lab-research-aside[data-research-expanded="false"] {
-    border-left: none !important;
-    border-top: 1px solid var(--border);
-    max-height: none;
-    overflow-y: visible;
-  }
+.cockpit-lab-research-aside[data-research-expanded="true"] {
+  border-left: none !important;
+  border-top: 1px solid var(--border);
+  max-height: min(480px, 50vh);
+  overflow-y: auto;
 }
 
-/* Wide layout: aside still uses border-left from inline style */
-@media (min-width: 1201px) {
-  .cockpit-lab-research-aside[data-research-expanded="true"] {
-    overflow-y: auto;
-  }
-
-  .cockpit-lab-research-aside[data-research-expanded="false"] {
-    overflow-y: visible;
-  }
+.cockpit-lab-research-aside[data-research-expanded="false"] {
+  border-left: none !important;
+  border-top: 1px solid var(--border);
+  max-height: none;
+  overflow-y: visible;
 }
 
 .research-instrumentation-table-wrap {
@@ -2779,11 +2791,10 @@ body {
 .route-suspense-fallback {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  font-size: 12px;
-  font-family: var(--font-mono);
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--layout-page-pad-y, 12px) var(--layout-page-pad-x, 16px);
+  min-height: 240px;
 }
 
 .route-page-shell {
@@ -2822,13 +2833,15 @@ body {
 }
 
 .cockpit-lab-root {
-  flex: 1 0 auto;
-  min-height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: visible;
 }
 
 .cockpit-lab-main {
+  flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   min-height: auto;
   display: flex;
   flex-direction: column;

@@ -63,6 +63,7 @@ export type WorkspaceCenterBoardProps = {
   fullPicksTabLabel: string
   pastPicksLoading?: boolean
   pastGradedPickCount?: number
+  snapshotBootstrapping?: boolean
 }
 
 export function WorkspaceCenterBoard({
@@ -100,6 +101,7 @@ export function WorkspaceCenterBoard({
   fullPicksTabLabel,
   pastPicksLoading = false,
   pastGradedPickCount,
+  snapshotBootstrapping = false,
 }: WorkspaceCenterBoardProps) {
   const rankings = (
     <div className="card cockpit-stack-card">
@@ -162,6 +164,10 @@ export function WorkspaceCenterBoard({
             onRowClick={(player) => onPlayerSelect(player.player_key)}
             testId="cockpit-rankings-grid"
           />
+        ) : snapshotBootstrapping ? (
+          <div className="card-body">
+            <WorkspaceLoadingState message="Loading rankings…" />
+          </div>
         ) : (
           <div className="card-body">
             <WorkspaceEmptyState message="No rankings available for this event context." />
@@ -255,8 +261,14 @@ export function WorkspaceCenterBoard({
               </div>
             </div>
           </div>
-        ) : pastPicksLoading ? (
-          <WorkspaceLoadingState message="Loading graded picks for this event…" />
+        ) : pastPicksLoading || snapshotBootstrapping ? (
+          <WorkspaceLoadingState
+            message={
+              pastPicksLoading
+                ? "Loading graded picks for this event…"
+                : "Loading top plays…"
+            }
+          />
         ) : filteredTopPlays.length > 0 ? (
           <HeroDataGrid
             data={filteredTopPlays}

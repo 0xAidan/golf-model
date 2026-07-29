@@ -47,7 +47,7 @@ import {
   buildSecondaryColumnsForWorkspace,
 } from "./workspace-center-board"
 import { WorkspaceFullPicksPanel } from "./workspace-full-picks-panel"
-import { WorkspaceEmptyState } from "./workspace-grade-cells"
+import { WorkspaceEmptyState, WorkspaceLoadingState } from "./workspace-grade-cells"
 import { WorkspaceLeftRail } from "./workspace-left-rail"
 import { HIGH_EV_FLOOR, LIVE_OPPORTUNITY_PIN_MS } from "./workspace-constants"
 import { TopPicksPipelineHint } from "./workspace-pipeline-hint"
@@ -88,6 +88,7 @@ export function PredictionWorkspacePage({
   usingProdSnapshotFallback = false,
   labLanePartialSections = false,
   fullPicks,
+  snapshotBootstrapping = false,
 }: PredictionWorkspacePageProps) {
   const isNarrow = useIsNarrowViewport()
   const [searchParams] = useSearchParams()
@@ -464,6 +465,7 @@ export function PredictionWorkspacePage({
       pastGradedPickCount={
         predictionTab === "past" ? pastReplay.recordSummary.combined.picks : undefined
       }
+      snapshotBootstrapping={snapshotBootstrapping}
     />
   )
 
@@ -616,6 +618,8 @@ export function PredictionWorkspacePage({
       ) : null}
       {predictionTab === "live" && !isLiveActive ? (
         <WorkspaceEmptyState message="No live event right now. Switch to Upcoming for pre-tournament picks." />
+      ) : snapshotBootstrapping ? (
+        <WorkspaceLoadingState message="Loading top plays…" />
       ) : topPlayRows.length > 0 ? (
         <div className="workspace-top-plays" data-testid="workspace-top-plays">
           {topPlayRows.map((matchup) => {
@@ -769,7 +773,7 @@ export function PredictionWorkspacePage({
       </div>
 
       <PlayerInsightDrawer
-        open={Boolean(selectedPlayerKey)}
+        open={Boolean(selectedPlayerKey && selectedPlayer)}
         onOpenChange={(open) => {
           if (!open) onPlayerSelect("")
         }}

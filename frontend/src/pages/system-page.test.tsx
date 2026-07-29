@@ -129,7 +129,8 @@ describe("SystemPage", () => {
       },
     })
 
-    expect(await screen.findByTestId("system-worker-panel")).toHaveTextContent(/worker is down/i)
+    expect(await screen.findByText(/worker is down/i)).toBeInTheDocument()
+    expect(screen.getByTestId("system-worker-panel")).toHaveTextContent(/worker is down/i)
 
     await user.click(screen.getByRole("button", { name: /restart worker/i }))
 

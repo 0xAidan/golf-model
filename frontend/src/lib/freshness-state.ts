@@ -6,6 +6,8 @@ export type FreshnessInput = {
   staleAfterSeconds?: number | null
   isFetching: boolean
   refreshQueued?: boolean
+  /** True when boards already have a usable snapshot — background polls stay quiet. */
+  hasDisplayData?: boolean
   isOnline: boolean
   isError: boolean
   splitBrain?: boolean
@@ -14,7 +16,9 @@ export type FreshnessInput = {
 export const deriveFreshnessState = (input: FreshnessInput): FreshnessState => {
   if (!input.isOnline) return "offline"
   if (input.splitBrain || input.isError) return "error"
-  if (input.isFetching || input.refreshQueued) return "updating"
+  // Manual refresh / queue always surfaces; background poll only when nothing usable yet.
+  if (input.refreshQueued) return "updating"
+  if (input.isFetching && !input.hasDisplayData) return "updating"
   if (input.dataState === "stale") return "stale"
   if (
     input.ageSeconds != null &&

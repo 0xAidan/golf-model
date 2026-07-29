@@ -644,7 +644,13 @@ export function PicksPage({
       ? `${matchupSource.length} tracked matchup lines · click any row to expand`
       : `${secondarySource.length} tracked secondary lines across top-finish, make-cut & outright markets`
 
-  const stateLoading = embeddedLoading || marketRowsLoading
+  const stateLoading =
+    (embeddedLoading || marketRowsLoading) &&
+    matchupSource.length === 0 &&
+    secondarySource.length === 0
+  const showUpdatingHint =
+    (embeddedLoading || marketRowsLoading) &&
+    (matchupSource.length > 0 || secondarySource.length > 0)
   const stateErrorMessage = embeddedErrorMessage ?? (marketRowsError ? `Inventory history unavailable: ${marketRowsError}` : null)
 
   return (
@@ -689,22 +695,24 @@ export function PicksPage({
         />
       </FilterSheet>
       </div>
+      {showUpdatingHint ? (
+        <p className="filter-bar-hint" role="status" aria-live="polite">
+          Updating inventory…
+        </p>
+      ) : null}
       {stateLoading ? (
         embedded ? (
           <WorkspaceLoadingState message={embeddedLoadingMessage} />
         ) : (
           <LoadingState message="Syncing tracked pick inventory…" />
         )
-      ) : null}
-      {stateErrorMessage ? (
+      ) : stateErrorMessage ? (
         embedded ? (
           <WorkspaceErrorState message={stateErrorMessage} />
         ) : (
           <ErrorState message={stateErrorMessage} />
         )
-      ) : null}
-
-      {tab === "matchups" ? (
+      ) : tab === "matchups" ? (
         <MatchupsBoard
           matchups={matchupSource}
           emptyMessage={matchupsEmptyMessage}

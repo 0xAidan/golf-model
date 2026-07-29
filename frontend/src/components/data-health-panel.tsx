@@ -67,11 +67,11 @@ export const DataHealthPanel = () => {
             {backup.integrity?.ok === true ? " · integrity ok" : null}
             {backup.integrity?.ok === false ? " · integrity check failed" : null}
           </p>
-        ) : (
+        ) : !isLoading && !isError ? (
           <p className="data-health-warn" data-testid="data-health-backup-missing">
             No database backup found in backups/.
           </p>
-        )}
+        ) : null}
         {report.retention_policy?.snapshot_retain_days != null ? (
           <p className="data-health-muted">
             Tick retention: {report.retention_policy.snapshot_retain_days} days

@@ -264,7 +264,7 @@ function PlayerProfileView({
     return (
       <LoadingState
         message={`Loading ${playerDisplay}…`}
-        className="players-profile-loading"
+        className="players-profile-loading profile-state-card profile-state-card--loading"
       />
     )
   }
