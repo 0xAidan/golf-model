@@ -15,8 +15,9 @@ The scheduled workflow `Production Reliability Monitor` runs `scripts/reliabilit
 
 ## Alert policy (high signal, low noise)
 
-- Schedule: every 30 minutes
-- Alert trigger: any failed synthetic check
+- Schedule: **disabled** (cron removed — was emailing on every half-hour failure)
+- Manual run: GitHub Actions → Production Reliability Monitor → Run workflow
+- Alert trigger: any failed synthetic check (manual runs only)
 - Alert channel: GitHub issue labeled `reliability-alert` (deduplicated to a single open issue)
 - Alert context includes:
   - failing check names
