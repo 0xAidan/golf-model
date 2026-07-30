@@ -1,8 +1,9 @@
 name: Production Reliability Monitor
 
+# Scheduled cron removed — it was failing every ~30m (ops health / disk floor)
+# and flooding GitHub Actions failure emails. Re-enable a schedule only after
+# the production health check is green consistently.
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
