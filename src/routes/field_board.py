@@ -7,9 +7,11 @@ built single-pass from the current live-refresh snapshot and cached per snapshot
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from typing import Any
 
+from backtester.dashboard_runtime import read_snapshot
 from fastapi import APIRouter, Query
 
 from src.db import ensure_initialized
@@ -25,8 +27,6 @@ _cache: dict[str, Any] = {"key": None, "value": None}
 async def get_field_board(section: str = Query("auto", pattern="^(auto|live|upcoming)$")):
     """Field-wide player intelligence for the current event (cached per snapshot_id)."""
     ensure_initialized()
-    from backtester.dashboard_runtime import read_snapshot
-
     snapshot = read_snapshot() or {}
     snapshot_id = snapshot.get("snapshot_id") or snapshot.get("generated_at") or ""
     cache_key = f"{snapshot_id}:{section}"
@@ -36,9 +36,12 @@ async def get_field_board(section: str = Query("auto", pattern="^(auto|live|upco
             return _cache["value"]
 
     # Resolve the active section's tournament id for SG enrichment.
-    board_preview = build_field_board(snapshot, section=section)
-    sg_by_player = load_sg_by_player(board_preview.get("tournament_id"))
-    board = build_field_board(snapshot, section=section, sg_by_player=sg_by_player)
+    def _build_board() -> dict[str, Any]:
+        board_preview = build_field_board(snapshot, section=section)
+        sg_by_player = load_sg_by_player(board_preview.get("tournament_id"))
+        return build_field_board(snapshot, section=section, sg_by_player=sg_by_player)
+
+    board = await asyncio.to_thread(_build_board)
 
     with _cache_lock:
         _cache["key"] = cache_key

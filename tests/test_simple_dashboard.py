@@ -877,18 +877,18 @@ def test_standalone_player_profile_exposes_rich_event_round_payload(monkeypatch,
         (456, "Collin Morikawa", "collin_morikawa", "pga", 2026, 2026, "500", "Valero Texas Open", "2026-04-05",
          "TPC San Antonio", 20, 72, 4, 72, 0.2, -0.1, 0.2, 0.0, 0.1, 0.1, "T18"),
     )
+    conn.executemany(
+        """INSERT INTO metrics
+           (tournament_id, player_key, player_display, metric_category, metric_name, metric_value)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [
+            (1, "collin_morikawa", "Collin Morikawa", "dg_ranking", "dg_rank", 4),
+            (1, "collin_morikawa", "Collin Morikawa", "dg_ranking", "owgr_rank", 6),
+            (1, "collin_morikawa", "Collin Morikawa", "dg_ranking", "dg_skill_estimate", 1.25),
+        ],
+    )
     conn.commit()
     conn.close()
-
-    monkeypatch.setattr(
-        "src.datagolf.fetch_skill_ratings",
-        lambda: [{"player_name": "Collin Morikawa", "sg_total": 1.2, "sg_ott": 0.2, "sg_app": 0.7, "sg_arg": 0.1, "sg_putt": 0.2}],
-    )
-    monkeypatch.setattr(
-        "src.datagolf.fetch_dg_rankings",
-        lambda: [{"player_name": "Collin Morikawa", "datagolf_rank": 4, "owgr_rank": 6, "dg_skill_estimate": 1.25, "primary_tour": "PGA Tour"}],
-    )
-    monkeypatch.setattr("src.datagolf.fetch_approach_skill", lambda period="l24": [])
 
     client = TestClient(app_module.app)
     response = client.get("/api/players/collin_morikawa/standalone-profile")
