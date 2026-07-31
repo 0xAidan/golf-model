@@ -32,7 +32,8 @@ except ImportError:
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from src import config
@@ -55,7 +56,7 @@ from src.value import find_value_bets
 from src.scoring import compute_profit, determine_outcome
 
 import pandas as pd
-from fastapi.staticfiles import StaticFiles
+from src.spa_delivery import ImmutableStaticFiles, current_release, release_headers
 
 _logger = logging.getLogger("golf.app")
 
@@ -219,8 +220,16 @@ async def _mutating_api_auth(request: Request, call_next):
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
 FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR / "index.html"
-if (FRONTEND_DIST_DIR / "assets").is_dir():
-    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="frontend-assets")
+app.mount(
+    "/assets",
+    ImmutableStaticFiles(directory=str(FRONTEND_DIST_DIR / "assets"), check_dir=False),
+    name="frontend-assets",
+)
+app.mount(
+    "/fonts",
+    StaticFiles(directory=str(FRONTEND_DIST_DIR / "fonts"), check_dir=False),
+    name="frontend-fonts",
+)
 
 from src.routes.research import router as research_router
 from src.routes.model_registry import router as model_registry_router
@@ -1478,21 +1487,37 @@ async def get_player_profile(player_key: str, tournament_id: int, course_num: in
 
 # ── API Endpoints ───────────────────────────────────────────────────
 
-def _render_dashboard_html():
+def _render_dashboard_html() -> HTMLResponse:
     """Serve the built React dashboard. The React SPA is the sole UI."""
+    headers = {"Cache-Control": "no-store"}
+    headers.update(release_headers(current_release(FRONTEND_DIST_DIR)))
     if FRONTEND_DIST_INDEX.is_file():
-        return FRONTEND_DIST_INDEX.read_text(encoding="utf-8")
-    return (
-        "<!doctype html><html><body>"
-        "<h1>Frontend not built</h1>"
-        "<p>Run <code>npm run build</code> in <code>frontend/</code> to produce <code>frontend/dist/</code>.</p>"
-        "</body></html>"
+        return HTMLResponse(FRONTEND_DIST_INDEX.read_text(encoding="utf-8"), headers=headers)
+    return HTMLResponse(
+        (
+            "<!doctype html><html><body>"
+            "<h1>Frontend not built</h1>"
+            "<p>Run <code>npm run build</code> in <code>frontend/</code> to produce <code>frontend/dist/</code>.</p>"
+            "</body></html>"
+        ),
+        status_code=503,
+        headers=headers,
     )
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return _render_dashboard_html()
+
+
+@app.get("/api/version")
+async def version():
+    """Identify the API and the currently promoted SPA release."""
+    release = current_release(FRONTEND_DIST_DIR) or os.environ.get("RELEASE_SHA")
+    payload = {"ok": True, "service": "golf-model"}
+    if release:
+        payload["release"] = release
+    return JSONResponse(payload, headers=release_headers(release))
 
 
 @app.get("/api/tournaments")
@@ -4333,6 +4358,11 @@ async def spa_catch_all(spa_path: str):
     """Serve the React shell for client-side routes (/results, /lab, etc.)."""
     blocked_prefixes = ("api/", "api", "assets/", "static/", "docs/")
     if spa_path.startswith(blocked_prefixes):
+        raise HTTPException(status_code=404, detail="Not Found")
+    if spa_path in {"favicon.svg", "icons.svg"}:
+        static_file = FRONTEND_DIST_DIR / spa_path
+        if static_file.is_file():
+            return FileResponse(static_file)
         raise HTTPException(status_code=404, detail="Not Found")
     return _render_dashboard_html()
 
