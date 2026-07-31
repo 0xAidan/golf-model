@@ -91,24 +91,20 @@ def test_live_refresh_snapshot_endpoint_handles_missing_snapshot(monkeypatch):
 
 
 def test_live_refresh_snapshot_endpoint_generates_snapshot_on_demand(monkeypatch):
+    """GET /snapshot is fail-closed when no snapshot exists (no request-path recompute)."""
     import app as app_module
 
-    generated_snapshot = {
-        "generated_at": "2099-01-01T00:00:00+00:00",
-        "live_tournament": {"event_name": "Future Open", "diagnostics": {"state": "edges_available"}},
-        "upcoming_tournament": {"event_name": "Future Open", "diagnostics": {"state": "edges_available"}},
-    }
     monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
     monkeypatch.setattr("backtester.dashboard_runtime.get_live_refresh_status", lambda: {"running": True})
     monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: {})
-    monkeypatch.setattr("backtester.dashboard_runtime.generate_snapshot_once", lambda tour="pga": generated_snapshot)
 
     client = TestClient(app_module.app)
     response = client.get("/api/live-refresh/snapshot")
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is True
-    assert body["snapshot"]["live_tournament"]["event_name"] == "Future Open"
+    assert body["ok"] is False
+    assert body["snapshot"] is None
+    assert body.get("data_state") == "missing"
 
 
 def test_live_refresh_snapshot_extremely_stale_fails_closed_when_worker_running(monkeypatch):

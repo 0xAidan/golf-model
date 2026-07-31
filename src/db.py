@@ -2683,7 +2683,7 @@ def prune_live_snapshot_history(retain_days: int) -> int:
     days = int(retain_days)
     if days <= 0:
         return 0
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     conn = get_conn()
@@ -2707,7 +2707,7 @@ def prune_market_prediction_rows(retain_days: int) -> int:
     days = int(retain_days)
     if days <= 0:
         return 0
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     conn = get_conn()

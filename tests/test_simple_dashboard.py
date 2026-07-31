@@ -569,29 +569,29 @@ def test_grading_history_summary_splits_1u_record_by_market_without_result_fanou
         ],
     )
     picks = [
-        (1, "cockpit", "matchup", "matchup_win", "Matchup Win", "opp_1", "Opponent 1", "-125", "Book A", 1.80, 1, 0.80),
+        # Best available matchup line only (unique index keeps one row per grading identity).
+        (1, "cockpit", "matchup", "matchup_win", "Matchup Win", "opp_1", "Opponent 1", "-105", "Book B", 1.95, 1, 0.95),
         (2, "cockpit", "matchup", "matchup_loss", "Matchup Loss", "opp_2", "Opponent 2", "+120", "Book A", 2.20, 0, -1.00),
         (3, "cockpit", "matchup", "matchup_push", "Matchup Push", "opp_3", "Opponent 3", "-110", "Book A", 1.91, 0, 0.00),
         (4, "cockpit", "outright", "outright_win", "Outright Win", None, None, "+400", "Book A", 5.00, 1, 4.00),
         (5, "cockpit", "top5", "placement_loss", "Placement Loss", None, None, "+200", "Book A", 3.00, 0, -1.00),
         (6, "cockpit", "top10", "placement_push", "Placement Push", None, None, "+150", "Book A", 2.50, 0, 0.00),
-        # Same generated matchup as pick 1, but a better line. Record math must keep this one only.
-        (7, "cockpit", "matchup", "matchup_win", "Matchup Win", "opp_1", "Opponent 1", "-105", "Book B", 1.95, 1, 0.95),
         # Lab rows must not leak into dashboard/cockpit summaries.
         (8, "lab_sandbox", "matchup", "lab_win", "Lab Win", "lab_opp", "Lab Opp", "+100", "Book A", 2.00, 1, 1.00),
     ]
     for pick_id, source, bet_type, player_key, player_display, opponent_key, opponent_display, odds, book, odds_decimal, hit, profit in picks:
         conn.execute(
             """INSERT INTO picks
-               (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+               (id, tournament_id, model_variant, source, bet_type, market_type, player_key, player_display,
                 opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 pick_id,
                 1,
-                "v5",
+                "baseline",
                 source,
                 bet_type,
+                "matchup" if bet_type == "matchup" else bet_type,
                 player_key,
                 player_display,
                 opponent_key,
@@ -698,7 +698,7 @@ def test_grading_history_coalesces_event_id_from_rounds_when_tournament_null(mon
         """INSERT INTO picks
            (id, tournament_id, model_variant, source, bet_type, player_key, player_display, market_odds, model_prob, ev)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (1, 1, "v5", "cockpit", "matchup", "test_player", "Test Player", "-110", 0.52, 0.12),
+        (1, 1, "baseline", "cockpit", "matchup", "test_player", "Test Player", "-110", 0.52, 0.12),
     )
     conn.execute(
         "INSERT INTO results (tournament_id, player_key, player_display, finish_text, made_cut) VALUES (?, ?, ?, ?, ?)",
@@ -737,12 +737,12 @@ def test_track_record_endpoint_returns_pick_details_with_edge_and_lane(monkeypat
     )
     conn.executemany(
         """INSERT INTO picks
-           (id, tournament_id, model_variant, source, bet_type, player_key, player_display,
+           (id, tournament_id, model_variant, source, bet_type, market_type, player_key, player_display,
             opponent_key, opponent_display, market_odds, market_book, model_prob, ev)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         [
-            (2, 2, "baseline", "ui_display", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-125", "Book A", 0.51, 0.117),
-            (3, 2, "baseline", "ui_display", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-105", "Book B", 0.51, 0.117),
+            # Persist the best available line only (unique grading identity).
+            (3, 2, "baseline", "ui_display", "matchup", "matchup", "tom_hoge", "Tom Hoge", "sungjae_im", "Sungjae Im", "-105", "Book B", 0.51, 0.117),
         ],
     )
     conn.executemany(
@@ -750,7 +750,6 @@ def test_track_record_endpoint_returns_pick_details_with_edge_and_lane(monkeypat
            (pick_id, hit, actual_finish, odds_decimal, stake, profit, entered_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         [
-            (2, 0, "T36 vs T18", 1.80, 1.0, -1.0, "2026-04-20 18:45:00"),
             (3, 0, "T36 vs T18", 1.95, 1.0, -1.0, "2026-04-20 18:46:00"),
         ],
     )
