@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
+import { Suspense, type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation, useParams } from "react-router-dom"
 import { RefreshCw, Star } from "lucide-react"
@@ -1058,6 +1058,16 @@ export function AppContent({
     document.title = primary === suffix ? suffix : `${primary} · ${suffix}`
   }, [location.pathname, shellEventName])
 
+  const withRouteRecovery = (element: ReactNode, track = labRouteActive ? "lab" : "dashboard") => (
+    <RouteErrorBoundaryGate
+      track={track}
+      mode={predictionTab}
+      snapshotId={liveSnapshot?.snapshot_id ?? null}
+    >
+      {element}
+    </RouteErrorBoundaryGate>
+  )
+
   return (
     <>
     <MonitoringShell
@@ -1139,16 +1149,15 @@ export function AppContent({
         </>
       }
     >
-      <RouteErrorBoundaryGate>
-        <Routes>
+      <Routes>
         <Route
           path="/"
-          element={<PredictionWorkspacePage {...cockpitWorkspaceProps} />}
+          element={withRouteRecovery(<PredictionWorkspacePage {...cockpitWorkspaceProps} />)}
         />
-        <Route path="/lab/picks" element={<Navigate to="/lab?tab=full-picks" replace />} />
+        <Route path="/lab/picks" element={withRouteRecovery(<Navigate to="/lab?tab=full-picks" replace />, "lab")} />
         <Route
           path="/lab"
-          element={
+          element={withRouteRecovery(
             COCKPIT_LAB_ENABLED ? (
               <CockpitLabPage
                 cockpitWorkspaceProps={labBoardWorkspaceProps}
@@ -1157,67 +1166,68 @@ export function AppContent({
               />
             ) : (
               <Navigate to="/" replace />
-            )
-          }
+            ),
+            "lab",
+          )}
         />
         <Route
           path="/cockpit-lab"
-          element={<Navigate to={COCKPIT_LAB_ENABLED ? "/lab" : "/"} replace />}
+          element={withRouteRecovery(<Navigate to={COCKPIT_LAB_ENABLED ? "/lab" : "/"} replace />, "lab")}
         />
         <Route
           path="/players"
-          element={
+          element={withRouteRecovery(
             <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <PlayersPage players={players} />
               </Suspense>
             </div>
-          }
+          )}
         />
         <Route
           path="/players/:playerKey"
-          element={
+          element={withRouteRecovery(
             <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <PlayersDeepLink players={players} />
               </Suspense>
             </div>
-          }
+          )}
         />
-        <Route path="/matchups" element={<Navigate to="/?tab=full-picks" replace />} />
+        <Route path="/matchups" element={withRouteRecovery(<Navigate to="/?tab=full-picks" replace />)} />
         <Route
           path="/compare"
-          element={
+          element={withRouteRecovery(
             <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <ComparePage />
               </Suspense>
             </div>
-          }
+          )}
         />
         <Route
           path="/eval"
-          element={
+          element={withRouteRecovery(
             <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <EvalPage />
               </Suspense>
             </div>
-          }
+          )}
         />
         <Route
           path="/results"
-          element={
+          element={withRouteRecovery(
             <Suspense fallback={<RouteFallback />}>
               <ResultsPage />
             </Suspense>
-          }
+          )}
         />
-        <Route path="/grading" element={<Navigate to="/results" replace />} />
-        <Route path="/track-record" element={<Navigate to="/results?tab=analytics" replace />} />
+        <Route path="/grading" element={withRouteRecovery(<Navigate to="/results" replace />)} />
+        <Route path="/track-record" element={withRouteRecovery(<Navigate to="/results?tab=analytics" replace />)} />
         <Route
           path="/system"
-          element={
+          element={withRouteRecovery(
             <Suspense fallback={<RouteFallback />}>
               <SystemPage
                 dashboard={dashboard}
@@ -1229,28 +1239,27 @@ export function AppContent({
                 secondaryBets={secondaryBets}
               />
             </Suspense>
-          }
+          )}
         />
         <Route
           path="/research/legacy-model"
-          element={
+          element={withRouteRecovery(
             <Suspense fallback={<RouteFallback />}>
               <LegacyModelPage liveSnapshot={liveSnapshot} />
             </Suspense>
-          }
+          )}
         />
         <Route
           path="/research/champion-challenger"
-          element={
+          element={withRouteRecovery(
             <Suspense fallback={<RouteFallback />}>
               <ChampionChallengerPage />
             </Suspense>
-          }
+          )}
         />
-        <Route path="/research/diagnostics" element={<Navigate to="/system" replace />} />
-        <Route path="/research/diagnostics-legacy" element={<Navigate to="/system" replace />} />
+        <Route path="/research/diagnostics" element={withRouteRecovery(<Navigate to="/system" replace />)} />
+        <Route path="/research/diagnostics-legacy" element={withRouteRecovery(<Navigate to="/system" replace />)} />
       </Routes>
-      </RouteErrorBoundaryGate>
     </MonitoringShell>
     <CommandMenu
       open={commandMenuOpen}

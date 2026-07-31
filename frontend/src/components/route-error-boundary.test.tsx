@@ -25,7 +25,7 @@ describe("RouteErrorBoundary", () => {
     vi.unstubAllEnvs()
   })
 
-  it("detects chunk load failures and offers reload", () => {
+  it("shows recovery copy for a chunk load failure", () => {
     render(
       <MemoryRouter>
         <RouteErrorBoundary>
@@ -35,7 +35,8 @@ describe("RouteErrorBoundary", () => {
     )
 
     expect(screen.getByTestId("route-error-boundary")).toHaveAttribute("data-chunk-failure", "true")
-    expect(screen.getByTestId("route-error-reload")).toBeInTheDocument()
+    expect(screen.getByText(/navigation remains available/i)).toBeInTheDocument()
+    expect(screen.queryByTestId("error-state")).not.toBeInTheDocument()
   })
 
   it("resets when resetKey changes", () => {

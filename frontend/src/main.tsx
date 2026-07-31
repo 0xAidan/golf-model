@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router-dom"
 import App from "@/App"
 import { ChartThemeProvider } from "@/components/chart-theme-provider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { initSentry } from "@/observability/sentry"
 import { Toaster } from "sonner"
 import "@/index.css"
 
@@ -18,6 +19,8 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+initSentry()
 
 const legacyHashPath = window.location.hash
 if (legacyHashPath.startsWith("#/")) {
