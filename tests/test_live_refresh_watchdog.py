@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from scripts.live_refresh_watchdog import evaluate, main
+from scripts.live_refresh_watchdog import _stale_after_seconds, evaluate, main
+
+
+def test_watchdog_stale_threshold_includes_measured_p99_runtime(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.live_refresh_watchdog.get_settings",
+        lambda: {"live_refresh": {"mode_override": "off_window"}},
+    )
+    threshold = _stale_after_seconds(heartbeat={"recompute_runtime_p99_seconds": 321})
+
+    assert threshold == 3921
 
 
 def test_watchdog_restarts_idle_worker_with_stale_heartbeat():

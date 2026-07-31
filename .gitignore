@@ -10,6 +10,13 @@ data/exports/
 data/csvs/*.csv
 data/course_images/
 data/autoresearch_settings.json
+data/live_refresh_snapshot.json
+data/live_refresh_heartbeat.json
+data/live_refresh_manual_trigger.json
+data/live_refresh_cycle.lock
+data/live_refresh_progress.json
+data/live_refresh_worker.pid
+data/live_refresh_worker_restart_request.json
 output/*.md
 output/*.json
 output/archive/

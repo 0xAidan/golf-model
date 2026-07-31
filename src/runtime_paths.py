@@ -21,6 +21,8 @@ HEARTBEAT_FILENAME = "live_refresh_heartbeat.json"
 SNAPSHOT_FILENAME = "live_refresh_snapshot.json"
 CYCLE_LOCK_FILENAME = "live_refresh_cycle.lock"
 MANUAL_TRIGGER_FILENAME = "live_refresh_manual_trigger.json"
+PROGRESS_FILENAME = "live_refresh_progress.json"
+WORKER_PID_FILENAME = "live_refresh_worker.pid"
 WORKER_RESTART_REQUEST_FILENAME = "live_refresh_worker_restart_request.json"
 
 
@@ -59,6 +61,14 @@ def get_cycle_lock_path() -> Path:
 
 def get_manual_trigger_path() -> Path:
     return get_data_dir() / MANUAL_TRIGGER_FILENAME
+
+
+def get_progress_path() -> Path:
+    return get_data_dir() / PROGRESS_FILENAME
+
+
+def get_worker_pid_path() -> Path:
+    return get_data_dir() / WORKER_PID_FILENAME
 
 
 def get_worker_restart_request_path() -> Path:

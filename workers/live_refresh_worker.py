@@ -21,14 +21,12 @@ from backtester.dashboard_runtime import (
 )
 from src.autoresearch_settings import get_settings
 from src.db import ensure_initialized
+from src.runtime_paths import get_worker_pid_path
 
 _shutdown = False
 
-DEFAULT_PIDFILE = "/tmp/golf_live_refresh.pid"
-
-
 def _pidfile_path() -> str:
-    return os.environ.get("LIVE_REFRESH_PIDFILE", DEFAULT_PIDFILE)
+    return os.environ.get("LIVE_REFRESH_PIDFILE", str(get_worker_pid_path()))
 
 
 def _write_pidfile(path: str) -> None:
@@ -127,7 +125,10 @@ def main() -> int:
                 log.critical(
                     "Live refresh runtime thread died unexpectedly; exiting for systemd restart"
                 )
-                return 1
+                # A timed-out helper may still be alive.  Normal interpreter shutdown
+                # waits for non-daemon threads, so terminate this worker process and let
+                # systemd replace it instead of leaving real work running indefinitely.
+                os._exit(1)
             time.sleep(1.0)
 
         stop_live_refresh()
