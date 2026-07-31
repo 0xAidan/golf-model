@@ -1,8 +1,15 @@
 import { test, expect } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 
+/** HashRouter paths until BrowserRouter migration (PR 1). */
+const hash = (path: string): string => {
+  if (path === "/" || path === "") return "/#/"
+  const normalized = path.startsWith("/") ? path : `/${path}`
+  return `/#${normalized}`
+}
+
 async function runAxe(page: import("@playwright/test").Page, path: string) {
-  await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 })
+  await page.goto(hash(path), { waitUntil: "domcontentloaded", timeout: 60_000 })
   await page.waitForTimeout(1500)
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

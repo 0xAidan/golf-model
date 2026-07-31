@@ -7,7 +7,22 @@ on:
     branches: [main]
 
 jobs:
+  validate-workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Validate workflow syntax and expected jobs
+        run: python scripts/validate_ci_workflow.py
+      - name: Unit-test workflow validator
+        run: python -m pytest tests/test_ci_workflow.py -v --tb=short
+
   test:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -23,6 +38,7 @@ jobs:
       - run: python -m pytest tests/ -v --tb=short
 
   lint:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -37,6 +53,7 @@ jobs:
       - run: ruff check --output-format=github .
 
   frozen-zone-guard:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -50,6 +67,7 @@ jobs:
         run: bash scripts/ci/frozen_zone_guard.sh
 
   frontend:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +88,7 @@ jobs:
         working-directory: frontend
 
   backend-smoke:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -119,7 +138,8 @@ jobs:
         run: python scripts/reliability_synthetic_check.py --base-url http://127.0.0.1:8000 --smoke-local
       - name: Dump backend log on failure
         if: failure()
-        run: python - <<'PY'
+        run: |
+          python - <<'PY'
           from pathlib import Path
           log_path = Path("smoke-app.log")
           if log_path.exists():
@@ -135,6 +155,7 @@ jobs:
           fi
 
   frontend-bundle-budget:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -151,6 +172,7 @@ jobs:
         working-directory: frontend
 
   frontend-a11y:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -199,7 +221,58 @@ jobs:
         run: |
           if [ -f a11y-app.pid ]; then kill "$(cat a11y-app.pid)" || true; fi
 
+  frontend-e2e:
+    needs: validate-workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install chromium --with-deps
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Start backend for e2e tests
+        run: |
+          export DATAGOLF_API_KEY="e2e-test-placeholder"
+          python app.py > e2e-app.log 2>&1 &
+          echo $! > e2e-app.pid
+      - name: Wait for backend
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          url = "http://127.0.0.1:8000/"
+          for _ in range(30):
+            try:
+              with urllib.request.urlopen(url, timeout=3) as r:
+                if r.status == 200:
+                  print("ready")
+                  raise SystemExit(0)
+            except Exception:
+              time.sleep(2)
+          raise SystemExit("backend not ready")
+          PY
+      - run: npm run test:e2e
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f e2e-app.pid ]; then kill "$(cat e2e-app.pid)" || true; fi
+
   frontend-visual-diff:
+    needs: validate-workflow
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

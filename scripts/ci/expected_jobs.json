@@ -1,0 +1,20 @@
+{
+  "workflow": ".github/workflows/ci.yml",
+  "required_jobs": [
+    "validate-workflow",
+    "test",
+    "lint",
+    "frozen-zone-guard",
+    "frontend",
+    "backend-smoke",
+    "frontend-bundle-budget",
+    "frontend-a11y",
+    "frontend-visual-diff",
+    "frontend-e2e"
+  ],
+  "forbidden_run_patterns": [
+    "^\\s*-\\s*run:\\s*python3?\\s+-\\s*<<",
+    "^\\s*run:\\s*python3?\\s+-\\s*<<"
+  ],
+  "notes": "Job IDs must exist in ci.yml. GitHub creates zero jobs when workflow YAML is invalid (for example bare heredoc on run:)."
+}

@@ -19,3 +19,6 @@ output/research/
 build/
 # frontend/dist is committed so the VPS doesn't need to rebuild
 !frontend/dist/
+
+# Local agent/git worktrees
+.worktrees/
