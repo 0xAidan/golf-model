@@ -1,10 +1,20 @@
 /* ─────────────────────────────────────────────────────
    RESET
+   box-sizing stays unlayered (unchanged legacy behavior).
+   margin/padding reset moved into @layer base so Tailwind v4
+   utilities (in the later `utilities` layer) can override them.
+   Without this, `* { padding: 0 }` (unlayered) beats every
+   `.px-*`/`.py-*` utility and collapses all padding to zero.
    ───────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+}
+
+@layer base {
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html, body, #root {

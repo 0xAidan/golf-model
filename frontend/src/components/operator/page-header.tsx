@@ -4,21 +4,26 @@ export function PageHeader({
   eyebrow,
   title,
   detail,
+  meta,
   actions,
 }: {
   eyebrow: string
   title: string
   detail?: string
+  meta?: ReactNode
   actions?: ReactNode
 }) {
   return (
-    <header className="flex min-h-14 flex-col gap-3 border-b border-slate-800 pb-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">{eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">{title}</h1>
-        {detail ? <p className="mt-1 text-sm text-slate-400">{detail}</p> : null}
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <p className="op-eyebrow text-[var(--op-accent)]">{eyebrow}</p>
+        <h1 className="mt-1.5 truncate text-[28px] font-semibold leading-none tracking-tight text-white">{title}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-[var(--op-text-secondary)]">
+          {detail ? <span>{detail}</span> : null}
+          {meta}
+        </div>
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </header>
   )
 }

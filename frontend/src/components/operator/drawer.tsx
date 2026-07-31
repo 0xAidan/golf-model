@@ -30,23 +30,30 @@ export function Drawer({
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-6" onMouseDown={onClose}>
+    <div className="operator-app fixed inset-0 z-50 flex bg-black/65 backdrop-blur-sm" onMouseDown={onClose}>
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="ml-auto flex h-full w-full max-w-md flex-col border border-slate-700 bg-[#11151a] shadow-2xl focus-visible:outline-none"
+        className="ml-auto flex h-full w-full max-w-md flex-col border-l border-[var(--op-border-strong)] bg-[var(--op-surface)] shadow-2xl focus-visible:outline-none"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex min-h-14 items-center justify-between border-b border-slate-700 px-4">
+        <header className="flex min-h-14 items-center justify-between border-b border-[var(--op-border)] px-5">
           <h2 className="text-base font-semibold text-white">{title}</h2>
-          <button type="button" className="min-h-11 min-w-11 text-sm text-slate-300 hover:text-white" onClick={onClose} aria-label="Close drawer">
-            Close
+          <button
+            type="button"
+            className="op-focus flex h-9 w-9 items-center justify-center rounded-lg text-[var(--op-text-secondary)] transition-colors hover:bg-[var(--op-surface-3)] hover:text-white"
+            onClick={onClose}
+            aria-label="Close details"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true" className="h-5 w-5">
+              <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+            </svg>
           </button>
         </header>
-        <div className="overflow-y-auto p-4 text-sm text-slate-300">{children}</div>
+        <div className="overflow-y-auto p-5 text-sm text-[var(--op-text-secondary)]">{children}</div>
       </div>
     </div>
   )
