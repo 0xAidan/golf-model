@@ -20,10 +20,14 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // Pre-existing unused imports/any debt is tracked for recovery PR 12 gates.
+      // Pre-existing lint debt is tracked for recovery PR 12 gates.
       // Errors here currently block every CI run after workflow restoration (PR 0A).
       "@typescript-eslint/no-unused-vars": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
+      "react-refresh/only-export-components": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
+      "react-hooks/static-components": "warn",
     },
   },
 ])

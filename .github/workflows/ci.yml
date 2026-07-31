@@ -125,13 +125,21 @@ jobs:
               status_code, ops_body = get(ops_url)
               payload = json.loads(ops_body)
               # Reachability smoke: identity must be present. ok may be false when the
-          # committed snapshot is stale or disk guards trip on the runner.
-          if root_status == 200 and status_code == 200 and isinstance(payload.get("identity"), dict):
-                print(f"Smoke checks passed. summary={payload.get('summary')} ok={payload.get('ok')}")
+              # committed snapshot is stale or disk guards trip on the runner.
+              if (
+                root_status == 200
+                and status_code == 200
+                and isinstance(payload.get("identity"), dict)
+              ):
+                print(
+                  f"Smoke checks passed. summary={payload.get('summary')} "
+                  f"ok={payload.get('ok')}"
+                )
                 raise SystemExit(0)
               last_error = (
                 f"unexpected status root={root_status} ops={status_code} "
-                f"ok={payload.get('ok')} summary={payload.get('summary')} keys={sorted(payload)}"
+                f"ok={payload.get('ok')} summary={payload.get('summary')} "
+                f"keys={sorted(payload)}"
               )
             except Exception as exc:
               last_error = str(exc)
