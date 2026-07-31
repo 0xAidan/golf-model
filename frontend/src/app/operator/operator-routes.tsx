@@ -5,14 +5,14 @@ import { OperatorDataProvider, type OperatorRouteContext } from "@/features/oper
 
 const PreviewRoute = ({ route }: { route: OperatorRouteContext }) => (
   <OperatorDataProvider route={route}>
-    <OperatorApp />
+    <OperatorApp track={route.track} />
   </OperatorDataProvider>
 )
 
 export function OperatorRoutes() {
   return (
     <Routes>
-      <Route path="/preview" element={<Navigate to="/preview/dashboard" replace />} />
+      <Route path="/preview" element={<PreviewRoute route={{ track: "champion", mode: "live" }} />} />
       <Route
         path="/preview/dashboard"
         element={<PreviewRoute route={{ track: "champion", mode: "live" }} />}

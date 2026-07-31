@@ -1,0 +1,22 @@
+:root {
+  --operator-bg: #090b0d;
+  --operator-surface: #11151a;
+  --operator-surface-raised: #171c22;
+  --operator-border: #28313a;
+  --operator-text: #f5f7fa;
+  --operator-text-muted: #a5afb9;
+  --operator-accent: #54c68a;
+  --operator-warning: #f2ba57;
+  --operator-danger: #ef7373;
+}
+
+.operator-app {
+  background: var(--operator-bg);
+  color: var(--operator-text);
+  font-family: system-ui, sans-serif;
+}
+
+.operator-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
