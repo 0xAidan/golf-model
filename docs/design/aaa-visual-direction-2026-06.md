@@ -1,5 +1,10 @@
 # AAA visual direction — June 2026
 
+> **Superseded — Operator Site Recovery (2026-07):** Historical visual direction
+> retained as evidence. The active contract is dark-only professional analytics
+> in `docs/design/ui-design-contract.md` and `CONTEXT.md`. Do not implement
+> faux-terminal, dual-theme, or premium-font preload paths from this document.
+
 Premium operator terminal for golf-model. Dense enough for betting workflows, polished enough for GTM.
 
 ## North star

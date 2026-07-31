@@ -1,5 +1,10 @@
 # Frontend UI/UX Rebuild (2026-06)
 
+> **Superseded — Operator Site Recovery (2026-07):** This rebuild record is
+> retained for historical reference. Follow `CONTEXT.md`,
+> `docs/frontend-recovery/`, and `docs/design/ui-design-contract.md` for the
+> active product contract.
+
 Staged rebuild replacing the cramped three-column cockpit with a picks-first product command center.
 
 ## Docs

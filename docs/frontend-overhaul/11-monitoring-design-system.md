@@ -1,5 +1,10 @@
 # 11 — Monitoring Design System (V3)
 
+> **Superseded — Operator Site Recovery (2026-07):** This historical
+> monitoring/terminal direction is retained for evidence. The active
+> professional dark-only analytics contract is
+> `docs/design/ui-design-contract.md`.
+
 **Status:** Phase 1 foundation  
 **Branch:** `feat/monitoring-v3-complete`
 

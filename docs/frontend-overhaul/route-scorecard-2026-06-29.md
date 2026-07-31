@@ -1,5 +1,9 @@
 # Route scorecard — operator terminal master (2026-06-29)
 
+> **Superseded — Operator Site Recovery (2026-07):** Retained as a historical
+> assessment only. Current route acceptance is recorded in
+> `docs/frontend-recovery/acceptance.md`.
+
 Post-upgrade self-assessment against plan targets. Scores are engineering estimates pending operator sign-off.
 
 | Route | Visual | UX | Trust | Analytics | Perf | Tests | Overall |
