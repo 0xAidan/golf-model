@@ -4,12 +4,17 @@ Behavior-preserving extraction: response shape is byte-identical to the inline r
 First step of the incremental app.py -> src/routes/ decomposition (H).
 """
 
+import asyncio
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+
+from src import cached_health
 
 router = APIRouter(tags=["ops"])
 
 _HEARTBEAT_STALE_SECONDS = 900
+_ops_grading_refresh_in_flight = False
 
 
 class WorkerRestartRequest(BaseModel):
@@ -23,6 +28,28 @@ def _snapshot_stale_after_seconds() -> int:
     settings = get_settings().get("live_refresh") or {}
     cadence = resolve_cadence(settings)
     return max(900, int(cadence.recompute_seconds) + 120)
+
+
+@router.get("/api/version")
+async def get_version():
+    """Minimal liveness endpoint with no database or refresh dependencies."""
+    return {"ok": True, "service": "golf-model"}
+
+
+def _schedule_ops_grading_refresh() -> bool:
+    global _ops_grading_refresh_in_flight
+    if _ops_grading_refresh_in_flight:
+        return False
+    _ops_grading_refresh_in_flight = True
+
+    task = asyncio.create_task(asyncio.to_thread(cached_health.refresh_ops_grading_cache))
+
+    def _clear_refresh(_task: asyncio.Task) -> None:
+        global _ops_grading_refresh_in_flight
+        _ops_grading_refresh_in_flight = False
+
+    task.add_done_callback(_clear_refresh)
+    return True
 
 
 @router.get("/api/ops/health")
@@ -50,22 +77,6 @@ async def get_ops_health():
     disk = get_disk_state(str(get_app_root()))
     worker_restart_request = read_worker_restart_request()
 
-    # Track-registry state (active config hashes per track) for incident triage without SSH.
-    track_state: dict = {}
-    try:
-        from src import track_registry
-
-        listing = track_registry.list_tracks(history_limit=1)
-        track_state = {
-            "active": {
-                t: {"config_hash": row.get("config_hash"), "model_variant": row.get("model_variant")}
-                for t, row in (listing.get("tracks") or {}).items()
-            },
-            "effective_config_hash": listing.get("effective_config_hash"),
-            "last_activation": (listing.get("history") or [{}])[0].get("activated_at"),
-        }
-    except Exception:
-        track_state = {"error": "unavailable"}
     ok = not split["split_brain_suspected"]
     summary = "healthy" if ok else "split_brain_suspected"
     if not heartbeat and identity.get("production"):
@@ -86,31 +97,35 @@ async def get_ops_health():
     if strategy_config_errors and summary == "healthy":
         summary = "strategy_config_fallback"
 
+    cached_grading = cached_health.read_cached_ops_grading_health()
     grading_health: dict = {"status": "unknown"}
-    try:
-        from src.grading_reconciliation import reconcile_grading
-
-        reconciliation = reconcile_grading(limit_events=5)
-        events = reconciliation.get("events") or []
-        void_positive_ev_picks = sum(int(e.get("void_positive_ev_picks") or 0) for e in events)
-        ungraded_positive_ev_picks = sum(
-            int(e.get("ungraded_positive_ev_picks") or 0) for e in events
-        )
-        grading_health = {
-            "status": reconciliation.get("status"),
-            "events_with_ungraded_positive_ev": reconciliation.get("events_with_ungraded_positive_ev"),
-            "orphan_outcomes": reconciliation.get("orphan_outcomes"),
-            "void_positive_ev_picks": void_positive_ev_picks,
-            "ungraded_positive_ev_picks": ungraded_positive_ev_picks,
-            "last_auto_grade_at": status.get("last_auto_grade_at"),
-            "last_auto_grade_status": status.get("last_auto_grade_status"),
+    track_state: dict = {"error": "unavailable"}
+    grading_cache = {
+        "generated_at": None,
+        "stale": True,
+        "ttl_seconds": 15 * 60,
+    }
+    if cached_grading is None:
+        _schedule_ops_grading_refresh()
+    else:
+        report = cached_grading["report"]
+        grading_health = dict(report.get("grading") or grading_health)
+        track_state = dict(report.get("tracks") or track_state)
+        grading_cache = {
+            "generated_at": cached_grading["generated_at"],
+            "stale": cached_grading["stale"],
+            "ttl_seconds": cached_grading["ttl_seconds"],
         }
-        if reconciliation.get("status") == "discrepancies" and ok:
-            summary = "grading_discrepancies"
-    except Exception as exc:
-        grading_health = {"status": "error", "message": str(exc)}
+        if cached_grading["stale"]:
+            _schedule_ops_grading_refresh()
 
-    if disk.get("guard_state") == "hard":
+    grading_health["last_auto_grade_at"] = status.get("last_auto_grade_at")
+    grading_health["last_auto_grade_status"] = status.get("last_auto_grade_status")
+    if grading_health.get("status") == "discrepancies" and ok:
+        summary = "grading_discrepancies"
+
+    if disk.get("guard_state") == "hard" or disk.get("state") == "hard":
+        ok = False
         summary = "disk_floor_breached"
 
     return {
@@ -124,6 +139,7 @@ async def get_ops_health():
         "strategy_config_errors": strategy_config_errors,
         "tracks": track_state,
         "grading": grading_health,
+        "grading_cache": grading_cache,
         "disk": disk,
         "worker_restart_request": worker_restart_request,
         "live_refresh": {

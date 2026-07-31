@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -467,15 +468,15 @@ def _event_grading_report(
     }
 
 
-@router.get("/api/grading/season")
-async def get_grading_season(
-    year: int = Query(2026, ge=2000, le=2100),
-    lane: str = Query("all", pattern="^(all|cockpit|dashboard|lab)$"),
-    include_picks: bool = Query(True),
-    include_reconciliation: bool = Query(False),
-    limit: int = Query(200, ge=1, le=500),
-    tour: str = Query("pga", pattern="^(pga|liv|all)$"),
-):
+def _get_grading_season_sync(
+    *,
+    year: int,
+    lane: str,
+    include_picks: bool,
+    include_reconciliation: bool,
+    limit: int,
+    tour: str,
+) -> dict[str, Any]:
     ensure_initialized()
     conn = get_conn()
     discovered = _discover_season_events(conn, year, tour=None if tour == "all" else tour)
@@ -621,6 +622,27 @@ async def get_grading_season(
         "tournaments": events_out,
         "summary": summary,
     }
+
+
+@router.get("/api/grading/season")
+async def get_grading_season(
+    year: int = Query(2026, ge=2000, le=2100),
+    lane: str = Query("all", pattern="^(all|cockpit|dashboard|lab)$"),
+    include_picks: bool = Query(False),
+    include_reconciliation: bool = Query(False),
+    limit: int = Query(200, ge=1, le=500),
+    tour: str = Query("pga", pattern="^(pga|liv|all)$"),
+):
+    """Build the season response in a worker thread to keep the API responsive."""
+    return await asyncio.to_thread(
+        _get_grading_season_sync,
+        year=year,
+        lane=lane,
+        include_picks=include_picks,
+        include_reconciliation=include_reconciliation,
+        limit=limit,
+        tour=tour,
+    )
 
 
 @router.get("/api/grading/event-picks")

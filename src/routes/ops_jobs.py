@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from src import cached_health
 from src.db import ensure_initialized, get_conn
 from src.ops_jobs import create_job, get_job, update_job
 
@@ -101,6 +102,59 @@ def _run_grade_job(job_id: str, event_id: str, year: int, event_name: str | None
         )
     finally:
         conn.close()
+
+
+def _run_data_health_job(job_id: str, year: int) -> None:
+    conn = get_conn()
+    try:
+        update_job(conn, job_id, progress_pct=10, message="Building analytics views and data-health report…")
+        report = cached_health.refresh_data_health_cache(year)
+        update_job(
+            conn,
+            job_id,
+            status="complete",
+            progress_pct=100,
+            message="Data-health cache refreshed",
+            result=report,
+        )
+    except Exception as exc:
+        update_job(
+            conn,
+            job_id,
+            status="error",
+            progress_pct=100,
+            message="Data-health refresh failed",
+            error=str(exc),
+        )
+    finally:
+        conn.close()
+
+
+@router.post("/api/ops/jobs/data-health")
+async def start_data_health_job(request: Request):
+    """Queue a full data-health refresh without blocking API reads."""
+    payload: dict[str, Any] = {}
+    body = await request.body()
+    if body:
+        payload = await request.json()
+    year = int(payload.get("year", 2026))
+
+    ensure_initialized()
+    conn = get_conn()
+    try:
+        job_id = create_job(conn, "data_health", {"year": year})
+    finally:
+        conn.close()
+
+    asyncio.create_task(asyncio.to_thread(_run_data_health_job, job_id, year))
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "status": "running",
+            "message": "Data-health refresh started in background",
+        },
+    )
 
 
 @router.post("/api/ops/jobs/grade")

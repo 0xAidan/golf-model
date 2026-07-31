@@ -125,6 +125,7 @@ def test_grading_season_returns_lane_split(monkeypatch, tmp_path):
     assert event["comparison"]["overlap_matchups"] == 0
     assert payload["summary"]["dashboard"]["wins"] == 1
     assert payload["summary"]["lab"]["losses"] == 1
+    assert event["picks"] == []
 
 
 def test_grading_season_exposes_voided_count(tmp_db, monkeypatch, tmp_path):
@@ -198,7 +199,7 @@ def test_grading_season_lane_filter_dashboard(monkeypatch, tmp_path):
     conn.close()
 
     client = TestClient(app_module.app)
-    response = client.get("/api/grading/season?year=2026&lane=cockpit")
+    response = client.get("/api/grading/season?year=2026&lane=cockpit&include_picks=true")
     assert response.status_code == 200
     payload = response.json()
     event = next((row for row in payload["events"] if row["event_id"] == "9001"), None)
