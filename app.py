@@ -32,6 +32,7 @@ except ImportError:
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -188,6 +189,7 @@ app.add_middleware(
     allow_origins=["https://ancc.blog"],
     allow_methods=["GET"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 def _expected_dashboard_api_key() -> str:
@@ -242,6 +244,7 @@ from src.routes.field_board import router as field_board_router
 from src.routes.eval import router as eval_router
 from src.routes.ops import router as ops_router
 from src.routes.ops_jobs import router as ops_jobs_router
+from src.routes.operator_ui import router as operator_ui_router
 
 app.include_router(research_router)
 app.include_router(model_registry_router)
@@ -252,6 +255,7 @@ app.include_router(field_board_router)
 app.include_router(eval_router)
 app.include_router(ops_router)
 app.include_router(ops_jobs_router)
+app.include_router(operator_ui_router)
 from src.routes.analytics import router as analytics_router
 from src.routes.grading_season import router as grading_season_router
 
