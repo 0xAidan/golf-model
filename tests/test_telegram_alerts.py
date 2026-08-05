@@ -151,3 +151,28 @@ def test_stable_alert_hash_includes_market_type():
     h1 = stable_alert_hash(event_id="e", row={**base, "market_type": "tournament_matchups"})
     h2 = stable_alert_hash(event_id="e", row={**base, "market_type": "round_matchups"})
     assert h1 != h2
+
+
+def test_send_ops_alert_prefixes_severity(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "99")
+    captured: dict[str, str] = {}
+
+    def fake_send(text: str) -> bool:
+        captured["text"] = text
+        return True
+
+    monkeypatch.setattr("src.telegram_alerts.send_telegram_message", fake_send)
+    from src.telegram_alerts import send_ops_alert
+
+    assert send_ops_alert("disk low", severity="critical") is True
+    assert captured["text"].startswith("[Golf Model CRITICAL]")
+    assert "disk low" in captured["text"]
+
+
+def test_send_ops_alert_noop_without_config(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    from src.telegram_alerts import send_ops_alert
+
+    assert send_ops_alert("noop") is False

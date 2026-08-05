@@ -116,3 +116,55 @@ def test_create_backup_refuses_below_disk_hard_floor(tmp_db, monkeypatch, tmp_pa
         backup.BACKUP_DIR = original_backup_dir
         monkeypatch.delenv("DISK_FREE_MB_HARD", raising=False)
 
+
+
+def test_prune_until_space_available_removes_oldest(tmp_path, monkeypatch) -> None:
+    original_backup_dir = backup.BACKUP_DIR
+    try:
+        backup.BACKUP_DIR = str(tmp_path)
+        older = tmp_path / "golf_model_20260101_120000.db"
+        newer = tmp_path / "golf_model_20260201_120000.db"
+        older.write_bytes(b"x" * 1024)
+        newer.write_bytes(b"y" * 1024)
+        os.utime(older, (1_000, 1_000))
+        os.utime(newer, (2_000, 2_000))
+
+        free_values = [100, 10_000_000]
+        monkeypatch.setattr(backup, "_free_bytes", lambda _path: free_values.pop(0) if free_values else 10_000_000)
+
+        removed = backup.prune_until_space_available(
+            needed_bytes=5_000,
+            repo_root=str(tmp_path),
+            min_keep=1,
+        )
+        assert str(older) in removed
+        assert older.exists() is False
+        assert newer.exists() is True
+    finally:
+        backup.BACKUP_DIR = original_backup_dir
+
+
+def test_create_backup_prunes_for_disk_headroom(tmp_db, tmp_path, monkeypatch) -> None:
+    original_backup_dir = backup.BACKUP_DIR
+    try:
+        backup.BACKUP_DIR = str(tmp_path)
+        stale1 = tmp_path / "golf_model_20260101_120000.db"
+        stale2 = tmp_path / "golf_model_20260201_120000.db"
+        stale1.write_bytes(b"stale1")
+        stale2.write_bytes(b"stale2")
+        os.utime(stale1, (1_000, 1_000))
+        os.utime(stale2, (2_000, 2_000))
+
+        # First free check inside prune_until is tiny; after pruning, enough space.
+        free_seq = [10, 10**12, 10**12, 10**12, 10**12]
+        monkeypatch.setattr(backup, "_free_bytes", lambda _p: free_seq.pop(0) if free_seq else 10**12)
+        monkeypatch.setattr(backup, "_bytes_needed_for_new_backup", lambda *_a, **_k: 100)
+        monkeypatch.delenv("DISK_FREE_MB_HARD", raising=False)
+
+        path = backup.create_backup(keep=2, compress=False)
+        assert path is not None
+        assert stale1.exists() is False  # pruned for headroom (oldest)
+        assert os.path.isfile(path)
+        assert os.path.isfile(path + ".integrity.json")
+    finally:
+        backup.BACKUP_DIR = original_backup_dir

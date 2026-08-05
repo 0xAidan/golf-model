@@ -3433,9 +3433,88 @@ def reclaim_database_disk(
             conn.close()
         if not os.path.isfile(temp_path):
             return {"ok": False, "skipped": True, "reason": "VACUUM INTO did not produce output"}
+
+        # Verify the vacuumed copy BEFORE swapping it into place. An unverified
+        # swap previously left production on a malformed DB (Aug 2026 incident).
+        try:
+            check_conn = sqlite3.connect(
+                f"file:{temp_path}?mode=ro",
+                uri=True,
+                timeout=120.0,
+            )
+            try:
+                check_row = check_conn.execute("PRAGMA quick_check").fetchone()
+                check_result = str(check_row[0]) if check_row else "unknown"
+            finally:
+                check_conn.close()
+        except Exception as exc:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": f"VACUUM INTO output failed integrity check: {exc}",
+                "free_mb": free_mb,
+            }
+        if check_result != "ok":
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": f"VACUUM INTO output failed quick_check: {check_result}",
+                "free_mb": free_mb,
+            }
+
         backup_path = DB_PATH + ".pre_reclaim"
         shutil.copy2(DB_PATH, backup_path)
         os.replace(temp_path, DB_PATH)
+
+        # Cheap post-swap smoke check (full quick_check already ran on the temp file).
+        try:
+            verify_conn = sqlite3.connect(
+                f"file:{DB_PATH}?mode=ro",
+                uri=True,
+                timeout=30.0,
+            )
+            try:
+                verify_conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+                verify_ok = True
+                verify_result = "ok"
+            finally:
+                verify_conn.close()
+        except Exception as exc:
+            verify_ok = False
+            verify_result = f"error:{exc}"
+
+        if not verify_ok:
+            try:
+                os.replace(backup_path, DB_PATH)
+            except OSError as restore_exc:
+                return {
+                    "ok": False,
+                    "skipped": False,
+                    "reason": (
+                        f"post-swap smoke check failed ({verify_result}) and "
+                        f"rollback also failed: {restore_exc}"
+                    ),
+                    "free_mb": free_mb,
+                }
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": (
+                    f"post-swap smoke check failed ({verify_result}); "
+                    "restored from .pre_reclaim"
+                ),
+                "free_mb": free_mb,
+                "rolled_back": True,
+            }
+
         after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
         return {
             "ok": True,
@@ -3444,6 +3523,8 @@ def reclaim_database_disk(
             "bytes_after": after,
             "bytes_reclaimed": max(0, before - after),
             "free_mb": free_mb,
+            "integrity": "quick_check ok (pre-swap)",
+            "pre_reclaim_path": backup_path,
         }
 
     return vacuum_database(wal_checkpoint=wal_checkpoint)
@@ -3459,27 +3540,25 @@ def prune_snapshot_history_tables(
     Intended for explicit operator/cron use only — not called from HTTP handlers.
 
     When ``retain_days`` is None, reads ``SNAPSHOT_HISTORY_RETAIN_DAYS``; if unset,
-    returns a skipped result without deleting (default no-op until configured).
+    falls back to ``src.config.SNAPSHOT_HISTORY_RETAIN_DAYS`` (default 120).
     """
     days = retain_days
     if days is None:
         raw = (os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS") or "").strip()
-        if not raw:
-            return {
-                "skipped": True,
-                "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set; refusing delete.",
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-            }
-        try:
-            days = int(raw)
-        except ValueError:
-            return {
-                "skipped": True,
-                "reason": "invalid SNAPSHOT_HISTORY_RETAIN_DAYS",
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-            }
+        if raw:
+            try:
+                days = int(raw)
+            except ValueError:
+                return {
+                    "skipped": True,
+                    "reason": "invalid SNAPSHOT_HISTORY_RETAIN_DAYS",
+                    "live_snapshot_history_deleted": 0,
+                    "market_prediction_rows_deleted": 0,
+                }
+        else:
+            from src.config import SNAPSHOT_HISTORY_RETAIN_DAYS as _default_retain
+
+            days = int(_default_retain)
     if int(days) <= 0:
         return {
             "skipped": True,

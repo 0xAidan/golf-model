@@ -113,6 +113,38 @@ async def get_ops_health():
     if disk.get("guard_state") == "hard":
         summary = "disk_floor_breached"
 
+    backup_health: dict = {"ok": False, "status": "missing"}
+    try:
+        from src.data_health import _latest_backup_info
+
+        latest = _latest_backup_info()
+        if latest is None:
+            backup_health = {"ok": False, "status": "missing"}
+            if summary == "healthy":
+                summary = "backup_missing"
+        else:
+            age_hours = float(latest.get("age_hours") or 0)
+            integrity_ok = bool((latest.get("integrity") or {}).get("ok", True))
+            status_label = "ok"
+            if not integrity_ok:
+                status_label = "integrity_failed"
+            elif age_hours > 48:
+                status_label = "stale"
+            elif age_hours > 26:
+                status_label = "aging"
+            backup_health = {
+                "ok": integrity_ok and age_hours <= 48,
+                "status": status_label,
+                "name": latest.get("name"),
+                "age_hours": latest.get("age_hours"),
+                "created": latest.get("created"),
+                "size_mb": latest.get("size_mb"),
+            }
+            if status_label in {"missing", "integrity_failed", "stale"} and summary == "healthy":
+                summary = f"backup_{status_label}"
+    except Exception as exc:
+        backup_health = {"ok": False, "status": "error", "message": str(exc)}
+
     return {
         "ok": ok,
         "summary": summary,
@@ -125,6 +157,7 @@ async def get_ops_health():
         "tracks": track_state,
         "grading": grading_health,
         "disk": disk,
+        "backup": backup_health,
         "worker_restart_request": worker_restart_request,
         "live_refresh": {
             "running": bool(status.get("running")),

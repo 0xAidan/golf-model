@@ -409,18 +409,22 @@ Before treating the Lab board as broken or “same as production”, verify on t
 | `PREFERRED_BOOK` | No | `bet365` | Optional preferred-book metadata shown alongside best-line pricing (no filtering) |
 | `PREFERRED_BOOK_ONLY` | No | `false` | Deprecated legacy toggle (not used by current pipelines) |
 | `LIVE_REFRESH_LAB_PROFILE_ENABLED` | No | *(unset)* | When set, forces parallel lab snapshot lane on/off for `get_settings()` / worker (overrides `data/autoresearch_settings.json`). Deploy appends `=1` if missing. Use `0`/`false` on tiny VPS to save CPU. |
-| `SNAPSHOT_HISTORY_RETAIN_DAYS` | No | `210` | Retention window for append-heavy live-refresh history tables (`live_snapshot_history`, `market_prediction_rows`). Worker now prunes automatically at this cadence floor (>= 6 months by default). |
+| `SNAPSHOT_HISTORY_RETAIN_DAYS` | No | `120` | Retention window for append-heavy live-refresh history tables (`live_snapshot_history`, `market_prediction_rows`). Default 120 days keeps a 75GB VPS sustainable; raise only with more disk headroom. |
 | `SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS` | No | `21600` | Minimum interval between automatic retention prune runs in live-refresh runtime (default every 6 hours). |
 | `SNAPSHOT_PRUNE_REQUIRE_ARCHIVE` | No | `1` | When truthy, `prune_snapshot_history_tables` refuses DELETE until a verified cold archive exists for the cutoff (`src/cold_archive.py`, `data/exports/`). |
 | `SNAPSHOT_ARCHIVE_EXPORTS_DIR` | No | `data/exports` | Override cold-archive directory for prune verification (tests/ops). |
 | `MARKET_PREDICTION_SLIM_PAYLOAD` | No | *(off)* | When `1`/`true`, `store_market_prediction_rows` keeps full `payload_json` only on the first row per `snapshot_id` (slim tick logging). |
 | `DISK_RECLAIM_MIN_FREE_MB` | No | *(auto)* | Minimum free MiB required before `db.reclaim_database_disk()` runs VACUUM / VACUUM INTO. |
+| `DEPLOY_BACKUP_KEEP` | No | `2` | Local nightly compressed backups retained by `golf-backup.service`. Keep low on small VPS disks; off-site B2 holds longer history. |
+| `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` / `B2_BUCKET_NAME` | Recommended | — | Backblaze B2 credentials for off-site backup upload after each successful local backup (`src/offsite_backup.py`). |
+| `B2_OFFSITE_PREFIX` | No | `golf-model` | Object key prefix inside the B2 bucket. |
+| `B2_KEEP` | No | `4` | Remote compressed backups retained in B2. |
 | `SNAPSHOT_MATCHUPS_ALL_BOOKS_MAX_ROWS` | No | `600` | Caps `matchup_bets_all_books` rows stored in in-memory/API snapshot sections to prevent oversized payloads. |
 | `SNAPSHOT_FAILED_CANDIDATES_MAX_ROWS` | No | `300` | Caps `diagnostics.failed_candidates` rows stored in in-memory/API snapshot sections to prevent oversized payloads. |
 | `COCKPIT_SNAPSHOT_MODEL_VARIANT` | No | `baseline` | **`live_tournament` / `upcoming_tournament`** model variant in live-refresh (`backtester/dashboard_runtime.py`). Default **baseline** = Masters-era operator Dashboard; set **`v5`** to put research stack back on `/`. |
 | `TRACK_PROMOTION_ENABLED` | No | *(off)* | Enables the challenger→champion promotion/rollback API + `/eval` Promotion buttons (`POST /api/tracks/promote|rollback`). Default OFF so promotion can't fire during soak. Records an auditable `track_configs` row; the live runtime swap still needs the documented `COCKPIT_SNAPSHOT_MODEL_VARIANT`/profile change. |
 | `LAB_CHALLENGER_SHADOW_ENABLED` | No | *(off)* | Adds `lab_trial327` to `CHALLENGERS` so the promoted lab bundle shadow-prices matchups into `challenger_predictions` for live Brier/CLV (`src/models/lab_challenger.py`). Never affects live pricing; default OFF. |
-| `TELEGRAM_BOT_TOKEN` | No | — | Bot token from [@BotFather](https://t.me/BotFather); enables personal matchup EV Telegram alerts (`src/telegram_alerts.py`). |
+| `TELEGRAM_BOT_TOKEN` | No | — | Bot token from [@BotFather](https://t.me/BotFather); enables matchup EV alerts **and** ops alerts (backup failure / low disk / worker restart) via `src/telegram_alerts.send_ops_alert`. |
 | `TELEGRAM_CHAT_ID` | No | — | Destination chat or group id for alerts (same bot must be allowed to message it). |
 | `TELEGRAM_MATCHUP_EV_THRESHOLD` | No | `0.085` | Minimum matchup row EV (decimal, e.g. `0.085` = 8.5%) before notifying. |
 | `TELEGRAM_MATCHUP_ALERT_MAX_ROWS` | No | `8` | Max matchup lines per Telegram message (after EV filter + dedupe). |
@@ -684,6 +688,8 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, **appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` when that key is absent** (parallel lab lane for `/lab`), and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
 
+**Storage durability (Aug 2026):** local nightly backups are **compressed** (`--compress`) and default to **`--keep 2`**. `src/backup.py` prunes further when free disk cannot hold a new copy (disk-aware retention). After each successful backup, `src/offsite_backup.py` uploads to Backblaze B2 when `B2_*` env vars are set. `golf-disk-watchdog.timer` runs every 15 minutes, remediates orphan temps, and Telegram-alerts on warn/hard floors. `VACUUM INTO` reclaim now verifies integrity before swap and rolls back on failure. If DB growth still outpaces the 75GB disk after retention, resize the volume — do not silently accumulate uncompressed multi-GB backups again.
+
 ### What `--update` does
 
 1. Backs up the database
@@ -721,7 +727,8 @@ Port guard: `scripts/ensure_port_owner.sh` / `scripts/port_8000_audit.py` — ru
 | `golf-agent` | `start.py agent` | — |
 | `golf-live-refresh` | `workers/live_refresh_worker.py` | — |
 | `golf-live-refresh-watchdog.timer` | `scripts/live_refresh_watchdog.py --restart` (every 5 min) | — |
-| `golf-backup.timer` | Nightly DB backup at 03:00 UTC | — |
+| `golf-disk-watchdog.timer` | `scripts/disk_watchdog.py --remediate --aggressive` (every 15 min) | — |
+| `golf-backup.timer` | Nightly compressed DB backup at 03:00 UTC (`--keep 2 --compress` by default) | — |
 
 Useful commands on the server:
 ```

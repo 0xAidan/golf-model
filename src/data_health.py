@@ -177,16 +177,82 @@ def _latest_backup_info(backup_dir: str | None = None) -> dict[str, Any] | None:
     except OSError:
         return {"path": path, "ok": False, "error": "cannot stat backup file"}
 
-    from src.backup import verify_backup_integrity
+    age_hours = (datetime.now(timezone.utc).timestamp() - mtime) / 3600.0
+    integrity: dict[str, Any] = {"ok": True, "quick_check": "skipped_for_api", "cached": True}
+    integrity_sidecar = path + ".integrity.json"
+    if os.path.isfile(integrity_sidecar):
+        try:
+            with open(integrity_sidecar, encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if isinstance(loaded, dict):
+                integrity = loaded
+        except (OSError, json.JSONDecodeError):
+            pass
+    elif size_bytes < 64 * 1024 * 1024:
+        # Cheap enough to verify small backups inline (tests / tiny DBs).
+        from src.backup import verify_backup_integrity
 
-    integrity = verify_backup_integrity(path)
+        integrity = verify_backup_integrity(path)
+
     return {
         "path": path,
         "name": os.path.basename(path),
         "size_bytes": size_bytes,
         "size_mb": round(size_bytes / (1024 * 1024), 2),
         "created": datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat(),
+        "age_hours": round(age_hours, 1),
         "integrity": integrity,
+        "ok": bool(integrity.get("ok")),
+    }
+
+
+_DB_SIZE_TREND_PATH = _REPO_ROOT / "data" / "db_size_trend.jsonl"
+_DB_SIZE_TREND_MAX_POINTS = 90
+
+
+def record_db_size_trend(main_bytes: int, *, wal_bytes: int = 0) -> dict[str, Any]:
+    """Append one DB size sample and return the recent trend window."""
+    point = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "main_bytes": int(main_bytes),
+        "wal_bytes": int(wal_bytes),
+        "main_gb": round(main_bytes / (1024 ** 3), 3) if main_bytes else 0.0,
+    }
+    try:
+        _DB_SIZE_TREND_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_DB_SIZE_TREND_PATH, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(point) + "\n")
+    except OSError:
+        pass
+    return load_db_size_trend()
+
+
+def load_db_size_trend(limit: int = _DB_SIZE_TREND_MAX_POINTS) -> dict[str, Any]:
+    points: list[dict[str, Any]] = []
+    if _DB_SIZE_TREND_PATH.is_file():
+        try:
+            lines = _DB_SIZE_TREND_PATH.read_text(encoding="utf-8").splitlines()
+            for line in lines[-max(1, int(limit)):]:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    points.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        except OSError:
+            points = []
+    delta_gb = None
+    if len(points) >= 2:
+        first = points[0].get("main_bytes") or 0
+        last = points[-1].get("main_bytes") or 0
+        delta_gb = round((last - first) / (1024 ** 3), 3)
+    return {
+        "points": points,
+        "count": len(points),
+        "latest_gb": points[-1].get("main_gb") if points else None,
+        "delta_gb": delta_gb,
+        "path": str(_DB_SIZE_TREND_PATH.relative_to(_REPO_ROOT)),
     }
 
 
@@ -455,12 +521,49 @@ def build_data_health_report(
         from src.output_manager import summarize_research_output
 
         latest_backup = _latest_backup_info()
+        if latest_backup is None:
+            storage_warnings.append("No local database backup found under backups/.")
+            status = "red" if status == "red" else "yellow"
+        else:
+            age_hours = float(latest_backup.get("age_hours") or 0)
+            integrity = latest_backup.get("integrity") or {}
+            if not integrity.get("ok"):
+                storage_warnings.append(
+                    f"Latest backup failed integrity check: "
+                    f"{integrity.get('quick_check') or integrity.get('error')}"
+                )
+                status = "red"
+            elif age_hours > 48:
+                storage_warnings.append(
+                    f"Latest backup is {age_hours:.0f}h old (expected <26h from nightly job)."
+                )
+                if status == "green":
+                    status = "yellow"
+            elif age_hours > 26:
+                storage_warnings.append(
+                    f"Latest backup is {age_hours:.0f}h old (nightly backup may have missed)."
+                )
+                if status == "green":
+                    status = "yellow"
+
+        db_size_trend = record_db_size_trend(
+            int(main_bytes or 0),
+            wal_bytes=int(sizes.get("wal") or 0),
+        )
+
         archive_stats = list_archive_stats()
         investigate_counts = _investigate_table_counts(conn)
         research_output = summarize_research_output()
         slim_payload = (os.environ.get("MARKET_PREDICTION_SLIM_PAYLOAD") or "").strip().lower() in {
             "1", "true", "yes", "on",
         }
+
+        # Recompute status after backup warnings may have escalated it.
+        if storage_warnings or gaps or not autoresearch.get("ok"):
+            if status == "green":
+                status = "yellow"
+        if main_bytes > 10 * 1024 ** 3 or (top_table in _PRUNABLE_TICK_TABLES and top_pct > 50):
+            status = "red"
 
         return {
             "ok": status != "red",
@@ -483,7 +586,7 @@ def build_data_health_report(
                 "retain_forever": sorted(_RETAIN_FOREVER),
                 "prunable_tick_tables": sorted(_PRUNABLE_TICK_TABLES),
                 "snapshot_retain_days": int(
-                    os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "210")
+                    os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "120")
                 ),
                 "prune_require_archive": (
                     os.environ.get("SNAPSHOT_PRUNE_REQUIRE_ARCHIVE", "1").strip().lower()
@@ -498,6 +601,7 @@ def build_data_health_report(
                 "INVESTIGATE": sorted(INVESTIGATE),
             },
             "latest_backup": latest_backup,
+            "db_size_trend": db_size_trend,
             "archive_stats": archive_stats,
             "investigate_counts": investigate_counts,
             "research_output": research_output,

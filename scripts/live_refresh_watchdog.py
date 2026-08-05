@@ -166,6 +166,15 @@ def main() -> int:
             exit_code = 2
         else:
             print(f"watchdog restarting golf-live-refresh: {message}", file=sys.stderr)
+            try:
+                from src.telegram_alerts import send_ops_alert
+
+                send_ops_alert(
+                    f"Live-refresh worker restart: {message}",
+                    severity="warn",
+                )
+            except Exception:
+                pass
             exit_code = _restart_worker()
             if exit_code == 0 and restart_request:
                 acknowledge_worker_restart_request(restart_request.get("request_id"))

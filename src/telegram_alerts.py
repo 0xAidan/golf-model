@@ -18,6 +18,7 @@ from src import db
 logger = logging.getLogger("golf.telegram_alerts")
 
 _missing_config_warned: dict[str, bool] = {"flag": False}
+_ops_missing_config_warned: dict[str, bool] = {"flag": False}
 
 _DEFAULT_EV_THRESHOLD = 0.085
 _DEFAULT_MAX_ROWS = 8
@@ -55,6 +56,32 @@ def send_telegram_message(text: str) -> bool:
     except requests.RequestException as exc:
         logger.warning("Telegram sendMessage request error: %s", exc)
         return False
+
+
+def send_ops_alert(message: str, *, severity: str = "warn") -> bool:
+    """Push an operator alert (backup/disk/worker). Reuses TELEGRAM_* credentials.
+
+    Returns False when Telegram is not configured (silent no-op) or send fails.
+    """
+    text = (message or "").strip()
+    if not text:
+        return False
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_raw = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or chat_raw is None or str(chat_raw).strip() == "":
+        if not _ops_missing_config_warned["flag"]:
+            logger.warning(
+                "Telegram ops alerts disabled: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"
+            )
+            _ops_missing_config_warned["flag"] = True
+        return False
+    prefix = {
+        "critical": "CRITICAL",
+        "hard": "CRITICAL",
+        "warn": "WARN",
+        "info": "INFO",
+    }.get(str(severity).lower(), "WARN")
+    return send_telegram_message(f"[Golf Model {prefix}] {text}")
 
 
 def _parse_ev_threshold() -> float:
