@@ -37,7 +37,12 @@ function buildDataHealth(overrides: Partial<DataHealthReport> = {}): DataHealthR
     status: "green",
     summary: "Storage looks healthy.",
     file_sizes_human: { main: "12 GB", wal: "10 MB" },
-    latest_backup: { name: "golf_model_20260706.db", size_mb: 1200, integrity: { ok: true } },
+    latest_backup: {
+      name: "golf_model_20260706.db",
+      size_mb: 1200,
+      age_hours: 3,
+      integrity: { ok: true },
+    },
     storage_warnings: [],
     ...overrides,
   }
@@ -152,6 +157,21 @@ describe("SystemPage", () => {
       expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(
         /storage health is in a red state/i,
       )
+    })
+  })
+
+  it("flags missing backup as storage action needed", async () => {
+    renderSystemPage({
+      dataHealth: buildDataHealth({
+        status: "yellow",
+        latest_backup: null,
+        storage_warnings: ["No local database backup found under backups/."],
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/no backup found/i)
+      expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/action needed|watch/i)
     })
   })
 

@@ -1238,11 +1238,27 @@ export type DataHealthBackupInfo = {
   name?: string
   size_mb?: number
   created?: string
+  age_hours?: number
+  ok?: boolean
   integrity?: {
     ok?: boolean
     quick_check?: string
     error?: string
+    cached?: boolean
   }
+}
+
+export type DataHealthDbSizeTrend = {
+  points?: Array<{
+    ts?: string
+    main_bytes?: number
+    wal_bytes?: number
+    main_gb?: number
+  }>
+  count?: number
+  latest_gb?: number | null
+  delta_gb?: number | null
+  path?: string
 }
 
 export type DataHealthArchiveInfo = {
@@ -1295,5 +1311,6 @@ export type DataHealthReport = {
     INVESTIGATE?: string[]
   }
   latest_backup?: DataHealthBackupInfo | null
+  db_size_trend?: DataHealthDbSizeTrend | null
   archive_stats?: DataHealthArchiveInfo
 }

@@ -30,7 +30,13 @@ function formatAge(seconds?: number | null): string {
 
 function storageTone(report?: DataHealthReport): "good" | "warn" | "bad" {
   if (report?.status === "red") return "bad"
+  const backup = report?.latest_backup
+  if (!backup) return "bad"
+  if (backup.integrity && backup.integrity.ok === false) return "bad"
+  const ageHours = backup.age_hours
+  if (typeof ageHours === "number" && ageHours > 48) return "bad"
   if (report?.status === "yellow" || (report?.storage_warnings?.length ?? 0) > 0) return "warn"
+  if (typeof ageHours === "number" && ageHours > 26) return "warn"
   return "good"
 }
 
@@ -171,8 +177,15 @@ export function SystemPage({
         dataHealth?.file_sizes_human?.main ? `DB ${dataHealth.file_sizes_human.main}` : null,
         dataHealth?.file_sizes_human?.wal ? `WAL ${dataHealth.file_sizes_human.wal}` : null,
         dataHealth?.latest_backup?.name
-          ? `backup ${dataHealth.latest_backup.name}`
+          ? `backup ${dataHealth.latest_backup.name}${
+              typeof dataHealth.latest_backup.age_hours === "number"
+                ? ` (${Math.round(dataHealth.latest_backup.age_hours)}h old)`
+                : ""
+            }`
           : "no backup found",
+        dataHealth?.db_size_trend?.delta_gb != null
+          ? `trend ${dataHealth.db_size_trend.delta_gb >= 0 ? "+" : ""}${dataHealth.db_size_trend.delta_gb}GB`
+          : null,
       ]
         .filter(Boolean)
         .join(" · ")

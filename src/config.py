@@ -478,7 +478,7 @@ LIVE_PLAYER_MARKETS_DISPLAY_ENABLED: bool = os.environ.get(
 
 # Live-refresh memory/retention guardrails.
 # Keep at least 6 months of data online by default while preventing unbounded growth.
-SNAPSHOT_HISTORY_RETAIN_DAYS = int(os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "210"))
+SNAPSHOT_HISTORY_RETAIN_DAYS = int(os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "120"))
 SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS = int(
     os.environ.get("SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS", "21600")
 )

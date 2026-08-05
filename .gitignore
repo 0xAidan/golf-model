@@ -7,9 +7,14 @@ data/golf.db
 data/golf.db-*
 data/local_recovery/
 data/exports/
+data/db_size_trend.jsonl
+data/disk_watchdog_last_run
 data/csvs/*.csv
 data/course_images/
 data/autoresearch_settings.json
+backups/
+backups/**
+!backups/.gitkeep
 output/*.md
 output/*.json
 output/archive/
@@ -19,3 +24,4 @@ output/research/
 build/
 # frontend/dist is committed so the VPS doesn't need to rebuild
 !frontend/dist/
+.worktrees/

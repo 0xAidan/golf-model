@@ -5,10 +5,11 @@ set -euo pipefail
 
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/golf-model}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
-# Disk budget: typical golf.db ~6GB; 14 retained copies can exceed a small VPS root volume.
-# Aligns with ``golf-backup.service`` on the server: set ``DEPLOY_BACKUP_KEEP`` in ``.env``;
-# the oneshot unit runs ``bash -lc`` that sources ``.env`` then ``python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-4}"``.
-DEPLOY_BACKUP_KEEP="${DEPLOY_BACKUP_KEEP:-4}"
+# Disk budget: compressed golf.db backups are ~1GB; keep 2 local copies on a 75GB VPS.
+# Aligns with ``golf-backup.service``: set ``DEPLOY_BACKUP_KEEP`` in ``.env``;
+# the oneshot unit runs ``bash -lc`` that sources ``.env`` then
+# ``python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-2}" --compress``.
+DEPLOY_BACKUP_KEEP="${DEPLOY_BACKUP_KEEP:-2}"
 
 cd "$DEPLOY_PATH"
 
@@ -107,7 +108,7 @@ install_systemd_units() {
         echo "[deploy] deploy/systemd missing; skipping unit sync"
         return 0
     fi
-    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer; do
+    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer golf-backup.service golf-backup.timer golf-disk-watchdog.service golf-disk-watchdog.timer; do
         if [ -f "${DEPLOY_PATH}/deploy/systemd/${unit}" ]; then
             cp "${DEPLOY_PATH}/deploy/systemd/${unit}" "/etc/systemd/system/${unit}"
             echo "[deploy] synced ${unit}"
@@ -132,6 +133,14 @@ install_systemd_units() {
     if systemctl list-unit-files golf-retention.timer >/dev/null 2>&1; then
         systemctl enable --now golf-retention.timer || true
         echo "[deploy] enabled golf-retention.timer"
+    fi
+    if systemctl list-unit-files golf-backup.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-backup.timer || true
+        echo "[deploy] enabled golf-backup.timer"
+    fi
+    if systemctl list-unit-files golf-disk-watchdog.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-disk-watchdog.timer || true
+        echo "[deploy] enabled golf-disk-watchdog.timer"
     fi
 }
 
