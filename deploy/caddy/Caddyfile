@@ -1,0 +1,30 @@
+# Golf Model public site. Pages come from the built SPA so a dead
+# Python process never yields a bare Caddy 502. Only /api is proxied.
+#
+# Install: copy this file to /etc/caddy/Caddyfile (or import the site
+# block), then `caddy reload`. Do not stack this cutover in the same
+# hour as a volume migrate.
+
+golf.shermandavison.com {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle {
+		root * /opt/golf-model/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle_errors {
+		root * /opt/golf-model/frontend/dist
+		rewrite * /index.html
+		file_server
+	}
+}
+
+golf.ancc.blog {
+	redir https://golf.shermandavison.com{uri} 301
+}

@@ -2,7 +2,13 @@
 
 Use this when disk space is low, the database is oversized, backups look wrong, or you need to restore from a nightly backup.
 
-**Production host:** `root@204.168.147.6` · **Repo path:** `/opt/golf-model` · **Public site:** https://golf.ancc.blog/
+**Production host:** `root@204.168.147.6` · **Repo path:** `/opt/golf-model` · **Public site:** https://golf.shermandavison.com/
+
+**Auto-recover:** `golf-db-integrity.timer` smoke-probes the live file every 15 minutes. It starts `golf-db-recover.service` **only** on confirmed SQLite corrupt/malformed/not-a-database. Timeouts and locks alert only. Recover quarantines the live file (gzip), deletes WAL/SHM, restores the newest integrity-ok backup, then queues current-week rebuild (`scripts/rebuild_current_week.py`). Do not run `python3 app.py` on production. Do not VACUUM during a live tournament.
+
+**Volume:** after cutover, live data lives on `/mnt/golf-data` (`GOLF_DATA_DIR`). See `scripts/migrate_data_to_volume.sh`.
+
+**Off-site fire drill (does not flip prod):** `python3 scripts/b2_restore_fire_drill.py --json`
 
 ## When to use this runbook
 
@@ -32,8 +38,8 @@ df -h /
 du -sh data backups output data/exports
 ls -lah data/golf.db*
 ls -lah backups/ | tail -20
-curl -s https://golf.ancc.blog/api/data-health | python3 -m json.tool | head -50
-curl -s https://golf.ancc.blog/api/ops/health | python3 -m json.tool | grep -E '"summary"|"disk"'
+curl -s https://golf.shermandavison.com/api/data-health | python3 -m json.tool | head -50
+curl -s https://golf.shermandavison.com/api/ops/health | python3 -m json.tool | grep -E '"summary"|"disk"|"db_ok"'
 ```
 
 **Healthy:** &gt;15 GB disk free; latest backup &lt;26 h old with `integrity.ok: true`; data-health not `red`.
@@ -44,7 +50,7 @@ curl -s https://golf.ancc.blog/api/ops/health | python3 -m json.tool | grep -E '
 
 ### Option A — UI available (preferred)
 
-1. Open https://golf.ancc.blog/system
+1. Open https://golf.shermandavison.com/system
 2. Storage panel → **Run cleanup**
 3. Wait for the cleanup job to finish (poll `GET /api/ops/jobs/latest/cleanup` or refresh the Jobs panel)
 4. Confirm disk free increased and data-health improves

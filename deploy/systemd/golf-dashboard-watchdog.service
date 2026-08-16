@@ -1,0 +1,15 @@
+[Unit]
+Description=Golf Model dashboard HTTP watchdog
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+EnvironmentFile=-/opt/golf-model/.env
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/dashboard_watchdog.py --restart --json
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

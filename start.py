@@ -164,7 +164,15 @@ def cmd_ui(args):
 def cmd_agent(args):
     """Start the autonomous research agent."""
     from src.db import ensure_initialized
-    ensure_initialized()
+    from src.db_integrity import DatabaseCorruptError, is_corrupt_error
+
+    try:
+        ensure_initialized()
+    except Exception as exc:
+        if is_corrupt_error(exc) or isinstance(exc, DatabaseCorruptError):
+            print(f"Refusing to start research agent: live database is corrupt ({exc})")
+            return
+        raise
 
     from workers.research_agent import start_agent
     print("\nStarting Autonomous Research Agent...")

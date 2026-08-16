@@ -13,6 +13,7 @@ EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python start.py agent
 Restart=always
 RestartSec=30
+MemoryMax=1G
 
 [Install]
 WantedBy=multi-user.target

@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src import config
+from src.db_integrity import DatabaseCorruptError, is_corrupt_error
 from src.player_normalizer import normalize_name
 
 _logger = logging.getLogger("golf.db")
@@ -107,11 +108,20 @@ def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
-    # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=15000")
-    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=15000")
+        conn.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.DatabaseError as exc:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+        if is_corrupt_error(exc):
+            raise DatabaseCorruptError(str(exc)) from exc
+        raise
     return conn
 
 
@@ -3433,9 +3443,88 @@ def reclaim_database_disk(
             conn.close()
         if not os.path.isfile(temp_path):
             return {"ok": False, "skipped": True, "reason": "VACUUM INTO did not produce output"}
+
+        # Verify the vacuumed copy BEFORE swapping it into place. An unverified
+        # swap previously left production on a malformed DB (Aug 2026 incident).
+        try:
+            check_conn = sqlite3.connect(
+                f"file:{temp_path}?mode=ro",
+                uri=True,
+                timeout=120.0,
+            )
+            try:
+                check_row = check_conn.execute("PRAGMA quick_check").fetchone()
+                check_result = str(check_row[0]) if check_row else "unknown"
+            finally:
+                check_conn.close()
+        except Exception as exc:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": f"VACUUM INTO output failed integrity check: {exc}",
+                "free_mb": free_mb,
+            }
+        if check_result != "ok":
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": f"VACUUM INTO output failed quick_check: {check_result}",
+                "free_mb": free_mb,
+            }
+
         backup_path = DB_PATH + ".pre_reclaim"
         shutil.copy2(DB_PATH, backup_path)
         os.replace(temp_path, DB_PATH)
+
+        # Cheap post-swap smoke check (full quick_check already ran on the temp file).
+        try:
+            verify_conn = sqlite3.connect(
+                f"file:{DB_PATH}?mode=ro",
+                uri=True,
+                timeout=30.0,
+            )
+            try:
+                verify_conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+                verify_ok = True
+                verify_result = "ok"
+            finally:
+                verify_conn.close()
+        except Exception as exc:
+            verify_ok = False
+            verify_result = f"error:{exc}"
+
+        if not verify_ok:
+            try:
+                os.replace(backup_path, DB_PATH)
+            except OSError as restore_exc:
+                return {
+                    "ok": False,
+                    "skipped": False,
+                    "reason": (
+                        f"post-swap smoke check failed ({verify_result}) and "
+                        f"rollback also failed: {restore_exc}"
+                    ),
+                    "free_mb": free_mb,
+                }
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": (
+                    f"post-swap smoke check failed ({verify_result}); "
+                    "restored from .pre_reclaim"
+                ),
+                "free_mb": free_mb,
+                "rolled_back": True,
+            }
+
         after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
         return {
             "ok": True,
@@ -3444,6 +3533,8 @@ def reclaim_database_disk(
             "bytes_after": after,
             "bytes_reclaimed": max(0, before - after),
             "free_mb": free_mb,
+            "integrity": "quick_check ok (pre-swap)",
+            "pre_reclaim_path": backup_path,
         }
 
     return vacuum_database(wal_checkpoint=wal_checkpoint)
@@ -3459,27 +3550,25 @@ def prune_snapshot_history_tables(
     Intended for explicit operator/cron use only — not called from HTTP handlers.
 
     When ``retain_days`` is None, reads ``SNAPSHOT_HISTORY_RETAIN_DAYS``; if unset,
-    returns a skipped result without deleting (default no-op until configured).
+    falls back to ``src.config.SNAPSHOT_HISTORY_RETAIN_DAYS`` (default 120).
     """
     days = retain_days
     if days is None:
         raw = (os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS") or "").strip()
-        if not raw:
-            return {
-                "skipped": True,
-                "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set; refusing delete.",
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-            }
-        try:
-            days = int(raw)
-        except ValueError:
-            return {
-                "skipped": True,
-                "reason": "invalid SNAPSHOT_HISTORY_RETAIN_DAYS",
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-            }
+        if raw:
+            try:
+                days = int(raw)
+            except ValueError:
+                return {
+                    "skipped": True,
+                    "reason": "invalid SNAPSHOT_HISTORY_RETAIN_DAYS",
+                    "live_snapshot_history_deleted": 0,
+                    "market_prediction_rows_deleted": 0,
+                }
+        else:
+            from src.config import SNAPSHOT_HISTORY_RETAIN_DAYS as _default_retain
+
+            days = int(_default_retain)
     if int(days) <= 0:
         return {
             "skipped": True,
@@ -3562,9 +3651,15 @@ def prune_snapshot_history_tables(
 def ensure_initialized():
     """Initialize the database if not already done. Call before first use."""
     global _DB_INITIALIZED
-    if not _DB_INITIALIZED:
+    if _DB_INITIALIZED:
+        return
+    try:
         init_db()
-        _DB_INITIALIZED = True
+    except Exception:
+        # A failed open (including malformed SQLite) must not look initialized.
+        _DB_INITIALIZED = False
+        raise
+    _DB_INITIALIZED = True
 
 
 def get_app_metadata(key: str) -> Any | None:

@@ -1,0 +1,16 @@
+[Unit]
+Description=Golf Model Database Backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+EnvironmentFile=-/opt/golf-model/.env
+# Compress keeps ~1GB per copy vs ~13GB uncompressed. Keep 2 on a 75GB VPS.
+ExecStart=/bin/bash -lc 'set -a; [ -f /opt/golf-model/.env ] && . /opt/golf-model/.env; set +a; exec /opt/golf-model/venv/bin/python -m src.backup --keep "${DEPLOY_BACKUP_KEEP:-2}" --compress'
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

@@ -53,6 +53,8 @@ export type LiveSnapshotContextValue = {
   liveRuntimeRunning: boolean
   liveRefreshStatus: LiveRefreshStatusResponse | undefined
   snapshotNoticeBase: string | null
+  dbOk: boolean | null
+  rebuildState: string | null
 }
 
 const LiveSnapshotContext = createContext<LiveSnapshotContextValue | null>(null)
@@ -194,13 +196,21 @@ export function LiveSnapshotProvider({
     envelope?.stale_reason,
   ])
 
+  const dbOk = envelope?.db_ok ?? summaryEnvelope?.db_ok ?? null
+  const rebuildState = envelope?.rebuild_state ?? summaryEnvelope?.rebuild_state ?? null
   const snapshotNoticeBase =
-    splitBrainSuspected
+    dbOk === false
       ? operatorMessage ??
-        "Dashboard and refresh worker may be using different data folders. Rankings are hidden."
-      : snapshotSustainedFailure
-        ? "Live snapshot request failed. Retry after checking System health."
-        : operatorMessage ?? envelope?.stale_reason ?? envelope?.fallback_reason ?? uiAlert
+        "Database is unavailable. Showing the last saved boards while the server restores a good copy and rebuilds this week."
+      : rebuildState === "rebuilding"
+        ? operatorMessage ??
+          "Rebuilding this week's boards from Data Golf. Last saved boards stay visible until that finishes."
+      : splitBrainSuspected
+        ? operatorMessage ??
+          "Dashboard and refresh worker may be using different data folders. Rankings are hidden."
+        : snapshotSustainedFailure
+          ? "Live snapshot request failed. Retry after checking System health."
+          : operatorMessage ?? envelope?.stale_reason ?? envelope?.fallback_reason ?? uiAlert
 
   const ageSeconds = envelope?.age_seconds ?? summaryEnvelope?.age_seconds ?? null
 
@@ -232,6 +242,8 @@ export function LiveSnapshotProvider({
       liveRuntimeRunning,
       liveRefreshStatus: liveRefreshStatusQuery.data,
       snapshotNoticeBase,
+      dbOk,
+      rebuildState,
     }),
     [
       envelope,
@@ -256,6 +268,8 @@ export function LiveSnapshotProvider({
       dataState,
       operatorMessage,
       splitBrainSuspected,
+      dbOk,
+      rebuildState,
     ],
   )
 

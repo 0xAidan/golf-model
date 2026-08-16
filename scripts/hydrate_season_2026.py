@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src import db
+from src.datagolf import get_current_event_info
 from src.market_row_backfill import backfill_completed_market_rows_into_picks
 
 TRACK_RECORD = ROOT / "frontend" / "src" / "data" / "trackRecord.json"
@@ -158,6 +159,11 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="Write to DB and grade (default dry-run)")
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--event-id", action="append", dest="event_ids", help="Limit to specific event id(s)")
+    parser.add_argument(
+        "--current-only",
+        action="store_true",
+        help="Hydrate only Data Golf's current/upcoming PGA event",
+    )
     args = parser.parse_args()
 
     try:
@@ -171,6 +177,25 @@ def main() -> int:
     conn = db.get_conn()
     events = _events_with_inventory(conn, args.year)
     conn.close()
+
+    if args.current_only:
+        current = get_current_event_info("pga") or {}
+        current_id = str(current.get("event_id") or "")
+        if not current_id:
+            print("No current Data Golf event; nothing to hydrate", file=sys.stderr)
+            return 1
+        args.event_ids = [current_id]
+        if not any(str(event["event_id"]) == current_id for event in events):
+            events.append(
+                {
+                    "event_id": current_id,
+                    "name": current.get("event_name") or current.get("name") or f"Event {current_id}",
+                    "year": args.year,
+                    "tournament_id": None,
+                    "course": current.get("course") or current.get("course_name"),
+                    "ledger_rows": 0,
+                }
+            )
 
     if args.event_ids:
         allowed = {str(eid) for eid in args.event_ids}

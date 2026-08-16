@@ -8,7 +8,8 @@ Use this when production shows stale data, empty boards with no explanation, or 
 - `GET /api/live-refresh/snapshot` returns very high `age_seconds`
 - `golf-dashboard.service` restart counter (`NRestarts`) climbs rapidly
 - Manual refresh returns generic errors or never updates the board
-- `GET /api/ops/health` shows `summary: snapshot_stale` or `worker_heartbeat_stale`
+- `GET /api/ops/health` shows `summary: snapshot_stale`, `worker_heartbeat_stale`, or `database_unavailable`
+- Heartbeat `phase` is `db_malformed` or `rebuilding_current_week`
 - Heartbeat file shows `phase: shadow_mc` (or other phase) with age > 15 minutes while `running: true`
 
 ## Stuck worker (shadow_mc / long recompute)
@@ -103,8 +104,11 @@ Or revert the bad commit on `main` and redeploy. Do **not** bind port 8000 from 
 - `ExecStartPre` runs `scripts/ensure_port_owner.sh` before dashboard bind
 - Monitor `scripts/reliability_synthetic_check.py` (GitHub `reliability-monitor` workflow)
 - `golf-live-refresh-watchdog.timer` runs `scripts/live_refresh_watchdog.py --restart` every 5 minutes on production
+- `golf-dashboard-watchdog.timer` restarts the dashboard if `:8000` does not answer
+- Snapshot/status/ops-health APIs read `live_refresh_snapshot.json` even when SQLite is dead
+- Caddy should serve `frontend/dist` and proxy only `/api` so a dead Python process is not a bare 502
 
 ## Integrity
 
 - Empty +EV boards with honest diagnostics are correct — never fabricate picks or relax EV gates.
-- When data is stale or split-brain, the API returns `ok:false` and the UI hides cached rows.
+- Split-brain still hides rankings (`ok:false`). A dead or rebuilding database keeps the last boards on screen with a blocking banner until the current-event snapshot arrives.

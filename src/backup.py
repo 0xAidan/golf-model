@@ -16,13 +16,19 @@ import os
 import shutil
 import glob
 import gzip
+import json
 import sqlite3
 import tempfile
 from datetime import datetime
 from typing import Any
 
 from src import db
+from src.db_integrity import probe_sqlite_file
 from src.disk_guard import warn_if_low_disk
+
+
+class BackupIntegrityError(RuntimeError):
+    """Raised when a newly created backup fails ``quick_check``."""
 
 
 def _current_db_path() -> str:
@@ -69,11 +75,16 @@ def _sidecar_paths_for_backup(backup_path: str) -> list[str]:
         return []
     directory = os.path.dirname(backup_path)
     stem = base[: -len(".db")]
-    return [
+    paths = [
         os.path.join(directory, f"{stem}.db-shm"),
         os.path.join(directory, f"{stem}.db-wal"),
         os.path.join(directory, f"{stem}.db-journal"),
+        os.path.join(directory, f"{stem}.db.integrity.json"),
+        os.path.join(directory, f"{stem}.db.gz.integrity.json"),
     ]
+    # Also cover the exact backup path's integrity sidecar.
+    paths.append(backup_path + ".integrity.json")
+    return paths
 
 
 def _remove_backup_artifacts(path: str) -> None:
@@ -140,6 +151,53 @@ def prune_old_backups(keep: int, *, before_create: bool = False) -> list[str]:
         oldest = backups.pop(0)
         _remove_backup_artifacts(oldest)
         removed.append(oldest)
+    removed.extend(sweep_orphan_sidecars())
+    return removed
+
+
+def _free_bytes(path: str) -> int:
+    return int(shutil.disk_usage(path).free)
+
+
+def _bytes_needed_for_new_backup(db_path: str, *, compress: bool) -> int:
+    """Peak free space needed to create one new backup safely.
+
+    Uncompressed sqlite backup writes a full copy. Compressed mode still needs the
+    full copy on disk briefly before gzip replaces it, plus a small gzip overhead
+    margin while both files coexist.
+    """
+    db_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+    if db_bytes <= 0:
+        return 0
+    if compress:
+        # Full .db + .db.gz during compress, plus 5% slack.
+        return int(db_bytes * 1.05) + int(db_bytes * 0.25)
+    return int(db_bytes * 1.15)
+
+
+def prune_until_space_available(
+    *,
+    needed_bytes: int,
+    repo_root: str,
+    min_keep: int = 1,
+) -> list[str]:
+    """Prune oldest backups until free space covers ``needed_bytes``.
+
+    Always retains at least ``min_keep`` complete backups when possible. Returns
+    paths removed. Used when count-based retention alone cannot free enough room
+    for a new backup (the failure mode that filled this VPS in Aug 2026).
+    """
+    if needed_bytes <= 0:
+        return []
+    removed: list[str] = []
+    while _free_bytes(repo_root) < needed_bytes:
+        backups = _sorted_backup_paths()
+        if len(backups) <= max(0, int(min_keep)):
+            break
+        oldest = backups[0]
+        _remove_backup_artifacts(oldest)
+        removed.append(oldest)
+        print(f"  Pruned backup for disk headroom: {oldest}")
     removed.extend(sweep_orphan_sidecars())
     return removed
 
@@ -251,6 +309,21 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     for removed in prune_old_backups(int(keep), before_create=True):
         print(f"  Removed old backup to free space: {removed}")
 
+    needed = _bytes_needed_for_new_backup(db_path, compress=compress)
+    prune_until_space_available(
+        needed_bytes=needed,
+        repo_root=repo_root,
+        min_keep=1,
+    )
+
+    free_now = _free_bytes(repo_root)
+    if needed and free_now < needed:
+        raise RuntimeError(
+            f"Refusing backup: need ~{needed // (1024 * 1024)} MiB free for a new "
+            f"{'compressed ' if compress else ''}copy, but only "
+            f"{free_now // (1024 * 1024)} MiB is available after pruning."
+        )
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
 
@@ -290,25 +363,110 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
         print("  Backup integrity: quick_check ok")
     else:
         print(f"  Backup integrity FAILED: {integrity.get('quick_check') or integrity.get('error')}")
+        try:
+            from src.telegram_alerts import send_ops_alert
+
+            send_ops_alert(
+                f"Golf Model backup integrity FAILED for {final_path}: "
+                f"{integrity.get('quick_check') or integrity.get('error')}",
+                severity="critical",
+            )
+        except Exception:
+            pass
+
+    # Persist integrity for cheap /api/data-health reads (avoid re-checking multi-GB files).
+    try:
+        sidecar = final_path + ".integrity.json"
+        with open(sidecar, "w", encoding="utf-8") as handle:
+            json.dump(integrity, handle)
+    except OSError:
+        pass
+
+    if not integrity.get("ok"):
+        raise BackupIntegrityError(
+            f"Backup integrity FAILED for {final_path}: "
+            f"{integrity.get('quick_check') or integrity.get('error')}"
+        )
+
+    # Best-effort off-site upload (no-op when B2 credentials are unset).
+    if integrity.get("ok"):
+        try:
+            from src.offsite_backup import upload_backup_offsite
+
+            offsite = upload_backup_offsite(final_path)
+            if offsite.get("skipped"):
+                print(f"  Off-site backup skipped: {offsite.get('reason')}")
+            elif offsite.get("ok"):
+                print(f"  Off-site backup uploaded: {offsite.get('remote_name')}")
+            else:
+                print(f"  Off-site backup FAILED: {offsite.get('error')}")
+                try:
+                    from src.telegram_alerts import send_ops_alert
+
+                    send_ops_alert(
+                        f"Golf Model off-site backup FAILED for {final_path}: "
+                        f"{offsite.get('error')}"
+                    )
+                except Exception:
+                    pass
+        except Exception as exc:
+            print(f"  Off-site backup error: {exc}")
 
     return final_path
+
+
+def _remove_live_wal_sidecars(db_path: str) -> None:
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = db_path + suffix
+        try:
+            os.remove(sidecar)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            print(f"  Warning: could not remove {sidecar}: {exc}")
+
+
+def latest_verified_backup() -> str | None:
+    """Newest backup whose integrity sidecar (or live quick_check) is ok."""
+    for item in list_backups():
+        path = item["path"]
+        sidecar = path + ".integrity.json"
+        if os.path.isfile(sidecar):
+            try:
+                with open(sidecar, encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                if payload.get("ok"):
+                    return path
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
+        integrity = verify_backup_integrity(path)
+        if integrity.get("ok"):
+            return path
+    return None
 
 
 def restore_backup(backup_path: str) -> bool:
     """
     Restore the database from a backup file.
 
-    Args:
-        backup_path: Path to the backup file.
-
-    Returns:
-        True if restored successfully.
+    Verifies the backup, replaces the live file, deletes WAL/SHM so SQLite
+    cannot replay a journal onto the restored copy, then smoke-checks the
+    new live file.
     """
     if not os.path.exists(backup_path):
         print(f"  Backup not found: {backup_path}")
         return False
 
+    integrity = verify_backup_integrity(backup_path)
+    if not integrity.get("ok"):
+        print(
+            f"  Refusing restore: backup failed integrity "
+            f"({integrity.get('quick_check') or integrity.get('error')})"
+        )
+        return False
+
     db_path = _current_db_path()
+    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     if os.path.exists(db_path):
         pre_restore = db_path + ".pre_restore"
         shutil.copy2(db_path, pre_restore)
@@ -318,10 +476,16 @@ def restore_backup(backup_path: str) -> bool:
         with gzip.open(backup_path, "rb") as gz, open(db_path, "wb") as out:
             shutil.copyfileobj(gz, out)
         print(f"  Restored from gzip: {backup_path}")
-        return True
+    else:
+        shutil.copy2(backup_path, db_path)
+        print(f"  Restored from: {backup_path}")
 
-    shutil.copy2(backup_path, db_path)
-    print(f"  Restored from: {backup_path}")
+    _remove_live_wal_sidecars(db_path)
+    smoke = probe_sqlite_file(db_path, timeout_seconds=30.0)
+    if not smoke.get("ok"):
+        print(f"  Restored file failed smoke probe: {smoke.get('error')}")
+        return False
+    print("  Restored file smoke probe: ok")
     return True
 
 
@@ -356,11 +520,11 @@ if __name__ == "__main__":
 
     _env_keep_raw = (os.environ.get("DEPLOY_BACKUP_KEEP") or "").strip()
     try:
-        _default_keep = int(_env_keep_raw) if _env_keep_raw else 7
+        _default_keep = int(_env_keep_raw) if _env_keep_raw else 2
     except ValueError:
-        _default_keep = 7
+        _default_keep = 2
     if _default_keep < 1:
-        _default_keep = 7
+        _default_keep = 2
 
     parser = argparse.ArgumentParser(description="Database backup utility")
     parser.add_argument("--keep", type=int, default=_default_keep, help="Number of backups to keep")
@@ -397,4 +561,13 @@ if __name__ == "__main__":
     elif args.restore:
         restore_backup(args.restore)
     else:
-        create_backup(keep=args.keep, compress=args.compress)
+        try:
+            create_backup(keep=args.keep, compress=args.compress)
+        except Exception as exc:
+            try:
+                from src.telegram_alerts import send_ops_alert
+
+                send_ops_alert(f"Golf Model nightly backup FAILED: {exc}")
+            except Exception:
+                pass
+            raise
