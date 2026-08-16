@@ -8,6 +8,7 @@ import { CommandMenu, CommandMenuTrigger } from "@/components/command-menu"
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
 import { MonitoringShell } from "@/components/monitoring/monitoring-shell"
 import { FreshnessIndicator } from "@/components/monitoring/freshness-indicator"
+import { RebuildStatusBanner, shouldShowRebuildBanner } from "@/components/product/rebuild-status-banner"
 import { RouteErrorBoundaryGate } from "@/components/route-error-boundary-gate"
 import { useLiveRefreshRuntime } from "@/hooks/use-live-refresh-runtime"
 import { usePredictionTab } from "@/hooks/use-prediction-tab"
@@ -152,6 +153,8 @@ export function AppContent({
     snapshotNoticeBase,
     liveRuntimeRunning,
     liveRefreshStatus,
+    dbOk,
+    rebuildState,
   } = useLiveSnapshot()
 
   const isLegacyLabBoardPath =
@@ -1058,8 +1061,25 @@ export function AppContent({
     document.title = primary === suffix ? suffix : `${primary} · ${suffix}`
   }, [location.pathname, shellEventName])
 
+  const showRebuildBanner = shouldShowRebuildBanner({ dbOk, rebuildState })
+
   return (
     <>
+    {showRebuildBanner ? (
+      <RebuildStatusBanner
+        title={
+          dbOk === false
+            ? "Database is being repaired"
+            : rebuildState === "rebuilding"
+              ? "Rebuilding this week's boards"
+              : "Showing last saved boards"
+        }
+        message={
+          snapshotNotice ??
+          "Last saved boards stay on screen. They are not guaranteed to be this week's live card until refresh finishes."
+        }
+      />
+    ) : null}
     <MonitoringShell
       headline={shellEventName}
       subheadline={shellEventMeta}

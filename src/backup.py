@@ -23,7 +23,12 @@ from datetime import datetime
 from typing import Any
 
 from src import db
+from src.db_integrity import probe_sqlite_file
 from src.disk_guard import warn_if_low_disk
+
+
+class BackupIntegrityError(RuntimeError):
+    """Raised when a newly created backup fails ``quick_check``."""
 
 
 def _current_db_path() -> str:
@@ -363,7 +368,8 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
 
             send_ops_alert(
                 f"Golf Model backup integrity FAILED for {final_path}: "
-                f"{integrity.get('quick_check') or integrity.get('error')}"
+                f"{integrity.get('quick_check') or integrity.get('error')}",
+                severity="critical",
             )
         except Exception:
             pass
@@ -375,6 +381,12 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
             json.dump(integrity, handle)
     except OSError:
         pass
+
+    if not integrity.get("ok"):
+        raise BackupIntegrityError(
+            f"Backup integrity FAILED for {final_path}: "
+            f"{integrity.get('quick_check') or integrity.get('error')}"
+        )
 
     # Best-effort off-site upload (no-op when B2 credentials are unset).
     if integrity.get("ok"):
@@ -403,21 +415,58 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     return final_path
 
 
+def _remove_live_wal_sidecars(db_path: str) -> None:
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = db_path + suffix
+        try:
+            os.remove(sidecar)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            print(f"  Warning: could not remove {sidecar}: {exc}")
+
+
+def latest_verified_backup() -> str | None:
+    """Newest backup whose integrity sidecar (or live quick_check) is ok."""
+    for item in list_backups():
+        path = item["path"]
+        sidecar = path + ".integrity.json"
+        if os.path.isfile(sidecar):
+            try:
+                with open(sidecar, encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                if payload.get("ok"):
+                    return path
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
+        integrity = verify_backup_integrity(path)
+        if integrity.get("ok"):
+            return path
+    return None
+
+
 def restore_backup(backup_path: str) -> bool:
     """
     Restore the database from a backup file.
 
-    Args:
-        backup_path: Path to the backup file.
-
-    Returns:
-        True if restored successfully.
+    Verifies the backup, replaces the live file, deletes WAL/SHM so SQLite
+    cannot replay a journal onto the restored copy, then smoke-checks the
+    new live file.
     """
     if not os.path.exists(backup_path):
         print(f"  Backup not found: {backup_path}")
         return False
 
+    integrity = verify_backup_integrity(backup_path)
+    if not integrity.get("ok"):
+        print(
+            f"  Refusing restore: backup failed integrity "
+            f"({integrity.get('quick_check') or integrity.get('error')})"
+        )
+        return False
+
     db_path = _current_db_path()
+    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     if os.path.exists(db_path):
         pre_restore = db_path + ".pre_restore"
         shutil.copy2(db_path, pre_restore)
@@ -427,10 +476,16 @@ def restore_backup(backup_path: str) -> bool:
         with gzip.open(backup_path, "rb") as gz, open(db_path, "wb") as out:
             shutil.copyfileobj(gz, out)
         print(f"  Restored from gzip: {backup_path}")
-        return True
+    else:
+        shutil.copy2(backup_path, db_path)
+        print(f"  Restored from: {backup_path}")
 
-    shutil.copy2(backup_path, db_path)
-    print(f"  Restored from: {backup_path}")
+    _remove_live_wal_sidecars(db_path)
+    smoke = probe_sqlite_file(db_path, timeout_seconds=30.0)
+    if not smoke.get("ok"):
+        print(f"  Restored file failed smoke probe: {smoke.get('error')}")
+        return False
+    print("  Restored file smoke probe: ok")
     return True
 
 

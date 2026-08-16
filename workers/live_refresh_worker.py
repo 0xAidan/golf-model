@@ -20,7 +20,9 @@ from backtester.dashboard_runtime import (
     stop_live_refresh,
 )
 from src.autoresearch_settings import get_settings
+from src.current_week_rebuild import write_rebuild_heartbeat
 from src.db import ensure_initialized
+from src.db_integrity import DatabaseCorruptError, is_corrupt_error
 
 _shutdown = False
 
@@ -111,7 +113,16 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    ensure_initialized()
+    try:
+        ensure_initialized()
+    except Exception as exc:
+        if is_corrupt_error(exc) or isinstance(exc, DatabaseCorruptError):
+            write_rebuild_heartbeat(phase="db_malformed", last_error=str(exc))
+            logging.getLogger("live_refresh_worker").error(
+                "Live database is corrupt; exiting cleanly for auto-recover: %s", exc
+            )
+            return 0
+        raise
     live_cfg = (get_settings().get("live_refresh") or {})
     tour = str(live_cfg.get("tour", "pga"))
 

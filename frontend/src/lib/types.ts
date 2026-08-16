@@ -410,6 +410,9 @@ export type LiveRefreshSnapshotResponse = {
   fallback_reason?: string | null
   data_state?: string | null
   operator_message?: string | null
+  db_ok?: boolean
+  db_state?: string | null
+  rebuild_state?: string | null
   split_brain_suspected?: boolean
   accepted?: boolean
   /** Present on 409 busy responses — merged live-refresh status snapshot. */

@@ -1,19 +1,15 @@
 [Unit]
-Description=Golf Model Research Agent
+Description=Golf Model strict auto-restore after confirmed SQLite corruption
 After=network.target
 
 [Service]
-Type=simple
-User=root
+Type=oneshot
 WorkingDirectory=/opt/golf-model
-Environment=PATH=/opt/golf-model/venv/bin:/usr/bin:/bin
 Environment=GOLF_APP_ROOT=/opt/golf-model
 Environment=GOLF_DATA_DIR=/opt/golf-model/data
 EnvironmentFile=-/opt/golf-model/.env
-ExecStart=/opt/golf-model/venv/bin/python start.py agent
-Restart=always
-RestartSec=30
-MemoryMax=1G
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/auto_recover_db.py --json
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

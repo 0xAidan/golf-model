@@ -1,5 +1,6 @@
 export { ModelLaneBadge, type ModelLane } from "./model-lane-badge"
 export { TrustStatusBanner, type TrustTone } from "./trust-status-banner"
+export { RebuildStatusBanner, shouldShowRebuildBanner } from "./rebuild-status-banner"
 export { EventCommandHeader } from "./event-command-header"
 export { DiagnosticsFunnel } from "./diagnostics-funnel"
 export { ResultsPreview } from "./results-preview"

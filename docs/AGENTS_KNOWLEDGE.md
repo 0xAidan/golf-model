@@ -4,9 +4,9 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-06-29 on `feat/operator-terminal-master-upgrade`. Operator terminal master: hybrid SWR (`/api/live-refresh/summary` + IndexedDB), `FreshnessIndicator`, background grade jobs (`ops_jobs`), Analytics on `/results`, frozen-zone CI guard, `App.tsx` shell split (`app/app-content.tsx`). Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
+**Last verified:** 2026-08-16 on `cursor/production-never-down-hardening-ebae`. Never-down hardening: Caddy static SPA, snapshot/ops APIs without SQLite, strict auto-restore, current-week rebuild, ntfy + Litestream, Hetzner volume path. Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
 
-**Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
+**Production web (operator-facing SPA):** https://golf.shermandavison.com/ (`golf.ancc.blog` 301s here) — same FastAPI-backed React app as local `python3 app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
 ---
 
@@ -677,7 +677,7 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 ### Production Server
 
-- **Public URL (HTTPS):** https://golf.ancc.blog/ — DNS/TLS only; deployment still uses SSH to the VPS below (not the public hostname).
+- **Public URL (HTTPS):** https://golf.shermandavison.com/ (`golf.ancc.blog` 301s here) — DNS/TLS only; deployment still uses SSH to the VPS below (not the public hostname).
 - **Host:** `root@204.168.147.6` (VPS)
 - **Remote path:** `/opt/golf-model`
 - **Branch:** `main`
@@ -686,9 +686,9 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 - **First-time setup:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --setup`
 - **Status check:** `DEPLOY_HOST='root@204.168.147.6' ./deploy.sh --status`
 
-Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, **appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` when that key is absent** (parallel lab lane for `/lab`), and restarts `golf-dashboard`, `golf-agent`, and `golf-live-refresh`. Shared steps live in `scripts/deploy-update-steps.sh`.
+Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac (or `--update-local` on the server); the script pulls `main`, reinstalls Python deps, runs `npm ci && npm run build` in `frontend/`, applies DB init/migrations, **appends `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` to `.env` when that key is absent** (parallel lab lane for `/lab`), and restarts `golf-dashboard` and `golf-live-refresh`. **`golf-agent` is disabled on production** (site box, not a research lab). Shared steps live in `scripts/deploy-update-steps.sh`. **Do not deploy during a live tournament window except a real hotfix.**
 
-**Storage durability (Aug 2026):** local nightly backups are **compressed** (`--compress`) and default to **`--keep 2`**. `src/backup.py` prunes further when free disk cannot hold a new copy (disk-aware retention). After each successful backup, `src/offsite_backup.py` uploads to Backblaze B2 when `B2_*` env vars are set. `golf-disk-watchdog.timer` runs every 15 minutes, remediates orphan temps, and Telegram-alerts on warn/hard floors. `VACUUM INTO` reclaim now verifies integrity before swap and rolls back on failure. If DB growth still outpaces the 75GB disk after retention, resize the volume — do not silently accumulate uncompressed multi-GB backups again.
+**Storage durability (Aug 2026):** local backups are **compressed** (`--compress`), **keep 2**, plus extra copies at 09:00/15:00/21:00. `src/backup.py` is disk-aware and **fail-closed** (integrity failure is a non-zero unit). Off-site: gzip to Backblaze B2 + Litestream WAL replica. `golf-disk-watchdog.timer` every 15 minutes. `golf-db-integrity.timer` smoke-probes SQLite; confirmed `malformed` triggers `golf-db-recover.service` (quarantine, drop WAL/SHM, restore last integrity-ok backup, queue current-week rebuild). ntfy is the primary pager (`NTFY_TOPIC`). Target data home after volume cutover: `GOLF_DATA_DIR=/mnt/golf-data/data`. Never VACUUM during `live_window`. Caddy should serve `frontend/dist` and proxy only `/api` (`deploy/caddy/Caddyfile`) — cut over on a separate hour from the volume move. Go-live gates: [docs/runbooks/never-down-go-live.md](docs/runbooks/never-down-go-live.md).
 
 ### What `--update` does
 
@@ -699,7 +699,7 @@ Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac
 5. Runs DB migrations (`init_db()`)
 6. Ensures `.env` contains `LIVE_REFRESH_LAB_PROFILE_ENABLED=1` when not already set (lab snapshot lane)
 7. Sync systemd unit files from `deploy/systemd/` and `systemctl daemon-reload`
-8. `systemctl restart golf-dashboard golf-agent golf-live-refresh`
+8. `systemctl restart golf-dashboard golf-live-refresh` (golf-agent stays disabled)
 9. On `/opt/golf-model`, run `scripts/ops_verify_production.sh` (port audit, ops health, synthetic checks)
 
 **Never bind port 8000 outside `/opt/golf-model` on the VPS.** Orphan processes from `/root/golf-model` cause split-brain (stale snapshots). See `docs/runbooks/live-refresh-incident.md`.
@@ -709,7 +709,7 @@ Ship changes by merging to `main`, then run `./deploy.sh --update` from your Mac
 | Variable | Production value |
 |----------|------------------|
 | `GOLF_APP_ROOT` | `/opt/golf-model` |
-| `GOLF_DATA_DIR` | `/opt/golf-model/data` |
+| `GOLF_DATA_DIR` | `/mnt/golf-data/data` after volume cutover; `/opt/golf-model/data` until then |
 | `LIVE_REFRESH_WORKER_OWNED` | `1` on dashboard (manual refresh queues worker trigger) |
 | `LIVE_REFRESH_EMBEDDED_AUTOSTART` | `0` on dashboard |
 
@@ -724,11 +724,17 @@ Port guard: `scripts/ensure_port_owner.sh` / `scripts/port_8000_audit.py` — ru
 | Service | What it runs | Port |
 |---------|-------------|------|
 | `golf-dashboard` | `start.py dashboard --port 8000` | 8000 |
-| `golf-agent` | `start.py agent` | — |
 | `golf-live-refresh` | `workers/live_refresh_worker.py` | — |
 | `golf-live-refresh-watchdog.timer` | `scripts/live_refresh_watchdog.py --restart` (every 5 min) | — |
+| `golf-dashboard-watchdog.timer` | `scripts/dashboard_watchdog.py --restart` (every 5 min) | — |
 | `golf-disk-watchdog.timer` | `scripts/disk_watchdog.py --remediate --aggressive` (every 15 min) | — |
-| `golf-backup.timer` | Nightly compressed DB backup at 03:00 UTC (`--keep 2 --compress` by default) | — |
+| `golf-db-integrity.timer` | `scripts/db_integrity_watchdog.py --recover` (every 15 min) | — |
+| `golf-db-recover.service` | `scripts/auto_recover_db.py` (oneshot, corrupt only) | — |
+| `golf-backup.timer` | Compressed DB backup at 03:00 UTC (`--keep 2 --compress`) | — |
+| `golf-backup-interval.timer` | Extra backups at 09:00 / 15:00 / 21:00 | — |
+| `golf-litestream.service` | Continuous WAL replica to Backblaze B2 | — |
+| `golf-external-uptime.timer` | Public site + `/api/ops/health` ping every 5 min; ntfy on failure | — |
+| `golf-agent` | **disabled on production** | — |
 
 Useful commands on the server:
 ```

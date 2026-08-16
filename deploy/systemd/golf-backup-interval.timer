@@ -1,0 +1,10 @@
+[Unit]
+Description=Golf Model extra database backups (09:00 / 15:00 / 21:00)
+
+[Timer]
+Unit=golf-backup.service
+OnCalendar=*-*-* 09,15,21:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

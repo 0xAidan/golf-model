@@ -4,8 +4,17 @@ Behavior-preserving extraction: response shape is byte-identical to the inline r
 First step of the incremental app.py -> src/routes/ decomposition (H).
 """
 
+import sqlite3
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+
+from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
+from src.db_integrity import live_db_status_fields
+from src.disk_guard import get_disk_state
+from src.runtime_health import recent_strategy_config_errors
+from src.runtime_paths import detect_split_brain, get_app_root, get_runtime_identity, read_heartbeat
+from src.worker_restart import read_worker_restart_request
 
 router = APIRouter(tags=["ops"])
 
@@ -28,19 +37,22 @@ def _snapshot_stale_after_seconds() -> int:
 @router.get("/api/ops/health")
 async def get_ops_health():
     """Production identity, worker heartbeat, and split-brain diagnostics (non-secret)."""
-    from src.db import ensure_initialized
-    from src.disk_guard import get_disk_state
-    from src.runtime_paths import detect_split_brain, get_app_root, get_runtime_identity, read_heartbeat
-    from src.worker_restart import read_worker_restart_request
-    from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
-    from src.runtime_health import recent_strategy_config_errors
+    db_fields = live_db_status_fields()
+    if db_fields.get("db_ok"):
+        try:
+            from src.db import ensure_initialized
 
-    ensure_initialized()
+            ensure_initialized()
+        except Exception:
+            db_fields = {**db_fields, "db_ok": False, "db_state": "error"}
     identity = get_runtime_identity()
     heartbeat = read_heartbeat()
     split = detect_split_brain(heartbeat=heartbeat)
     snapshot = read_snapshot()
-    status = get_live_refresh_status()
+    try:
+        status = get_live_refresh_status()
+    except sqlite3.DatabaseError:
+        status = {"running": False, "snapshot_age_seconds": None}
     generated_at = snapshot.get("generated_at") if isinstance(snapshot, dict) else None
     strategy_config_errors = recent_strategy_config_errors()
     snapshot_age_seconds = status.get("snapshot_age_seconds")
@@ -52,20 +64,23 @@ async def get_ops_health():
 
     # Track-registry state (active config hashes per track) for incident triage without SSH.
     track_state: dict = {}
-    try:
-        from src import track_registry
+    if not db_fields.get("db_ok"):
+        track_state = {"error": "database_unavailable"}
+    else:
+        try:
+            from src import track_registry
 
-        listing = track_registry.list_tracks(history_limit=1)
-        track_state = {
-            "active": {
-                t: {"config_hash": row.get("config_hash"), "model_variant": row.get("model_variant")}
-                for t, row in (listing.get("tracks") or {}).items()
-            },
-            "effective_config_hash": listing.get("effective_config_hash"),
-            "last_activation": (listing.get("history") or [{}])[0].get("activated_at"),
-        }
-    except Exception:
-        track_state = {"error": "unavailable"}
+            listing = track_registry.list_tracks(history_limit=1)
+            track_state = {
+                "active": {
+                    t: {"config_hash": row.get("config_hash"), "model_variant": row.get("model_variant")}
+                    for t, row in (listing.get("tracks") or {}).items()
+                },
+                "effective_config_hash": listing.get("effective_config_hash"),
+                "last_activation": (listing.get("history") or [{}])[0].get("activated_at"),
+            }
+        except Exception:
+            track_state = {"error": "unavailable"}
     ok = not split["split_brain_suspected"]
     summary = "healthy" if ok else "split_brain_suspected"
     if not heartbeat and identity.get("production"):
@@ -87,29 +102,37 @@ async def get_ops_health():
         summary = "strategy_config_fallback"
 
     grading_health: dict = {"status": "unknown"}
-    try:
-        from src.grading_reconciliation import reconcile_grading
+    if not db_fields.get("db_ok"):
+        grading_health = {"status": "skipped", "message": "database_unavailable"}
+    else:
+        try:
+            from src.grading_reconciliation import reconcile_grading
 
-        reconciliation = reconcile_grading(limit_events=5)
-        events = reconciliation.get("events") or []
-        void_positive_ev_picks = sum(int(e.get("void_positive_ev_picks") or 0) for e in events)
-        ungraded_positive_ev_picks = sum(
-            int(e.get("ungraded_positive_ev_picks") or 0) for e in events
-        )
-        grading_health = {
-            "status": reconciliation.get("status"),
-            "events_with_ungraded_positive_ev": reconciliation.get("events_with_ungraded_positive_ev"),
-            "orphan_outcomes": reconciliation.get("orphan_outcomes"),
-            "void_positive_ev_picks": void_positive_ev_picks,
-            "ungraded_positive_ev_picks": ungraded_positive_ev_picks,
-            "last_auto_grade_at": status.get("last_auto_grade_at"),
-            "last_auto_grade_status": status.get("last_auto_grade_status"),
-        }
-        if reconciliation.get("status") == "discrepancies" and ok:
-            summary = "grading_discrepancies"
-    except Exception as exc:
-        grading_health = {"status": "error", "message": str(exc)}
+            reconciliation = reconcile_grading(limit_events=5)
+            events = reconciliation.get("events") or []
+            void_positive_ev_picks = sum(int(e.get("void_positive_ev_picks") or 0) for e in events)
+            ungraded_positive_ev_picks = sum(
+                int(e.get("ungraded_positive_ev_picks") or 0) for e in events
+            )
+            grading_health = {
+                "status": reconciliation.get("status"),
+                "events_with_ungraded_positive_ev": reconciliation.get(
+                    "events_with_ungraded_positive_ev"
+                ),
+                "orphan_outcomes": reconciliation.get("orphan_outcomes"),
+                "void_positive_ev_picks": void_positive_ev_picks,
+                "ungraded_positive_ev_picks": ungraded_positive_ev_picks,
+                "last_auto_grade_at": status.get("last_auto_grade_at"),
+                "last_auto_grade_status": status.get("last_auto_grade_status"),
+            }
+            if reconciliation.get("status") == "discrepancies" and ok:
+                summary = "grading_discrepancies"
+        except Exception as exc:
+            grading_health = {"status": "error", "message": str(exc)}
 
+    if not db_fields.get("db_ok"):
+        ok = False
+        summary = "database_unavailable"
     if disk.get("guard_state") == "hard":
         summary = "disk_floor_breached"
 
@@ -148,6 +171,7 @@ async def get_ops_health():
     return {
         "ok": ok,
         "summary": summary,
+        **db_fields,
         "identity": identity,
         "heartbeat": heartbeat,
         "split_brain_suspected": split["split_brain_suspected"],

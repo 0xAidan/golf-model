@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src import config
+from src.db_integrity import DatabaseCorruptError, is_corrupt_error
 from src.player_normalizer import normalize_name
 
 _logger = logging.getLogger("golf.db")
@@ -107,11 +108,20 @@ def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
-    # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=15000")
-    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=15000")
+        conn.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.DatabaseError as exc:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+        if is_corrupt_error(exc):
+            raise DatabaseCorruptError(str(exc)) from exc
+        raise
     return conn
 
 
@@ -3641,9 +3651,15 @@ def prune_snapshot_history_tables(
 def ensure_initialized():
     """Initialize the database if not already done. Call before first use."""
     global _DB_INITIALIZED
-    if not _DB_INITIALIZED:
+    if _DB_INITIALIZED:
+        return
+    try:
         init_db()
-        _DB_INITIALIZED = True
+    except Exception:
+        # A failed open (including malformed SQLite) must not look initialized.
+        _DB_INITIALIZED = False
+        raise
+    _DB_INITIALIZED = True
 
 
 def get_app_metadata(key: str) -> Any | None:

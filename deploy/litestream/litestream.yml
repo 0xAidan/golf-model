@@ -1,0 +1,15 @@
+# Litestream replica for data/golf.db → Backblaze B2 (S3-compatible).
+# Paths follow GOLF_DATA_DIR when the volume cutover is done.
+# Endpoint is the B2 S3 URL for the bucket's region (override via env in
+# the systemd unit if your bucket is not us-west-000).
+
+dbs:
+  - path: ${GOLF_DB_PATH}
+    replicas:
+      - type: s3
+        bucket: ${B2_BUCKET_NAME}
+        path: golf-model/litestream
+        endpoint: ${B2_S3_ENDPOINT}
+        access-key-id: ${B2_APPLICATION_KEY_ID}
+        secret-access-key: ${B2_APPLICATION_KEY}
+        force-path-style: true

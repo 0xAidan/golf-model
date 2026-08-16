@@ -19,6 +19,7 @@ logger = logging.getLogger("golf.telegram_alerts")
 
 _missing_config_warned: dict[str, bool] = {"flag": False}
 _ops_missing_config_warned: dict[str, bool] = {"flag": False}
+_ntfy_missing_warned: dict[str, bool] = {"flag": False}
 
 _DEFAULT_EV_THRESHOLD = 0.085
 _DEFAULT_MAX_ROWS = 8
@@ -58,22 +59,54 @@ def send_telegram_message(text: str) -> bool:
         return False
 
 
-def send_ops_alert(message: str, *, severity: str = "warn") -> bool:
-    """Push an operator alert (backup/disk/worker). Reuses TELEGRAM_* credentials.
+def send_ntfy_message(text: str, *, severity: str = "warn") -> bool:
+    """POST to ntfy.sh (or NTFY_SERVER) when NTFY_TOPIC is set."""
+    topic = (os.environ.get("NTFY_TOPIC") or "").strip()
+    if not topic:
+        if not _ntfy_missing_warned["flag"]:
+            logger.warning("ntfy ops alerts disabled: set NTFY_TOPIC")
+            _ntfy_missing_warned["flag"] = True
+        return False
+    server = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").strip().rstrip("/")
+    priority = {
+        "critical": "5",
+        "hard": "5",
+        "warn": "4",
+        "info": "3",
+    }.get(str(severity).lower(), "4")
+    url = f"{server}/{topic}"
+    try:
+        resp = requests.post(
+            url,
+            data=text.encode("utf-8"),
+            headers={
+                "Title": "Golf Model",
+                "Priority": priority,
+                "Tags": "golf,warning" if severity != "info" else "golf",
+            },
+            timeout=10.0,
+        )
+        if resp.status_code >= 300:
+            logger.warning(
+                "ntfy publish failed: status=%s body=%s",
+                resp.status_code,
+                (resp.text or "")[:300],
+            )
+            return False
+        return True
+    except requests.RequestException as exc:
+        logger.warning("ntfy publish request error: %s", exc)
+        return False
 
-    Returns False when Telegram is not configured (silent no-op) or send fails.
+
+def send_ops_alert(message: str, *, severity: str = "warn") -> bool:
+    """Push an operator alert. ntfy first, Telegram if configured.
+
+    Returns True if at least one channel delivered. Missing channels are
+    logged once; they are not a silent success.
     """
     text = (message or "").strip()
     if not text:
-        return False
-    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
-    chat_raw = os.environ.get("TELEGRAM_CHAT_ID")
-    if not token or chat_raw is None or str(chat_raw).strip() == "":
-        if not _ops_missing_config_warned["flag"]:
-            logger.warning(
-                "Telegram ops alerts disabled: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"
-            )
-            _ops_missing_config_warned["flag"] = True
         return False
     prefix = {
         "critical": "CRITICAL",
@@ -81,7 +114,18 @@ def send_ops_alert(message: str, *, severity: str = "warn") -> bool:
         "warn": "WARN",
         "info": "INFO",
     }.get(str(severity).lower(), "WARN")
-    return send_telegram_message(f"[Golf Model {prefix}] {text}")
+    body = f"[Golf Model {prefix}] {text}"
+    ntfy_ok = send_ntfy_message(body, severity=severity)
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_raw = os.environ.get("TELEGRAM_CHAT_ID")
+    telegram_configured = bool(token and chat_raw is not None and str(chat_raw).strip() != "")
+    telegram_ok = False
+    if telegram_configured:
+        telegram_ok = send_telegram_message(body)
+    elif not _ops_missing_config_warned["flag"]:
+        logger.info("Telegram ops alerts unused: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID unset")
+        _ops_missing_config_warned["flag"] = True
+    return bool(ntfy_ok or telegram_ok)
 
 
 def _parse_ev_threshold() -> float:

@@ -11,10 +11,11 @@ Environment=GOLF_APP_ROOT=/opt/golf-model
 Environment=GOLF_DATA_DIR=/opt/golf-model/data
 EnvironmentFile=-/opt/golf-model/.env
 ExecStart=/opt/golf-model/venv/bin/python -m workers.live_refresh_worker
-Restart=always
+Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=300
-StartLimitBurst=5
+StartLimitBurst=8
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

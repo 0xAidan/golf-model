@@ -1,8 +1,28 @@
-# Off-site backup + Telegram ops alerts setup
+# Off-site backup + phone ops alerts setup
 
-Do this once after deploying the storage-durability PR. Takes about 10 minutes.
+Go-live gates: ntfy must have delivered a test message, and B2 must have passed a side-copy restore test.
 
-## 1. Telegram ops alerts (~2 minutes)
+## 0. ntfy phone alerts (required)
+
+Deploy writes `NTFY_TOPIC` into `.env` if missing. On the VPS:
+
+```bash
+grep NTFY_TOPIC /opt/golf-model/.env
+```
+
+Open `https://ntfy.sh/<that-topic>` on your phone (or the ntfy app) and subscribe. Then:
+
+```bash
+cd /opt/golf-model && source venv/bin/activate
+python3 - <<'PY'
+from src.telegram_alerts import send_ops_alert
+print(send_ops_alert("Golf Model ops alert test — you can ignore this.", severity="info"))
+PY
+```
+
+You should get a phone notification. Until that happens, this plan is not done.
+
+## 1. Telegram ops alerts (optional extra)
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather).
 2. Send `/newbot`, follow prompts, copy the **bot token**.
@@ -76,4 +96,5 @@ Nightly `golf-backup.service` will upload automatically after each successful co
 - `ls -lah backups/` shows recent `*.db.gz` files (not multi-GB uncompressed `.db`)
 - `/system` Storage panel shows a recent backup age in hours (not "no backup found")
 - `GET /api/ops/health` includes `"backup": {"ok": true, "status": "ok", ...}`
-- Telegram receives alerts if disk drops below warn/hard or backups fail
+- ntfy (required) received a test alert; Telegram is optional extra
+- `python3 scripts/b2_restore_fire_drill.py --json` printed `ok=True` on a side copy (does not flip prod)

@@ -14,6 +14,7 @@ import time
 import asyncio
 import logging
 import shutil
+import sqlite3
 import tempfile
 import subprocess
 from contextlib import asynccontextmanager
@@ -47,6 +48,7 @@ from src.db import (
     get_completed_market_prediction_rows_for_event,
     list_snapshot_timeline_points,
 )
+from src.db_integrity import DatabaseCorruptError, live_db_status_fields
 from src.models.composite import compute_composite
 from src.models.weights import retune, analyze_pick_performance, get_current_weights
 from src.player_normalizer import normalize_name, display_name
@@ -179,6 +181,41 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
+
+
+@app.exception_handler(sqlite3.DatabaseError)
+async def _sqlite_database_error_handler(_request: Request, exc: sqlite3.DatabaseError):
+    try:
+        status = live_db_status_fields()
+    except Exception:
+        status = {"db_state": "error", "rebuild_state": "unavailable"}
+    return JSONResponse(
+        {
+            "ok": False,
+            "error": "database_unavailable",
+            "db_ok": False,
+            "db_state": status.get("db_state"),
+            "rebuild_state": status.get("rebuild_state"),
+            "message": str(exc),
+        },
+        status_code=503,
+    )
+
+
+@app.exception_handler(DatabaseCorruptError)
+async def _sqlite_corrupt_error_handler(_request: Request, exc: DatabaseCorruptError):
+    return await _sqlite_database_error_handler(_request, exc)
+
+
+def _try_ensure_initialized() -> bool:
+    try:
+        from src.db import ensure_initialized
+
+        ensure_initialized()
+        return True
+    except sqlite3.DatabaseError:
+        return False
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -2226,14 +2263,15 @@ async def stop_live_refresh_runtime():
 @app.get("/api/live-refresh/status")
 async def get_live_refresh_runtime_status():
     """Return always-on runtime status and live refresh settings."""
-    from src.db import ensure_initialized
-    ensure_initialized()
+    db_fields = live_db_status_fields()
+    _try_ensure_initialized()
     from backtester.dashboard_runtime import get_live_refresh_status
     from src.autoresearch_settings import get_settings
 
     return {
         "status": _with_live_refresh_worker_status(get_live_refresh_status()),
         "settings": (get_settings().get("live_refresh") or {}),
+        **db_fields,
     }
 
 
@@ -2466,8 +2504,8 @@ async def get_live_refresh_past_market_rows(
 @app.get("/api/live-refresh/snapshot")
 async def get_live_refresh_snapshot():
     """Return latest always-on snapshot for Live/Upcoming dashboard tabs."""
-    from src.db import ensure_initialized
-    ensure_initialized()
+    db_fields = live_db_status_fields()
+    _try_ensure_initialized()
     from src.autoresearch_settings import get_settings
     from src.live_refresh_policy import resolve_cadence
     from backtester.dashboard_runtime import (
@@ -2509,6 +2547,7 @@ async def get_live_refresh_snapshot():
             ),
             "operator_message": "No live data yet. Showing cached data if available.",
             "retry_after": 30,
+            **db_fields,
         }
     generated_at = snapshot.get("generated_at")
     age_seconds = None
@@ -2528,6 +2567,14 @@ async def get_live_refresh_snapshot():
         split_brain_suspected=split_brain_suspected,
         split_brain_reasons=split_brain_reasons,
     )
+    if not db_fields.get("db_ok"):
+        contract["data_state"] = contract.get("data_state") or "stale"
+        contract["operator_message"] = (
+            "Database is unavailable. Showing the last saved boards while the "
+            "server restores a good copy and rebuilds this week."
+        )
+        contract["rebuild_state"] = db_fields.get("rebuild_state")
+    contract.update(db_fields)
     if not contract.get("ok"):
         return contract
     return contract
@@ -2536,8 +2583,8 @@ async def get_live_refresh_snapshot():
 @app.get("/api/live-refresh/summary")
 async def get_live_refresh_summary():
     """Fast last-good snapshot for shell/SWR — never blocks on recompute."""
-    from src.db import ensure_initialized
-    ensure_initialized()
+    db_fields = live_db_status_fields()
+    _try_ensure_initialized()
     from src.autoresearch_settings import get_settings
     from src.live_refresh_policy import resolve_cadence
     from backtester.dashboard_runtime import get_live_refresh_status, read_snapshot
@@ -2553,6 +2600,7 @@ async def get_live_refresh_summary():
             "data_state": "missing",
             "snapshot": None,
             "operator_message": "No live data snapshot is available yet.",
+            **db_fields,
         }
 
     generated_at = snapshot.get("generated_at")
@@ -2573,6 +2621,8 @@ async def get_live_refresh_summary():
     split_brain = bool(status.get("split_brain_suspected"))
     if split_brain:
         data_state = "split_brain"
+    elif not db_fields.get("db_ok"):
+        data_state = "stale"
     elif age_seconds is not None and age_seconds > stale_after_seconds:
         data_state = "stale"
     else:
@@ -2591,6 +2641,11 @@ async def get_live_refresh_summary():
                 f"Data is {age_seconds // 60} minutes old — use Refresh to load the current tournament."
             )
 
+    if not db_fields.get("db_ok") and not operator_message:
+        operator_message = (
+            "Database is unavailable. Showing the last saved boards while the "
+            "server restores a good copy and rebuilds this week."
+        )
     return {
         "ok": True,
         "data_state": data_state,
@@ -2600,6 +2655,7 @@ async def get_live_refresh_summary():
         "stale_after_seconds": stale_after_seconds,
         "split_brain_suspected": split_brain,
         "operator_message": operator_message,
+        **db_fields,
     }
 
 

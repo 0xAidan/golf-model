@@ -217,3 +217,66 @@ def prune_remote_backups(
         if del_resp.status_code == 200:
             deleted.append(str(file_name))
     return deleted
+
+
+def download_latest_offsite(dest_path: str) -> dict[str, Any]:
+    """Download the newest gzip/db backup from B2 into ``dest_path`` (side copy)."""
+    cfg = _configured()
+    if not cfg:
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "B2_APPLICATION_KEY_ID / B2_APPLICATION_KEY / B2_BUCKET_NAME not set",
+        }
+    key_id, app_key, bucket_name = cfg
+    prefix = (os.environ.get("B2_OFFSITE_PREFIX") or "golf-model").strip().strip("/")
+    try:
+        auth = _authorize(key_id, app_key)
+        api_url = str(auth["apiUrl"]).rstrip("/")
+        download_url = str(auth.get("downloadUrl") or api_url).rstrip("/")
+        auth_token = str(auth["authorizationToken"])
+        account_id = str(auth["accountId"])
+        bucket_id = _resolve_bucket_id(api_url, auth_token, account_id, bucket_name)
+        listed = requests.post(
+            f"{api_url}/b2api/v2/b2_list_file_names",
+            headers={"Authorization": auth_token},
+            json={"bucketId": bucket_id, "prefix": f"{prefix}/" if prefix else "", "maxFileCount": 1000},
+            timeout=60.0,
+        )
+        listed.raise_for_status()
+        files = listed.json().get("files") or []
+        files.sort(
+            key=lambda row: (int(row.get("uploadTimestamp") or 0), str(row.get("fileName") or "")),
+            reverse=True,
+        )
+        if not files:
+            return {"ok": False, "skipped": False, "error": "no remote backups"}
+        newest = files[0]
+        file_name = str(newest.get("fileName") or "")
+        resp = requests.get(
+            f"{download_url}/file/{quote(bucket_name, safe='')}/{quote(file_name, safe='')}",
+            headers={"Authorization": auth_token},
+            timeout=600.0,
+            stream=True,
+        )
+        if resp.status_code != 200:
+            return {
+                "ok": False,
+                "skipped": False,
+                "error": f"download status={resp.status_code} body={(resp.text or '')[:300]}",
+            }
+        os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+        with open(dest_path, "wb") as handle:
+            for chunk in resp.iter_content(1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
+        return {
+            "ok": True,
+            "skipped": False,
+            "remote_name": file_name,
+            "path": dest_path,
+            "size_bytes": os.path.getsize(dest_path),
+        }
+    except Exception as exc:
+        logger.warning("off-site download failed: %s", exc)
+        return {"ok": False, "skipped": False, "error": str(exc)}

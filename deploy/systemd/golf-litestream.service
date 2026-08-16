@@ -1,0 +1,19 @@
+[Unit]
+Description=Golf Model Litestream replica (Backblaze B2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+EnvironmentFile=-/opt/golf-model/.env
+ExecStartPre=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/render_litestream_config.py /run/golf-litestream.yml
+ExecStart=/usr/local/bin/litestream replicate -config /run/golf-litestream.yml
+Restart=on-failure
+RestartSec=15
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

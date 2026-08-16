@@ -97,7 +97,8 @@ fi
 SERVICES_STOPPED=0
 restart_services() {
     if [ "$SERVICES_STOPPED" -eq 1 ]; then
-        systemctl restart golf-dashboard golf-agent golf-live-refresh
+        systemctl restart golf-dashboard golf-live-refresh
+        systemctl stop golf-agent >/dev/null 2>&1 || true
         SERVICES_STOPPED=0
     fi
 }
@@ -108,7 +109,7 @@ install_systemd_units() {
         echo "[deploy] deploy/systemd missing; skipping unit sync"
         return 0
     fi
-    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer golf-backup.service golf-backup.timer golf-disk-watchdog.service golf-disk-watchdog.timer; do
+    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer golf-backup.service golf-backup.timer golf-backup-interval.timer golf-disk-watchdog.service golf-disk-watchdog.timer golf-db-integrity.service golf-db-integrity.timer golf-db-recover.service golf-dashboard-watchdog.service golf-dashboard-watchdog.timer golf-litestream.service golf-external-uptime.service golf-external-uptime.timer; do
         if [ -f "${DEPLOY_PATH}/deploy/systemd/${unit}" ]; then
             cp "${DEPLOY_PATH}/deploy/systemd/${unit}" "/etc/systemd/system/${unit}"
             echo "[deploy] synced ${unit}"
@@ -142,11 +143,31 @@ install_systemd_units() {
         systemctl enable --now golf-disk-watchdog.timer || true
         echo "[deploy] enabled golf-disk-watchdog.timer"
     fi
+    if systemctl list-unit-files golf-backup-interval.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-backup-interval.timer || true
+        echo "[deploy] enabled golf-backup-interval.timer"
+    fi
+    if systemctl list-unit-files golf-db-integrity.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-db-integrity.timer || true
+        echo "[deploy] enabled golf-db-integrity.timer"
+    fi
+    if systemctl list-unit-files golf-dashboard-watchdog.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-dashboard-watchdog.timer || true
+        echo "[deploy] enabled golf-dashboard-watchdog.timer"
+    fi
+    if systemctl list-unit-files golf-external-uptime.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-external-uptime.timer || true
+        echo "[deploy] enabled golf-external-uptime.timer"
+    fi
+    # Production box is a site server, not a research lab.
+    systemctl disable --now golf-agent.service >/dev/null 2>&1 || true
+    echo "[deploy] golf-agent disabled on this host"
 }
 
 install_systemd_units
 
-systemctl stop golf-live-refresh golf-agent golf-dashboard || true
+systemctl stop golf-live-refresh golf-dashboard || true
+systemctl stop golf-agent >/dev/null 2>&1 || true
 SERVICES_STOPPED=1
 python -c "from src.db import init_db; init_db()"
 
@@ -184,7 +205,7 @@ prior = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
 defaults = {
     "DISK_FREE_MB_WARN": "10240",
     "DISK_FREE_MB_HARD": "5120",
-    "SNAPSHOT_HISTORY_RETAIN_DAYS": "210",
+    "SNAPSHOT_HISTORY_RETAIN_DAYS": "120",
     "MARKET_PREDICTION_SLIM_PAYLOAD": "1",
 }
 appended: list[str] = []
@@ -199,6 +220,37 @@ if appended:
     env_path.write_text(prior + block, encoding="utf-8")
     print("[deploy] appended env keys:", ", ".join(appended))
 PY
+
+# ntfy topic: generate once so phone alerts work without Telegram.
+venv/bin/python - <<'PY'
+from __future__ import annotations
+
+import re
+import secrets
+from pathlib import Path
+
+env_path = Path(".env")
+prior = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+if re.search(r"^\s*NTFY_TOPIC\s*=", prior, flags=re.MULTILINE):
+    print("[deploy] NTFY_TOPIC already present in .env")
+else:
+    topic = "golf-model-" + secrets.token_hex(8)
+    prior = prior.rstrip() + f"\nNTFY_SERVER=https://ntfy.sh\nNTFY_TOPIC={topic}\n"
+    env_path.write_text(prior + "\n", encoding="utf-8")
+    print(f"[deploy] generated NTFY_TOPIC. Subscribe on your phone: https://ntfy.sh/{topic}")
+PY
+
+if [ -x "${DEPLOY_PATH}/scripts/install_litestream.sh" ]; then
+    "${DEPLOY_PATH}/scripts/install_litestream.sh" || echo "[deploy] litestream install skipped"
+fi
+if systemctl list-unit-files golf-litestream.service >/dev/null 2>&1; then
+    if grep -q "^B2_APPLICATION_KEY_ID=" "${DEPLOY_PATH}/.env" 2>/dev/null; then
+        systemctl enable --now golf-litestream.service || true
+        echo "[deploy] enabled golf-litestream.service"
+    else
+        echo "[deploy] B2 keys not in .env; litestream left disabled"
+    fi
+fi
 
 restart_services
 trap - EXIT

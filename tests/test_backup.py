@@ -144,6 +144,56 @@ def test_prune_until_space_available_removes_oldest(tmp_path, monkeypatch) -> No
         backup.BACKUP_DIR = original_backup_dir
 
 
+def test_create_backup_integrity_failure_is_nonzero(tmp_db, tmp_path, monkeypatch) -> None:
+    original_backup_dir = backup.BACKUP_DIR
+    try:
+        backup.BACKUP_DIR = str(tmp_path)
+        monkeypatch.setattr(
+            backup,
+            "verify_backup_integrity",
+            lambda _path: {"ok": False, "error": "malformed", "quick_check": "malformed"},
+        )
+        monkeypatch.delenv("DISK_FREE_MB_HARD", raising=False)
+        with pytest.raises(backup.BackupIntegrityError, match="malformed"):
+            backup.create_backup(keep=2)
+    finally:
+        backup.BACKUP_DIR = original_backup_dir
+
+
+def test_restore_backup_removes_wal_and_smoke_checks(tmp_db, tmp_path) -> None:
+    original_backup_dir = backup.BACKUP_DIR
+    original_db_path = backup.db.DB_PATH
+    try:
+        backup.BACKUP_DIR = str(tmp_path)
+        live = tmp_path / "live.db"
+        conn = sqlite3.connect(live)
+        conn.execute("CREATE TABLE t (id INTEGER)")
+        conn.execute("INSERT INTO t (id) VALUES (1)")
+        conn.commit()
+        conn.close()
+        backup.db.DB_PATH = str(live)
+        path = backup.create_backup(keep=2)
+        assert path is not None
+        (tmp_path / "live.db-wal").write_bytes(b"stale-wal")
+        (tmp_path / "live.db-shm").write_bytes(b"stale-shm")
+        live.write_bytes(b"broken")
+        assert backup.restore_backup(path) is True
+        assert not (tmp_path / "live.db-wal").exists()
+        assert not (tmp_path / "live.db-shm").exists()
+        conn = sqlite3.connect(live)
+        assert conn.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 1
+        conn.close()
+    finally:
+        backup.BACKUP_DIR = original_backup_dir
+        backup.db.DB_PATH = original_db_path
+
+
+def test_restore_backup_refuses_bad_integrity(tmp_path) -> None:
+    bad = tmp_path / "golf_model_20260101_000000.db"
+    bad.write_bytes(b"not sqlite")
+    assert backup.restore_backup(str(bad)) is False
+
+
 def test_create_backup_prunes_for_disk_headroom(tmp_db, tmp_path, monkeypatch) -> None:
     original_backup_dir = backup.BACKUP_DIR
     try:
