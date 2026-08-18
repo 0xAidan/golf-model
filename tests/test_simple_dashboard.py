@@ -249,20 +249,19 @@ def test_late_registered_player_routes_are_registered():
     uvicorn.run() blocks, so any route defined below the guard would never register
     when running `python3 app.py` directly (the documented dev entry point). These
     two routes previously lived below the guard and silently 404'd.
+
+    Inspect the live HTTP surface instead of `app.routes` path strings: FastAPI
+    0.141+ no longer lists included-router paths on `app.routes`.
     """
     import app as app_module
 
-    paths = {getattr(route, "path", None) for route in app_module.app.routes}
-    assert any(path and "standalone-profile" in path for path in paths), sorted(
-        path for path in paths if path and "player" in path
-    )
-    assert any(path and path.rstrip("/").endswith("/api/players/search") for path in paths), sorted(
-        path for path in paths if path and "player" in path
-    )
-
     client = TestClient(app_module.app)
-    assert client.get("/api/players/search").status_code != 404
-    assert client.get("/api/players/collin_morikawa/standalone-profile").status_code != 404
+    search = client.get("/api/players/search")
+    profile = client.get("/api/players/collin_morikawa/standalone-profile")
+    assert search.status_code == 200
+    assert "players" in search.json()
+    assert profile.status_code == 200
+    assert profile.json().get("player_key") == "collin_morikawa" or "availability" in profile.json()
 
 
 def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
