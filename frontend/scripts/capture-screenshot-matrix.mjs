@@ -23,19 +23,19 @@ const includeWideViewport = matrixVersion === "v3" || /engine-scale/i.test(matri
 const baseUrl = process.env.SCREENSHOT_BASE_URL ?? "http://127.0.0.1:8000"
 
 const routes = [
-  { name: "dashboard", hash: "#/" },
-  { name: "lab", hash: "#/lab" },
-  { name: "compare", hash: "#/compare" },
-  { name: "eval", hash: "#/eval" },
-  { name: "players", hash: "#/players" },
-  { name: "results-grading", hash: "#/results" },
-  { name: "results-track-record", hash: "#/results?tab=track-record" },
-  { name: "system", hash: "#/system" },
-  { name: "legacy-model", hash: "#/research/legacy-model" },
-  { name: "champion-challenger", hash: "#/research/champion-challenger" },
-  { name: "diagnostics-legacy", hash: "#/research/diagnostics-legacy" },
-  { name: "picks-redirect", hash: "#/matchups" },
-  { name: "grading-redirect", hash: "#/grading" },
+  { name: "dashboard", path: "/" },
+  { name: "lab", path: "/lab" },
+  { name: "compare", path: "/compare" },
+  { name: "eval", path: "/eval" },
+  { name: "players", path: "/players" },
+  { name: "results-grading", path: "/results" },
+  { name: "results-track-record", path: "/results?tab=track-record" },
+  { name: "system", path: "/system" },
+  { name: "legacy-model", path: "/research/legacy-model" },
+  { name: "champion-challenger", path: "/research/champion-challenger" },
+  { name: "diagnostics-legacy", path: "/research/diagnostics-legacy" },
+  { name: "picks-redirect", path: "/matchups" },
+  { name: "grading-redirect", path: "/grading" },
 ]
 
 const viewports = [
@@ -62,11 +62,11 @@ async function main() {
       await context.addInitScript((t) => {
         localStorage.setItem("golf-model.theme", t)
       }, theme)
-      // Block legacy CDN fonts only — allow self-hosted /fonts/*.woff2
+      // Block legacy CDN fonts if a dependency ever introduces one.
       await context.route(/fontshare|fonts\.googleapis|fonts\.gstatic/i, (route) => route.abort())
       const page = await context.newPage()
       for (const route of routes) {
-        const url = `${baseUrl.replace(/\/$/, "")}${route.hash.startsWith("#") ? route.hash : `#${route.hash}`}`
+        const url = `${baseUrl.replace(/\/$/, "")}${route.path}`
         const fileName = `${route.name}-${vp.label}-${theme}.png`
         const file = path.join(outDir, fileName)
         try {

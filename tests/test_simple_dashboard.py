@@ -13,16 +13,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_home_page_serves_built_react_shell():
-    """The root dashboard serves the built React SPA."""
+    """`/` serves the SPA when dist exists; otherwise it explains how to build."""
     import app as app_module
 
     client = TestClient(app_module.app)
     response = client.get("/")
-
-    assert response.status_code == 200
     text = response.text
-    assert '<div id="root"></div>' in text
     assert "Continuous Optimizer" not in text
+
+    if app_module.FRONTEND_DIST_INDEX.is_file():
+        assert response.status_code == 200
+        assert '<div id="root"></div>' in text
+        return
+
+    assert response.status_code == 503
+    assert "Frontend not built" in text
+    assert "npm run build" in text
 
 
 def test_upcoming_prediction_endpoint_returns_output_file(monkeypatch):
@@ -982,15 +988,19 @@ def test_latest_output_summaries_endpoint_returns_compact_cards(tmp_path, monkey
 
 
 def test_home_page_renders_react_shell_root():
-    """The home page should render the React SPA shell."""
+    """Missing dist is a 503; a built dist still exposes the React root."""
     import app as app_module
 
     client = TestClient(app_module.app)
     response = client.get("/")
 
-    assert response.status_code == 200
-    text = response.text
-    assert '<div id="root"></div>' in text
+    if app_module.FRONTEND_DIST_INDEX.is_file():
+        assert response.status_code == 200
+        assert '<div id="root"></div>' in response.text
+        return
+
+    assert response.status_code == 503
+    assert "Frontend not built" in response.text
 
 
 def test_home_page_prefers_built_react_dashboard_when_frontend_dist_exists(tmp_path, monkeypatch):

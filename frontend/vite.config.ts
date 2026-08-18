@@ -17,7 +17,7 @@ export default defineConfig({
         })
       : undefined,
   ].filter(Boolean),
-  base: "./",
+  base: "/",
   resolve: {
     tsconfigPaths: true,
   },

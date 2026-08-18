@@ -1,8 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-/* Load order: themes (tokens) → fonts → page layouts → route CSS in main.tsx */
+/* Load order: themes (tokens) → page layouts → route CSS in main.tsx */
 @import "./styles/themes.css";
-@import "./styles/fonts.css";
 @import "./styles/page-layouts.css";
 
 /* ─────────────────────────────────────────────────────

@@ -17,8 +17,7 @@ output/research/
 .DS_Store
 *.egg-info/
 build/
-# frontend/dist is committed so the VPS doesn't need to rebuild
-!frontend/dist/
+frontend/dist/
 
 # Local agent/git worktrees
 .worktrees/
