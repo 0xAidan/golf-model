@@ -1,5 +1,7 @@
 """Tests for ops health endpoint."""
 
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 
 
@@ -47,11 +49,19 @@ def test_ops_health_endpoint(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "src.grading_reconciliation.reconcile_grading",
-        lambda **kwargs: {
-            "status": "ok",
-            "events_with_ungraded_positive_ev": 0,
-            "orphan_outcomes": 0,
+        "src.cached_health.read_cached_ops_grading_health",
+        lambda: {
+            "report": {
+                "grading": {
+                    "status": "ok",
+                    "events_with_ungraded_positive_ev": 0,
+                    "orphan_outcomes": 0,
+                },
+                "tracks": {},
+            },
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "stale": False,
+            "ttl_seconds": 900,
         },
     )
     monkeypatch.setattr(

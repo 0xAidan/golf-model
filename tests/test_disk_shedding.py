@@ -197,11 +197,20 @@ def test_ops_health_reports_disk_floor_breached(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr("src.worker_restart.read_worker_restart_request", lambda: None)
+    monkeypatch.setattr(
+        "src.cached_health.read_cached_ops_grading_health",
+        lambda: {
+            "report": {"grading": {"status": "ok"}, "tracks": {"active": {}}},
+            "generated_at": "2099-01-01T00:00:00+00:00",
+            "stale": False,
+            "ttl_seconds": 900,
+        },
+    )
 
     client = TestClient(app_module.app)
     response = client.get("/api/ops/health")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is True
+    assert body["ok"] is False
     assert body["summary"] == "disk_floor_breached"
