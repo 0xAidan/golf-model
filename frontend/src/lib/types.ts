@@ -343,6 +343,7 @@ export type FailedMatchupCandidate = {
 export type DataSource = "live" | "replay" | "fixture"
 
 export type LiveRefreshSnapshot = {
+  snapshot_id?: string
   generated_at?: string
   data_source?: DataSource | string
   cadence_mode?: string

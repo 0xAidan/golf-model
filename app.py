@@ -58,6 +58,7 @@ from src.scoring import compute_profit, determine_outcome
 import pandas as pd
 from src.spa_delivery import ImmutableStaticFiles, current_release, release_headers
 from src.runtime_paths import get_worker_pid_path
+from src.observability import init_fastapi_sentry
 
 _logger = logging.getLogger("golf.app")
 
@@ -179,6 +180,7 @@ async def _lifespan(_app: FastAPI):
             stop_live_refresh()
 
 
+init_fastapi_sentry()
 app = FastAPI(title="Golf Betting Model", lifespan=_lifespan)
 
 app.add_middleware(

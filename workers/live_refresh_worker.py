@@ -21,6 +21,7 @@ from backtester.dashboard_runtime import (
 )
 from src.autoresearch_settings import get_settings
 from src.db import ensure_initialized
+from src.observability import init_worker_sentry
 from src.runtime_paths import get_worker_pid_path
 
 _shutdown = False
@@ -101,6 +102,7 @@ def _handle_signal(signum, _frame):
 def main() -> int:
     if load_dotenv:
         load_dotenv()
+    init_worker_sentry()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
