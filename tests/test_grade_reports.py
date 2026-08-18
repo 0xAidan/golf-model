@@ -134,15 +134,21 @@ def test_ops_health_exposes_void_and_ungraded_counts(monkeypatch):
         lambda heartbeat=None: {"split_brain_suspected": False, "reasons": [], "heartbeat_age_seconds": 0},
     )
     monkeypatch.setattr(
-        "src.grading_reconciliation.reconcile_grading",
-        lambda **kwargs: {
-            "status": "discrepancies",
-            "events_with_ungraded_positive_ev": 1,
-            "orphan_outcomes": 0,
-            "events": [
-                {"void_positive_ev_picks": 2, "ungraded_positive_ev_picks": 1},
-                {"void_positive_ev_picks": 1, "ungraded_positive_ev_picks": 0},
-            ],
+        "src.cached_health.read_cached_ops_grading_health",
+        lambda: {
+            "report": {
+                "grading": {
+                    "status": "discrepancies",
+                    "events_with_ungraded_positive_ev": 1,
+                    "orphan_outcomes": 0,
+                    "void_positive_ev_picks": 3,
+                    "ungraded_positive_ev_picks": 1,
+                },
+                "tracks": {"active": {}},
+            },
+            "generated_at": "2099-01-01T00:00:00+00:00",
+            "stale": False,
+            "ttl_seconds": 900,
         },
     )
     monkeypatch.setattr(
