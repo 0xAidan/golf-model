@@ -33,9 +33,10 @@ test.describe("operator terminal core routes", () => {
     await expect(page.getByTestId("analytics-workspace")).toBeVisible({ timeout: 30_000 })
   })
 
-  test("system ops health panel visible", async ({ page }) => {
+  test("system status panels visible", async ({ page }) => {
     await page.goto(hash("/system"), { waitUntil: "domcontentloaded", timeout: 60_000 })
-    await expect(page.getByTestId("ops-health-panel")).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId("system-page")).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId("system-worker-panel")).toBeVisible({ timeout: 30_000 })
   })
 
   test("track-record redirects to analytics", async ({ page }) => {
