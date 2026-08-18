@@ -52,6 +52,9 @@ export function StatusBanner({ state, message }: { state: StatusBannerState; mes
     >
       <span className={`op-dot ${tone.dot}`} aria-hidden="true" />
       <span className={`font-semibold ${tone.label}`}>{statusLabel[state]}</span>
+      <span aria-hidden="true" className="text-[var(--op-text-tertiary)]">
+        ·
+      </span>
       <span className="text-[var(--op-text-secondary)]">{message}</span>
     </div>
   )

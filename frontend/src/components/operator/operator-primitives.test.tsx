@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest"
 
 import { Drawer } from "@/components/operator/drawer"
 import { FeedbackState } from "@/components/operator/feedback-state"
+import { PickRow } from "@/components/operator/pick-row"
 import { StatusBanner } from "@/components/operator/status-banner"
 
 describe("operator UI primitives", () => {
@@ -12,6 +13,26 @@ describe("operator UI primitives", () => {
 
     expect(screen.getByText("Refreshing")).toBeVisible()
     expect(screen.getByText("Refreshing lines; current picks remain visible.")).toBeVisible()
+  })
+
+  test("keeps pick names readable instead of clipping them", () => {
+    render(
+      <PickRow
+        pick={{
+          id: "matsu",
+          player: "Hideki Matsuyama",
+          opponent: "Collin Morikawa",
+          market: "72-hole matchup",
+          edge: "+7.8%",
+          odds: "-110",
+        }}
+      />,
+    )
+
+    const row = screen.getByRole("button", { name: /Hideki Matsuyama versus Collin Morikawa/i })
+    expect(row).toHaveTextContent("Hideki Matsuyama")
+    expect(row).toHaveTextContent("over Collin Morikawa")
+    expect(row.querySelector(".truncate")).toBeNull()
   })
 
   test("makes an error state actionable", () => {

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react"
-import { NavLink } from "react-router-dom"
+import { NavLink, useSearchParams } from "react-router-dom"
+
+import { useOperatorBoardData } from "@/features/operator-data/operator-data-provider"
 
 type NavItem = {
   to: string
@@ -60,12 +62,44 @@ function BrandMark() {
 }
 
 function SystemStatus() {
+  const [searchParams] = useSearchParams()
+  const { viewState, error } = useOperatorBoardData()
+  const demo = searchParams.get("source") !== "live"
+  const failed = !demo && (viewState === "error" || viewState === "unavailable")
+  const stale = !demo && viewState === "stale"
+  const loading = !demo && viewState === "loading"
+  const title = demo
+    ? "Demo fixture"
+    : failed
+      ? "Board unavailable"
+      : stale
+        ? "Stale board"
+        : loading
+          ? "Loading board"
+          : "Model online"
+  const detail = demo
+    ? "Sanitized preview data"
+    : failed
+      ? (error?.message ?? "Live board request failed")
+      : stale
+        ? "Showing last retained snapshot"
+        : loading
+          ? "Retrieving the current board"
+          : "Live pipeline healthy"
+  const dotClass = failed
+    ? "bg-[var(--op-negative)]"
+    : stale
+      ? "bg-[var(--op-warning)]"
+      : loading
+        ? "bg-[var(--op-info)]"
+        : "op-dot-live"
+
   return (
     <div className="op-card flex items-center gap-3 px-3 py-3">
-      <span className="op-dot op-dot-live" aria-hidden="true" />
+      <span className={`op-dot ${dotClass}`} aria-hidden="true" />
       <div className="leading-tight">
-        <p className="text-[13px] font-semibold text-white">Model online</p>
-        <p className="text-xs text-[var(--op-text-tertiary)]">Live pipeline healthy</p>
+        <p className="text-[13px] font-semibold text-white">{title}</p>
+        <p className="text-xs text-[var(--op-text-tertiary)]">{detail}</p>
       </div>
     </div>
   )

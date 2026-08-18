@@ -15,6 +15,14 @@ import { dashboardPreviewFixture, type RankingRow } from "@/features/dashboard/d
 const playerName = (row: Record<string, unknown>) =>
   String(row.player_name ?? row.player_display ?? row.player ?? "Unknown player")
 
+const liveBoardDetail = (raw?: string) => {
+  const message = raw?.trim()
+  if (!message || /not found/i.test(message) || message === "404") {
+    return "The live operator board is not available on this host. Retry, or open /preview without ?source=live to use the demo fixture."
+  }
+  return message
+}
+
 function TrendIndicator({ trend }: { trend: number }) {
   if (trend === 0) return <span className="op-num text-[var(--op-text-tertiary)]">—</span>
   const up = trend > 0
@@ -38,8 +46,8 @@ function RankingLeaderboard({ rows }: { rows: RankingRow[] }) {
         >
           <span className={`op-medal ${row.rank <= 3 ? `op-medal-${row.rank}` : ""}`}>{row.rank}</span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white">{row.player}</p>
-            {row.form ? <p className="op-num truncate text-[11px] text-[var(--op-text-tertiary)]">{row.form}</p> : null}
+            <p className="text-sm font-semibold leading-snug text-white">{row.player}</p>
+            {row.form ? <p className="op-num text-[11px] leading-snug text-[var(--op-text-tertiary)]">{row.form}</p> : null}
           </div>
           <span className="op-num text-sm font-semibold text-white">{row.score}</span>
           <span className="w-10 text-right">
@@ -124,7 +132,7 @@ export function DashboardPreviewPage({ track }: { track: "champion" | "challenge
         <FeedbackState
           state={viewState === "error" ? "error" : "unavailable"}
           title={viewState === "error" ? "Dashboard request failed" : "Dashboard unavailable"}
-          detail={error?.message ?? board?.reason.message}
+          detail={liveBoardDetail(error?.message ?? board?.reason.message)}
           actionLabel="Retry"
           onAction={refresh}
         />
