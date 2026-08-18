@@ -349,7 +349,7 @@ describe("Route error boundary on satellite routes", () => {
     )
 
     expect(screen.getByTestId("route-error-boundary")).toHaveAttribute("data-chunk-failure", "true")
-    expect(screen.getByTestId("route-error-reload")).toBeInTheDocument()
+    expect(screen.getByText(/unavailable after an app update/i)).toBeInTheDocument()
   })
 
   it("resets after navigating to a healthy route", async () => {
