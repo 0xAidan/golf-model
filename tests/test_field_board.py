@@ -83,7 +83,7 @@ def test_field_board_endpoint(tmp_db, monkeypatch):
     import app as app_module
     from fastapi.testclient import TestClient
 
-    monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: _snapshot())
+    monkeypatch.setattr("src.routes.field_board.read_snapshot", lambda: _snapshot())
     client = TestClient(app_module.app)
     resp = client.get("/api/players/field-board?section=upcoming")
     assert resp.status_code == 200

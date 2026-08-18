@@ -241,6 +241,7 @@ from src.routes.champion_challenger import router as champion_challenger_router
 from src.routes.data_health import router as data_health_router
 from src.routes.tracks import router as tracks_router
 from src.routes.field_board import router as field_board_router
+from src.routes.players import router as players_router
 from src.routes.eval import router as eval_router
 from src.routes.ops import router as ops_router
 from src.routes.ops_jobs import router as ops_jobs_router
@@ -252,6 +253,7 @@ app.include_router(champion_challenger_router)
 app.include_router(data_health_router)
 app.include_router(tracks_router)
 app.include_router(field_board_router)
+app.include_router(players_router)
 app.include_router(eval_router)
 app.include_router(ops_router)
 app.include_router(ops_jobs_router)
@@ -4015,8 +4017,7 @@ async def list_outlier_investigations():
 
 # ── Standalone Player Profile (no tournament_id required) ───────────────
 
-@app.get("/api/players/{player_key}/standalone-profile")
-async def get_player_standalone_profile(player_key: str):
+async def _legacy_remote_player_profile_builder(player_key: str):
     """
     Rich player profile that doesn't require an active tournament context.
     Pulls live skill data from DataGolf API + stored round history from DB.
@@ -4329,8 +4330,7 @@ async def get_player_standalone_profile(player_key: str):
     }
 
 
-@app.get("/api/players/search")
-async def search_players(q: str = ""):
+async def _legacy_search_players(q: str = ""):
     """Search players by name from the rounds database."""
     from src import db as src_db
     conn = src_db.get_conn()
