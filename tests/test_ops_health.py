@@ -143,6 +143,42 @@ def test_ops_health_includes_persisted_auto_grade(monkeypatch, tmp_path):
     assert body["live_refresh"]["last_auto_grade_at"] == "2099-01-01T00:00:00+00:00"
 
 
+def test_ops_health_disk_hard_floor_marks_unhealthy(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.get_live_refresh_status",
+        lambda: {"running": True, "snapshot_age_seconds": 10},
+    )
+    monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: {})
+    monkeypatch.setattr("src.runtime_paths.read_heartbeat", lambda: {"running": True})
+    monkeypatch.setattr(
+        "src.runtime_paths.get_runtime_identity",
+        lambda: {"production": False, "app_root": "/tmp/test"},
+    )
+    monkeypatch.setattr("src.runtime_paths.get_app_root", lambda: __import__("pathlib").Path("/tmp/test"))
+    monkeypatch.setattr(
+        "src.runtime_paths.detect_split_brain",
+        lambda heartbeat=None: {"split_brain_suspected": False, "reasons": [], "heartbeat_age_seconds": 0},
+    )
+    monkeypatch.setattr("src.runtime_health.recent_strategy_config_errors", lambda: [])
+    monkeypatch.setattr(
+        "src.disk_guard.get_disk_state",
+        lambda _path: {"state": "critical", "guard_state": "hard", "free_mb": 1},
+    )
+    monkeypatch.setattr("src.worker_restart.read_worker_restart_request", lambda: None)
+    monkeypatch.setattr(
+        "src.grading_reconciliation.reconcile_grading",
+        lambda **kwargs: {"status": "ok", "events_with_ungraded_positive_ev": 0, "orphan_outcomes": 0},
+    )
+
+    response = TestClient(app_module.app).get("/api/ops/health")
+
+    assert response.json()["ok"] is False
+    assert response.json()["summary"] == "disk_floor_breached"
+
+
 def test_post_worker_restart_queues_request(monkeypatch):
     import app as app_module
 

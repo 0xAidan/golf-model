@@ -12,6 +12,20 @@ DEPLOY_BACKUP_KEEP="${DEPLOY_BACKUP_KEEP:-4}"
 
 cd "$DEPLOY_PATH"
 
+snapshot_id_before_deploy="$(
+    python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("data/live_refresh_snapshot.json")
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, ValueError, json.JSONDecodeError):
+    payload = {}
+print(payload.get("snapshot_id") or "")
+PY
+)"
+
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "[deploy] ERROR: refusing to deploy from a dirty worktree" >&2
     exit 1
@@ -23,6 +37,27 @@ if ! git merge-base --is-ancestor HEAD "origin/$DEPLOY_BRANCH"; then
     exit 1
 fi
 git pull --ff-only origin "$DEPLOY_BRANCH"
+
+if [ -n "$snapshot_id_before_deploy" ]; then
+    snapshot_id_after_pull="$(
+        python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("data/live_refresh_snapshot.json")
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, ValueError, json.JSONDecodeError):
+    payload = {}
+print(payload.get("snapshot_id") or "")
+PY
+)"
+    if [ "$snapshot_id_after_pull" != "$snapshot_id_before_deploy" ]; then
+        echo "[deploy] ERROR: runtime snapshot changed during source update; refusing deploy" >&2
+        exit 1
+    fi
+    echo "[deploy] verified runtime snapshot preserved (snapshot_id=$snapshot_id_after_pull)"
+fi
 
 if [ ! -x venv/bin/python ]; then
     echo "[deploy] ERROR: venv/bin/python is required for a verified backup" >&2

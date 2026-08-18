@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
@@ -12,6 +13,19 @@ def test_live_refresh_policy_detects_live_window():
 
     dt = datetime(2026, 4, 9, 13, 0, tzinfo=ZoneInfo("America/New_York"))  # Thursday 1pm ET
     assert detect_window_mode(now=dt) == "live_window"
+
+
+def test_runtime_artifacts_are_gitignored():
+    patterns = Path(__file__).parents[1].joinpath(".gitignore").read_text(encoding="utf-8")
+
+    for filename in (
+        "live_refresh_snapshot.json",
+        "live_refresh_heartbeat.json",
+        "live_refresh_manual_trigger.json",
+        "live_refresh_cycle.lock",
+        "live_refresh_progress.json",
+    ):
+        assert f"data/{filename}" in patterns
 
 
 def test_live_refresh_policy_detects_off_window():
@@ -225,6 +239,37 @@ def test_live_refresh_refresh_worker_owned_accepts_trigger(monkeypatch):
     body = response.json()
     assert body["ok"] is True
     assert body.get("accepted") is True
+
+
+def test_manual_refresh_request_records_queue_lifecycle(tmp_path, monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    trigger_path = tmp_path / "live_refresh_manual_trigger.json"
+    monkeypatch.setattr(runtime, "get_manual_trigger_path", lambda: trigger_path)
+
+    queued = runtime.request_manual_refresh(requested_by="operator")
+    assert queued["status"] == "queued"
+    assert queued["queued_at"] == queued["requested_at"]
+
+    started = runtime.consume_manual_trigger()
+    assert started is not None
+    assert started["request_id"] == queued["request_id"]
+    assert started["status"] == "started"
+    assert started["started_at"]
+    assert runtime.manual_trigger_pending() is True
+
+    completed = runtime.complete_manual_refresh(started)
+    assert completed is not None
+    assert completed["status"] == "completed"
+    assert completed["completed_at"]
+    assert completed["request_id"] == queued["request_id"]
+    assert runtime.manual_trigger_pending() is False
+
+
+def test_live_refresh_loop_polls_for_manual_trigger_within_two_seconds(monkeypatch):
+    from backtester import dashboard_runtime as runtime
+
+    assert runtime._manual_trigger_poll_wait_seconds(3600.0) <= 2.0
 
 
 def test_live_refresh_refresh_endpoint_forces_recompute(monkeypatch):

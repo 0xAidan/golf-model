@@ -33,17 +33,21 @@ def _snapshot_age_seconds() -> int | None:
     return int((datetime.now(timezone.utc) - generated_dt).total_seconds())
 
 
-def _stale_after_seconds() -> int:
+def _stale_after_seconds(*, heartbeat: dict | None = None) -> int:
     settings = get_settings().get("live_refresh") or {}
     cadence = resolve_cadence(settings)
-    return max(900, int(cadence.recompute_seconds) + 120)
+    try:
+        runtime_p99 = max(0, int(float((heartbeat or {}).get("recompute_runtime_p99_seconds") or 0)))
+    except (TypeError, ValueError):
+        runtime_p99 = 0
+    return max(900, int(cadence.recompute_seconds) + runtime_p99)
 
 
 def evaluate(*, heartbeat_stale_seconds: int, snapshot_stale_seconds: int) -> dict:
     heartbeat = read_heartbeat() or {}
     hb_age = heartbeat_age_seconds(heartbeat)
     snap_age = _snapshot_age_seconds()
-    stale_after = _stale_after_seconds()
+    stale_after = _stale_after_seconds(heartbeat=heartbeat)
     hb_running = bool(heartbeat.get("running"))
     hb_phase = heartbeat.get("phase")
     hb_refresh = str(heartbeat.get("refresh_state") or "")

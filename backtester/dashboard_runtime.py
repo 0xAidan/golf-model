@@ -49,6 +49,9 @@ _thread: threading.Thread | None = None
 _last_snapshot_prune_at: float = 0.0
 _last_heartbeat_touch: float = 0.0
 _HEARTBEAT_TOUCH_INTERVAL_SECONDS = 60.0
+_MANUAL_TRIGGER_POLL_SECONDS = 2.0
+_RECOMPUTE_RUNTIME_SAMPLE_LIMIT = 100
+_recompute_runtime_samples: list[float] = []
 
 _SNAPSHOT_PATH = get_snapshot_path()
 _OUTPUT_DIR = get_app_root() / "output"
@@ -83,6 +86,7 @@ def _default_state() -> dict[str, Any]:
         "progress_updated_at": None,
         "progress_started_at": None,
         "recompute_percent": None,
+        "recompute_runtime_p99_seconds": None,
     }
 
 
@@ -99,6 +103,10 @@ def _iso_now() -> str:
 
 class LiveRefreshRecomputeBusy(RuntimeError):
     """Non-blocking recompute could not start because another thread holds the recompute lock."""
+
+
+class LiveRefreshHardTimeout(SystemExit):
+    """Fatal worker timeout: exit so systemd can terminate stuck child work."""
 
 
 class _CrossProcessCycleLock:
@@ -145,6 +153,7 @@ def _write_heartbeat(**extra: Any) -> None:
         phase = _state.get("phase")
         refresh_state = _state.get("refresh_state")
         last_error = _state.get("last_error")
+        recompute_runtime_p99_seconds = _state.get("recompute_runtime_p99_seconds")
     payload = {
         **get_runtime_identity(),
         "updated_at": _iso_now(),
@@ -153,6 +162,7 @@ def _write_heartbeat(**extra: Any) -> None:
         "phase": phase,
         "refresh_state": refresh_state,
         "last_error": last_error,
+        "recompute_runtime_p99_seconds": recompute_runtime_p99_seconds,
         **extra,
     }
     try:
@@ -172,17 +182,25 @@ def runtime_thread_alive() -> bool:
 def request_manual_refresh(*, requested_by: str = "api") -> dict[str, Any]:
     path = get_manual_trigger_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    requested_at = _iso_now()
     payload = {
         "request_id": str(uuid.uuid4()),
-        "requested_at": _iso_now(),
+        "requested_at": requested_at,
+        "queued_at": requested_at,
         "requested_by": requested_by,
+        "status": "queued",
     }
     atomic_write_json(path, payload)
     return payload
 
 
 def manual_trigger_pending() -> bool:
-    return get_manual_trigger_path().is_file()
+    path = get_manual_trigger_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return str(payload.get("status") or "queued") in {"queued", "started"}
 
 
 def consume_manual_trigger() -> dict[str, Any] | None:
@@ -191,10 +209,48 @@ def consume_manual_trigger() -> dict[str, Any] | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        path.unlink(missing_ok=True)
-        return payload if isinstance(payload, dict) else None
+        if not isinstance(payload, dict) or str(payload.get("status") or "queued") != "queued":
+            return None
+        payload["status"] = "started"
+        payload["started_at"] = _iso_now()
+        atomic_write_json(path, payload)
+        return payload
     except (OSError, ValueError, json.JSONDecodeError):
         return None
+
+
+def complete_manual_refresh(trigger: dict[str, Any], *, error: str | None = None) -> dict[str, Any] | None:
+    """Persist terminal status without replacing a newer operator request."""
+    path = get_manual_trigger_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("request_id") != trigger.get("request_id"):
+            return None
+        if error:
+            payload["status"] = "failed"
+            payload["failed_at"] = _iso_now()
+            payload["error"] = error
+        else:
+            payload["status"] = "completed"
+            payload["completed_at"] = _iso_now()
+        atomic_write_json(path, payload)
+        return payload
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _manual_trigger_poll_wait_seconds(wait_seconds: float) -> float:
+    """Bound cross-process trigger discovery even during an hourly idle cadence."""
+    return min(_MANUAL_TRIGGER_POLL_SECONDS, max(0.0, wait_seconds))
+
+
+def _record_recompute_runtime(seconds: float) -> None:
+    _recompute_runtime_samples.append(max(0.0, seconds))
+    del _recompute_runtime_samples[:-_RECOMPUTE_RUNTIME_SAMPLE_LIMIT]
+    ordered = sorted(_recompute_runtime_samples)
+    p99_index = min(len(ordered) - 1, max(0, int(len(ordered) * 0.99 + 0.999999) - 1))
+    with _state_lock:
+        _state["recompute_runtime_p99_seconds"] = ordered[p99_index] if ordered else None
 
 
 def worker_is_available(*, max_heartbeat_age_seconds: int = 900) -> bool:
@@ -284,16 +340,23 @@ def _shadow_mc_timeout_seconds() -> float:
 
 
 def _run_recompute_with_timeout(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    """Run _run_recompute in a helper thread so the loop can enforce a hard ceiling."""
+    """Run _run_recompute with a fatal timeout; never wait on a stuck executor shutdown."""
     timeout_s = _recompute_timeout_seconds()
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-refresh-recompute") as pool:
-        future = pool.submit(_run_recompute, *args, **kwargs)
-        try:
-            return future.result(timeout=timeout_s)
-        except FuturesTimeoutError as exc:
-            raise TimeoutError(
-                f"Live refresh recompute exceeded {int(timeout_s)}s timeout"
-            ) from exc
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-refresh-recompute")
+    future = pool.submit(_run_recompute, *args, **kwargs)
+    try:
+        result = future.result(timeout=timeout_s)
+    except FuturesTimeoutError as exc:
+        future.cancel()
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise LiveRefreshHardTimeout(
+            f"Live refresh recompute exceeded {int(timeout_s)}s timeout; worker must restart"
+        ) from exc
+    except BaseException:
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise
+    pool.shutdown(wait=True)
+    return result
 
 
 def _run_shadow_monte_carlo_with_timeout(**kwargs: Any) -> int:
@@ -3206,6 +3269,25 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
             tour=tour,
             lane_prefix="upcoming_event_model",
         )
+        if not (upcoming_section.get("eligibility") or {}).get("verified"):
+            upcoming_fallback = _load_verified_section_fallback(
+                previous_snapshot,
+                section_key="upcoming_tournament",
+                expected_event_id=upcoming_event_id,
+                expected_tour=tour,
+            )
+            if upcoming_fallback:
+                upcoming_section = {
+                    **upcoming_fallback,
+                    "generated_from": "verified_snapshot_fallback",
+                    "ranking_source": "verified_snapshot_fallback",
+                }
+                upcoming_section.setdefault("diagnostics", {})
+                fallback_errors = list((upcoming_section["diagnostics"].get("errors") or []))
+                upcoming_section["diagnostics"]["state"] = "eligibility_failed"
+                upcoming_section["diagnostics"]["errors"] = fallback_errors + [
+                    "New upcoming result failed eligibility; serving last verified section for the same event.",
+                ]
     else:
         upcoming_fallback = _load_verified_section_fallback(
             previous_snapshot,
@@ -3301,6 +3383,41 @@ def _run_recompute(tour: str, cadence_mode: str, ingest_summary: dict[str, Any])
                 or upcoming_section.get("matchup_bets")
                 or []
             )
+
+    # Publish the verified operator board before optional comparison lanes.  Legacy
+    # and challenger analysis may be slow or unavailable, but must never delay the
+    # first usable Dashboard snapshot for this event.
+    if (upcoming_section.get("eligibility") or {}).get("verified"):
+        _write_snapshot(
+            {
+                "snapshot_id": snapshot_id,
+                "generated_at": generated_at,
+                "tour": tour,
+                "cadence_mode": cadence_mode,
+                "data_source": _resolve_data_source(),
+                "live_tournament": {
+                    **base_section,
+                    "active": live_is_active,
+                    "source_event_id": live_source_event_id,
+                    "source_event_name": live_event_name,
+                    "data_mode": mode,
+                    "source": "live_event_model",
+                },
+                "upcoming_tournament": {
+                    **upcoming_section,
+                    "active": True,
+                    "data_mode": "full",
+                    "source": "upcoming_event_model",
+                },
+                "legacy_tournament": None,
+                "lab_upcoming_tournament": None,
+                "lab_live_tournament": None,
+                "diagnostics": {
+                    "publish_state": "dashboard_sections_ready",
+                    "market_counts": ingest_summary.get("market_counts") or {},
+                },
+            }
+        )
 
     # Legacy baseline lane for fallback inspection in Research.
     legacy_target_name = (
@@ -3916,7 +4033,9 @@ def generate_snapshot_once(*, tour: str = "pga") -> dict[str, Any]:
         cadence = resolve_cadence(settings)
         ingest_summary = _run_ingest(tour)
         _touch_progress(refresh_state="running", phase="recompute", phase_detail="snapshot pipeline")
+        recompute_started = time.monotonic()
         snapshot = _run_recompute_with_timeout(tour, cadence.mode, ingest_summary)
+        _record_recompute_runtime(time.monotonic() - recompute_started)
         with _state_lock:
             _state["tour"] = tour
             _state["cadence_mode"] = cadence.mode
@@ -3945,6 +4064,7 @@ def _run_loop(tour: str) -> None:
     next_recompute = 0.0
     ingest_summary: dict[str, Any] = {}
     while not _stop_event.is_set():
+        active_manual_trigger: dict[str, Any] | None = None
         settings = get_settings().get("live_refresh", {})
         if not settings.get("enabled", False):
             with _state_lock:
@@ -3958,6 +4078,8 @@ def _run_loop(tour: str) -> None:
         now_epoch = time.time()
         manual_trigger = consume_manual_trigger()
         if manual_trigger:
+            active_manual_trigger = manual_trigger
+            next_ingest = now_epoch
             next_recompute = now_epoch
             _logger.info("Manual refresh trigger consumed: %s", manual_trigger.get("request_id"))
         with _state_lock:
@@ -3996,7 +4118,9 @@ def _run_loop(tour: str) -> None:
                         ingest_summary = _run_ingest(tour)
                         with _state_lock:
                             _state["last_ingest_summary"] = ingest_summary
+                    recompute_started = time.monotonic()
                     snapshot = _run_recompute_with_timeout(tour, cadence.mode, ingest_summary)
+                    _record_recompute_runtime(time.monotonic() - recompute_started)
                 except BaseException as exc:
                     slot_err = exc
                     _touch_progress(idle=True, last_error=str(exc))
@@ -4013,6 +4137,8 @@ def _run_loop(tour: str) -> None:
                     _state["last_snapshot_generated_at"] = snapshot.get("generated_at")
                     _state["next_recompute_at"] = datetime.fromtimestamp(now_epoch + cadence.recompute_seconds, timezone.utc).isoformat()
                 next_recompute = now_epoch + cadence.recompute_seconds
+                if active_manual_trigger:
+                    complete_manual_refresh(active_manual_trigger)
                 try:
                     auto_grade_result = _maybe_auto_grade_completed_event(ingest_summary)
                     with _state_lock:
@@ -4042,13 +4168,15 @@ def _run_loop(tour: str) -> None:
                     _persist_auto_grade_metadata(error_status)
         except Exception as exc:
             _logger.exception("Live refresh cycle failed")
+            if active_manual_trigger:
+                complete_manual_refresh(active_manual_trigger, error=str(exc))
             with _state_lock:
                 _state["last_error"] = str(exc)
                 _state["last_finished_at"] = _iso_now()
             # Short retry on failure.
             next_recompute = min(next_recompute, now_epoch + 30) if next_recompute else now_epoch + 30
         wait_target = min(next_ingest or now_epoch + 1, next_recompute or now_epoch + 1)
-        sleep_for = max(1.0, wait_target - time.time())
+        sleep_for = _manual_trigger_poll_wait_seconds(max(1.0, wait_target - time.time()))
         _write_heartbeat()
         if _stop_event.wait(sleep_for):
             break

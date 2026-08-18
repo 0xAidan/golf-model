@@ -80,7 +80,14 @@ def test_worker_main_exits_when_runtime_thread_dies(monkeypatch):
 
     monkeypatch.setattr(worker, "runtime_thread_alive", _runtime_thread_alive)
 
-    assert worker.main() == 1
+    def _fake_exit(code: int) -> None:
+        raise SystemExit(code)
+
+    monkeypatch.setattr(worker.os, "_exit", _fake_exit)
+
+    with pytest.raises(SystemExit) as excinfo:
+        worker.main()
+    assert excinfo.value.code == 1
 
 
 @pytest.mark.parametrize("signum", [2, 15])

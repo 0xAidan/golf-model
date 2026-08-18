@@ -57,18 +57,18 @@ from src.scoring import compute_profit, determine_outcome
 
 import pandas as pd
 from src.spa_delivery import ImmutableStaticFiles, current_release, release_headers
+from src.runtime_paths import get_worker_pid_path
 
 _logger = logging.getLogger("golf.app")
 
 
-_DEFAULT_LIVE_REFRESH_PIDFILE = "/tmp/golf_live_refresh.pid"
 _snapshot_heal_in_progress = False
 _dashboard_state_cache: dict[str, tuple[float, dict]] = {}
 _DASHBOARD_STATE_CACHE_TTL_S = 60.0
 
 
 def _live_refresh_pidfile_path() -> str:
-    return os.environ.get("LIVE_REFRESH_PIDFILE", _DEFAULT_LIVE_REFRESH_PIDFILE)
+    return os.environ.get("LIVE_REFRESH_PIDFILE", str(get_worker_pid_path()))
 
 
 def _live_refresh_worker_is_running(pidfile_path: str) -> bool:
