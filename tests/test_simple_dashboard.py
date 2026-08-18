@@ -253,8 +253,16 @@ def test_late_registered_player_routes_are_registered():
     import app as app_module
 
     paths = {getattr(route, "path", None) for route in app_module.app.routes}
-    assert "/api/players/{player_key}/standalone-profile" in paths
-    assert "/api/players/search" in paths
+    assert any(path and "standalone-profile" in path for path in paths), sorted(
+        path for path in paths if path and "player" in path
+    )
+    assert any(path and path.rstrip("/").endswith("/api/players/search") for path in paths), sorted(
+        path for path in paths if path and "player" in path
+    )
+
+    client = TestClient(app_module.app)
+    assert client.get("/api/players/search").status_code != 404
+    assert client.get("/api/players/collin_morikawa/standalone-profile").status_code != 404
 
 
 def test_live_refresh_snapshot_endpoint_exposes_fallback_metadata(monkeypatch):
