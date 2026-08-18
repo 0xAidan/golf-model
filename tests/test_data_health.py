@@ -84,12 +84,14 @@ def test_prune_then_vacuum(tmp_db):
 
 def test_regression_fixture_db_exists():
     path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
+        os.path.dirname(__file__),
         "fixtures",
         "golf_2026_one_event.db",
     )
-    if not os.path.isfile(path):
-        pytest.skip("Run scripts/build_regression_fixture_db.py to create fixture")
+    assert os.path.isfile(path), (
+        "Missing tests/fixtures/golf_2026_one_event.db — "
+        "run scripts/build_regression_fixture_db.py and commit the fixture"
+    )
     report = build_data_health_report(db_path=path, year=2026)
     assert report["row_counts"]["picks"] >= 1
 

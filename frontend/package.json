@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.ts",
     "test:a11y": "playwright test e2e/a11y-monitoring.spec.ts",
+    "test:e2e": "playwright test e2e/operator-terminal.spec.ts",
     "screenshots:matrix": "node scripts/capture-screenshot-matrix.mjs",
     "screenshots:matrix:v3": "SCREENSHOT_MATRIX_VERSION=v3 node scripts/capture-screenshot-matrix.mjs",
     "bundle:budget": "node scripts/check-bundle-budget.mjs",

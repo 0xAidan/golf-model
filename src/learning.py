@@ -739,7 +739,7 @@ def score_picks_for_tournament(
                     conn=conn,
                 )
                 conn.execute(
-                    f"""UPDATE pick_outcomes SET
+                    """UPDATE pick_outcomes SET
                            hit = ?, model_hit = ?, actual_finish = ?, odds_decimal = ?,
                            stake = ?, profit = ?, notes = ?, grading_authority = ?,
                            pick_key = ?, outcome_locked = 0

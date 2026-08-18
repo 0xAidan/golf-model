@@ -18,8 +18,10 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def fixture_db(monkeypatch):
-    if not _FIXTURE_DB.is_file():
-        pytest.skip("Missing tests/fixtures/golf_2026_one_event.db — run build_regression_fixture_db.py")
+    assert _FIXTURE_DB.is_file(), (
+        "Missing tests/fixtures/golf_2026_one_event.db — "
+        "run scripts/build_regression_fixture_db.py and commit the fixture"
+    )
     import src.db as db
 
     original_path = db.DB_PATH

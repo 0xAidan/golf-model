@@ -274,7 +274,34 @@ def main() -> int:
         expected_app_root=args.expected_app_root.strip(),
     )
     if args.smoke_local:
-        results = [r for r in results if r.name != "live_refresh_snapshot"]
+        # Local/CI has no fresh production snapshot or worker heartbeat.
+        # Keep reachability checks; do not require ops ok=true or fresh snapshot.
+        adjusted: list[CheckResult] = []
+        for result in results:
+            if result.name == "live_refresh_snapshot":
+                continue
+            if result.name == "ops_health" and isinstance(result.payload, dict):
+                identity = result.payload.get("identity")
+                reachable = result.status_code == 200 and isinstance(identity, dict)
+                adjusted.append(
+                    CheckResult(
+                        name=result.name,
+                        url=result.url,
+                        status_code=result.status_code,
+                        elapsed_ms=result.elapsed_ms,
+                        ok=reachable,
+                        message=(
+                            f"ops_health reachable in smoke-local "
+                            f"(summary={result.payload.get('summary')} ok={result.payload.get('ok')})"
+                            if reachable
+                            else result.message
+                        ),
+                        payload=result.payload,
+                    )
+                )
+                continue
+            adjusted.append(result)
+        results = adjusted
     failures = [r for r in results if not r.ok]
     for result in results:
         marker = "OK" if result.ok else "FAIL"
