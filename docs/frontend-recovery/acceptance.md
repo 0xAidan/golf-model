@@ -33,25 +33,39 @@ implementation PRs as mergeable while checks are absent, red, or optional.
 
 Record confirmation here when done:
 
-| Item | Confirmed by | Date | Notes |
-|------|--------------|------|-------|
-| Required checks enabled | _pending_ | | |
-| No direct pushes to `main` | _pending_ | | |
-| Approval required for UI/baseline | _pending_ | | |
+| Protection | Required state | Confirmed by | Date | Notes |
+|------------|----------------|--------------|------|-------|
+| Required checks | All checks listed above are required before merge | _pending_ | | |
+| Direct pushes | Blocked for `main` | _pending_ | | |
+| Reviews | One approving review required for UI/baseline changes | _pending_ | | |
+| Force pushes | Blocked for `main` | _pending_ | | |
 
 ## PR checklist
 
 | PR | Title | Code merged | Acceptance notes |
 |----|-------|-------------|------------------|
 | 0A | Restore CI and merge enforcement | pending | Workflow validator + e2e wired; branch protection external |
-| 0B | API responsiveness | pending | |
-| 0 | Domain + baseline | pending | |
+| 0B | API responsiveness | pending | Cached health; season aggregates default |
+| 0 | Domain + measurable baseline | pending | CONTEXT, ADR, baseline schema, superseded prior gates |
 | 1 | SPA delivery / BrowserRouter | pending | |
 | 1B | Worker runtime | pending | |
-| 2–13 | Remaining recovery | pending | |
+| 2 | Sentry observability | pending | |
+| 3 | Operator read model | pending | |
+| 4 | Player API | pending | |
+| 5 | Data provider + preview | pending | |
+| 6 | Dark Dashboard prototype | pending | Operator visual approval gate |
+| 7 | Dashboard + Lab workspaces | pending | No Champion→Challenger fallback |
+| 8–9 | Compare + Players | pending | Current-event Compare only |
+| 10 | Results | pending | Separate track evidence; no winner |
+| 11 | Eval + System; retire Legacy | pending | |
+| 12 | Quality gates + cutover | pending | |
+| 13 | Legacy cleanup | pending | |
 
 ## Evidence links
 
-- Plan: operator-site-recovery (Cursor plan)
+- Context: [`../../CONTEXT.md`](../../CONTEXT.md)
+- Track isolation: [`../adr/0001-track-isolation.md`](../adr/0001-track-isolation.md)
+- Baseline schema: [`baseline.json`](baseline.json)
+- Plan: operator-site-recovery (Cursor plan; do not edit from implementation PRs)
 - CI validator: `scripts/validate_ci_workflow.py`
 - Expected jobs: `scripts/ci/expected_jobs.json`

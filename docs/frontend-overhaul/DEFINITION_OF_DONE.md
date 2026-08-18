@@ -1,5 +1,9 @@
 # Definition of Done (auditable)
 
+> **Superseded — Operator Site Recovery (2026-07):** This is historical
+> evidence, not the current acceptance contract. Use
+> `docs/frontend-recovery/acceptance.md` for active recovery gates.
+
 Mark complete only when **every** item is checked with evidence linked in the PR.
 
 ## Visual & layout

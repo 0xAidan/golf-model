@@ -816,6 +816,23 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 
 ---
 
+## Operator Site Recovery (2026-07)
+
+Canonical operator terms are **Champion** (Dashboard reference track) and
+**Challenger** (Lab evaluation track). Dashboard and Lab are separate
+workspaces: Lab must never fall back to Champion data. Compare reports only
+current-event disagreement; Results reports historical A/B evidence; the UI
+never declares a track winner. The public operator site is dark-only and has
+no authentication (accepted risk); grading is automatic only.
+
+Read [`../CONTEXT.md`](../CONTEXT.md) first, then
+[`frontend-recovery/acceptance.md`](frontend-recovery/acceptance.md) and
+[`adr/0001-track-isolation.md`](adr/0001-track-isolation.md). The
+operator-site-recovery Cursor plan governs implementation order and must not be
+edited from implementation PRs.
+
+---
+
 ## 12b. Champion-Challenger Rails (defect 3.3.1)
 
 Infrastructure to compare a candidate ("challenger") model against the live champion on Brier, matchup ROI, and CLV, WITHOUT letting the challenger ever price live bets. Added in PR `feat/champion-challenger-rails`.

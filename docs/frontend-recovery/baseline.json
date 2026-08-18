@@ -1,0 +1,54 @@
+{
+  "status": "pending_capture",
+  "captured_at": null,
+  "base_url": null,
+  "capture_notes": "Schema seed for Operator Site Recovery. Replace metric values with five cold and five warm production evidence captures before visual/perf enforcement. Operator screenshots from 2026-07 are failing evidence, not a visual baseline to preserve.",
+  "required_metric_keys": [
+    "routes_measured",
+    "cold_runs_per_route",
+    "warm_runs_per_route",
+    "request_count_p50",
+    "compressed_bytes_p50",
+    "ttfb_ms_p50",
+    "first_useful_content_ms_p50",
+    "route_ready_ms_p50",
+    "cls_p50",
+    "longest_task_ms_p50",
+    "console_errors_total",
+    "failed_resources_total",
+    "mobile_viewport_width",
+    "desktop_viewport_width",
+    "wide_viewport_width"
+  ],
+  "metrics": {
+    "routes_measured": 8,
+    "cold_runs_per_route": 5,
+    "warm_runs_per_route": 5,
+    "request_count_p50": 24,
+    "compressed_bytes_p50": 2800000,
+    "ttfb_ms_p50": 180,
+    "first_useful_content_ms_p50": 2200,
+    "route_ready_ms_p50": 4500,
+    "cls_p50": 0.08,
+    "longest_task_ms_p50": 220,
+    "console_errors_total": 3,
+    "failed_resources_total": 6,
+    "mobile_viewport_width": 390,
+    "desktop_viewport_width": 1280,
+    "wide_viewport_width": 1536
+  },
+  "routes": [
+    "/",
+    "/lab",
+    "/compare",
+    "/players",
+    "/results",
+    "/eval",
+    "/system",
+    "/legacy-model"
+  ],
+  "failing_visual_evidence": {
+    "note": "Operator-supplied production screenshots document an unprofessional/slow/broken UI. They are acceptance evidence of failure, not a baseline to match.",
+    "source": "operator screenshots 2026-07"
+  }
+}

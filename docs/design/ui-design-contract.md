@@ -1,10 +1,34 @@
-# UI Design Contract — Golf Model Operator Terminal
+# UI Design Contract — Golf Model Operator Analytics
 
 **Status:** Active (UI-first recovery program)  
 **Audience:** Frontend contributors and AI agents  
 **Production:** https://golf.ancc.blog/
 
-This document is the single source of truth for visual and information architecture rules during the UI-first recovery. It implements plan sections §1.3.1–§1.3.7. **A beautiful UI must never hide the truth** — broken, stale, or unhealthy states are shown loudly until underlying problems are fixed.
+This document is the single source of truth for visual and information
+architecture rules during Operator Site Recovery. **A beautiful UI must never
+hide the truth** — broken, stale, or unhealthy states are shown loudly until
+underlying problems are fixed.
+
+> **Recovery 2026-07 — canonical direction:** The product is a dark-only,
+> professional analytics workspace with the density and legibility associated
+> with Sentry, Stripe, and Data Golf. Faux-terminal styling, terminal language,
+> decorative “command” affordances, and theme toggles are obsolete. Do not add
+> them back.
+
+## Recovery 2026-07 product rules
+
+- The site is dark-only. There is no light theme, theme preference, or
+  theme-toggle control.
+- Dashboard is the Champion workspace; Lab is the Challenger workspace. Lab
+  never displays Champion data as a fallback.
+- Compare exposes current-event disagreements only. Results holds historical
+  A/B evidence only. Neither workspace declares a track winner.
+- Information density must improve operator scanning: compact KPI strips,
+  readable dense tables, clear provenance, and visible unhealthy states.
+- The public operator site intentionally has no authentication. Do not imply
+  protected-user states in the interface.
+- Grade state is automated. The UI may report queued, running, succeeded, or
+  failed work, but must not represent manual grading as a product workflow.
 
 ---
 
@@ -70,9 +94,10 @@ If a color does not answer “what state is this in?”, use `--text` / `--text-
 | Primary | Filled button | Max **one** per page header + shell Refresh |
 | Secondary | Outline/ghost | Other actions |
 | Destructive | Red outline + typed confirm | Promote/rollback, restore |
-| Quiet | Text/icon | Toggles, expanders, theme, command |
+| Quiet | Text/icon | Expanders and secondary navigation only |
 
-Shell owns global Refresh (primary), Grade (secondary), theme/command (quiet). Pages do not duplicate shell actions.
+Shell owns global Refresh (primary) and automated Grade status (secondary).
+Pages do not duplicate shell actions or introduce theme/command controls.
 
 ---
 
@@ -117,7 +142,9 @@ Tones: `info` / `warn` / `danger`.
 
 ## 6. Shell anatomy
 
-**Top bar:** brand/hamburger · event headline + sub (course · field) · mode switch (Live/Upcoming/Past on `/` and `/lab` only) · **FreshnessChip** · Refresh · Grade · command/theme.
+**Top bar:** brand/hamburger · event headline + sub (course · field) · mode switch
+(Live/Upcoming/Past on `/` and `/lab` only) · **FreshnessChip** · Refresh ·
+automated Grade status.
 
 **Nav drawer:** Product (Dashboard, Lab, Compare, Players, Results, System) + collapsed Research (Eval, Champion vs Challenger, Legacy model).
 
@@ -145,9 +172,9 @@ Files: `monitoring-shell.tsx`, `terminal-monitoring-v3.css`, `page-layouts.css`.
 
 ## 8. Related docs
 
-- Master recovery plan: `.cursor/plans/ui-first-recovery-plan.md` (plan branch; do not edit during implementation PRs)
-- Monitoring design system: `docs/frontend-overhaul/11-monitoring-design-system.md`
-- Grading trust: `docs/frontend-overhaul/14-grading-trust-contract.md`
+- Recovery context: [`../../CONTEXT.md`](../../CONTEXT.md)
+- Recovery acceptance: [`../frontend-recovery/acceptance.md`](../frontend-recovery/acceptance.md)
+- Track isolation ADR: [`../adr/0001-track-isolation.md`](../adr/0001-track-isolation.md)
 - Agent quick reference: `docs/AGENTS_KNOWLEDGE.md` §12
 
 ---

@@ -1,5 +1,9 @@
 # 03 — Target UX and Design System
 
+> **Superseded — Operator Site Recovery (2026-07):** This historical terminal
+> design target is retained for reference. The active dark-only analytics
+> contract is `docs/design/ui-design-contract.md`.
+
 ## Visual direction
 Operator terminal: flat, grid-aligned, semantic color only. Scan in under 3 seconds per screen.
 

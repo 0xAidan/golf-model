@@ -1,5 +1,10 @@
 # Frontend Overhaul — Handoff Index
 
+> **Superseded — Operator Site Recovery (2026-07):** This historical overhaul
+> record is retained for evidence only. Follow `CONTEXT.md`,
+> `docs/frontend-recovery/`, and `docs/design/ui-design-contract.md` for
+> current operator-site requirements.
+
 Execution program for the golf-model SPA rebuild. **Do not mark complete without [Definition of Done](./DEFINITION_OF_DONE.md) evidence.**
 
 | Section | Document |
