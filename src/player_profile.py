@@ -112,11 +112,19 @@ def _round_payload(round_row: dict[str, Any]) -> dict[str, Any]:
         "round_num", "event_name", "event_completed", "event_id", "course_name", "tour",
         "score", "sg_total", "sg_ott", "sg_app", "sg_arg", "sg_putt", "sg_t2g",
         "driving_dist", "driving_acc", "gir", "scrambling", "fin_text",
+        # Recovered columns — already fetched via SELECT *, previously discarded.
+        "birdies", "eagles_or_better", "bogies", "doubles_or_worse",
+        "pars", "prox_fw", "prox_rgh", "great_shots", "poor_shots",
     )
-    return {
-        field: _float(round_row.get(field)) if field.startswith(("sg_", "driving_", "gir", "scrambling")) else round_row.get(field)
-        for field in fields
-    }
+    float_fields = (
+        "sg_", "driving_", "gir", "scrambling",
+        "prox_fw", "prox_rgh", "great_shots", "poor_shots",
+    )
+    payload: dict[str, Any] = {}
+    for field in fields:
+        value = round_row.get(field)
+        payload[field] = _float(value) if field.startswith(float_fields) else value
+    return payload
 
 
 def _event_payload(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
