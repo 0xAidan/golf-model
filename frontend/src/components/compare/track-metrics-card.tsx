@@ -1,4 +1,5 @@
 import { TrackBadge } from "@/components/product/track-badge"
+import { CountUpNumber } from "@/components/motion/primitives"
 import type { TrackMetrics } from "@/lib/types"
 
 function MetricCell({
@@ -14,7 +15,11 @@ function MetricCell({
     <div>
       <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">{label}</div>
       <div className="num text-lg text-[var(--text-primary)]">
-        {value == null ? "—" : `${value}${suffix}`}
+        {value == null ? (
+          "—"
+        ) : (
+          <CountUpNumber value={value} format={(v) => `${Math.round(v)}${suffix}`} />
+        )}
       </div>
     </div>
   )
