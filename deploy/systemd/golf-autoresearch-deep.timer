@@ -1,0 +1,10 @@
+[Unit]
+Description=Golf Model Autoresearch Weekly Deep Cycle (Sundays 04:00 UTC)
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+Unit=golf-autoresearch-deep.service
+
+[Install]
+WantedBy=timers.target

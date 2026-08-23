@@ -32,6 +32,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "optuna_scalar_study_name": "golf_scalar_simple",
     "scalar_objective": "weighted_roi_pct",
     "optuna_trials_per_cycle": 3,
+    "autoresearch_effort": "standard",
     "live_refresh": default_live_refresh_settings(),
 }
 
@@ -64,6 +65,9 @@ def _merge_defaults(raw: dict[str, Any]) -> dict[str, Any]:
             out["optuna_trials_per_cycle"] = max(1, min(50, n))
         except (TypeError, ValueError):
             pass
+    effort = (raw.get("autoresearch_effort") or "").strip().lower()
+    if effort in ("light", "standard", "max"):
+        out["autoresearch_effort"] = effort
     return out
 
 
@@ -120,6 +124,10 @@ def set_settings(updates: dict[str, Any]) -> dict[str, Any]:
             current["optuna_trials_per_cycle"] = max(1, min(50, n))
         except (TypeError, ValueError):
             pass
+    if "autoresearch_effort" in updates and updates["autoresearch_effort"]:
+        effort = str(updates["autoresearch_effort"]).strip().lower()
+        if effort in ("light", "standard", "max"):
+            current["autoresearch_effort"] = effort
     if "live_refresh" in updates and isinstance(updates["live_refresh"], dict):
         merged_live_refresh = dict(current.get("live_refresh") or {})
         merged_live_refresh.update(updates["live_refresh"])
