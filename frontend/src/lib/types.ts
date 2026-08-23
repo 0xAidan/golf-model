@@ -1298,3 +1298,120 @@ export type DataHealthReport = {
   latest_backup?: DataHealthBackupInfo | null
   archive_stats?: DataHealthArchiveInfo
 }
+
+/* ── Terminal overhaul redesign data (R1) ─────────────────── */
+export type BettingRecordMarket = {
+  n: number
+  hits: number
+  profit: number
+  hit_rate: number | null
+}
+
+export type BettingRecordPick = {
+  hit: number | null
+  profit: number | null
+  stake: number | null
+  odds_decimal: number | null
+  ev: number | null
+  bet_type: string | null
+  market_type: string | null
+  tournament_id: number | null
+  player_display: string | null
+  opponent_display: string | null
+  market_odds: string | null
+  market_book: string | null
+  created_at: string | null
+}
+
+export type PlayerBettingRecord = {
+  player_key: string
+  player_display: string | null
+  total_picks: number
+  graded_picks: number
+  hits: number
+  hit_rate: number | null
+  units_profit: number
+  units_staked: number
+  roi: number | null
+  avg_ev: number | null
+  by_market: Record<string, BettingRecordMarket>
+  recent: BettingRecordPick[]
+}
+
+export type MarketHistoryDay = {
+  day: string
+  rows_n: number
+  value_rows: number | null
+  best_ev: number | null
+  best_odds: string | null
+}
+
+export type PlayerMarketHistory = {
+  player_key: string
+  window_days: number
+  daily: MarketHistoryDay[]
+  totals: { rows_seen: number; value_flags: number; best_ev: number | null }
+}
+
+export type CourseDnaProfile = {
+  course_name: string | null
+  grass_type_fairway?: string | null
+  grass_type_greens?: string | null
+  green_speed?: string | null
+  fairway_width?: string | null
+  yardage?: number | null
+  par?: number | null
+  sg_ott_importance?: number | null
+  sg_app_importance?: number | null
+  sg_arg_importance?: number | null
+  sg_putt_importance?: number | null
+  historical_scoring_avg?: number | null
+}
+
+export type SgWindowValue = {
+  metric_name: string
+  metric_value: number | null
+  round_window: string | null
+}
+
+export type PlayerCourseDna = {
+  player_key: string
+  course_id: string | null
+  course: CourseDnaProfile | null
+  player_sg_windows: SgWindowValue[]
+  has_course_profile: boolean
+}
+
+export type HoleHeatCell = {
+  hole_num: number
+  rounds_played: number
+  avg_score_to_par: number | null
+  birdie_pct: number | null
+  bogey_pct: number | null
+}
+
+export type PlayerHoleHeat = {
+  player_key: string
+  available: boolean
+  holes: HoleHeatCell[]
+  note: string | null
+}
+
+export type CompareTrendRow = {
+  event_completed: string | null
+  event_name: string | null
+  course_name: string | null
+  sg_total: number | null
+  fin_text: string | null
+}
+
+export type PairwiseCompare = {
+  a: { player_key: string; sg: SgWindowValue[]; trend: CompareTrendRow[] }
+  b: { player_key: string; sg: SgWindowValue[]; trend: CompareTrendRow[] }
+  head_to_head: {
+    graded: number
+    a_wins: number
+    b_wins: number
+    note: string
+  }
+}
