@@ -425,4 +425,28 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload ?? {}),
     }),
+
+  // ── Terminal overhaul redesign data (R1) ───────────────────────
+  redesign: {
+    bettingRecord: (playerKey: string) =>
+      request<import("./types").PlayerBettingRecord>(
+        `/api/redesign/player/${encodeURIComponent(playerKey)}/betting-record`,
+      ),
+    marketHistory: (playerKey: string, days = 120) =>
+      request<import("./types").PlayerMarketHistory>(
+        `/api/redesign/player/${encodeURIComponent(playerKey)}/market-history?days=${days}`,
+      ),
+    courseDna: (playerKey: string, courseId?: string | null) =>
+      request<import("./types").PlayerCourseDna>(
+        `/api/redesign/player/${encodeURIComponent(playerKey)}/course-dna${courseId ? `?course_id=${encodeURIComponent(courseId)}` : ""}`,
+      ),
+    holeHeat: (playerKey: string, courseId?: string | null) =>
+      request<import("./types").PlayerHoleHeat>(
+        `/api/redesign/player/${encodeURIComponent(playerKey)}/hole-heat${courseId ? `?course_id=${encodeURIComponent(courseId)}` : ""}`,
+      ),
+    comparePlayers: (a: string, b: string) =>
+      request<import("./types").PairwiseCompare>(
+        `/api/redesign/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
+      ),
+  },
 }
