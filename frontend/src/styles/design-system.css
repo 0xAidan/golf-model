@@ -534,3 +534,185 @@ textarea:focus-visible {
 .terminal-page-header-kpis .kpi-strip {
   border-radius: var(--r-lg);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   PICK ROWS (PR3) — card treatment, edge emphasis, hover
+   ───────────────────────────────────────────────────────────── */
+.pick-row {
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    border-color var(--ease),
+    box-shadow var(--ease),
+    transform var(--ease);
+}
+
+.pick-row:hover {
+  border-color: var(--border-mid);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.pick-row__main {
+  gap: var(--space-4);
+}
+
+.pick-row__market {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.pick-row__pick {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pick-row__vs {
+  font-size: 12px;
+}
+
+.pick-row__opponent {
+  font-size: 13px;
+}
+
+.pick-row__edge {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--accent-edge);
+}
+
+.pick-row__odds,
+.pick-row__probs {
+  font-size: 12px;
+}
+
+.pick-row__expand.btn {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   KPI STRIP + EVENT HEADER (PR3)
+   ───────────────────────────────────────────────────────────── */
+.kpi-strip {
+  height: auto;
+  min-height: 64px;
+  background: var(--surface);
+  border-bottom: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.kpi-cell {
+  padding: 12px 18px;
+  gap: 3px;
+  border-right-color: var(--divider);
+}
+
+.kpi-cell-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.kpi-cell-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.kpi-cell-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.workspace-kpi-course {
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+/* Event command header — hero treatment */
+.event-command-header {
+  padding: 10px 0 2px;
+}
+
+.event-command-header__meta {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.model-command-section {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.model-command-section__header {
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+}
+
+.model-command-section--picks .model-command-section__header {
+  background: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LAB LANE + BOARD TABS + DIAGNOSTICS (PR3)
+   ───────────────────────────────────────────────────────────── */
+.cockpit-lab-lane-stripe {
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold), color-mix(in srgb, var(--gold) 55%, transparent));
+}
+
+.cockpit-module {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.cockpit-module-header {
+  border-bottom: 1px solid var(--divider);
+}
+
+.cockpit-stack-card--picks {
+  border-color: color-mix(in srgb, var(--accent-edge) 28%, var(--border));
+}
+
+.model-section-nav {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  min-height: 44px;
+}
+
+.model-section-nav__item {
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 500;
+}
+
+.model-section-nav__item--active {
+  background: var(--surface);
+  box-shadow: var(--shadow-surface);
+  font-weight: 600;
+}
+
+.diagnostics-funnel__label {
+  font-size: 12px;
+}
