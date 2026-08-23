@@ -396,7 +396,7 @@ function MatchupsBoard({
             Number(matchup.pick_momentum ?? 0) - Number(matchup.opp_momentum ?? 0),
             Number(matchup.conviction ?? 0),
           ]}
-          color="#22C55E"
+          color="var(--accent-edge, #34d399)"
         />
       </div>
     </div>

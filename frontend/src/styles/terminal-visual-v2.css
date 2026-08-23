@@ -6,14 +6,9 @@
   --logo-ball-stroke: var(--border-hi);
 }
 
-.dark {
-  --bg: #030405;
-  --bg-1: #060809;
-  --bg-2: #0a0c0e;
-  --surface: #0a0c0e;
-  --surface-2: #0d1012;
-  --surface-3: #141719;
-}
+/* Premium foundation note: dark palette now lives in themes.css.
+   The legacy near-black override (#030405) was removed — depth tokens
+   (shadows, elevated surfaces) come from themes.css / design-system.css. */
 
 body {
   font-family: var(--font-body);
@@ -44,7 +39,7 @@ body {
 .nav-item {
   font-family: var(--font-body);
   font-size: 12px;
-  border-radius: 0;
+  border-radius: var(--r-sm);
 }
 
 .nav-item:hover {
@@ -88,31 +83,33 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Flat terminal modules — no gray card fill */
+/* Flat terminal modules — no gray card fill (premium: keep token surfaces + radius) */
 .cockpit-module,
 .card,
 .panel-chrome {
-  border-radius: 0;
-  background: var(--bg);
+  border-radius: var(--r-md);
+  background: var(--surface);
 }
 
 .cockpit-module-header,
 .card-header,
 .panel-chrome-header {
-  background: var(--bg);
+  background: var(--surface);
   min-height: 28px;
 }
 
 .cockpit-module--accent .cockpit-module-header,
 .cockpit-stack-card--picks > .card-header {
-  background: var(--bg);
+  background: var(--surface);
 }
 
 .cockpit-module-title,
 .card-title,
 .panel-chrome-title {
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 /* Tables */
@@ -145,9 +142,9 @@ body {
 }
 
 .btn-primary {
-  background: var(--accent-edge);
-  border-color: var(--accent-edge);
-  color: var(--bg);
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .btn-primary:hover {

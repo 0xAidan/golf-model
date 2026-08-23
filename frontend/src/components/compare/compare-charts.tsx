@@ -10,10 +10,10 @@ const T = {
   text: "var(--text-primary)",
   muted: "var(--text-secondary)",
   faint: "var(--text-faint)",
-  green: "#34d399",
-  cyan: "#22d3ee",
-  gold: "#fbbf24",
-  red: "#f87171",
+  green: "var(--chart-c1, #34d399)",
+  cyan: "var(--chart-c2, #60a5fa)",
+  gold: "var(--chart-c3, #fbbf24)",
+  red: "var(--chart-c4, #f87171)",
   mono: "var(--font-mono)",
 }
 

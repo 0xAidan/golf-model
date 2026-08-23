@@ -41,7 +41,7 @@ export function TeamEventNotice({
           padding: "8px 2px",
           fontSize: 13,
           lineHeight: 1.5,
-          color: "var(--fg-muted, #cbd5e1)",
+          color: "var(--text-muted, #98a5b3)",
         }}
       >
         <p style={{ margin: 0 }}>
@@ -71,7 +71,7 @@ export function TeamEventNotice({
           <Row label="Individual composite rankings" status="reference_only" />
         </div>
 
-        <p style={{ margin: 0, fontSize: 12, color: "var(--fg-subtle, #94a3b8)" }}>
+        <p style={{ margin: 0, fontSize: 12, color: "var(--text-faint, #64717f)" }}>
           The regular individual-format pipeline resumes automatically at the next non-team event.
         </p>
       </div>
@@ -87,9 +87,9 @@ function Row({
   status: "skipped" | "not_modelled" | "reference_only"
 }) {
   const statusMeta: Record<typeof status, { text: string; color: string }> = {
-    skipped: { text: "Skipped", color: "#f87171" },
-    not_modelled: { text: "Not yet modelled", color: "#fbbf24" },
-    reference_only: { text: "Reference only", color: "#60a5fa" },
+    skipped: { text: "Skipped", color: "var(--red)" },
+    not_modelled: { text: "Not yet modelled", color: "var(--gold)" },
+    reference_only: { text: "Reference only", color: "var(--accent-focus)" },
   }
   const meta = statusMeta[status]
   return (

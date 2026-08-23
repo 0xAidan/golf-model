@@ -236,3 +236,6 @@
 @import "./styles/terminal-visual-v2.css";
 @import "./styles/terminal-monitoring-v3.css";
 @import "./styles/product-shell.css";
+/* Premium refinement pass loads LAST so its token-driven primitives
+   (buttons, chips, badges, tables, cards) win the cascade over legacy layers. */
+@import "./styles/design-system.css";

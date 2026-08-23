@@ -13,7 +13,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react"
 import ReactECharts from "echarts-for-react"
-import { getEchartsTooltipStyle } from "@/lib/chart-theme"
+import { getEchartsTooltipStyle, readCssVar } from "@/lib/chart-theme"
 import { heatSpectrumHexFromUnit } from "@/lib/metric-heat"
 
 /* ── Design tokens ───────────────────────────────────────────────────── */
@@ -613,14 +613,23 @@ const ROLLING_KEY: Record<RollingTab, keyof RollingEvent> = {
 const ROLLING_SCALE_ABS = 2.5
 const heatUnitForRolling = (value: number) => Math.min(1, Math.max(0, (value + ROLLING_SCALE_ABS) / (ROLLING_SCALE_ABS * 2)))
 
-/** ECharts often ignores `linear-gradient(...)` and `var(--*)` in series styles — use hex / RGBA literals. */
-const ROLLING_EC = {
-  text: "#e8ecef",
-  muted: "#6b7a84",
-  faintAxis: "#8b9aa3",
-  grid: "rgba(139, 156, 169, 0.32)",
-  zeroLine: "rgba(139, 156, 169, 0.45)",
-} as const
+/** Theme-synced ECharts literals — resolved at render so light/dark both stay correct
+ *  (ECharts cannot parse `var(--*)` strings in canvas styles). */
+function rollingEc(): {
+  text: string
+  muted: string
+  faintAxis: string
+  grid: string
+  zeroLine: string
+} {
+  return {
+    text: readCssVar("--text", "#eef2f6"),
+    muted: readCssVar("--text-muted", "#98a5b3"),
+    faintAxis: readCssVar("--text-faint", "#8593a1"),
+    grid: readCssVar("--chart-grid", "rgba(148, 163, 184, 0.12)"),
+    zeroLine: readCssVar("--chart-grid-strong", "rgba(148, 163, 184, 0.22)"),
+  }
+}
 
 function movingAverage(vals: number[], window = 5): (number | null)[] {
   return vals.map((_, i) => {
@@ -647,6 +656,8 @@ export function RollingBarLine({
   const [tab, setTab] = useState<RollingTab>("TOTAL")
   const [view, setView] = useState<RollingView>("events")
   if (!events.length) return <ChartEmpty height={height + 32} msg="No event history" />
+
+  const EC = rollingEc()
 
   const key = ROLLING_KEY[tab]
   const orderedEvents = [...events].reverse() // oldest → newest
@@ -771,18 +782,18 @@ export function RollingBarLine({
               const n = e.event_name ?? ""
               return view === "events" ? n.split(" ").slice(0, 2).join(" ") : n
             }),
-            axisLabel: { color: ROLLING_EC.faintAxis, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
-            axisLine: { lineStyle: { color: ROLLING_EC.grid } },
+            axisLabel: { color: EC.faintAxis, fontSize: 8, fontFamily: T.mono, rotate: 30, interval: 0 },
+            axisLine: { lineStyle: { color: EC.grid } },
             splitLine: { show: false },
           },
           yAxis: {
             type: "value",
             scale: true,
             axisLabel: {
-              color: ROLLING_EC.muted, fontSize: 9, fontFamily: T.mono,
+              color: EC.muted, fontSize: 9, fontFamily: T.mono,
               formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
             },
-            splitLine: { lineStyle: { color: ROLLING_EC.grid, type: "dashed" } },
+            splitLine: { lineStyle: { color: EC.grid, type: "dashed" } },
             axisLine: { show: false },
           },
           series: [
@@ -803,8 +814,8 @@ export function RollingBarLine({
               smooth: 0.4,
               showSymbol: false,
               connectNulls: true,
-              lineStyle: { color: ROLLING_EC.text, width: 2 },
-              itemStyle: { color: ROLLING_EC.text },
+              lineStyle: { color: EC.text, width: 2 },
+              itemStyle: { color: EC.text },
               z: 2,
             },
             // zero line
@@ -813,7 +824,7 @@ export function RollingBarLine({
               type: "line",
               data: vals.map(() => 0),
               showSymbol: false,
-              lineStyle: { color: ROLLING_EC.zeroLine, width: 1, type: "dashed" },
+              lineStyle: { color: EC.zeroLine, width: 1, type: "dashed" },
               z: 0,
               tooltip: { show: false },
             },
@@ -821,9 +832,9 @@ export function RollingBarLine({
           legend: {
             data: [
               { name: tab, itemStyle: { color: legendBarSwatch } },
-              { name: `${maWindow}-event avg`, itemStyle: { color: ROLLING_EC.text } },
+              { name: `${maWindow}-event avg`, itemStyle: { color: EC.text } },
             ],
-            textStyle: { color: ROLLING_EC.muted, fontSize: 9, fontFamily: T.mono },
+            textStyle: { color: EC.muted, fontSize: 9, fontFamily: T.mono },
             top: 0, right: 0, itemHeight: 8, itemWidth: 14,
           },
           tooltip: {
@@ -835,11 +846,11 @@ export function RollingBarLine({
               const ma  = params.find((p) => p.seriesName !== tab && p.seriesName !== "_zero")
               const ev  = orderedEvents[bar?.dataIndex ?? 0]
               const v   = bar?.value
-              const col = v != null ? heatSpectrumHexFromUnit(heatUnitForRolling(v)) : ROLLING_EC.muted
-              const fin = view === "events" && ev?.fin_text ? ` <span style="color:${ROLLING_EC.muted}">· ${ev.fin_text}</span>` : ""
-              const course = view === "events" && ev?.course_name ? `<br/><span style="color:${ROLLING_EC.faintAxis}">${ev.course_name}</span>` : ""
+              const col = v != null ? heatSpectrumHexFromUnit(heatUnitForRolling(v)) : EC.muted
+              const fin = view === "events" && ev?.fin_text ? ` <span style="color:${EC.muted}">· ${ev.fin_text}</span>` : ""
+              const course = view === "events" && ev?.course_name ? `<br/><span style="color:${EC.faintAxis}">${ev.course_name}</span>` : ""
               const maLine = ma?.value != null
-                ? `<br/><span style="color:${ROLLING_EC.muted}">MA: ${signed(ma.value)}</span>` : ""
+                ? `<br/><span style="color:${EC.muted}">MA: ${signed(ma.value)}</span>` : ""
               const label = view === "events" ? (ev?.event_name ?? bar?.name) : `Round ${(bar?.dataIndex ?? 0) + 1}`
               return `<b>${label}</b>${fin}${course}<br/>${tab}: <b style="color:${col}">${v != null ? signed(v) : "—"}</b>${maLine}`
             },
