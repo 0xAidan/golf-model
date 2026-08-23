@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-08-22 on `main` (Premium UI revitalization series, PRs #234–#238). Frontend visual identity is now **premium graphite**: tokens in `frontend/src/styles/themes.css` (dark + light), refined primitives in `frontend/src/styles/design-system.css` (loads last), system sans + Fragment Mono numerics. Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
+**Last verified:** 2026-08-23 on `main` (Terminal Overhaul series, PRs #241–#249). Frontend: premium graphite tokens (`themes.css`) + `design-system.css` + **`overhaul.css`** (display numerals, depth/glass panels, heat scales, phase accents build/track/review, calm-mode rules; loads last). New read-only endpoints in `src/routes/redesign_data.py` (betting-record, market-history, course-dna, hole-heat, pairwise compare — all schema-error-safe). Motion primitives in `frontend/src/components/motion/`; Calm Mode toggle persists via `CalmModeProvider`. Phase detection in `lib/tournament-phase.ts`. Compare engine at `/compare/players`. Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
 
 **Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
 
@@ -783,6 +783,10 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Pipeline orchestration | `src/services/golf_model_service.py` |
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |
+| Redesign data endpoints (player intelligence) | `src/routes/redesign_data.py` (read-only; schema-error-safe `_safe_query`) |
+| Motion primitives / skeletons / calm mode | `frontend/src/components/motion/`, `frontend/src/providers/calm-mode-provider.tsx` |
+| Tournament phase (build/track/review) | `frontend/src/lib/tournament-phase.ts`; chip in `components/monitoring/dashboard/phase-elements.tsx` |
+| Compare engine page | `frontend/src/pages/compare-engine-page.tsx` at `/compare/players` |
 | UI design contract (tokens, shell, one-metric-one-home) | `docs/design/ui-design-contract.md` |
 | Frontend dashboard (React SPA) | `frontend/src/App.tsx` (providers only) + `frontend/src/app/app-content.tsx` (shell, routes, refresh/grade actions, dashboard/lab hydration) |
 | Live snapshot SWR | `frontend/src/providers/live-snapshot-provider.tsx`, `GET /api/live-refresh/summary` |

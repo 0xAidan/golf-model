@@ -269,3 +269,35 @@ html[data-calm="true"] .skeleton::after {
   border-radius: 999px;
   background: currentColor;
 }
+
+/* ── R7: System / research page bespoke layer ─────────────────── */
+
+/* System status cards get panel depth + a tone dot before titles. */
+section[data-testid$="-panel"][class*="rounded-xl"] {
+  background: var(--panel-gradient);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-panel);
+  border-color: var(--border-mid);
+}
+
+/* Research pages (champion-challenger, legacy-model) — panel cards */
+.monitor-research-page .card {
+  background: var(--panel-gradient);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+.monitor-research-page .card-header {
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* Lab ribbon — thinner, glassy */
+.cockpit-lab-lane-stripe {
+  height: 3px;
+}
+
+/* Page-enter polish for satellite pages' headers */
+.page-header {
+  animation: ds-fade-in 200ms ease;
+}
