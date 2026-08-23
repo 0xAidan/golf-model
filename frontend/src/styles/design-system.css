@@ -297,6 +297,15 @@ textarea:focus-visible {
 }
 
 /* ── Motion polish ───────────────────────────────────────────── */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .ds-anim-fade-in {
     animation: ds-fade-in 160ms ease;
@@ -317,4 +326,211 @@ textarea:focus-visible {
 /* ── Selection ───────────────────────────────────────────────── */
 ::selection {
   background: color-mix(in srgb, var(--accent-focus) 25%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SHELL (PR2) — sidebar, topbar, lane switcher
+   Class names are tested contracts; only styling changes here.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --monitor-shell-header-h: 56px;
+  --monitor-shell-drawer-w: 232px;
+}
+
+/* Sidebar surface */
+.monitoring-shell-drawer {
+  background: var(--bg-1);
+}
+
+.monitoring-shell-nav {
+  padding: 14px 12px;
+  gap: 3px;
+}
+
+.monitoring-shell-nav__brand {
+  padding: 6px 6px 16px;
+  margin-bottom: 10px;
+  border-bottom-color: var(--divider);
+}
+
+.sidebar-logo-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-logo-sub {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.sidebar-section-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 8px 8px 6px;
+  margin-top: 8px;
+}
+
+.sidebar-section-label--toggle {
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-sm);
+  transition: color var(--ease), background var(--ease);
+  width: fit-content;
+}
+
+.sidebar-section-label--toggle:hover {
+  color: var(--text-secondary);
+  background: var(--row-hover);
+}
+
+/* Nav items */
+.monitoring-shell-nav .nav-item,
+.nav-item {
+  min-height: 36px;
+  padding: 0 10px;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  border-radius: var(--r-md);
+  border-color: transparent;
+}
+
+.nav-item:hover {
+  background: var(--row-hover);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.nav-item.active {
+  background: color-mix(in srgb, var(--accent-focus) 12%, transparent);
+  color: var(--text);
+  font-weight: 600;
+  border-color: transparent;
+  box-shadow: none;
+  position: relative;
+}
+
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent-focus);
+}
+
+.nav-item.active svg {
+  color: var(--accent-focus);
+}
+
+.nav-item__hint {
+  display: none;
+}
+
+/* Topbar */
+.monitoring-shell-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.header-event-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.header-event-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Lane switcher — segmented control */
+.mode-switcher {
+  padding: 3px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  gap: 2px;
+}
+
+.mode-tab {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: none;
+  color: var(--text-muted);
+}
+
+.mode-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: transparent;
+  box-shadow: var(--shadow-surface);
+}
+
+/* Freshness chip — quieter pill */
+.freshness-indicator {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+.freshness-indicator__dot {
+  width: 7px;
+  height: 7px;
+}
+
+/* Page headers — one shared anatomy, larger title */
+.page-header {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.page-header-eyebrow {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.page-header-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-header-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.terminal-page-header-kpis .kpi-strip {
+  border-radius: var(--r-lg);
 }
