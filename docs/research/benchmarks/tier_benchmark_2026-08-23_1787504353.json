@@ -1,0 +1,57 @@
+{
+  "budget_target_seconds": 600.0,
+  "date": "2026-08-23",
+  "evaluator_fingerprint": "43bb3204e062ff946410d2af19b28a99",
+  "experiments_per_standard_night": 6233,
+  "fast_experiment": {
+    "median_seconds": 0.578,
+    "runs": [
+      {
+        "events": 13,
+        "prefetch_seconds": 0.337,
+        "replay_seconds": 0.202,
+        "seconds": 0.539
+      },
+      {
+        "events": 13,
+        "prefetch_seconds": 0.416,
+        "replay_seconds": 0.2,
+        "seconds": 0.616
+      }
+    ]
+  },
+  "plain_experiment": {
+    "median_seconds": 1.109,
+    "runs": [
+      {
+        "events": 13,
+        "seconds": 1.156
+      },
+      {
+        "events": 13,
+        "seconds": 1.063
+      }
+    ]
+  },
+  "speedup_x": 1.921,
+  "trials_per_60min_at_fast_tier": 6233,
+  "window": {
+    "event_ids": [
+      "553/2026",
+      "60/2026",
+      "33/2026",
+      "19/2026",
+      "21/2026",
+      "23/2026",
+      "34/2026",
+      "30/2026",
+      "518/2026",
+      "541/2026",
+      "100/2026",
+      "522/2026",
+      "525/2026"
+    ],
+    "search_events": 13
+  },
+  "within_budget_target": true
+}
