@@ -243,12 +243,15 @@ def _fallback_hypotheses() -> list[dict]:
 
 def experiment_runner_loop(interval_hours: float = 2.0):
     """
-    Picks pending experiments and runs them.
-    Evaluates significance and promotes winners.
+    Picks pending experiments and runs them for reporting.
+
+    Legacy auto-promotion is RETIRED (per PROGRAM.md promotion rule): significant
+    results are logged only. Promotion happens exclusively through the
+    human-clicked Research -> Lab ladder.
     """
     from src import db
     from backtester.experiments import (
-        run_experiment, evaluate_significance, promote_strategy,
+        run_experiment, evaluate_significance,
     )
 
     while not _shutdown.is_set():
@@ -275,9 +278,11 @@ def experiment_runner_loop(interval_hours: float = 2.0):
                         run_experiment(exp_id)
                         sig = evaluate_significance(exp_id)
                         if sig.get("significant"):
-                            promote_strategy(exp_id)
-                            logger.info("[RUNNER] Experiment %d is SIGNIFICANT! ROI=%.1f%%",
-                                       exp_id, sig.get("roi_pct", 0))
+                            logger.info(
+                                "[RUNNER] Experiment %d significant (ROI=%.1f%%) — "
+                                "report-only; promotion requires operator action",
+                                exp_id, sig.get("roi_pct", 0),
+                            )
                     except Exception as e:
                         logger.error("[RUNNER] Experiment %d failed: %s", exp_id, e)
 
