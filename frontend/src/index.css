@@ -239,3 +239,5 @@
 /* Premium refinement pass loads LAST so its token-driven primitives
    (buttons, chips, badges, tables, cards) win the cascade over legacy layers. */
 @import "./styles/design-system.css";
+/* Terminal-overhaul foundation (display type, depth/glass, calm mode) — final layer. */
+@import "./styles/overhaul.css";

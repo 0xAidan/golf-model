@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 
 import { RouteTransition } from "@/components/route-transition"
+import { CalmModeToggle } from "@/components/calm-mode-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { useIsNarrowViewport } from "@/hooks/use-media-query"
@@ -311,6 +312,7 @@ export function MonitoringShell({
 
           <div className="header-actions">
             {statusChip ? <div className="header-freshness-slot">{statusChip}</div> : null}
+            <CalmModeToggle />
             <ThemeToggle />
             {actions}
           </div>
