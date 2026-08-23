@@ -247,6 +247,7 @@ from src.routes.ops import router as ops_router
 from src.routes.ops_jobs import router as ops_jobs_router
 from src.routes.operator_ui import router as operator_ui_router
 from src.routes.autoresearch_tier2 import router as autoresearch_tier2_router
+from src.routes.autoresearch_view import router as autoresearch_view_router
 
 app.include_router(research_router)
 app.include_router(model_registry_router)
@@ -256,6 +257,7 @@ app.include_router(tracks_router)
 app.include_router(field_board_router)
 app.include_router(players_router)
 app.include_router(autoresearch_tier2_router)
+app.include_router(autoresearch_view_router)
 from src.routes.redesign_data import router as redesign_data_router
 
 app.include_router(redesign_data_router)
