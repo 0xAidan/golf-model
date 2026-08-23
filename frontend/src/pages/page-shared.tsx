@@ -32,13 +32,13 @@ export function InfoRow({
   value: string
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-      <div className="rounded-xl bg-white/6 p-2 text-green-400">
+    <div className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-[var(--shadow-card)]">
+      <div className="rounded-lg bg-[var(--green-bg)] p-2 text-[var(--green)]">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
-        <p className="truncate text-sm text-slate-100">{value}</p>
+        <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{label}</p>
+        <p className="truncate text-sm text-[var(--text)]">{value}</p>
       </div>
     </div>
   )
@@ -54,14 +54,14 @@ export function SelectablePlayerName({
   onSelect: (playerKey: string) => void
 }) {
   if (!playerKey) {
-    return <span className="font-medium text-white">{label}</span>
+    return <span className="font-medium text-[var(--text)]">{label}</span>
   }
 
   return (
     <Button
       type="button"
       variant="link"
-      className="h-auto p-0 font-medium text-white underline decoration-transparent underline-offset-4 transition hover:text-green-400 hover:decoration-green-400"
+      className="h-auto p-0 font-medium text-[var(--text)] underline decoration-transparent underline-offset-4 transition hover:text-[var(--green)] hover:decoration-[var(--green)]"
       onClick={() => onSelect(playerKey)}
     >
       {label}

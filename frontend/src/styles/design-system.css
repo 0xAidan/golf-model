@@ -1,0 +1,320 @@
+/* ─────────────────────────────────────────────────────────────
+   Premium design system — primitives on top of themes.css tokens.
+   Loaded FIRST after themes so later layers (terminal-*, product-*)
+   can override where they must; new components should prefer these.
+   ───────────────────────────────────────────────────────────── */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* ── Global focus visibility ─────────────────────────────────── */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Card elevation system ───────────────────────────────────── */
+.ds-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.ds-card--hover:hover {
+  border-color: var(--border-mid);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.ds-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+}
+
+.ds-card-title {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ds-card-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.ds-card-body {
+  padding: 16px;
+}
+
+/* ── Buttons (token-driven restyle of legacy .btn classes) ───── */
+.btn {
+  border-radius: var(--r-sm);
+  font-weight: 500;
+  letter-spacing: 0;
+  transition:
+    background var(--ease),
+    border-color var(--ease),
+    color var(--ease),
+    box-shadow var(--ease),
+    filter var(--ease);
+}
+
+.btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.btn-primary:active {
+  filter: brightness(0.97);
+}
+
+.btn-ghost:hover,
+.btn-secondary:hover {
+  background: var(--accent);
+  border-color: var(--border-mid);
+  color: var(--text);
+}
+
+.btn-ghost,
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost {
+  border-color: transparent;
+}
+
+.btn-secondary {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.btn-danger {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  color: var(--red);
+}
+
+.btn-danger:hover {
+  background: var(--red-bg);
+}
+
+/* ── Inputs / selects ────────────────────────────────────────── */
+input,
+select,
+textarea {
+  font-family: var(--font-body);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Chips, badges ───────────────────────────────────────────── */
+.chip {
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  padding: 3px 10px;
+  transition: border-color var(--ease), background var(--ease), color var(--ease);
+}
+
+.chip--active {
+  color: var(--accent-edge);
+  border-color: color-mix(in srgb, var(--accent-edge) 35%, var(--border));
+  background: var(--green-bg);
+}
+
+.filter-chip,
+.book-chip {
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: border-color var(--ease), background var(--ease), color var(--ease);
+}
+
+.filter-chip.active,
+.book-chip.active {
+  border-color: color-mix(in srgb, var(--accent-edge) 40%, var(--border));
+  color: var(--accent-edge);
+  background: var(--green-bg);
+}
+
+.tier-badge {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.tier-badge--strong {
+  background: var(--green-bg);
+  border-color: color-mix(in srgb, var(--accent-edge) 35%, transparent);
+  color: var(--accent-edge);
+}
+
+.tier-badge--good {
+  background: var(--green-bg);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+  color: var(--green);
+}
+
+.tier-badge--lean {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.reason-badge {
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  padding: 2px 8px;
+}
+
+.reason-badge--muted {
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+
+.reason-badge--gold {
+  color: var(--gold);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--border));
+  background: var(--gold-bg);
+}
+
+/* ── Tables ──────────────────────────────────────────────────── */
+.data-table thead th {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.data-table tbody td {
+  transition: background 120ms ease;
+}
+
+.data-table tbody tr {
+  transition: none;
+}
+
+/* ── KPI cells ───────────────────────────────────────────────── */
+.kpi-value {
+  letter-spacing: -0.01em;
+  font-weight: 700;
+}
+
+.kpi-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+/* ── Notices / banners ───────────────────────────────────────── */
+.term-notice {
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+
+/* ── Motion polish ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  .ds-anim-fade-in {
+    animation: ds-fade-in 160ms ease;
+  }
+}
+
+@keyframes ds-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Selection ───────────────────────────────────────────────── */
+::selection {
+  background: color-mix(in srgb, var(--accent-focus) 25%, transparent);
+}
