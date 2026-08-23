@@ -27,6 +27,7 @@ from backtester.weighted_walkforward import (
     evaluate_guardrails,
     evaluate_weighted_walkforward,
 )
+from backtester.research_lab.fingerprint import evaluator_identity
 from src import config as src_config
 from src.db import ensure_initialized
 
@@ -225,6 +226,7 @@ def evaluate_checkpoint_pilot(
         "pilot_contract_version": contract["pilot_contract_version"],
         "evaluation_contract_version": contract["evaluation_contract_version"],
         "evaluator_version": CHECKPOINT_SCRIPT_EVALUATOR_VERSION,
+        **evaluator_identity(),
     }
 
     return EvaluationResult(

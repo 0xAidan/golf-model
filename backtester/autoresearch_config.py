@@ -15,7 +15,9 @@ from backtester.theory_engine import ALLOWED_OVERRIDE_FIELDS
 ROOT = Path(__file__).resolve().parents[1]
 PILOT_CONTRACT_PATH = ROOT / "docs" / "autoresearch" / "pilot_contract.json"
 EVALUATION_CONTRACT_PATH = ROOT / "docs" / "autoresearch" / "evaluation_contract.md"
-PROGRAM_PATH = ROOT / "program.md"
+# The authoritative program document lives under docs/research/. Root program.md
+# remains a short pointer so existing links keep working.
+PROGRAM_PATH = ROOT / "docs" / "research" / "PROGRAM.md"
 STRATEGY_CONFIG_PATH = ROOT / "autoresearch" / "strategy_config.json"
 
 REQUIRED_DOC_MARKERS = {

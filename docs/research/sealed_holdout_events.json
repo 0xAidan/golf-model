@@ -1,0 +1,19 @@
+{
+  "sealed_holdout_version": 1,
+  "created_at": "2026-08-23",
+  "policy": "These events are excluded from ALL autoresearch search and confirmation windows. They may only be evaluated by explicit operator invocation of scripts/run_autoresearch_sealed_holdout.py. Results append permanently to output/research/ledger.jsonl. This file is immutable except via reviewed PR that bumps sealed_holdout_version and re-seals BEFORE new events complete.",
+  "events": [
+    {
+      "event_id": "32",
+      "year": 2026,
+      "event_name": "RBC Canadian Open",
+      "reason": "Oldest capture-era event with complete grading (68 graded matchup picks), full rounds/finishes/predictions/PIT coverage. Sealed before any autoresearch cycle ran."
+    },
+    {
+      "event_id": "26",
+      "year": 2026,
+      "event_name": "U.S. Open",
+      "reason": "Second-oldest capture-era event with complete grading (13 graded matchup picks) plus dense captured lines (46,581 rows). Sealed before any autoresearch cycle ran."
+    }
+  ]
+}
