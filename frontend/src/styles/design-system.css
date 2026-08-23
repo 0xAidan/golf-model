@@ -297,6 +297,15 @@ textarea:focus-visible {
 }
 
 /* ── Motion polish ───────────────────────────────────────────── */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .ds-anim-fade-in {
     animation: ds-fade-in 160ms ease;
@@ -317,4 +326,584 @@ textarea:focus-visible {
 /* ── Selection ───────────────────────────────────────────────── */
 ::selection {
   background: color-mix(in srgb, var(--accent-focus) 25%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SHELL (PR2) — sidebar, topbar, lane switcher
+   Class names are tested contracts; only styling changes here.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --monitor-shell-header-h: 56px;
+  --monitor-shell-drawer-w: 232px;
+}
+
+/* Sidebar surface */
+.monitoring-shell-drawer {
+  background: var(--bg-1);
+}
+
+.monitoring-shell-nav {
+  padding: 14px 12px;
+  gap: 3px;
+}
+
+.monitoring-shell-nav__brand {
+  padding: 6px 6px 16px;
+  margin-bottom: 10px;
+  border-bottom-color: var(--divider);
+}
+
+.sidebar-logo-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-logo-sub {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.sidebar-section-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 8px 8px 6px;
+  margin-top: 8px;
+}
+
+.sidebar-section-label--toggle {
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-sm);
+  transition: color var(--ease), background var(--ease);
+  width: fit-content;
+}
+
+.sidebar-section-label--toggle:hover {
+  color: var(--text-secondary);
+  background: var(--row-hover);
+}
+
+/* Nav items */
+.monitoring-shell-nav .nav-item,
+.nav-item {
+  min-height: 36px;
+  padding: 0 10px;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  border-radius: var(--r-md);
+  border-color: transparent;
+}
+
+.nav-item:hover {
+  background: var(--row-hover);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.nav-item.active {
+  background: color-mix(in srgb, var(--accent-focus) 12%, transparent);
+  color: var(--text);
+  font-weight: 600;
+  border-color: transparent;
+  box-shadow: none;
+  position: relative;
+}
+
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent-focus);
+}
+
+.nav-item.active svg {
+  color: var(--accent-focus);
+}
+
+.nav-item__hint {
+  display: none;
+}
+
+/* Topbar */
+.monitoring-shell-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.header-event-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.header-event-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Lane switcher — segmented control */
+.mode-switcher {
+  padding: 3px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  gap: 2px;
+}
+
+.mode-tab {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: none;
+  color: var(--text-muted);
+}
+
+.mode-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: transparent;
+  box-shadow: var(--shadow-surface);
+}
+
+/* Freshness chip — quieter pill */
+.freshness-indicator {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+.freshness-indicator__dot {
+  width: 7px;
+  height: 7px;
+}
+
+/* Page headers — one shared anatomy, larger title */
+.page-header {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.page-header-eyebrow {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.page-header-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-header-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.terminal-page-header-kpis .kpi-strip {
+  border-radius: var(--r-lg);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PICK ROWS (PR3) — card treatment, edge emphasis, hover
+   ───────────────────────────────────────────────────────────── */
+.pick-row {
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    border-color var(--ease),
+    box-shadow var(--ease),
+    transform var(--ease);
+}
+
+.pick-row:hover {
+  border-color: var(--border-mid);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.pick-row__main {
+  gap: var(--space-4);
+}
+
+.pick-row__market {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.pick-row__pick {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pick-row__vs {
+  font-size: 12px;
+}
+
+.pick-row__opponent {
+  font-size: 13px;
+}
+
+.pick-row__edge {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--accent-edge);
+}
+
+.pick-row__odds,
+.pick-row__probs {
+  font-size: 12px;
+}
+
+.pick-row__expand.btn {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   KPI STRIP + EVENT HEADER (PR3)
+   ───────────────────────────────────────────────────────────── */
+.kpi-strip {
+  height: auto;
+  min-height: 64px;
+  background: var(--surface);
+  border-bottom: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.kpi-cell {
+  padding: 12px 18px;
+  gap: 3px;
+  border-right-color: var(--divider);
+}
+
+.kpi-cell-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.kpi-cell-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.kpi-cell-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.workspace-kpi-course {
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+/* Event command header — hero treatment */
+.event-command-header {
+  padding: 10px 0 2px;
+}
+
+.event-command-header__meta {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.model-command-section {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.model-command-section__header {
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+}
+
+.model-command-section--picks .model-command-section__header {
+  background: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LAB LANE + BOARD TABS + DIAGNOSTICS (PR3)
+   ───────────────────────────────────────────────────────────── */
+.cockpit-lab-lane-stripe {
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold), color-mix(in srgb, var(--gold) 55%, transparent));
+}
+
+.cockpit-module {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.cockpit-module-header {
+  border-bottom: 1px solid var(--divider);
+}
+
+.cockpit-stack-card--picks {
+  border-color: color-mix(in srgb, var(--accent-edge) 28%, var(--border));
+}
+
+.model-section-nav {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  min-height: 44px;
+}
+
+.model-section-nav__item {
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 500;
+}
+
+.model-section-nav__item--active {
+  background: var(--surface);
+  box-shadow: var(--shadow-surface);
+  font-weight: 600;
+}
+
+.diagnostics-funnel__label {
+  font-size: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PLAYERS PROFILE (PR4) — hero, KPI cells, chart panels
+   ───────────────────────────────────────────────────────────── */
+.players-profile-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--divider);
+  padding: 20px 24px 16px;
+}
+
+.players-profile-eyebrow {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.players-profile-name {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.players-kpi-grid {
+  background: var(--bg-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.players-kpi-cell {
+  padding: 14px 18px;
+  gap: 4px;
+}
+
+.players-kpi-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.profile-panel-card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.collapsible-section {
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.collapsible-section-summary {
+  padding: 12px 16px;
+  background: transparent;
+  transition: background var(--ease);
+}
+
+.collapsible-section-summary:hover {
+  background: var(--row-hover);
+}
+
+.collapsible-section[open] > .collapsible-section-summary {
+  border-bottom-color: var(--divider);
+}
+
+.collapsible-section-title {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--text);
+}
+
+.collapsible-section-desc {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMPARE & EVAL (PR4) — metric cards, gates, inputs
+   ───────────────────────────────────────────────────────────── */
+.card {
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.card-header {
+  padding: 14px 18px;
+}
+
+.card-body {
+  padding: 16px 18px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* Promotion gate rows — clearer pass/fail scan */
+.card ul {
+  list-style: none;
+}
+
+.card ul li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.card ul li:last-child {
+  border-bottom: none;
+}
+
+input[type="text"],
+input[type="search"] {
+  border-radius: var(--r-sm);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-focus) 15%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SYSTEM / RESULTS / RESEARCH (PR5)
+   ───────────────────────────────────────────────────────────── */
+/* Bento panels (results/research) — hairline-gap bento becomes floating cards */
+.monitoring-bento-grid {
+  gap: var(--space-4);
+  background: transparent;
+}
+
+.monitoring-bento-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.monitoring-bento-panel__header {
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  padding: 10px 14px;
+}
+
+.monitoring-bento-panel__title {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+.term-notice {
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+/* Grading trust strip */
+.grading-trust-strip {
+  padding-bottom: 10px;
+}
+
+/* Status banner stack */
+.status-banner {
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* Filter summary chip — pill, sentence case */
+.filter-summary-chip {
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  padding: 3px 10px;
 }

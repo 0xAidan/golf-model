@@ -1,24 +1,25 @@
 # UI Design Contract — Golf Model Operator Analytics
 
-**Status:** Active (UI-first recovery program)  
+**Status:** Active (Premium UI revitalization, Aug 2026)  
 **Audience:** Frontend contributors and AI agents  
 **Production:** https://golf.ancc.blog/
 
 This document is the single source of truth for visual and information
-architecture rules during Operator Site Recovery. **A beautiful UI must never
-hide the truth** — broken, stale, or unhealthy states are shown loudly until
-underlying problems are fixed.
+architecture rules. **A beautiful UI must never hide the truth** — broken,
+stale, or unhealthy states are shown loudly until underlying problems are fixed.
 
-> **Recovery 2026-07 — canonical direction:** The product is a dark-only,
-> professional analytics workspace with the density and legibility associated
-> with Sentry, Stripe, and Data Golf. Faux-terminal styling, terminal language,
-> decorative “command” affordances, and theme toggles are obsolete. Do not add
-> them back.
+> **Premium 2026-08 — canonical direction:** The product is a modern premium
+> analytics workspace (graphite dark + true light) in the spirit of Linear and
+> Stripe: soft elevation over hairlines, generous spacing, one blue
+> interactive accent, strict status-color semantics. Faux-terminal styling and
+> decorative “command” affordances are obsolete. Do not add them back.
 
 ## Recovery 2026-07 product rules
 
-- The site is dark-only. There is no light theme, theme preference, or
-  theme-toggle control.
+- ~~The site is dark-only. There is no light theme, theme preference, or
+  theme-toggle control.~~ **Updated 2026-08:** both themes are first-class;
+  tokens live under the same variable names (`themes.css`), and the
+  `ThemeProvider` toggle remains.
 - Dashboard is the Champion workspace; Lab is the Challenger workspace. Lab
   never displays Champion data as a fallback.
 - Compare exposes current-event disagreements only. Results holds historical
@@ -50,8 +51,9 @@ Roles: table text = `sm`; UI copy = `md`; KPI value = `lg`/`xl` mono; page title
 
 ### Fonts
 
-- **Display:** Zodiak (`--font-display`)
-- **Body:** Switzer (`--font-body`)
+- **Display + body:** system sans stack (`--font-display` / `--font-body` —
+  Zodiak/Switzer webfonts retired Aug 2026; `frontend/public/fonts` retains
+  only Fragment Mono)
 - **Numerics only:** Fragment Mono (`--font-mono`) — `.num`, KPI values, table numeric columns
 
 Banned fonts: per [docs/frontend-overhaul/11-monitoring-design-system.md](../frontend-overhaul/11-monitoring-design-system.md).
@@ -64,9 +66,11 @@ Rhythm: page sections `--space-6`; card padding `--space-4`; intra-card stacks `
 
 ### Surfaces & elevation
 
-- Card: `--surface` + `--border` + `--r-md`
-- Overlay (drawer/sheet/menu): `--surface-2` + `--shadow-overlay`
-- Radius: `--r-sm` 4 / `--r-md` 6 / `--r-lg` 8
+- Card: `--surface` + `--border` + `--r-md` + `--shadow-card`
+- Overlay (drawer/sheet/menu): `--popover` + `--shadow-overlay`
+- Radius: `--r-sm` 6 / `--r-md` 10 / `--r-lg` 12
+- Elevation tokens live in `themes.css`; primitives (buttons, chips, cards,
+  tables) are refined in `design-system.css`, which loads last.
 
 ### Status colors — usage rules
 
@@ -74,6 +78,8 @@ Rhythm: page sections `--space-6`; card padding `--space-4`; intra-card stacks `
 |-------|---------|
 | `--green` / `--amber` / `--red` (+ `-bg`) | **System or outcome status only** — freshness, worker health, disk, W/L/Push, graded/ungraded |
 | `--accent-edge` | **EV / edge numerics only** — never reuse health green for positive edge |
+| `--accent-focus` / `--primary` | **Interactive blue** — nav/focus/primary buttons only, never status |
+| `--chart-c1..c4` | Theme-synced categorical chart series (read via `lib/chart-theme.ts`) |
 | `--turf-*` | Decorative accent only (hero eyebrow, brand) — never state |
 
 If a color does not answer “what state is this in?”, use `--text` / `--text-muted`.
