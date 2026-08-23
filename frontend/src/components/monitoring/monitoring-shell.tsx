@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Menu,
   Settings2,
+  Swords,
   Trophy,
   Users,
   X,
@@ -26,7 +27,7 @@ import type { WorkspaceId } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
-  id: WorkspaceId | "lab-picks" | "compare" | "eval"
+  id: WorkspaceId | "lab-picks" | "compare" | "compare-players" | "eval"
   label: string
   href: string
   icon: ElementType
@@ -38,6 +39,7 @@ const COCKPIT_LAB_ENABLED = import.meta.env.VITE_COCKPIT_LAB !== "0"
 
 const PRODUCT_NAV: NavItem[] = [
   { id: "prediction", label: "Dashboard", href: "/", icon: LayoutDashboard, prefetch: true },
+  { id: "compare-players", label: "Players H2H", href: "/compare/players", icon: Swords },
   ...(COCKPIT_LAB_ENABLED
     ? ([
         { id: "lab-board", label: "Lab", href: "/lab", icon: Beaker, prefetch: true },

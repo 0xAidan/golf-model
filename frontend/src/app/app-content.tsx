@@ -62,6 +62,9 @@ const SystemPage = lazyWithRetry(() =>
 const ComparePage = lazyWithRetry(() =>
   import("@/pages/compare-page").then((mod) => ({ default: mod.ComparePage })),
 )
+const CompareEnginePage = lazyWithRetry(() =>
+  import("@/pages/compare-engine-page").then((mod) => ({ default: mod.CompareEnginePage })),
+)
 const EvalPage = lazyWithRetry(() =>
   import("@/pages/eval-page").then((mod) => ({ default: mod.EvalPage })),
 )
@@ -1201,6 +1204,16 @@ export function AppContent({
             <div className="page-shell--route">
               <Suspense fallback={<RouteFallback />}>
                 <ComparePage />
+              </Suspense>
+            </div>
+          )}
+        />
+        <Route
+          path="/compare/players"
+          element={withRouteRecovery(
+            <div className="page-shell--route">
+              <Suspense fallback={<RouteFallback />}>
+                <CompareEnginePage />
               </Suspense>
             </div>
           )}
