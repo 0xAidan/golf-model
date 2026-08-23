@@ -16,6 +16,7 @@ import {
 } from "@/components/charts-v2"
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
 import { BentoPanel } from "@/components/monitoring"
+import { PlayerIntelligencePanels } from "@/components/players/intelligence-panels"
 import { PlayersKpiCell } from "@/components/players-kpi-cell"
 import { FieldBoardPanel } from "@/components/players/field-board-panel"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -566,6 +567,8 @@ function PlayerProfileView({
             </div>
           </BentoPanel>
         ) : null}
+
+        <PlayerIntelligencePanels playerKey={playerKey} />
 
         {!p.has_skill_data && !p.has_ranking_data && !p.has_approach_data && p.recent_events.length === 0 ? (
           <div className="profile-empty-center">
