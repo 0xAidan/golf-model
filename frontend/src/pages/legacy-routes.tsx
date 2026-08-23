@@ -11,6 +11,7 @@ import {
   MacroKpiStrip,
   type MacroKpiItem,
 } from "@/components/monitoring"
+import { SeasonEquityHero } from "@/components/results/season-equity-hero"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PickRow } from "@/components/ui/pick-row"
@@ -555,6 +556,8 @@ export function GradingPage() {
       />
 
       <MacroKpiStrip items={summaryKpis} testId="grading-summary-kpis" />
+
+      <SeasonEquityHero events={seasonEvents} />
 
       <BentoGrid columns={2} testId="grading-bento">
         <BentoPanel title="Season P&L trend" span={4}>
