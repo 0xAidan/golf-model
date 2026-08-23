@@ -41,7 +41,20 @@ export function getChartPalette() {
     readCssVar("--chart-c2", "#60a5fa"),
     readCssVar("--chart-c3", "#fbbf24"),
     readCssVar("--chart-c4", "#f87171"),
+    readCssVar("--chart-c5", "#a78bfa"),
+    readCssVar("--chart-c6", "#22d3ee"),
   ]
+}
+
+/** Diverging heat scale for SG / hole grids (cool→warm). */
+export function getHeatScale() {
+  return {
+    negStrong: readCssVar("--heat-neg-strong", "#f87171"),
+    neg: readCssVar("--heat-neg", "#fb923c"),
+    neutral: readCssVar("--heat-neutral", "rgba(148, 163, 184, 0.25)"),
+    pos: readCssVar("--heat-pos", "#4ade80"),
+    posStrong: readCssVar("--heat-pos-strong", "#22c55e"),
+  }
 }
 
 /** Positive/negative series colors for value charts. */

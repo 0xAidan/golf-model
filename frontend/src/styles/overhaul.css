@@ -1,0 +1,271 @@
+/* ─────────────────────────────────────────────────────────────
+   TERMINAL OVERHAUL — foundation layer (R0)
+   Display type, depth/glass surfaces, extended data-viz palette,
+   calm-mode system. Loads LAST (wins cascade over design-system).
+   Dark is the primary canvas; light keeps functioning.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* Display numerals — hero metrics (40–72px) */
+  --display-xs: 28px;
+  --display-sm: 36px;
+  --display-md: 44px;
+  --display-lg: 56px;
+  --display-xl: 72px;
+  --font-display-num: var(--font-mono);
+  --tracking-display: -0.03em;
+
+  /* Depth language — layered panels */
+  --panel-gradient: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface-2) 55%, var(--surface)),
+    var(--surface) 42%);
+  --panel-border-subtle: color-mix(in srgb, var(--border) 60%, transparent);
+  --hairline: color-mix(in srgb, var(--border) 50%, transparent);
+  --glass-bg: color-mix(in srgb, var(--bg) 72%, transparent);
+  --glass-blur: saturate(1.4) blur(14px);
+  --shadow-panel:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 30px -12px rgba(0, 0, 0, 0.5);
+  --shadow-pop:
+    0 24px 60px -16px rgba(0, 0, 0, 0.65);
+
+  /* Extended categorical ramp — 6 theme-synced series colors */
+  --chart-c5: #a78bfa;   /* violet  */
+  --chart-c6: #22d3ee;   /* cyan    */
+
+  /* Heat scales (SG maps, hole grids) — cool→warm diverging */
+  --heat-neg-strong: #f87171;
+  --heat-neg: #fb923c;
+  --heat-neutral: rgba(148, 163, 184, 0.25);
+  --heat-pos: #4ade80;
+  --heat-pos-strong: #22c55e;
+
+  /* Phase accents — the site knows what day it is */
+  --phase-build: #60a5fa;   /* Tue/Wed card-building  */
+  --phase-track: #34d399;   /* Thu–Sun live tracking  */
+  --phase-review: #c084fc;  /* Sun/Mon review         */
+}
+
+.dark {
+  --glass-bg: rgba(11, 14, 19, 0.78);
+}
+
+/* ── Display numeral utility ─────────────────────────────────── */
+.display-num {
+  font-family: var(--font-display-num);
+  font-size: var(--display-md);
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.display-num--sm { font-size: var(--display-sm); }
+.display-num--lg { font-size: var(--display-lg); }
+.display-num--xl { font-size: var(--display-xl); }
+.display-num--positive { color: var(--accent-edge); }
+.display-num--negative { color: var(--red); }
+
+/* ── Layered panel ───────────────────────────────────────────── */
+.panel {
+  background: var(--panel-gradient);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+.panel--flat {
+  box-shadow: none;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.panel__title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.panel__body {
+  padding: 18px;
+}
+
+/* ── Glass sticky bar ────────────────────────────────────────── */
+.glass-bar {
+  position: sticky;
+  z-index: 20;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* ── Calm mode ─────────────────────────────────────────────────
+   html[data-calm="true"] degrades every non-essential animation to
+   opacity-only or none. framer-motion components also read the
+   CalmModeContext and skip transforms. Reduced-motion wins always. */
+html[data-calm="true"] *,
+html[data-calm="true"] *::before,
+html[data-calm="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 80ms !important;
+}
+
+html[data-calm="true"] .ticker-track {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none !important;
+  }
+}
+
+/* ── Ticker (used by dashboard track mode) ───────────────────── */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.ticker {
+  overflow: hidden;
+  position: relative;
+}
+
+.ticker-track {
+  display: inline-flex;
+  gap: var(--space-6);
+  padding-right: var(--space-6);
+  white-space: nowrap;
+  animation: ticker-scroll 40s linear infinite;
+  will-change: transform;
+}
+
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ticker-item__delta--up { color: var(--accent-edge); }
+.ticker-item__delta--down { color: var(--red); }
+
+/* ── Edge duel bars (model% vs implied% meeting at center) ───── */
+.edge-duel {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.edge-duel__side {
+  height: 6px;
+  border-radius: 999px;
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-faint) 15%, transparent);
+}
+
+.edge-duel__side--model {
+  justify-self: end;
+}
+
+.edge-duel__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+}
+
+.edge-duel__side--model .edge-duel__fill {
+  right: 0;
+  background: linear-gradient(270deg, var(--accent-edge), color-mix(in srgb, var(--accent-edge) 45%, transparent));
+}
+
+.edge-duel__side--market .edge-duel__fill {
+  left: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--chart-c2, #60a5fa) 45%, transparent), var(--chart-c2, #60a5fa));
+}
+
+.edge-duel__center {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-edge);
+  min-width: 64px;
+  text-align: center;
+}
+
+/* ── Skeleton system ─────────────────────────────────────────── */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--text-faint) 12%, transparent);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text) 7%, transparent),
+    transparent
+  );
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+html[data-calm="true"] .skeleton::after {
+  animation: none;
+}
+
+.skeleton--text { height: 12px; }
+.skeleton--title { height: 20px; width: 40%; }
+.skeleton--num { height: 44px; width: 120px; border-radius: var(--r-sm); }
+.skeleton--block { height: 160px; border-radius: var(--r-md); }
+
+/* ── Phase chip ──────────────────────────────────────────────── */
+.phase-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid color-mix(in srgb, var(--phase-accent, var(--phase-build)) 35%, transparent);
+  color: var(--phase-accent, var(--phase-build));
+  background: color-mix(in srgb, var(--phase-accent, var(--phase-build)) 9%, transparent);
+}
+
+.phase-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
