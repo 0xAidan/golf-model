@@ -1317,6 +1317,35 @@ def _run_migrations(conn: sqlite3.Connection):
     """)
     conn.commit()
 
+    # Autoresearch backtest ledger: pre-tournament captured book lines + outcomes,
+    # derived from market_prediction_rows and graded picks. Idempotent.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS research_backtest_lines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            market_type TEXT NOT NULL,
+            player_key TEXT NOT NULL,
+            player_display TEXT,
+            opponent_key TEXT NOT NULL,
+            opponent_display TEXT,
+            book TEXT NOT NULL,
+            odds_american TEXT NOT NULL,
+            implied_prob REAL,
+            first_captured_at TEXT,
+            last_captured_at TEXT,
+            capture_count INTEGER DEFAULT 1,
+            outcome TEXT,
+            outcome_source TEXT,
+            UNIQUE(event_id, year, market_type, player_key, opponent_key, book)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_research_backtest_lines_event
+        ON research_backtest_lines(event_id, year, market_type)
+    """)
+    conn.commit()
+
     # Add UNIQUE index on metrics for dedup (prevents duplicate SG:TOT rows per player/window)
     try:
         # First deduplicate: keep the row with the highest id (most recent)
