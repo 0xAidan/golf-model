@@ -170,7 +170,7 @@ def run_cycle(*, weekly: bool = False, dry_run: bool = False) -> dict:
     if not dry_run:
         from backtester.tier1_loop import run_tier1_cycle
 
-        result = run_tier1_cycle(budget=budget)
+        result = run_tier1_cycle(budget=budget, alert_fn=send_high_signal_alert)
         summary.update(result)
 
     summary["elapsed_seconds"] = round(time.perf_counter() - started, 1)

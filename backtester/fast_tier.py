@@ -282,6 +282,8 @@ def compute_precomputed_baseline_results(
     test_window_size: int = 1,
 ) -> list[dict[str, Any]]:
     """Baseline per-event results once, in split-test order (for precomputed_baseline)."""
+    from backtester.weighted_walkforward import classify_event, event_weight
+
     splits = build_expanding_splits(
         events, min_train_events=min_train_events, test_window_size=test_window_size
     )
@@ -289,7 +291,16 @@ def compute_precomputed_baseline_results(
     for split in splits:
         for event in split["test_events"]:
             metrics = _default_replay_runner(event, baseline_strategy)
-            results.append({**event, **metrics})
+            # event_class/weight are required downstream by _segment_results.
+            event_class = classify_event(event.get("event_name"))
+            results.append(
+                {
+                    **event,
+                    **metrics,
+                    "event_class": event_class,
+                    "weight": event_weight(event_class),
+                }
+            )
     return results
 
 
