@@ -68,6 +68,11 @@ const CompareEnginePage = lazyWithRetry(() =>
 const EvalPage = lazyWithRetry(() =>
   import("@/pages/eval-page").then((mod) => ({ default: mod.EvalPage })),
 )
+const AutoresearchViewPage = lazyWithRetry(() =>
+  import("@/pages/autoresearch-view-page").then((mod) => ({
+    default: mod.AutoresearchViewPage,
+  })),
+)
 
 /** Deep-link wrapper: /players/:playerKey renders PlayersPage focused on that player. */
 function PlayersDeepLink({ players }: { players: CompositePlayer[] }) {
@@ -1049,6 +1054,7 @@ export function AppContent({
       "/track-record": "Track record",
       "/research/legacy-model": "Legacy model",
       "/research/champion-challenger": "Champion / Challenger",
+      "/research/autoresearch": "Autoresearch",
       "/research/diagnostics": "Diagnostics",
     }
     const primary =
@@ -1267,6 +1273,14 @@ export function AppContent({
           element={withRouteRecovery(
             <Suspense fallback={<RouteFallback />}>
               <ChampionChallengerPage />
+            </Suspense>
+          )}
+        />
+        <Route
+          path="/research/autoresearch"
+          element={withRouteRecovery(
+            <Suspense fallback={<RouteFallback />}>
+              <AutoresearchViewPage />
             </Suspense>
           )}
         />
