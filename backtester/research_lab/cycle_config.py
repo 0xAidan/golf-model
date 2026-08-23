@@ -10,11 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CYCLE_CONFIG_PATH = ROOT / "autoresearch" / "cycle_config.json"
 
 _DEFAULTS: dict[str, Any] = {
-    "mode": "weighted_walk_forward",
-    "scope": "global",
-    "cycles": 3,
     "max_candidates_per_cycle": 5,
-    "holdout_tournaments": 3,
     "seed": 42,
 }
 
@@ -28,7 +24,7 @@ def load_cycle_config() -> dict[str, Any]:
         raw = json.loads(CYCLE_CONFIG_PATH.read_text(encoding="utf-8"))
         if isinstance(raw, dict):
             for k, v in raw.items():
-                if k in _DEFAULTS or k in ("mode", "scope"):
+                if k in _DEFAULTS:
                     out[k] = v
     except (OSError, json.JSONDecodeError):
         pass
