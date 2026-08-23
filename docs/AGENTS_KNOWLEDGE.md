@@ -615,6 +615,22 @@ Run pipeline in parallel with alternate config/blend; compare cards and Brier/CL
 
 **Default behavior:** **`AUTORESEARCH_AUTO_APPLY` is off.** Research cycle **does not** auto-call `set_research_champion` / `approve_proposal` unless that env var is set to `1`. Do **not** suggest auto-applying Optuna or walk-forward winners to live or registry without explicit operator approval; point to [`docs/research/EDGE_TUNER_REPORT.md`](../research/EDGE_TUNER_REPORT.md) and manual merge into `autoresearch/strategy_config.json`.
 
+**Autonomous loop (Karpathy-style, 2026-08 program):** the authoritative control plane is [`docs/research/PROGRAM.md`](../research/PROGRAM.md); phased plan in [`docs/plans/autoresearch_execution_plan.md`](../plans/autoresearch_execution_plan.md); ops runbook in [`docs/runbooks/autoresearch-operations.md`](../runbooks/autoresearch-operations.md). Key modules:
+
+| Module | Role |
+|---|---|
+| `backtester/tier1_loop.py` | Nightly mutate → fast-tier eval → keep/discard on 13-event search window → 3-event rolling confirmation → stages promotion-ready dossiers. NOTHING auto-promotes. |
+| `backtester/fast_tier.py` | Cached PIT sub-scores (identical results to plain replay), deterministic window selection (13/3/sealed-holdout-excluded), effort presets light/standard/max with hard budgets, `make_fast_eval_fn` threads precomputed baseline through Optuna. |
+| `backtester/backtest_ledger.py` + table `research_backtest_lines` | Backtest-grade matchup lines/outcomes derived from our own `market_prediction_rows` capture (DG's historical matchup archive is empty; `historical_odds` are synthetic). Idempotent builder. |
+| `backtester/sealed_holdout.py` + `docs/research/sealed_holdout_events.json` | Immutable excluded events (32/2026 RBC Canadian Open, 26/2026 U.S. Open); opened only via `scripts/run_autoresearch_sealed_holdout.py --write`. |
+| `backtester/research_lab/fingerprint.py` | sha256 evaluator fingerprint stamped on every ledger row + pilot metadata. |
+| `backtester/strategy_config_artifact.py` | Versioned strategy-config artifact (schema v2: overrides/ranges/segments), validation, hashing, diffing, v1 migration. |
+| `workers/autoresearch_orchestrator.py` | Nightly/weekly cycle runner; fcntl lock (`data/autoresearch_cycle.lock`), heartbeat (`data/autoresearch_heartbeat.json`), Telegram high-signal alerts + weekly digest; effort dial persisted as `autoresearch_effort` in autoresearch settings. Systemd: `golf-autoresearch.timer` (02:30 UTC) + `golf-autoresearch-deep.timer` (Sun 04:00 UTC) — shipped but NOT enabled by deploy; enable per runbook §2. |
+| `backtester/tier2.py` + `src/routes/autoresearch_tier2.py` | Structural hypothesis detection over graded segments; dossiers under `output/research/tier2/`; draft-PR creation is operator-gated POST only — the loop never writes to GitHub. |
+| `src/autoresearch_operator.py` + `src/routes/autoresearch_view.py` + `/research/autoresearch` page | Operator view: cycle status/ETA, ledger browser, promotion-ready cards with config diff + Promote-to-Lab (auditable lab-track swap via `backtester/track_registry_bridge.py`; dashboard slot untouched), algorithm-eras timeline (per-algo ROI/W-L from activation timestamp), effort dial. |
+
+Legacy note: the golf-agent ExperimentRunner no longer auto-promotes to `active_strategy` (retired 2026-08; report-only).
+
 **Dashboard default workflow:** The recommended UI path is the **Simple Mode** edge tuner exposed via `/api/simple/autoresearch/start|status|stop|run-once`. It always runs **Optuna scalar**, uses **`weighted_roi_pct`** as the primary objective, keeps **report-only** behavior, and uses the scalar study base name **`golf_scalar_simple`**. **Lab Mode** still exposes the lower-level `engine_mode`, Pareto/study views, theory toggle, and reset controls.
 
 **Persisted defaults:** `src/autoresearch_settings.DEFAULT_SETTINGS` now boots the advanced settings layer to `engine_mode="optuna_scalar"`, `scalar_objective="weighted_roi_pct"`, `optuna_scalar_study_name="golf_scalar_simple"`, and `optuna_trials_per_cycle=3`.
@@ -809,7 +825,12 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Backtest strategy replay | `backtester/strategy.py`, `backtester/pit_models.py` |
 | Experiment tracking / promotion | `backtester/experiments.py` |
 | Research cycle / proposals | `backtester/research_cycle.py`, `backtester/proposals.py` |
-| Autoresearch config | `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json` |
+| Autoresearch config | `autoresearch/cycle_config.json`, `autoresearch/strategy_config.json` (schema v2 artifact: `backtester/strategy_config_artifact.py`) |
+| Autonomous research loop / orchestrator | `backtester/tier1_loop.py`, `workers/autoresearch_orchestrator.py`, `docs/research/PROGRAM.md` |
+| Autoresearch operator view API/UI | `src/autoresearch_operator.py`, `src/routes/autoresearch_view.py`, `frontend/src/pages/autoresearch-view-page.tsx` (`/research/autoresearch`) |
+| Derived backtest line/outcome ledger | `backtester/backtest_ledger.py` (table `research_backtest_lines`) |
+| Sealed holdout + evaluator fingerprint | `backtester/sealed_holdout.py`, `backtester/research_lab/fingerprint.py`, `scripts/run_autoresearch_sealed_holdout.py` |
+| Tier 2 hypothesis pipeline | `backtester/tier2.py`, `src/routes/autoresearch_tier2.py` |
 | Strategy resolution (CLI/web parity) | `src/strategy_resolution.py` |
 | Autoresearch facade + health | `backtester/autoresearch_engine.py`, `backtester/autoresearch_data_health.py` |
 | Operator runbook | `docs/autoresearch/RUNBOOK.md` |
