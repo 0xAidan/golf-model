@@ -16,6 +16,7 @@ pyyaml>=6.0
 
 # Testing
 pytest>=8.0
+httpx>=0.27
 
 # Autoresearch v2 (multi-objective study)
 optuna>=3.6.0
