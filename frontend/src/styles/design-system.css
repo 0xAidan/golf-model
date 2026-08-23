@@ -716,3 +716,137 @@ textarea:focus-visible {
 .diagnostics-funnel__label {
   font-size: 12px;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   PLAYERS PROFILE (PR4) — hero, KPI cells, chart panels
+   ───────────────────────────────────────────────────────────── */
+.players-profile-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--divider);
+  padding: 20px 24px 16px;
+}
+
+.players-profile-eyebrow {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.players-profile-name {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.players-kpi-grid {
+  background: var(--bg-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.players-kpi-cell {
+  padding: 14px 18px;
+  gap: 4px;
+}
+
+.players-kpi-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.profile-panel-card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.collapsible-section {
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.collapsible-section-summary {
+  padding: 12px 16px;
+  background: transparent;
+  transition: background var(--ease);
+}
+
+.collapsible-section-summary:hover {
+  background: var(--row-hover);
+}
+
+.collapsible-section[open] > .collapsible-section-summary {
+  border-bottom-color: var(--divider);
+}
+
+.collapsible-section-title {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--text);
+}
+
+.collapsible-section-desc {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMPARE & EVAL (PR4) — metric cards, gates, inputs
+   ───────────────────────────────────────────────────────────── */
+.card {
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.card-header {
+  padding: 14px 18px;
+}
+
+.card-body {
+  padding: 16px 18px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* Promotion gate rows — clearer pass/fail scan */
+.card ul {
+  list-style: none;
+}
+
+.card ul li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.card ul li:last-child {
+  border-bottom: none;
+}
+
+input[type="text"],
+input[type="search"] {
+  border-radius: var(--r-sm);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-focus) 15%, transparent);
+}
