@@ -1270,10 +1270,3 @@ export function AppContent({
     </>
   )
 }
-
-/* Spin animation for refresh button */
-const style = document.createElement("style")
-style.textContent = `
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-`
-if (typeof document !== "undefined") document.head.appendChild(style)
