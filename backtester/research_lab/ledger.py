@@ -34,6 +34,7 @@ def append_ledger_row(row: dict[str, Any]) -> None:
     Append one JSON object to ledger.jsonl (and mirror legacy path for cli_loop when source is cli_loop).
 
     Required-ish fields per SPEC: ts, source, duration_ms; callers should set trial_id, params, etc.
+    Every row is auto-stamped with evaluator_version + evaluator_fingerprint unless present.
     """
     out = dict(row)
     if "ts" not in out:
@@ -41,6 +42,9 @@ def append_ledger_row(row: dict[str, Any]) -> None:
     src = out.get("source")
     if src not in VALID_SOURCES:
         raise ValueError(f"ledger source must be one of {sorted(VALID_SOURCES)}, got {src!r}")
+    from backtester.research_lab.fingerprint import evaluator_identity
+
+    out.setdefault("evaluator_fingerprint", evaluator_identity()["evaluator_fingerprint"])
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(out, sort_keys=True, default=str) + "\n"
     with LEDGER_PATH.open("a", encoding="utf-8") as handle:
