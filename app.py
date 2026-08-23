@@ -254,6 +254,9 @@ app.include_router(data_health_router)
 app.include_router(tracks_router)
 app.include_router(field_board_router)
 app.include_router(players_router)
+from src.routes.redesign_data import router as redesign_data_router
+
+app.include_router(redesign_data_router)
 app.include_router(eval_router)
 app.include_router(ops_router)
 app.include_router(ops_jobs_router)

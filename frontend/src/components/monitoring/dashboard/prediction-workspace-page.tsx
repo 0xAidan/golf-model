@@ -53,6 +53,9 @@ import { HIGH_EV_FLOOR, LIVE_OPPORTUNITY_PIN_MS } from "./workspace-constants"
 import { TopPicksPipelineHint } from "./workspace-pipeline-hint"
 import type { PredictionWorkspacePageProps } from "./workspace-types"
 import { buildWorkspaceAlertBanners } from "./workspace-alerts"
+import { EdgeDuelBar } from "./edge-duel-bar"
+import { LiveMoversTicker } from "./live-movers-ticker"
+import { PhaseBlurb, PhaseChip } from "./phase-elements"
 
 export function PredictionWorkspacePage({
   liveSnapshot,
@@ -738,13 +741,23 @@ export function PredictionWorkspacePage({
           lane={lane}
           meta={eventMeta}
           trailing={
-            <LastEventChip
-              eventName={lastEventChip?.eventName}
-              gradedCount={lastEventChip?.gradedCount}
-              ungradedPositiveEvCount={lastEventChip?.ungradedPositiveEvCount}
-            />
+            <div className="flex flex-col items-end gap-2">
+              <PhaseChip snapshot={liveSnapshot} />
+              <LastEventChip
+                eventName={lastEventChip?.eventName}
+                gradedCount={lastEventChip?.gradedCount}
+                ungradedPositiveEvCount={lastEventChip?.ungradedPositiveEvCount}
+              />
+            </div>
           }
         />
+        <PhaseBlurb snapshot={liveSnapshot} />
+
+        {isLiveActive ? (
+          <LiveMoversTicker
+            rows={activeSection?.leaderboard ?? pastReplay.pastSnapshotSection?.leaderboard ?? []}
+          />
+        ) : null}
 
         {bannerItems.length > 0 ? <StatusBannerStack banners={bannerItems} /> : null}
 
