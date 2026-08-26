@@ -5,6 +5,7 @@ __pycache__/
 venv/
 data/golf.db
 data/golf.db-*
+data/tmp/
 data/local_recovery/
 data/exports/
 data/csvs/*.csv

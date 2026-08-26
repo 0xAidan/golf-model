@@ -740,6 +740,8 @@ Port guard: `scripts/ensure_port_owner.sh` / `scripts/port_8000_audit.py` — ru
 | `golf-live-refresh` | `workers/live_refresh_worker.py` | — |
 | `golf-live-refresh-watchdog.timer` | `scripts/live_refresh_watchdog.py --restart` (every 5 min) | — |
 | `golf-backup.timer` | Nightly DB backup at 03:00 UTC | — |
+| `golf-storage-janitor.timer` | Daily leftover sweep + cleanup at 02:00 UTC (before backup) | — |
+| `golf-retention.timer` | Weekly archive-then-prune at Sun 04:00 UTC | — |
 
 Useful commands on the server:
 ```
@@ -793,7 +795,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | AI prompts | `src/prompts.py` |
 | AI analysis logic | `src/ai_brain.py` |
 | DB schema/migrations | `src/db.py` |
-| Storage retention / prune / reclaim | `docs/storage-retention.md`, `src/db.py`, `src/pick_ledger.py` (`prune_generated_pick_ledger`), `src/ops_jobs.py` (`run_storage_cleanup`), `src/cold_archive.py`, `scripts/export_tournament_archive.py` |
+| Storage retention / prune / reclaim | `docs/storage-retention.md`, `src/storage_janitor.py`, `src/db.py` (`swap_compacted_database`, `incremental_reclaim`), `src/pick_ledger.py` (`prune_generated_pick_ledger`), `src/ops_jobs.py` (`run_storage_cleanup`, `maybe_enqueue_storage_cleanup`), `src/cold_archive.py`, `scripts/run_storage_janitor.py`, `scripts/export_tournament_archive.py` |
 | Data platform health API | `src/data_health.py`, `GET /api/data-health`, `frontend/src/pages/system-page.tsx` Storage card, `frontend/src/components/data-health-panel.tsx` |
 | DB backups + integrity | `src/backup.py` (refuse if backup cannot fit; gzip + `.integrity.json` sidecar), `backups/` |
 | System Health / ops jobs | `frontend/src/pages/system-page.tsx` (`Restart worker`, `Grade leftover`, `Run cleanup`), `POST /api/ops/jobs/grade`, `POST /api/ops/jobs/cleanup` |

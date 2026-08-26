@@ -91,7 +91,17 @@ Storage color on `/system`:
 - **Yellow:** database is large, disk below 10 GB free, integrity check skipped for space, prune deleted 0 rows, or other warnings.
 - **Not red by itself:** file larger than 10 GB, or an approximate table taking more than 50% of measured pages.
 
-On `/system`, **Run cleanup** calls `POST /api/ops/jobs/cleanup` (sidecar sweep → generated-ledger prune → WAL checkpoint → retention cycle → guarded reclaim).
+On `/system`, **Run cleanup** calls `POST /api/ops/jobs/cleanup`. The same job also runs automatically:
+
+- daily at 02:00 UTC (`golf-storage-janitor.timer`) before the 03:00 backup
+- when `GET /api/data-health` is red, with a 6-hour cooldown
+- as the first step of `python3 -m src.backup` (sweep leftover temp copies so `can_fit_backup` is measured after reclaimable junk is gone)
+
+Cleanup order: leftover `/tmp/tmp*.db` and managed `data/tmp/backup/` sweep → sidecar sweep → generated-ledger prune → stale `.pre_reclaim` copies → WAL checkpoint → retention cycle → guarded reclaim (rename-swap VACUUM INTO, not a third full copy). After a successful vacuum, `PRAGMA auto_vacuum=INCREMENTAL` is set so later deletes can shrink without another 15 GB hole.
+
+**Never auto-deleted:** `data/golf.db`, WAL/SHM, KEEP_FOREVER tables, displayed/frozen/graded ledger rows, or the newest verified `backups/*.db.gz`.
+
+**Safe to auto-reclaim:** crashed integrity temps (including leftover `/tmp/tmp*.db` files older than 2 hours), golf backup test dirs older than 1 day, orphan backup sidecars, `pick_ledger.lifecycle=generated` tick copies.
 
 ## Audit
 

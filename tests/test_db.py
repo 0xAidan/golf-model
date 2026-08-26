@@ -1,6 +1,7 @@
 """Tests for src/db.py -- dedup, constraints, year-aware lookups."""
 
 import os
+import sqlite3
 import sys
 import tempfile
 
@@ -410,3 +411,40 @@ def test_reclaim_database_disk_runs_vacuum_on_small_db(monkeypatch):
     result = db.reclaim_database_disk(min_free_mb=1)
     assert result["ok"] is True
     assert result.get("bytes_before", 0) >= 0
+
+
+def test_swap_compacted_database_renames_and_drops_pre_copy(tmp_path):
+    live = tmp_path / "golf.db"
+    compact = tmp_path / "golf.db.vacuum_into"
+    source = sqlite3.connect(live)
+    source.execute("CREATE TABLE keep (id INTEGER)")
+    source.execute("INSERT INTO keep (id) VALUES (1)")
+    source.commit()
+    source.close()
+    dest = sqlite3.connect(compact)
+    dest.execute("CREATE TABLE keep (id INTEGER)")
+    dest.execute("INSERT INTO keep (id) VALUES (99)")
+    dest.commit()
+    dest.close()
+
+    result = db.swap_compacted_database(str(live), str(compact))
+
+    assert result["ok"] is True
+    assert result["method"] == "rename_swap"
+    assert (tmp_path / "golf.db.pre_reclaim").exists() is False
+    assert compact.exists() is False
+    conn = sqlite3.connect(live)
+    assert conn.execute("SELECT id FROM keep").fetchone()[0] == 99
+    conn.close()
+
+
+def test_vacuum_enables_incremental_auto_vacuum(tmp_db):
+    result = db.vacuum_database()
+    assert result["ok"] is True
+    conn = tmp_db.get_conn()
+    mode = int(conn.execute("PRAGMA auto_vacuum").fetchone()[0] or 0)
+    conn.close()
+    assert mode == 2
+    incremental = db.incremental_reclaim()
+    assert incremental["ok"] is True
+    assert incremental.get("skipped") is not True

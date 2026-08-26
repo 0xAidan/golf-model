@@ -30,6 +30,23 @@ function formatAge(seconds?: number | null): string {
   return `${(seconds / 3600).toFixed(1)}h`
 }
 
+const STORAGE_RED_REASON_COPY: Record<string, string> = {
+  "disk hard floor": "Free disk is below the safety floor.",
+  "latest backup missing": "No database backup was found.",
+  "latest backup older than 36h":
+    "The nightly backup is older than 36 hours. Automatic cleanup will free leftover copies and retry.",
+  "backup integrity failed": "The latest backup failed its integrity check.",
+  "WAL file is huge": "The write-ahead log is unusually large.",
+  "next backup cannot fit":
+    "There is not enough free space to copy the database for a new backup. Automatic cleanup reclaims leftover copies first.",
+}
+
+const humanStorageRedReason = (reason?: string): string | null => {
+  const trimmed = String(reason ?? "").trim()
+  if (!trimmed) return null
+  return STORAGE_RED_REASON_COPY[trimmed] ?? trimmed
+}
+
 function storageTone(report?: DataHealthReport): "good" | "warn" | "bad" {
   if (report?.status === "red") return "bad"
   if (report?.status === "yellow" || (report?.storage_warnings?.length ?? 0) > 0) return "warn"
@@ -205,10 +222,14 @@ export function SystemPage({
         .filter(Boolean)
         .join(" · ")
 
+  const cleanupRunning = String(latestCleanupJob?.status ?? "").toLowerCase() === "running"
+  const storageRedReason = humanStorageRedReason(dataHealth?.storage_red_reasons?.[0])
   const storageSummary = dataHealthPending
     ? "Checking storage and backups…"
-    : storagePanelTone === "bad"
-      ? "Storage health is in a red state and needs operator attention."
+    : storagePanelTone === "bad" && cleanupRunning
+      ? "Automatic cleanup is running to free leftover copies so backups can succeed."
+      : storagePanelTone === "bad"
+        ? (storageRedReason ?? "Storage health is in a red state and needs operator attention.")
       : storagePanelTone === "warn"
         ? "Storage health has warnings that should be reviewed soon."
         : "Database, backups, and archives look healthy."

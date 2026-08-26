@@ -164,12 +164,29 @@ describe("SystemPage", () => {
         status: "red",
         summary: "Disk is near full.",
         storage_warnings: ["Disk free space is below the hard floor."],
+        storage_red_reasons: ["next backup cannot fit"],
       }),
     })
 
     await waitFor(() => {
       expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(
-        /storage health is in a red state/i,
+        /not enough free space to copy the database/i,
+      )
+    })
+  })
+
+  it("says automatic cleanup is running instead of asking for a click", async () => {
+    renderSystemPage({
+      dataHealth: buildDataHealth({
+        status: "red",
+        storage_red_reasons: ["latest backup older than 36h"],
+      }),
+      latestJob: { status: "running", job_type: "cleanup", message: "Sweeping leftover temp copies…" },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(
+        /automatic cleanup is running/i,
       )
     })
   })
