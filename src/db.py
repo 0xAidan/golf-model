@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src import config
+from src.official_pick_record import american_odds_rank, is_rejected_inventory_row
 from src.player_normalizer import normalize_name
 
 _logger = logging.getLogger("golf.db")
@@ -1783,10 +1784,18 @@ def _migrate_picks_unique_index(conn: sqlite3.Connection) -> None:
 def store_picks(picks: list[dict]):
     if not picks:
         return
-    from src.official_pick_record import american_odds_rank
 
     normalized_rows = []
     for pick in picks:
+        if is_rejected_inventory_row(pick):
+            _logger.info(
+                "Skipping non-inventory pick %s vs %s ev=%s odds=%s",
+                pick.get("player_key") or pick.get("player_display"),
+                pick.get("opponent_key") or pick.get("opponent_display"),
+                pick.get("ev"),
+                pick.get("market_odds") or pick.get("odds"),
+            )
+            continue
         normalized_rows.append({
             "tournament_id": pick["tournament_id"],
             "model_variant": (pick.get("model_variant") or "baseline").strip().lower(),
@@ -1810,6 +1819,8 @@ def store_picks(picks: list[dict]):
             "reasoning": pick.get("reasoning"),
             "model_config_hash": pick.get("model_config_hash"),
         })
+    if not normalized_rows:
+        return
     conn = get_conn()
     select_sql = """
         SELECT id, market_odds, ev, market_book FROM picks

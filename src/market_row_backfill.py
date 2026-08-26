@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src import db
-from src.official_pick_record import filter_positive_ev, normalize_market_type
+from src.official_pick_record import filter_positive_ev, is_rejected_inventory_row, normalize_market_type
 from src.player_normalizer import normalize_name
 
 
@@ -46,6 +46,7 @@ def backfill_completed_market_rows_into_picks(
         for row in rows
         if row.get("player_key") or row.get("player_display")
     ]
+    pick_rows = [row for row in pick_rows if not is_rejected_inventory_row(row)]
     positive_ev_rows = filter_positive_ev(pick_rows)
     if not positive_ev_rows:
         return 0

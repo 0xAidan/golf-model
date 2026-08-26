@@ -100,6 +100,22 @@ export function SystemPage({
       toast.error(error instanceof Error ? error.message : "Worker restart request failed.")
     },
   })
+  const gradeLeftover = useMutation({
+    mutationFn: () =>
+      api.startGradeJob({
+        event_id: opsHealthQuery.data?.grading?.leftover_event_id ?? undefined,
+        year: opsHealthQuery.data?.grading?.leftover_event_year ?? undefined,
+        event_name: opsHealthQuery.data?.grading?.leftover_event_name ?? undefined,
+      }),
+    onSuccess: (result) => {
+      toast.message(result.message ?? "Grade job started for the leftover event.")
+      void queryClient.invalidateQueries({ queryKey: ["ops-health"] })
+      void queryClient.invalidateQueries({ queryKey: ["ops-job-latest-grade"] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Grade leftover request failed.")
+    },
+  })
 
   const opsHealth = opsHealthQuery.data
   const dataHealth = dataHealthQuery.data
@@ -267,6 +283,19 @@ export function SystemPage({
             summary={gradingSummary}
             detail={gradingDetail}
             testId="system-grading-panel"
+            action={
+              gradingGap > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => gradeLeftover.mutate()}
+                  disabled={gradeLeftover.isPending}
+                >
+                  {gradeLeftover.isPending ? "Starting…" : "Grade leftover"}
+                </Button>
+              ) : null
+            }
           />
           <SystemStatusPanel
             title="Storage"

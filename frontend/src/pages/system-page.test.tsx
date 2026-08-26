@@ -13,6 +13,7 @@ const { apiMock, toastMock } = vi.hoisted(() => ({
     getDataHealth: vi.fn(),
     getLatestOpsJob: vi.fn(),
     requestWorkerRestart: vi.fn(),
+    startGradeJob: vi.fn(),
   },
   toastMock: {
     message: vi.fn(),
@@ -74,6 +75,11 @@ function renderSystemPage({
     ok: true,
     status: "accepted",
     message: "Worker restart requested.",
+  })
+  apiMock.startGradeJob.mockResolvedValue({
+    job_id: "grade-1",
+    status: "running",
+    message: "Grading started in background",
   })
 
   const queryClient = new QueryClient({
@@ -199,12 +205,15 @@ describe("SystemPage", () => {
   })
 
   it("uses singular grammar and never stringifies an auto-grade object", async () => {
+    const user = userEvent.setup()
     renderSystemPage({
       opsHealth: {
         grading: {
           status: "discrepancies",
           events_with_ungraded_positive_ev: 1,
           leftover_event_name: "Texas Children's Houston Open",
+          leftover_event_id: "20",
+          leftover_event_year: 2026,
           last_auto_grade_at: "2099-01-01T00:00:00+00:00",
           last_auto_grade_status: { status: "complete", event_id: "20" },
         },
@@ -218,6 +227,15 @@ describe("SystemPage", () => {
     })
     expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
     expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/complete/i)
+
+    await user.click(screen.getByRole("button", { name: /grade leftover/i }))
+    await waitFor(() => {
+      expect(apiMock.startGradeJob).toHaveBeenCalledWith({
+        event_id: "20",
+        year: 2026,
+        event_name: "Texas Children's Houston Open",
+      })
+    })
   })
 
   it("reads heartbeat age from the top-level ops field when nested age is missing", async () => {

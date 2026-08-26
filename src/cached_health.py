@@ -93,6 +93,20 @@ def refresh_ops_grading_cache() -> dict[str, Any]:
 
     reconciliation = reconcile_grading(limit_events=5)
     events = reconciliation.get("events") or []
+    leftover = next((event for event in events if event.get("has_discrepancy")), None)
+    leftover_year = leftover.get("tournament_year") if leftover else None
+    try:
+        leftover_year_int = int(leftover_year) if leftover_year is not None else None
+    except (TypeError, ValueError):
+        leftover_year_int = None
+    leftover_tid = leftover.get("tournament_id") if leftover else None
+    try:
+        leftover_tid_int = int(leftover_tid) if leftover_tid is not None else None
+    except (TypeError, ValueError):
+        leftover_tid_int = None
+    leftover_event_id = leftover.get("event_id") if leftover else None
+    leftover_event_id = str(leftover_event_id).strip() if leftover_event_id else None
+    leftover_name = str(leftover.get("tournament_name") or "").strip() if leftover else None
     grading = {
         "status": reconciliation.get("status"),
         "events_with_ungraded_positive_ev": reconciliation.get("events_with_ungraded_positive_ev"),
@@ -101,6 +115,10 @@ def refresh_ops_grading_cache() -> dict[str, Any]:
         "ungraded_positive_ev_picks": sum(
             int(event.get("ungraded_positive_ev_picks") or 0) for event in events
         ),
+        "leftover_event_name": leftover_name or None,
+        "leftover_event_id": leftover_event_id or None,
+        "leftover_event_year": leftover_year_int,
+        "leftover_tournament_id": leftover_tid_int,
     }
 
     try:
