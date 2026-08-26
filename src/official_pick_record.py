@@ -200,6 +200,67 @@ def dedupe_picks_by_grading_identity(
     return {"removed": removed, "kept": len(keep_ids)}
 
 
+_PLACEHOLDER_IDENTITIES = frozenset({
+    "player_a",
+    "player_b",
+    "player_c",
+    "player a",
+    "player b",
+    "player c",
+    "current player",
+    "opp current",
+    "current_player",
+    "opp_current",
+})
+
+_ALWAYS_REJECT_IDENTITIES = frozenset({
+    "current player",
+    "opp current",
+    "current_player",
+    "opp_current",
+})
+
+
+def _identity_tokens(row: dict[str, Any]) -> list[str]:
+    return [
+        str(row.get("player_key") or "").strip().lower(),
+        str(row.get("player_display") or "").strip().lower(),
+        str(row.get("opponent_key") or "").strip().lower(),
+        str(row.get("opponent_display") or "").strip().lower(),
+    ]
+
+
+def has_market_odds(value: Any) -> bool:
+    text = str(value or "").strip()
+    return bool(text) and text.lower() not in {"none", "null", "nan"}
+
+
+def is_placeholder_pick_identity(row: dict[str, Any]) -> bool:
+    return any(token in _PLACEHOLDER_IDENTITIES for token in _identity_tokens(row) if token)
+
+
+def is_rejected_inventory_row(row: dict[str, Any]) -> bool:
+    """True when a row must not become gradeable +EV inventory.
+
+    Fixture names like Player A are allowed when they have odds (unit tests).
+    Current Player and +EV matchups without odds are never inventory.
+    """
+    tokens = [token for token in _identity_tokens(row) if token]
+    if any(token in _ALWAYS_REJECT_IDENTITIES for token in tokens):
+        return True
+    missing_odds = not has_market_odds(row.get("market_odds") or row.get("odds"))
+    if is_placeholder_pick_identity(row) and missing_odds:
+        return True
+    ev = row.get("ev")
+    try:
+        positive = ev is not None and float(ev) > 0
+    except (TypeError, ValueError):
+        positive = False
+    if positive and is_matchup_row(row) and missing_odds:
+        return True
+    return False
+
+
 def filter_positive_ev(rows: list[dict], *, ev_field: str = "ev") -> list[dict]:
     positive: list[dict] = []
     for row in rows:

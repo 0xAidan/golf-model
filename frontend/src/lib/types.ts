@@ -1239,10 +1239,14 @@ export type DataHealthBackupInfo = {
   name?: string
   size_mb?: number
   created?: string
+  age_hours?: number
+  stale?: boolean
   integrity?: {
     ok?: boolean
     quick_check?: string
     error?: string
+    skipped?: boolean
+    skip_reason?: string
   }
 }
 
@@ -1263,6 +1267,19 @@ export type DataHealthReport = {
   status?: string
   summary?: string
   file_sizes_human?: Record<string, string>
+  disk?: {
+    free_bytes?: number | null
+    free_human?: string
+    free_mb?: number | null
+    guard_state?: string
+    state?: string
+  }
+  backup_fit?: {
+    ok?: boolean
+    free_bytes?: number
+    needed_bytes?: number
+  }
+  storage_red_reasons?: string[]
   storage_warnings?: string[]
   gaps?: Array<{ type: string; detail: string }>
   monthly_coverage?: Record<
@@ -1285,6 +1302,7 @@ export type DataHealthReport = {
   retention_policy?: {
     retain_forever?: string[]
     prunable_tick_tables?: string[]
+    prune_generated_ledger?: boolean
     snapshot_retain_days?: number
     prune_require_archive?: boolean
     slim_market_payload_enabled?: boolean
@@ -1294,6 +1312,7 @@ export type DataHealthReport = {
     ARCHIVE_THEN_PRUNE?: string[]
     SLIM?: string[]
     INVESTIGATE?: string[]
+    PRUNE_GENERATED_LEDGER?: string[]
   }
   latest_backup?: DataHealthBackupInfo | null
   archive_stats?: DataHealthArchiveInfo

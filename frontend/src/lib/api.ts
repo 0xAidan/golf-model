@@ -315,6 +315,16 @@ export const api = {
       },
       15_000,
     ),
+  startCleanupJob: (payload?: { vacuum?: boolean; retain_days?: number }) =>
+    request<{ job_id: string; status: string; message?: string }>(
+      "/api/ops/jobs/cleanup",
+      {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify(payload ?? { vacuum: true }),
+      },
+      15_000,
+    ),
   getOpsJob: (jobId: string) =>
     request<{
       id: string

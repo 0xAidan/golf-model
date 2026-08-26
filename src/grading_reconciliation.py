@@ -70,6 +70,7 @@ def reconcile_grading(
                 t.id AS tournament_id,
                 t.name AS tournament_name,
                 t.year AS tournament_year,
+                t.event_id AS event_id,
                 (SELECT COUNT(*) FROM results r WHERE r.tournament_id = t.id) AS results_count,
                 (SELECT COUNT(*) FROM picks p
                    WHERE p.tournament_id = t.id AND p.ev > 0{source_clause}) AS positive_ev_picks,
@@ -104,6 +105,7 @@ def reconcile_grading(
                 "tournament_id": row["tournament_id"],
                 "tournament_name": row["tournament_name"],
                 "tournament_year": row["tournament_year"],
+                "event_id": row["event_id"],
                 "results_count": results_count,
                 "positive_ev_picks": positive_ev,
                 "graded_positive_ev_picks": graded,

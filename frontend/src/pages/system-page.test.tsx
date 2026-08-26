@@ -13,6 +13,8 @@ const { apiMock, toastMock } = vi.hoisted(() => ({
     getDataHealth: vi.fn(),
     getLatestOpsJob: vi.fn(),
     requestWorkerRestart: vi.fn(),
+    startGradeJob: vi.fn(),
+    startCleanupJob: vi.fn(),
   },
   toastMock: {
     message: vi.fn(),
@@ -37,7 +39,8 @@ function buildDataHealth(overrides: Partial<DataHealthReport> = {}): DataHealthR
     status: "green",
     summary: "Storage looks healthy.",
     file_sizes_human: { main: "12 GB", wal: "10 MB" },
-    latest_backup: { name: "golf_model_20260706.db", size_mb: 1200, integrity: { ok: true } },
+    latest_backup: { name: "golf_model_20260706.db", size_mb: 1200, age_hours: 4, integrity: { ok: true } },
+    disk: { free_human: "18.2 GB", free_mb: 18636, guard_state: "ok" },
     storage_warnings: [],
     ...overrides,
   }
@@ -74,6 +77,16 @@ function renderSystemPage({
     ok: true,
     status: "accepted",
     message: "Worker restart requested.",
+  })
+  apiMock.startGradeJob.mockResolvedValue({
+    job_id: "grade-1",
+    status: "running",
+    message: "Grading started in background",
+  })
+  apiMock.startCleanupJob.mockResolvedValue({
+    job_id: "cleanup-1",
+    status: "running",
+    message: "Cleanup started in background",
   })
 
   const queryClient = new QueryClient({
@@ -116,7 +129,9 @@ describe("SystemPage", () => {
     expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
     expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/complete/i)
     expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/database, backups, and archives look healthy/i)
-    expect(screen.getByTestId("system-jobs-panel")).toHaveTextContent(/no recent grade job is recorded yet/i)
+    expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/18\.2 GB free/i)
+    expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/4\.0h old/i)
+    expect(screen.getByTestId("system-jobs-panel")).toHaveTextContent(/no recent grade or cleanup job is recorded yet/i)
   })
 
   it("shows worker trouble and requests a restart from the page", async () => {
@@ -199,12 +214,15 @@ describe("SystemPage", () => {
   })
 
   it("uses singular grammar and never stringifies an auto-grade object", async () => {
+    const user = userEvent.setup()
     renderSystemPage({
       opsHealth: {
         grading: {
           status: "discrepancies",
           events_with_ungraded_positive_ev: 1,
           leftover_event_name: "Texas Children's Houston Open",
+          leftover_event_id: "20",
+          leftover_event_year: 2026,
           last_auto_grade_at: "2099-01-01T00:00:00+00:00",
           last_auto_grade_status: { status: "complete", event_id: "20" },
         },
@@ -218,6 +236,28 @@ describe("SystemPage", () => {
     })
     expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
     expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/complete/i)
+
+    await user.click(screen.getByRole("button", { name: /grade leftover/i }))
+    await waitFor(() => {
+      expect(apiMock.startGradeJob).toHaveBeenCalledWith({
+        event_id: "20",
+        year: 2026,
+        event_name: "Texas Children's Houston Open",
+      })
+    })
+  })
+
+  it("starts a cleanup job from the storage panel", async () => {
+    const user = userEvent.setup()
+    renderSystemPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /run storage cleanup/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole("button", { name: /run storage cleanup/i }))
+    await waitFor(() => {
+      expect(apiMock.startCleanupJob).toHaveBeenCalledWith({ vacuum: true })
+    })
   })
 
   it("reads heartbeat age from the top-level ops field when nested age is missing", async () => {

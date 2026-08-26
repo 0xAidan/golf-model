@@ -221,19 +221,25 @@ def freeze_completed_event_picks(
     conn = db.get_conn()
     tournament_id = _ensure_tournament(conn, event_id=event_id, year=year, event_name=event_name)
     has_results = _event_has_results(conn, tournament_id)
+    ungraded_existing = _ungraded_positive_ev_count(conn, tournament_id)
     conn.close()
 
     ledger_count, mpr_count = _inventory_exists(event_id)
-    if ledger_count == 0 and mpr_count == 0:
+    if ledger_count == 0 and mpr_count == 0 and ungraded_existing == 0:
         return {
             "status": "skipped",
             "reason": "no_inventory",
             "event_id": event_id,
             "year": year,
+            "tournament_id": tournament_id,
+            "ungraded_positive_ev": 0,
         }
 
-    dash_inserted = backfill_completed_market_rows_into_picks(event_id, tournament_id, source="dashboard")
-    lab_inserted = backfill_completed_market_rows_into_picks(event_id, tournament_id, source="lab")
+    dash_inserted = 0
+    lab_inserted = 0
+    if ledger_count > 0 or mpr_count > 0:
+        dash_inserted = backfill_completed_market_rows_into_picks(event_id, tournament_id, source="dashboard")
+        lab_inserted = backfill_completed_market_rows_into_picks(event_id, tournament_id, source="lab")
 
     conn = db.get_conn()
     ledger_linked = _backfill_ledger_tournament_id(
@@ -513,11 +519,17 @@ def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[s
             year=event_year,
             event_name=str(row["event_name"] or ""),
         )
-        if result.get("status") not in {"skipped"} or result.get("reason") != "no_inventory":
-            results.append(result)
+        results.append(result)
 
     success_statuses = {"ok", "captured", "skipped", "success", "complete"}
-    failures = [r for r in results if r.get("status") not in success_statuses]
+    failures = []
+    for result in results:
+        if result.get("status") == "skipped" and result.get("reason") == "no_inventory":
+            if int(result.get("ungraded_positive_ev") or 0) > 0:
+                failures.append(result)
+            continue
+        if result.get("status") not in success_statuses:
+            failures.append(result)
     return {
         "year": current_year,
         "events_processed": len(results),

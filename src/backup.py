@@ -16,6 +16,7 @@ import os
 import shutil
 import glob
 import gzip
+import json
 import sqlite3
 import tempfile
 from datetime import datetime
@@ -39,6 +40,8 @@ def _current_db_path() -> str:
 # Prefer ``_current_db_path()`` in new code.
 DB_PATH = _current_db_path()
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
+BACKUP_FIT_MARGIN_BYTES = 512 * 1024 * 1024
+BACKUP_STALE_HOURS = 36
 
 
 def _backup_globs() -> tuple[str, ...]:
@@ -55,6 +58,8 @@ def _backup_globs() -> tuple[str, ...]:
 def _backup_db_basename(path: str) -> str | None:
     """Return ``golf_model_<timestamp>.db`` stem for a backup or sidecar path."""
     name = os.path.basename(path)
+    if name.endswith(".integrity.json"):
+        name = name[: -len(".integrity.json")]
     if name.endswith(".db.gz"):
         return name[: -len(".gz")]
     for suffix in (".db", ".db-shm", ".db-wal", ".db-journal"):
@@ -73,6 +78,8 @@ def _sidecar_paths_for_backup(backup_path: str) -> list[str]:
         os.path.join(directory, f"{stem}.db-shm"),
         os.path.join(directory, f"{stem}.db-wal"),
         os.path.join(directory, f"{stem}.db-journal"),
+        os.path.join(directory, f"{stem}.db.integrity.json"),
+        os.path.join(directory, f"{stem}.db.gz.integrity.json"),
     ]
 
 
@@ -108,7 +115,7 @@ def sweep_orphan_sidecars() -> list[str]:
 
     live = _live_backup_basenames()
     removed: list[str] = []
-    for suffix in (".db-shm", ".db-wal", ".db-journal"):
+    for suffix in (".db-shm", ".db-wal", ".db-journal", ".integrity.json"):
         for path in glob.glob(os.path.join(BACKUP_DIR, f"golf_model_*{suffix}")):
             base = _backup_db_basename(path)
             if base and base in live:
@@ -144,6 +151,70 @@ def prune_old_backups(keep: int, *, before_create: bool = False) -> list[str]:
     return removed
 
 
+def integrity_sidecar_path(backup_path: str) -> str:
+    return f"{backup_path}.integrity.json"
+
+
+def write_integrity_sidecar(backup_path: str, integrity: dict[str, Any]) -> str:
+    path = integrity_sidecar_path(backup_path)
+    payload = {
+        **integrity,
+        "path": backup_path,
+        "written_at": datetime.now().isoformat(),
+    }
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    return path
+
+
+def read_integrity_sidecar(backup_path: str) -> dict[str, Any] | None:
+    path = integrity_sidecar_path(backup_path)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def backup_bytes_needed(db_path: str) -> int:
+    try:
+        db_size = os.path.getsize(db_path)
+    except OSError:
+        db_size = 0
+    return int(db_size) + BACKUP_FIT_MARGIN_BYTES
+
+
+def can_fit_backup(db_path: str, dest_dir: str | None = None) -> dict[str, Any]:
+    target = dest_dir or BACKUP_DIR
+    try:
+        free = int(shutil.disk_usage(target).free)
+    except OSError:
+        free = 0
+    needed = backup_bytes_needed(db_path)
+    return {
+        "ok": free >= needed,
+        "free_bytes": free,
+        "needed_bytes": needed,
+        "db_bytes": max(0, needed - BACKUP_FIT_MARGIN_BYTES),
+        "margin_bytes": BACKUP_FIT_MARGIN_BYTES,
+    }
+
+
+def _enforce_backup_can_fit(db_path: str, dest_dir: str) -> None:
+    fit = can_fit_backup(db_path, dest_dir)
+    if fit["ok"]:
+        return
+    free_mb = fit["free_bytes"] // (1024 * 1024)
+    needed_mb = fit["needed_bytes"] // (1024 * 1024)
+    raise RuntimeError(
+        f"Refusing backup: only {free_mb} MiB free, need {needed_mb} MiB "
+        f"(database plus {BACKUP_FIT_MARGIN_BYTES // (1024 * 1024)} MiB margin)."
+    )
+
+
 def _enforce_disk_hard_floor(path: str) -> None:
     """Abort backup when free space is below ``DISK_FREE_MB_HARD`` (env, MB) if set."""
     raw = (os.environ.get("DISK_FREE_MB_HARD") or "").strip()
@@ -175,35 +246,84 @@ def _sorted_backup_paths() -> list[str]:
     return sorted(paths, key=lambda p: os.path.getmtime(p))
 
 
-def verify_backup_integrity(backup_path: str) -> dict[str, Any]:
-    """Run SQLite ``quick_check`` on a backup file (plain or gzip)."""
+def _quick_check_sqlite_file(check_path: str) -> dict[str, Any]:
+    conn = sqlite3.connect(f"file:{check_path}?mode=ro", uri=True, timeout=120.0)
+    try:
+        row = conn.execute("PRAGMA quick_check").fetchone()
+        result = str(row[0]) if row else "unknown"
+    finally:
+        conn.close()
+    return {
+        "ok": result == "ok",
+        "quick_check": result,
+        "path": check_path,
+        "checked_at": datetime.now().isoformat(),
+    }
+
+
+def verify_backup_integrity(
+    backup_path: str,
+    *,
+    allow_sidecar: bool = True,
+    force_decompress: bool = False,
+) -> dict[str, Any]:
+    """Run SQLite ``quick_check`` on a backup file (plain or gzip).
+
+    Gzipped backups are not decompressed when a sidecar says they were already
+    checked, or when there is not enough free disk to unpack them.
+    """
     if not os.path.isfile(backup_path):
         return {"ok": False, "error": "backup file not found", "path": backup_path}
+
+    sidecar = read_integrity_sidecar(backup_path) if allow_sidecar else None
+    if backup_path.endswith(".gz") and sidecar and sidecar.get("ok") and not force_decompress:
+        return {
+            **sidecar,
+            "ok": True,
+            "path": backup_path,
+            "source": "sidecar",
+            "skipped": True,
+            "skip_reason": "trusted_sidecar",
+        }
 
     check_path = backup_path
     temp_path: str | None = None
     try:
         if backup_path.endswith(".gz"):
+            uncompressed = int((sidecar or {}).get("uncompressed_bytes") or 0)
+            if uncompressed <= 0:
+                uncompressed = max(os.path.getsize(backup_path) * 12, BACKUP_FIT_MARGIN_BYTES)
+            try:
+                free = int(shutil.disk_usage(tempfile.gettempdir()).free)
+            except OSError:
+                free = 0
+            if free < uncompressed + BACKUP_FIT_MARGIN_BYTES:
+                if sidecar and sidecar.get("ok"):
+                    return {
+                        **sidecar,
+                        "ok": True,
+                        "path": backup_path,
+                        "source": "sidecar",
+                        "skipped": True,
+                        "skip_reason": "insufficient_disk_for_decompress",
+                    }
+                return {
+                    "ok": False,
+                    "skipped": True,
+                    "skip_reason": "insufficient_disk_for_decompress",
+                    "error": "not enough free disk to decompress backup for quick_check",
+                    "path": backup_path,
+                    "checked_at": datetime.now().isoformat(),
+                }
             temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
             os.close(temp_fd)
             with gzip.open(backup_path, "rb") as gz, open(temp_path, "wb") as out:
                 shutil.copyfileobj(gz, out)
             check_path = temp_path
 
-        conn = sqlite3.connect(f"file:{check_path}?mode=ro", uri=True, timeout=120.0)
-        try:
-            row = conn.execute("PRAGMA quick_check").fetchone()
-            result = str(row[0]) if row else "unknown"
-        finally:
-            conn.close()
-
-        ok = result == "ok"
-        return {
-            "ok": ok,
-            "quick_check": result,
-            "path": backup_path,
-            "checked_at": datetime.now().isoformat(),
-        }
+        result = _quick_check_sqlite_file(check_path)
+        result["path"] = backup_path
+        return result
     except Exception as exc:
         return {
             "ok": False,
@@ -251,6 +371,8 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     for removed in prune_old_backups(int(keep), before_create=True):
         print(f"  Removed old backup to free space: {removed}")
 
+    _enforce_backup_can_fit(db_path, BACKUP_DIR)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
 
@@ -269,6 +391,10 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
         backup_conn.close()
         source_conn.close()
 
+    uncompressed_bytes = os.path.getsize(backup_path)
+    integrity = _quick_check_sqlite_file(backup_path)
+    integrity["uncompressed_bytes"] = uncompressed_bytes
+
     final_path = backup_path
     if compress:
         gz_path = backup_path + ".gz"
@@ -277,13 +403,15 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
         os.remove(backup_path)
         final_path = gz_path
 
+    integrity["path"] = final_path
+    write_integrity_sidecar(final_path, integrity)
+
     # Rotate old backups (safety if keep changed or races added files)
     for removed in prune_old_backups(int(keep)):
         print(f"  Removed excess backup: {removed}")
 
     size_mb = os.path.getsize(final_path) / (1024 * 1024)
     retained = len(_sorted_backup_paths())
-    integrity = verify_backup_integrity(final_path)
     print(f"  Backup created: {final_path} ({size_mb:.1f} MB)")
     print(f"  Backups retained: {retained}")
     if integrity.get("ok"):
