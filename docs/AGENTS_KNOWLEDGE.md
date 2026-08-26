@@ -367,7 +367,7 @@ Before treating the Lab board as broken or “same as production”, verify on t
 - **Season hydrate:** `python3 scripts/hydrate_season_2026.py --apply` runs card import, MPR backfill (dashboard + lab), and `grade_tournament` per event with inventory.
 - **Pick reconcile:** `python3 scripts/reconcile_event_picks.py --all --year 2026` compares Past-tab +EV matchup count vs graded deduped count per event (Canadian Open gate).
 - **Official dedupe contract:** `src/official_pick_record.py` — matchup identity includes `market_type` (round vs 72-hole separate); best book wins; grading helpers in `src/grading_record.py`.
-- **Forward capture:** `src/event_pick_freeze.py` backfills MPR→`picks`, writes `lifecycle=canonical` ledger rows, links `pick_ledger.tournament_id`, and grades on event completion (`backtester/dashboard_runtime.py` auto-grade). Sweep: `python3 scripts/ensure_completed_event_grading.py --year 2026`. Watchdog timer runs `--ensure-grading` every 5 min.
+- **Forward capture:** `src/event_pick_freeze.py` backfills MPR→`picks`, writes `lifecycle=canonical` ledger rows, links `pick_ledger.tournament_id`, and grades on event completion (`backtester/dashboard_runtime.py` auto-grade). Live refresh does **not** persist `lifecycle=generated` pick_ledger ticks (those already live in `market_prediction_rows`). Sweep: `python3 scripts/ensure_completed_event_grading.py --year 2026`. Watchdog timer runs `--ensure-grading` every 5 min.
 - **Season grading API:** `GET /api/grading/season?year=2026&tour=pga` — all PGA `rounds` events in **chronological order** with dashboard/lab lanes, `status` (`graded|partial|inventory_only|rollup_only|card_recovered|no_data|in_progress`), and `reconciliation` (Past vs Results counts).
 - `GET /api/players/field-board?section=auto|live|upcoming` — field-complete board (`src/field_board.py`): one single-pass response for the whole field (champion rank, challenger/lab rank + delta, composite components, matchup/+EV involvement, best-effort SG splits), cached per snapshot_id. Powers the `/players` field board + `/players/:playerKey` deep links.
 - `GET /api/eval/track-comparison?window=30d|90d|season[&market=&book=]` — champion (cockpit) vs challenger (lab) **live-graded** metrics (`src/eval_aggregates.py`): n, hit rate, 1u ROI, P/L, Brier, pick overlap, by-market. `data_kind: live_graded` — deliberately segregated from sim/walk-forward numbers in `output/research/`. Surfaced on `/eval` (Track compare + Promotion tabs).
@@ -793,9 +793,10 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | AI prompts | `src/prompts.py` |
 | AI analysis logic | `src/ai_brain.py` |
 | DB schema/migrations | `src/db.py` |
-| Storage retention / prune / reclaim | `docs/storage-retention.md`, `src/db.py`, `src/cold_archive.py`, `scripts/export_tournament_archive.py` |
-| Data platform health API | `src/data_health.py`, `GET /api/data-health`, `frontend/src/components/data-health-panel.tsx` |
-| DB backups + integrity | `src/backup.py`, `backups/` |
+| Storage retention / prune / reclaim | `docs/storage-retention.md`, `src/db.py`, `src/pick_ledger.py` (`prune_generated_pick_ledger`), `src/ops_jobs.py` (`run_storage_cleanup`), `src/cold_archive.py`, `scripts/export_tournament_archive.py` |
+| Data platform health API | `src/data_health.py`, `GET /api/data-health`, `frontend/src/pages/system-page.tsx` Storage card, `frontend/src/components/data-health-panel.tsx` |
+| DB backups + integrity | `src/backup.py` (refuse if backup cannot fit; gzip + `.integrity.json` sidecar), `backups/` |
+| System Health / ops jobs | `frontend/src/pages/system-page.tsx` (`Restart worker`, `Grade leftover`, `Run cleanup`), `POST /api/ops/jobs/grade`, `POST /api/ops/jobs/cleanup` |
 | Pipeline orchestration | `src/services/golf_model_service.py` |
 | Web API routes (most) | `app.py` |
 | Web API routes (registry, research) | `src/routes/model_registry.py`, `src/routes/research.py` |

@@ -9,7 +9,7 @@ Use this when disk space is low, the database is oversized, backups look wrong, 
 | Symptom | Likely cause | Start at |
 |---|---|---|
 | Site slow or 500 errors; `df -h` shows &lt;10 GB free | Disk full | [Scenario 1](#scenario-1-disk-full-site-degraded) |
-| `/system` Storage panel red; `GET /api/data-health` status `red` | DB &gt;10 GB or prune never ran | [Scenario 1](#scenario-1-disk-full-site-degraded) |
+| `/system` Storage panel red; `GET /api/data-health` status `red` | Backup stale / missing, next backup cannot fit, disk hard floor, or integrity failed | [Scenario 1](#scenario-1-disk-full-site-degraded) |
 | `PRAGMA quick_check` fails or DB missing | Corruption / accidental delete | [Scenario 2](#scenario-2-db-corrupted-or-lost) |
 | Need old tick-level matchup rows pruned from DB | Cold archive under `data/exports/` | [Scenario 3](#scenario-3-restore-archived-tick-history-for-analysis) |
 
@@ -49,7 +49,7 @@ curl -s https://golf.ancc.blog/api/ops/health | python3 -m json.tool | grep -E '
 3. Wait for the cleanup job to finish (poll `GET /api/ops/jobs/latest/cleanup` or refresh the Jobs panel)
 4. Confirm disk free increased and data-health improves
 
-The cleanup job runs, in order: backup sidecar sweep → remove stale `.pre_reclaim` / `.pre_restore` copies (only when live DB passes `quick_check`) → WAL checkpoint → retention cycle (archive then prune) → guarded `reclaim_database_disk`.
+The cleanup job runs, in order: backup sidecar sweep → prune `pick_ledger` rows with `lifecycle=generated` → remove stale `.pre_reclaim` / `.pre_restore` copies (only when live DB passes `quick_check`) → WAL checkpoint → retention cycle (archive then prune) → guarded `reclaim_database_disk`. File size does not drop until VACUUM, and VACUUM must wait until there is enough free space.
 
 ### Option B — UI down or SSH required
 

@@ -8,7 +8,7 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-from src.data_health import build_data_health_report, find_latest_backup
+from src.data_health import build_data_health_report, classify_storage_status, find_latest_backup
 from src.data_views import ensure_analytics_views
 
 
@@ -147,6 +147,82 @@ def test_data_health_api_endpoint(tmp_db) -> None:
     assert "archive_stats" in body
     assert "investigate_counts" in body
     assert "research_output" in body
+
+
+def test_classify_storage_status_yellow_for_large_file_when_backup_fresh() -> None:
+    status, red_reasons = classify_storage_status(
+        disk_guard_state="ok",
+        disk_free_bytes=20 * 1024 ** 3,
+        backup={"name": "golf_model_fresh.db.gz", "age_hours": 2, "stale": False},
+        backup_fit_ok=True,
+        wal_bytes=0,
+        main_bytes=13 * 1024 ** 3,
+        integrity_skipped=False,
+        integrity_failed=False,
+        prune_deleted_zero=False,
+        storage_warnings=["Database file is 13.1 GB — run prune + VACUUM."],
+        gaps=[],
+        autoresearch_ok=True,
+    )
+    assert status == "yellow"
+    assert red_reasons == []
+
+
+def test_classify_storage_status_red_when_backup_stale() -> None:
+    status, red_reasons = classify_storage_status(
+        disk_guard_state="ok",
+        disk_free_bytes=20 * 1024 ** 3,
+        backup={"name": "golf_model_old.db.gz", "age_hours": 48, "stale": True},
+        backup_fit_ok=True,
+        wal_bytes=0,
+        main_bytes=13 * 1024 ** 3,
+        integrity_skipped=False,
+        integrity_failed=False,
+        prune_deleted_zero=False,
+        storage_warnings=[],
+        gaps=[],
+        autoresearch_ok=True,
+    )
+    assert status == "red"
+    assert "latest backup older than 36h" in red_reasons
+
+
+def test_classify_storage_status_red_when_backup_cannot_fit() -> None:
+    status, red_reasons = classify_storage_status(
+        disk_guard_state="ok",
+        disk_free_bytes=7 * 1024 ** 3,
+        backup={"name": "golf_model_fresh.db.gz", "age_hours": 2, "stale": False},
+        backup_fit_ok=False,
+        wal_bytes=0,
+        main_bytes=13 * 1024 ** 3,
+        integrity_skipped=False,
+        integrity_failed=False,
+        prune_deleted_zero=False,
+        storage_warnings=[],
+        gaps=[],
+        autoresearch_ok=True,
+    )
+    assert status == "red"
+    assert "next backup cannot fit" in red_reasons
+
+
+def test_classify_storage_status_yellow_when_integrity_skipped() -> None:
+    status, red_reasons = classify_storage_status(
+        disk_guard_state="ok",
+        disk_free_bytes=8 * 1024 ** 3,
+        backup={"name": "golf_model_fresh.db.gz", "age_hours": 2, "stale": False},
+        backup_fit_ok=True,
+        wal_bytes=0,
+        main_bytes=13 * 1024 ** 3,
+        integrity_skipped=True,
+        integrity_failed=False,
+        prune_deleted_zero=True,
+        storage_warnings=[],
+        gaps=[],
+        autoresearch_ok=True,
+    )
+    assert status == "yellow"
+    assert red_reasons == []
 
 
 def test_data_health_investigate_counts(tmp_db, monkeypatch) -> None:
