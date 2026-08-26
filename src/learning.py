@@ -671,6 +671,28 @@ def score_picks_for_tournament(
                 actual_finish = r.get("finish_text")
 
         if outcome is None:
+            reason = "outcome_unresolved"
+            logger.warning(
+                "Scoring void: outcome unresolved for pick_id=%s player_key=%s bet_type=%s",
+                pick.get("id"),
+                pk,
+                bt,
+            )
+            if _persist_void_outcome(
+                conn,
+                pick=pick,
+                tournament_id=tournament_id,
+                reason=reason,
+                force_audit=force_audit,
+                audit_reason=audit_reason,
+            ):
+                voided += 1
+                voided_picks.append({
+                    "pick_id": pick["id"],
+                    "player_key": pk,
+                    "bet_type": bt,
+                    "reason": reason,
+                })
             continue
 
         resolved += 1

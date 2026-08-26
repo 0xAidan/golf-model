@@ -12,6 +12,7 @@ export type OpsHealthResponse = {
     ungraded_positive_ev_picks?: number
     leftover_event_name?: string | null
     leftover_event_id?: string | null
+    leftover_event_year?: number | null
     leftover_tournament_id?: number | null
     last_auto_grade_at?: string | null
     last_auto_grade_status?: Record<string, unknown> | string | null
