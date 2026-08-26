@@ -151,6 +151,7 @@ def run_storage_cleanup(
     """Idempotent storage maintenance for operator cleanup jobs."""
     from src import db
     from src.backup import sweep_orphan_sidecars
+    from src.pick_ledger import prune_generated_pick_ledger
 
     report: dict[str, Any] = {
         "ok": True,
@@ -159,6 +160,9 @@ def run_storage_cleanup(
 
     sidecars_removed = sweep_orphan_sidecars()
     report["steps"]["sidecar_sweep"] = {"removed": sidecars_removed, "count": len(sidecars_removed)}
+
+    generated_prune = prune_generated_pick_ledger()
+    report["steps"]["generated_ledger_prune"] = generated_prune
 
     stale_removed = remove_stale_db_recovery_copies(db.DB_PATH)
     report["steps"]["stale_db_copies"] = {"removed": stale_removed, "count": len(stale_removed)}

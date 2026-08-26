@@ -14,6 +14,7 @@ const { apiMock, toastMock } = vi.hoisted(() => ({
     getLatestOpsJob: vi.fn(),
     requestWorkerRestart: vi.fn(),
     startGradeJob: vi.fn(),
+    startCleanupJob: vi.fn(),
   },
   toastMock: {
     message: vi.fn(),
@@ -38,7 +39,8 @@ function buildDataHealth(overrides: Partial<DataHealthReport> = {}): DataHealthR
     status: "green",
     summary: "Storage looks healthy.",
     file_sizes_human: { main: "12 GB", wal: "10 MB" },
-    latest_backup: { name: "golf_model_20260706.db", size_mb: 1200, integrity: { ok: true } },
+    latest_backup: { name: "golf_model_20260706.db", size_mb: 1200, age_hours: 4, integrity: { ok: true } },
+    disk: { free_human: "18.2 GB", free_mb: 18636, guard_state: "ok" },
     storage_warnings: [],
     ...overrides,
   }
@@ -81,6 +83,11 @@ function renderSystemPage({
     status: "running",
     message: "Grading started in background",
   })
+  apiMock.startCleanupJob.mockResolvedValue({
+    job_id: "cleanup-1",
+    status: "running",
+    message: "Cleanup started in background",
+  })
 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -122,7 +129,9 @@ describe("SystemPage", () => {
     expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
     expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/complete/i)
     expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/database, backups, and archives look healthy/i)
-    expect(screen.getByTestId("system-jobs-panel")).toHaveTextContent(/no recent grade job is recorded yet/i)
+    expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/18\.2 GB free/i)
+    expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/4\.0h old/i)
+    expect(screen.getByTestId("system-jobs-panel")).toHaveTextContent(/no recent grade or cleanup job is recorded yet/i)
   })
 
   it("shows worker trouble and requests a restart from the page", async () => {
@@ -235,6 +244,19 @@ describe("SystemPage", () => {
         year: 2026,
         event_name: "Texas Children's Houston Open",
       })
+    })
+  })
+
+  it("starts a cleanup job from the storage panel", async () => {
+    const user = userEvent.setup()
+    renderSystemPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /run storage cleanup/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole("button", { name: /run storage cleanup/i }))
+    await waitFor(() => {
+      expect(apiMock.startCleanupJob).toHaveBeenCalledWith({ vacuum: true })
     })
   })
 

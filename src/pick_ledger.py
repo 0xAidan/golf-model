@@ -538,6 +538,39 @@ def log_grading_audit(
             conn.close()
 
 
+KEEP_LEDGER_LIFECYCLES = frozenset({
+    "displayed",
+    "frozen",
+    "frozen_pre_teeoff",
+    "graded",
+    "recovered",
+    "canonical",
+})
+
+
+def prune_generated_pick_ledger(*, dry_run: bool = False) -> dict[str, Any]:
+    """Delete tick-level generated ledger rows. Displayed/frozen/graded stay."""
+    if "generated" in KEEP_LEDGER_LIFECYCLES:
+        raise RuntimeError("generated must not be in KEEP_LEDGER_LIFECYCLES")
+    db.ensure_initialized()
+    conn = db.get_conn()
+    try:
+        count_row = conn.execute(
+            "SELECT COUNT(*) AS c FROM pick_ledger WHERE LOWER(COALESCE(lifecycle, '')) = 'generated'"
+        ).fetchone()
+        count = int(count_row["c"] or 0) if count_row else 0
+        if dry_run:
+            return {"ok": True, "dry_run": True, "would_delete": count}
+        if count:
+            conn.execute(
+                "DELETE FROM pick_ledger WHERE LOWER(COALESCE(lifecycle, '')) = 'generated'"
+            )
+            conn.commit()
+        return {"ok": True, "deleted": count}
+    finally:
+        conn.close()
+
+
 def tournament_has_locked_outcomes(tournament_id: int) -> bool:
     conn = db.get_conn()
     try:

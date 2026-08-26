@@ -17,6 +17,7 @@ const { apiMock } = vi.hoisted(() => ({
     getPlayerProfile: vi.fn(async () => null),
     gradeLatestTournament: vi.fn(async () => ({})),
     startGradeJob: vi.fn(async () => ({ job_id: "test-job", status: "running" })),
+    startCleanupJob: vi.fn(async () => ({ job_id: "cleanup-job", status: "running" })),
     getOpsJob: vi.fn(async () => ({ id: "test-job", status: "complete", progress_pct: 100 })),
     refreshLiveSnapshot: vi.fn(async () => ({ ok: false })),
   },

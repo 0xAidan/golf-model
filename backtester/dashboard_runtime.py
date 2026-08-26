@@ -542,18 +542,11 @@ def _persist_snapshot_tail(
             market_rows.extend(lab_rows_extra)
         market_rows_written = db.store_market_prediction_rows(market_rows)
         diagnostics["market_rows_written"] = market_rows_written
-        try:
-            from src.pick_ledger import persist_pick_ledger_from_market_rows
-
-            ledger_written = persist_pick_ledger_from_market_rows(
-                market_rows,
-                lifecycle="generated",
-                source_origin="live_refresh",
-            )
-            diagnostics["pick_ledger_written"] = ledger_written
-        except Exception as ledger_exc:
-            _logger.warning("Failed to persist pick ledger rows: %s", ledger_exc)
-            diagnostics["pick_ledger_write_error"] = str(ledger_exc)
+        # Tick-level generated rows already live in market_prediction_rows.
+        # Persisting them to pick_ledger with snapshot_id in pick_key grows
+        # unbounded (~9k rows/day) and cannot be pruned under KEEP_FOREVER.
+        diagnostics["pick_ledger_written"] = 0
+        diagnostics["pick_ledger_skip_reason"] = "generated_ticks_not_persisted"
     except Exception as exc:
         _logger.warning("Failed to persist market prediction rows: %s", exc)
         diagnostics["market_rows_written"] = 0

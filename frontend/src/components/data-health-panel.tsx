@@ -58,14 +58,17 @@ export const DataHealthPanel = () => {
           <p className="data-health-muted">
             Main DB: <strong>{report.file_sizes_human.main}</strong>
             {report.file_sizes_human.wal ? ` · WAL: ${report.file_sizes_human.wal}` : null}
+            {report.disk?.free_human ? ` · Disk free: ${report.disk.free_human}` : null}
           </p>
         ) : null}
         {backup?.name ? (
           <p className="data-health-muted" data-testid="data-health-backup">
             Latest backup: <strong>{backup.name}</strong>
             {backup.size_mb != null ? ` (${backup.size_mb} MB)` : null}
+            {backup.age_hours != null ? ` · ${backup.age_hours.toFixed(1)}h old` : null}
             {backup.integrity?.ok === true ? " · integrity ok" : null}
-            {backup.integrity?.ok === false ? " · integrity check failed" : null}
+            {backup.integrity?.ok === false && !backup.integrity?.skipped ? " · integrity check failed" : null}
+            {backup.integrity?.skipped ? " · integrity skipped" : null}
           </p>
         ) : !isLoading && !isError ? (
           <p className="data-health-warn" data-testid="data-health-backup-missing">

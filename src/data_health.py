@@ -33,6 +33,13 @@ KEEP_FOREVER = frozenset({
     "market_performance",
 })
 
+# Tick-level generated ledger rows are not KEEP_FOREVER. Displayed / frozen /
+# graded / recovered rows stay. See prune_generated_pick_ledger().
+PRUNE_GENERATED_LEDGER = True
+BACKUP_STALE_HOURS = 36
+DISK_FREE_YELLOW_BYTES = 10 * 1024 ** 3
+WAL_HUGE_BYTES = 500 * 1024 ** 2
+
 ARCHIVE_THEN_PRUNE = frozenset({
     "live_snapshot_history",
     "market_prediction_rows",
@@ -180,14 +187,71 @@ def _latest_backup_info(backup_dir: str | None = None) -> dict[str, Any] | None:
     from src.backup import verify_backup_integrity
 
     integrity = verify_backup_integrity(path)
+    created = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    age_hours = max(0.0, (datetime.now(timezone.utc) - created).total_seconds() / 3600.0)
     return {
         "path": path,
         "name": os.path.basename(path),
         "size_bytes": size_bytes,
         "size_mb": round(size_bytes / (1024 * 1024), 2),
-        "created": datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat(),
+        "created": created.isoformat(),
+        "age_hours": round(age_hours, 2),
+        "stale": age_hours > BACKUP_STALE_HOURS,
         "integrity": integrity,
     }
+
+
+def _human_bytes(value: int | None) -> str:
+    if value is None:
+        return "missing"
+    if value > 1024 ** 3:
+        return f"{value / (1024 ** 3):.2f} GB"
+    if value > 1024 ** 2:
+        return f"{value / (1024 ** 2):.1f} MB"
+    return f"{value / 1024:.1f} KB"
+
+
+def classify_storage_status(
+    *,
+    disk_guard_state: str | None,
+    disk_free_bytes: int | None,
+    backup: dict[str, Any] | None,
+    backup_fit_ok: bool,
+    wal_bytes: int | None,
+    main_bytes: int,
+    integrity_skipped: bool,
+    integrity_failed: bool,
+    prune_deleted_zero: bool,
+    storage_warnings: list[str],
+    gaps: list[dict[str, str]],
+    autoresearch_ok: bool,
+) -> tuple[str, list[str]]:
+    """Return (status, red_reasons). Large files and table-share estimates are yellow only."""
+    red_reasons: list[str] = []
+    if disk_guard_state == "hard":
+        red_reasons.append("disk hard floor")
+    if not backup:
+        red_reasons.append("latest backup missing")
+    elif backup.get("stale") or float(backup.get("age_hours") or 0) > BACKUP_STALE_HOURS:
+        red_reasons.append("latest backup older than 36h")
+    if integrity_failed:
+        red_reasons.append("backup integrity failed")
+    if wal_bytes and wal_bytes > WAL_HUGE_BYTES:
+        red_reasons.append("WAL file is huge")
+    if not backup_fit_ok:
+        red_reasons.append("next backup cannot fit")
+
+    if red_reasons:
+        return "red", red_reasons
+
+    yellow = bool(storage_warnings or gaps or not autoresearch_ok or prune_deleted_zero)
+    if disk_free_bytes is not None and disk_free_bytes < DISK_FREE_YELLOW_BYTES:
+        yellow = True
+    if integrity_skipped:
+        yellow = True
+    if main_bytes > 5 * 1024 ** 3:
+        yellow = True
+    return ("yellow" if yellow else "green"), []
 
 
 def _monthly_counts(
@@ -432,15 +496,61 @@ def build_data_health_report(
                 f"Only {tournaments_with_picks}/{tournaments_total} tournaments in {year} have picks rows."
             )
 
-        status = "green"
-        if storage_warnings or gaps or not autoresearch.get("ok"):
-            status = "yellow"
-        if main_bytes > 10 * 1024 ** 3 or (top_table in _PRUNABLE_TICK_TABLES and top_pct > 50):
-            status = "red"
+        from src.backup import can_fit_backup
+        from src.cold_archive import list_archive_stats
+        from src.disk_guard import get_disk_state
+        from src.output_manager import summarize_research_output
+
+        latest_backup = _latest_backup_info()
+        disk = get_disk_state(os.path.dirname(path) or ".")
+        disk_free_bytes = None if disk.get("free_mb") is None else int(disk["free_mb"]) * 1024 * 1024
+        backup_fit = can_fit_backup(path)
+        integrity = (latest_backup or {}).get("integrity") or {}
+        integrity_skipped = bool(integrity.get("skipped"))
+        integrity_failed = bool(latest_backup) and integrity.get("ok") is False and not integrity_skipped
+        if integrity_skipped:
+            storage_warnings.append(
+                f"Backup integrity check skipped ({integrity.get('skip_reason') or 'space'})."
+            )
+        if disk_free_bytes is not None and disk_free_bytes < DISK_FREE_YELLOW_BYTES:
+            storage_warnings.append(
+                f"Only {_human_bytes(disk_free_bytes)} disk free — keep 10 GB free when possible."
+            )
+        if not backup_fit.get("ok"):
+            storage_warnings.append(
+                "Next backup cannot fit: "
+                f"{_human_bytes(int(backup_fit.get('free_bytes') or 0))} free, "
+                f"need {_human_bytes(int(backup_fit.get('needed_bytes') or 0))}."
+            )
+
+        status, red_reasons = classify_storage_status(
+            disk_guard_state=str(disk.get("guard_state") or "ok"),
+            disk_free_bytes=disk_free_bytes,
+            backup=latest_backup,
+            backup_fit_ok=bool(backup_fit.get("ok")),
+            wal_bytes=wal_bytes,
+            main_bytes=main_bytes,
+            integrity_skipped=integrity_skipped,
+            integrity_failed=integrity_failed,
+            prune_deleted_zero=False,
+            storage_warnings=storage_warnings,
+            gaps=gaps,
+            autoresearch_ok=bool(autoresearch.get("ok")),
+        )
+        if red_reasons:
+            storage_warnings.extend(red_reasons)
 
         summary_lines = []
         if main_bytes:
             summary_lines.append(f"Database size: {main_bytes / (1024**3):.2f} GB on disk.")
+        if disk_free_bytes is not None:
+            summary_lines.append(f"Disk free: {_human_bytes(disk_free_bytes)}.")
+        if latest_backup:
+            age = latest_backup.get("age_hours")
+            age_label = f"{age:.1f}h old" if age is not None else "age unknown"
+            summary_lines.append(f"Latest backup: {latest_backup.get('name')} ({age_label}).")
+        else:
+            summary_lines.append("No database backup found.")
         if top_table:
             summary_lines.append(f"Largest table: {top_table} ({table_stats[0]['mb']} MB in dbstat sample).")
         summary_lines.append(
@@ -448,13 +558,11 @@ def build_data_health_report(
         )
         if gaps:
             summary_lines.append(f"{len(gaps)} gap(s) between output/ cards and database rows.")
-        if storage_warnings:
+        if red_reasons:
+            summary_lines.append(red_reasons[0])
+        elif storage_warnings:
             summary_lines.append(storage_warnings[0])
 
-        from src.cold_archive import list_archive_stats
-        from src.output_manager import summarize_research_output
-
-        latest_backup = _latest_backup_info()
         archive_stats = list_archive_stats()
         investigate_counts = _investigate_table_counts(conn)
         research_output = summarize_research_output()
@@ -468,20 +576,23 @@ def build_data_health_report(
             "summary": " ".join(summary_lines),
             "db_path": path,
             "file_sizes_bytes": sizes,
-            "file_sizes_human": {
-                k: f"{v / (1024**3):.2f} GB" if v and v > 1024**3 else (
-                    f"{v / (1024**2):.1f} MB" if v and v > 1024**2 else (
-                        f"{v / 1024:.1f} KB" if v else "missing"
-                    )
-                )
-                for k, v in sizes.items()
+            "file_sizes_human": {k: _human_bytes(v) for k, v in sizes.items()},
+            "disk": {
+                "free_bytes": disk_free_bytes,
+                "free_human": _human_bytes(disk_free_bytes) if disk_free_bytes is not None else "unknown",
+                "free_mb": disk.get("free_mb"),
+                "guard_state": disk.get("guard_state"),
+                "state": disk.get("state"),
             },
+            "backup_fit": backup_fit,
+            "storage_red_reasons": red_reasons,
             "table_byte_stats": table_stats,
             "table_byte_stats_mode": table_stats_mode,
             "row_counts": row_counts,
             "retention_policy": {
                 "retain_forever": sorted(_RETAIN_FOREVER),
                 "prunable_tick_tables": sorted(_PRUNABLE_TICK_TABLES),
+                "prune_generated_ledger": PRUNE_GENERATED_LEDGER,
                 "snapshot_retain_days": int(
                     os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "210")
                 ),
@@ -496,6 +607,7 @@ def build_data_health_report(
                 "ARCHIVE_THEN_PRUNE": sorted(ARCHIVE_THEN_PRUNE),
                 "SLIM": sorted(SLIM),
                 "INVESTIGATE": sorted(INVESTIGATE),
+                "PRUNE_GENERATED_LEDGER": ["pick_ledger.lifecycle=generated"],
             },
             "latest_backup": latest_backup,
             "archive_stats": archive_stats,

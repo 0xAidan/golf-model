@@ -10,7 +10,7 @@ Classification: **KEEP_FOREVER**
 - `tournaments`, `runs`, `weight_sets`, `calibration_curve`, `market_performance`
 - `rounds`, `metrics` (backfill / rolling — large but required)
 
-`pick_ledger` is append-only: every pre-tournament and live model line from live refresh, freeze, CLI runs, and restore scripts. **Never pruned.** Graded results live in `pick_outcomes` (joined via `pick_key`).
+`pick_ledger` keeps **displayed / frozen / graded / recovered / canonical** rows forever. Tick-level `lifecycle=generated` rows are **not** KEEP_FOREVER — live refresh already stores those ticks in `market_prediction_rows`, and `INSERT OR IGNORE` cannot dedupe them because `pick_key` includes `snapshot_id`. Cleanup runs `prune_generated_pick_ledger()` (generated lifecycle only). File size does not drop until a guarded VACUUM.
 
 ## Archive then prune (append-heavy ticks)
 
@@ -83,7 +83,15 @@ Also check `data/golf.db-wal` — large WAL → run vacuum/checkpoint during mai
 
 ## Backups
 
-Nightly backups live in `backups/`. Each backup runs `PRAGMA quick_check` after creation. Data-health (`GET /api/data-health`) exposes latest backup path, size, and integrity status.
+Nightly backups live in `backups/` (`python3 -m src.backup --keep 4 --compress`). Backup refuses when free disk is below `db_size + 512 MiB`. Integrity is written to a `.integrity.json` sidecar at backup time so later checks do not gunzip a 13 GB file on a tight disk. Data-health (`GET /api/data-health`) exposes free disk, backup age, whether the next backup can fit, and integrity status.
+
+Storage color on `/system`:
+
+- **Red:** disk hard floor, latest backup missing or older than 36h, real integrity failure, WAL huge, or the next backup cannot fit.
+- **Yellow:** database is large, disk below 10 GB free, integrity check skipped for space, prune deleted 0 rows, or other warnings.
+- **Not red by itself:** file larger than 10 GB, or an approximate table taking more than 50% of measured pages.
+
+On `/system`, **Run cleanup** calls `POST /api/ops/jobs/cleanup` (sidecar sweep → generated-ledger prune → WAL checkpoint → retention cycle → guarded reclaim).
 
 ## Audit
 

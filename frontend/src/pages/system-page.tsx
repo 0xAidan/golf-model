@@ -90,6 +90,11 @@ export function SystemPage({
     queryFn: () => api.getLatestOpsJob("grade"),
     refetchInterval: 5_000,
   })
+  const latestCleanupJobQuery = useQuery({
+    queryKey: ["ops-job-latest-cleanup"],
+    queryFn: () => api.getLatestOpsJob("cleanup"),
+    refetchInterval: 5_000,
+  })
   const restartWorker = useMutation({
     mutationFn: () => api.requestWorkerRestart({ requested_by: "system-page" }),
     onSuccess: (result) => {
@@ -116,13 +121,27 @@ export function SystemPage({
       toast.error(error instanceof Error ? error.message : "Grade leftover request failed.")
     },
   })
+  const runCleanup = useMutation({
+    mutationFn: () => api.startCleanupJob({ vacuum: true }),
+    onSuccess: (result) => {
+      toast.message(result.message ?? "Cleanup job started.")
+      void queryClient.invalidateQueries({ queryKey: ["data-health"] })
+      void queryClient.invalidateQueries({ queryKey: ["ops-job-latest-cleanup"] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Cleanup request failed.")
+    },
+  })
 
   const opsHealth = opsHealthQuery.data
   const dataHealth = dataHealthQuery.data
   const latestGradeJob = latestGradeJobQuery.data?.job
+  const latestCleanupJob = latestCleanupJobQuery.data?.job
   const opsPending = opsHealthQuery.isPending && !opsHealth
   const dataHealthPending = dataHealthQuery.isPending && !dataHealth
-  const jobsPending = latestGradeJobQuery.isPending && latestGradeJobQuery.data === undefined
+  const jobsPending =
+    (latestGradeJobQuery.isPending && latestGradeJobQuery.data === undefined) ||
+    (latestCleanupJobQuery.isPending && latestCleanupJobQuery.data === undefined)
 
   const workerRunning = opsHealth?.live_refresh?.running ?? false
   const workerTone: "good" | "warn" | "bad" = opsPending
@@ -141,7 +160,7 @@ export function SystemPage({
     : storageTone(dataHealth)
   const jobsPanelTone: "good" | "warn" | "bad" = jobsPending
     ? "warn"
-    : jobTone(latestGradeJob?.status)
+    : jobTone(latestGradeJob?.status ?? latestCleanupJob?.status)
 
   const workerSummary = opsPending
     ? "Checking live refresh worker status…"
@@ -193,32 +212,43 @@ export function SystemPage({
       : storagePanelTone === "warn"
         ? "Storage health has warnings that should be reviewed soon."
         : "Database, backups, and archives look healthy."
+  const backupAgeHours = dataHealth?.latest_backup?.age_hours
+  const backupAgeLabel =
+    backupAgeHours == null
+      ? null
+      : backupAgeHours < 1
+        ? `${Math.round(backupAgeHours * 60)}m old`
+        : backupAgeHours < 36
+          ? `${backupAgeHours.toFixed(1)}h old`
+          : `${(backupAgeHours / 24).toFixed(1)}d old`
   const storageDetail = dataHealthPending
     ? "Waiting for data-health audit…"
     : [
         dataHealth?.file_sizes_human?.main ? `DB ${dataHealth.file_sizes_human.main}` : null,
+        dataHealth?.disk?.free_human ? `${dataHealth.disk.free_human} free` : null,
         dataHealth?.file_sizes_human?.wal ? `WAL ${dataHealth.file_sizes_human.wal}` : null,
         dataHealth?.latest_backup?.name
-          ? `backup ${dataHealth.latest_backup.name}`
+          ? `backup ${dataHealth.latest_backup.name}${backupAgeLabel ? ` (${backupAgeLabel})` : ""}`
           : "no backup found",
       ]
         .filter(Boolean)
         .join(" · ")
 
+  const latestJob = latestGradeJob ?? latestCleanupJob
   const jobsSummary = jobsPending
-    ? "Checking recent grade jobs…"
-    : latestGradeJob
-      ? `Latest grade job is ${latestGradeJob.status}.`
-      : "No recent grade job is recorded yet."
+    ? "Checking recent grade and cleanup jobs…"
+    : latestJob
+      ? `Latest job is ${latestJob.status}.`
+      : "No recent grade or cleanup job is recorded yet."
   const jobsDetail = jobsPending
     ? "Waiting for jobs…"
-    : latestGradeJob
+    : latestJob
       ? [
-          latestGradeJob.progress_pct > 0 && latestGradeJob.progress_pct < 100
-            ? `${latestGradeJob.progress_pct}% complete`
+          latestJob.progress_pct > 0 && latestJob.progress_pct < 100
+            ? `${latestJob.progress_pct}% complete`
             : null,
-          latestGradeJob.message ?? null,
-          latestGradeJob.error ?? null,
+          latestJob.message ?? null,
+          latestJob.error ?? null,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -303,6 +333,18 @@ export function SystemPage({
             summary={storageSummary}
             detail={storageDetail}
             testId="system-storage-panel"
+            action={
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => runCleanup.mutate()}
+                disabled={runCleanup.isPending}
+                aria-label="Run storage cleanup"
+              >
+                {runCleanup.isPending ? "Starting…" : "Run cleanup"}
+              </Button>
+            }
           />
           <SystemStatusPanel
             title="Jobs"

@@ -52,6 +52,8 @@ def test_run_storage_cleanup_idempotent(tmp_db, monkeypatch) -> None:
     assert first["ok"] is True
     assert second["ok"] is True
     assert "sidecar_sweep" in first["steps"]
+    assert "generated_ledger_prune" in first["steps"]
+    assert first["steps"]["generated_ledger_prune"]["ok"] is True
     assert "retention" in first["steps"]
     assert first["steps"]["reclaim"]["skipped"] is True
 

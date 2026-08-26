@@ -8,6 +8,7 @@ from src.pick_ledger import (
     insert_authoritative_pick_outcome,
     persist_pick_ledger_from_market_rows,
     persist_pick_ledger_rows,
+    prune_generated_pick_ledger,
     result_to_hit,
 )
 
@@ -273,3 +274,47 @@ def test_canonical_market_rows_keep_full_payload_json(tmp_db, sample_tournament)
     conn.close()
     assert row["lifecycle"] == "canonical"
     assert row["payload_json"] == '{"full": true, "book": "draftkings"}'
+
+
+def test_prune_generated_pick_ledger_keeps_displayed_rows(tmp_db, sample_tournament):
+    _, tid = sample_tournament
+    generated = [{
+        "snapshot_id": "snap-gen-prune",
+        "generated_at": "2026-06-01T12:00:00+00:00",
+        "section": "live",
+        "event_id": "99",
+        "event_name": "Test Open",
+        "market_family": "matchup",
+        "market_type": "tournament_matchups",
+        "player_key": "player_a",
+        "player_display": "Player A",
+        "opponent_key": "player_b",
+        "opponent_display": "Player B",
+        "book": "draftkings",
+        "odds": "+110",
+        "model_prob": 0.55,
+        "implied_prob": 0.48,
+        "ev": 0.07,
+        "is_value": 1,
+        "payload_json": "{}",
+    }]
+    displayed = [{
+        **generated[0],
+        "snapshot_id": "snap-displayed-keep",
+        "player_key": "player_c",
+        "player_display": "Player C",
+    }]
+    persist_pick_ledger_from_market_rows(generated, lifecycle="generated", tournament_id=tid, year=2026)
+    persist_pick_ledger_from_market_rows(displayed, lifecycle="displayed", tournament_id=tid, year=2026)
+
+    preview = prune_generated_pick_ledger(dry_run=True)
+    assert preview["would_delete"] >= 1
+    result = prune_generated_pick_ledger()
+    assert result["deleted"] >= 1
+
+    conn = db.get_conn()
+    rows = conn.execute("SELECT lifecycle, snapshot_id FROM pick_ledger").fetchall()
+    conn.close()
+    lifecycles = {row["snapshot_id"]: row["lifecycle"] for row in rows}
+    assert "snap-gen-prune" not in lifecycles
+    assert lifecycles["snap-displayed-keep"] == "displayed"

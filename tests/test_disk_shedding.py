@@ -139,10 +139,11 @@ def test_persist_snapshot_tail_writes_when_disk_ok(monkeypatch):
         lab_rows_extra=[{"section": "lab_live"}],
     )
 
-    assert calls == ["history", "market:4", "ledger:4", "grading"]
+    assert calls == ["history", "market:4", "grading"]
     assert snapshot["diagnostics"]["history_rows_written"] == 11
     assert snapshot["diagnostics"]["market_rows_written"] == 4
-    assert snapshot["diagnostics"]["pick_ledger_written"] == 4
+    assert snapshot["diagnostics"]["pick_ledger_written"] == 0
+    assert snapshot["diagnostics"]["pick_ledger_skip_reason"] == "generated_ticks_not_persisted"
     assert snapshot["diagnostics"].get("disk_guard") is None
 
 
