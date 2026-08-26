@@ -1497,12 +1497,15 @@ def get_latest_completed_event_info(tour: str = "pga", as_of: date | None = None
         return None
 
 
-def fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True) -> list[dict]:
-    """Fetch DataGolf schedule rows."""
-    params = {"tour": tour}
+def _schedule_cache_params(tour: str, upcoming_only: bool) -> dict[str, str]:
+    """Params used for both the live get-schedule call and its cache key."""
+    params = {"tour": tour, "file_format": "json"}
     if upcoming_only:
         params["upcoming_only"] = "yes"
-    raw = _call_api("get-schedule", params)
+    return params
+
+
+def _parse_schedule_payload(raw: object) -> list[dict]:
     if isinstance(raw, list):
         return raw
     if isinstance(raw, dict):
@@ -1510,6 +1513,26 @@ def fetch_schedule(tour: str = "pga", *, upcoming_only: bool = True) -> list[dic
         if isinstance(rows, list):
             return rows
     return []
+
+
+def fetch_schedule(
+    tour: str = "pga",
+    *,
+    upcoming_only: bool = True,
+    allow_network: bool = True,
+) -> list[dict]:
+    """Fetch DataGolf schedule rows.
+
+    Request handlers must pass ``allow_network=False``. A 429 sets a 5-minute
+    cooldown; the next ``_call_api`` then ``time.sleep``s that whole wait on
+    the calling thread, which freezes the FastAPI event loop.
+    """
+    cache_params = _schedule_cache_params(tour, upcoming_only)
+    if not allow_network:
+        cached = REQUEST_MANAGER.get_cached(_cache_key("get-schedule", cache_params))
+        return _parse_schedule_payload(cached) if cached is not None else []
+    raw = _call_api("get-schedule", {k: v for k, v in cache_params.items() if k != "file_format"})
+    return _parse_schedule_payload(raw)
 
 def get_schedule_events(tour: str = "pga", upcoming_only: bool = True) -> list[dict]:
     """Return DG schedule events for a tour, normalized for UI selection."""

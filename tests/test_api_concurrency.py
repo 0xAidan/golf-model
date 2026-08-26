@@ -87,3 +87,49 @@ async def test_ops_health_returns_from_cache_without_waiting_for_reconciliation(
     assert elapsed < 0.5
     assert response.status_code == 200
     assert response.json()["grading"]["status"] == "ok"
+
+
+@pytest.mark.anyio
+async def test_past_events_does_not_block_event_loop_on_rate_limit(monkeypatch) -> None:
+    """A 429 cooldown must not freeze Refresh / status while past-events runs."""
+    import app as app_module
+    from src import datagolf
+
+    def sleepy_network(*_args, **_kwargs):
+        time.sleep(5)
+        raise AssertionError("past-events must not call Data Golf")
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        app_module,
+        "list_completed_snapshot_events",
+        lambda limit=40, exclude_event_ids=None: [{"event_id": "32", "event_name": "RBC Canadian Open"}],
+    )
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {"upcoming_tournament": {"source_event_id": "26"}},
+    )
+    monkeypatch.setattr(datagolf, "_call_api", sleepy_network)
+    datagolf.REQUEST_MANAGER.cache.clear()
+    datagolf.REQUEST_MANAGER.request_times.clear()
+    datagolf.REQUEST_MANAGER.blocked_until = time.time() + 300
+
+    try:
+        transport = httpx.ASGITransport(app=app_module.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            started_at = time.perf_counter()
+            past, home, status = await asyncio.gather(
+                client.get("/api/live-refresh/past-events"),
+                client.get("/"),
+                client.get("/api/live-refresh/status"),
+            )
+            elapsed = time.perf_counter() - started_at
+    finally:
+        datagolf.REQUEST_MANAGER.cache.clear()
+        datagolf.REQUEST_MANAGER.request_times.clear()
+        datagolf.REQUEST_MANAGER.blocked_until = 0.0
+
+    assert elapsed < 0.5
+    assert past.status_code == 200
+    assert home.status_code in {200, 503}
+    assert status.status_code == 200

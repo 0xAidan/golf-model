@@ -68,3 +68,29 @@ def test_get_latest_completed_event_info_uses_status_without_end_date(monkeypatc
     assert latest is not None
     assert latest["event_id"] == "32"
     assert latest["event_name"] == "RBC Canadian Open"
+
+
+def _reset_request_manager() -> None:
+    datagolf.REQUEST_MANAGER.cache.clear()
+    datagolf.REQUEST_MANAGER.request_times.clear()
+    datagolf.REQUEST_MANAGER.blocked_until = 0.0
+
+
+def test_fetch_schedule_allow_network_false_uses_cache_only(monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise AssertionError("cache-only fetch_schedule must not call Data Golf")
+
+    monkeypatch.setattr(datagolf, "_call_api", boom)
+    _reset_request_manager()
+    datagolf.REQUEST_MANAGER.set_cached(
+        datagolf._cache_key("get-schedule", {"file_format": "json", "tour": "pga"}),
+        [{"event_id": "26", "status": "upcoming"}],
+        ttl_seconds=60,
+    )
+
+    try:
+        rows = datagolf.fetch_schedule(tour="pga", upcoming_only=False, allow_network=False)
+        assert rows == [{"event_id": "26", "status": "upcoming"}]
+        assert datagolf.fetch_schedule(tour="pga", upcoming_only=True, allow_network=False) == []
+    finally:
+        _reset_request_manager()

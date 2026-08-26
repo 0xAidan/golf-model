@@ -2302,7 +2302,9 @@ async def get_live_refresh_past_events(limit: int = Query(default=40, ge=1, le=2
             if eid:
                 exclude_ids.add(eid)
 
-        for row in fetch_schedule(tour="pga", upcoming_only=False):
+        # Cache-only: never call Data Golf from this request. A 429 cooldown
+        # makes _call_api sleep up to 5 minutes and freezes every page.
+        for row in fetch_schedule(tour="pga", upcoming_only=False, allow_network=False):
             status = normalize_schedule_status(row)
             if status and status != "completed":
                 eid = str(row.get("event_id") or "").strip()
