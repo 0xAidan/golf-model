@@ -174,3 +174,54 @@ def test_past_events_api_excludes_snapshot_upcoming_id(monkeypatch):
     assert captured["exclude_event_ids"] == {"26"}
     assert response.json()["events"][0]["event_id"] == "32"
 
+
+def test_past_events_api_does_not_call_datagolf_network(monkeypatch):
+    """Dashboard load must not sleep on a Data Golf 429 cooldown."""
+    import app as app_module
+    from fastapi.testclient import TestClient
+
+    from src import datagolf
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("past-events must not hit Data Golf")
+
+    captured: dict[str, set[str] | None] = {}
+
+    def fake_list_completed(limit=40, exclude_event_ids=None):
+        captured["exclude_event_ids"] = exclude_event_ids
+        return [{"event_id": "32", "event_name": "RBC Canadian Open"}]
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(app_module, "list_completed_snapshot_events", fake_list_completed)
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.read_snapshot",
+        lambda: {
+            "live_tournament": {"source_event_id": "26"},
+            "upcoming_tournament": {"source_event_id": "26"},
+        },
+    )
+    monkeypatch.setattr(datagolf, "_call_api", boom)
+    datagolf.REQUEST_MANAGER.cache.clear()
+    datagolf.REQUEST_MANAGER.request_times.clear()
+    datagolf.REQUEST_MANAGER.blocked_until = 0.0
+    datagolf.REQUEST_MANAGER.set_cached(
+        datagolf._cache_key("get-schedule", {"file_format": "json", "tour": "pga"}),
+        [
+            {"event_id": "26", "status": "upcoming"},
+            {"event_id": "99", "status": "in progress"},
+            {"event_id": "32", "status": "completed"},
+        ],
+        ttl_seconds=60,
+    )
+
+    try:
+        client = TestClient(app_module.app)
+        response = client.get("/api/live-refresh/past-events")
+
+        assert response.status_code == 200
+        assert captured["exclude_event_ids"] == {"26", "99"}
+    finally:
+        datagolf.REQUEST_MANAGER.cache.clear()
+        datagolf.REQUEST_MANAGER.request_times.clear()
+        datagolf.REQUEST_MANAGER.blocked_until = 0.0
+

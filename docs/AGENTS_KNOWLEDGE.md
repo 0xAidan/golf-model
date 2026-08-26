@@ -753,6 +753,7 @@ systemctl restart golf-live-refresh
 #### Live Refresh Ownership (single-owner rule)
 
 - The systemd unit `golf-live-refresh` (running `workers/live_refresh_worker.py`) is the **sole authoritative owner** of the live refresh loop in production. Do not start a second loop in-process.
+- **Never call Data Golf (`_call_api` / `fetch_schedule` with network) from a FastAPI request handler.** `_call_api` uses `time.sleep` for throttle and 429 cooldown (up to 5 minutes). That blocks the uvicorn event loop and freezes Refresh / every API. `GET /api/live-refresh/past-events` uses `fetch_schedule(..., allow_network=False)` (in-process cache only).
 - The FastAPI dashboard (`app.py`) will **not** start an embedded live-refresh loop by default. Embedded autostart is opt-in via `LIVE_REFRESH_EMBEDDED_AUTOSTART=1` (useful only for local/dev environments where the worker is not running). When opt-in is enabled, the dashboard emits a LOUD `WARNING` log on startup.
 - **Pidfile coordination:** the worker writes its PID to `/tmp/golf_live_refresh.pid` (override via env var `LIVE_REFRESH_PIDFILE`) and removes it on clean shutdown. If `LIVE_REFRESH_EMBEDDED_AUTOSTART=1` is set but the pidfile points to a live process, the dashboard lifespan hook refuses to start a second loop and logs a WARNING.
 - `deploy.sh` sets `LIVE_REFRESH_EMBEDDED_AUTOSTART=0` on `golf-dashboard.service` as defense-in-depth; the repo default is now also `0`.
