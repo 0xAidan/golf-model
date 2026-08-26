@@ -83,6 +83,8 @@ def test_ops_health_endpoint(monkeypatch):
     assert body["ok"] is True
     assert body["identity"]["app_root"] == "/tmp/test"
     assert body["live_refresh"]["running"] is True
+    assert body["live_refresh"]["heartbeat_age_seconds"] == 0
+    assert body["heartbeat_age_seconds"] == 0
     assert body["grading"]["status"] == "ok"
     assert body["disk"]["state"] == "healthy"
 
@@ -141,6 +143,9 @@ def test_ops_health_includes_persisted_auto_grade(monkeypatch, tmp_path):
     response = client.get("/api/ops/health")
     body = response.json()
     assert body["live_refresh"]["last_auto_grade_at"] == "2099-01-01T00:00:00+00:00"
+    assert body["live_refresh"]["last_auto_grade_status"] == {"status": "complete"}
+    assert body["grading"]["last_auto_grade_status"] == {"status": "complete"}
+    assert body["live_refresh"]["heartbeat_age_seconds"] == 0
 
 
 def test_ops_health_disk_hard_floor_marks_unhealthy(monkeypatch):

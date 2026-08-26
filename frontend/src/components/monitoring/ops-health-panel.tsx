@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useOpsHealth } from "@/hooks/use-ops-health"
 import { api } from "@/lib/api"
 import { formatDateTime } from "@/lib/format"
+import { formatAutoGradeStatusLabel } from "@/lib/grading-trust"
 
 type OpsJobSummary = {
   id: string
@@ -24,6 +25,7 @@ export function OpsHealthPanel() {
   const grading = healthQuery.data?.grading ?? {}
   const worker = healthQuery.data?.live_refresh ?? {}
   const gradeJob = gradeJobQuery.data?.job
+  const autoGradeLabel = formatAutoGradeStatusLabel(grading.last_auto_grade_status)
 
   return (
     <div className="space-y-3 text-sm" data-testid="ops-health-panel">
@@ -44,8 +46,8 @@ export function OpsHealthPanel() {
       </p>
       {grading.last_auto_grade_at ? (
         <p className="text-[var(--text-secondary)]">
-          Last auto-grade: {formatDateTime(String(grading.last_auto_grade_at))} (
-          {String(grading.last_auto_grade_status ?? "")})
+          Last auto-grade: {formatDateTime(String(grading.last_auto_grade_at))}
+          {autoGradeLabel ? ` (${autoGradeLabel})` : ""}
         </p>
       ) : null}
       {gradeJob ? (

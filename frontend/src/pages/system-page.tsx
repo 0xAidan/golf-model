@@ -11,6 +11,8 @@ import { TerminalPageHeader } from "@/components/ui/terminal-page-header"
 import { useOpsHealth } from "@/hooks/use-ops-health"
 import { api } from "@/lib/api"
 import { buildDiagnosticsModel } from "@/lib/cockpit-event-models"
+import { formatDateTime } from "@/lib/format"
+import { formatAutoGradeStatusLabel } from "@/lib/grading-trust"
 import type {
   DataHealthReport,
   DashboardState,
@@ -66,7 +68,7 @@ export function SystemPage({
   const diagnosticsModel = buildDiagnosticsModel({
     mode: predictionTab,
     diagnostics: predictionTab === "past" ? undefined : activeSection?.diagnostics,
-    dashboardAiAvailable: dashboard?.ai_status?.available ?? false,
+    dashboardAiAvailable: dashboard ? Boolean(dashboard.ai_status?.available) : undefined,
     strategySource: dashboard?.baseline_provenance?.strategy_source,
     strategyName: dashboard?.baseline_provenance?.live_strategy_name,
     warnings: predictionRun?.warnings,
@@ -130,10 +132,12 @@ export function SystemPage({
     : workerRunning
       ? "The live refresh worker is running."
       : "The live refresh worker is down, so fresh boards and auto-recovery are at risk."
+  const heartbeatAgeSeconds =
+    opsHealth?.live_refresh?.heartbeat_age_seconds ?? opsHealth?.heartbeat_age_seconds ?? null
   const workerDetail = opsPending
     ? "Waiting for ops health…"
     : [
-        `Heartbeat age ${formatAge(opsHealth?.live_refresh?.heartbeat_age_seconds ?? null)}`,
+        `Heartbeat age ${formatAge(heartbeatAgeSeconds)}`,
         `snapshot age ${formatAge(opsHealth?.live_refresh?.snapshot_age_seconds ?? null)}`,
         opsHealth?.worker_restart_request?.requested_at
           ? `restart requested by ${opsHealth.worker_restart_request.requested_by ?? "operator"}`
@@ -142,18 +146,26 @@ export function SystemPage({
         .filter(Boolean)
         .join(" · ")
 
+  const leftoverEventName = opsHealth?.grading?.leftover_event_name?.trim()
   const gradingSummary = opsPending
     ? "Checking grading reconciliation…"
     : gradingGap > 0
-      ? `${gradingGap} completed event${gradingGap === 1 ? "" : "s"} still have ungraded +EV picks.`
+      ? leftoverEventName && gradingGap === 1
+        ? `${leftoverEventName} still has ungraded +EV picks.`
+        : `${gradingGap} completed event${gradingGap === 1 ? "" : "s"} still ${
+            gradingGap === 1 ? "has" : "have"
+          } ungraded +EV picks.`
       : "Grading reconciliation is clear."
+  const autoGradeLabel = formatAutoGradeStatusLabel(opsHealth?.grading?.last_auto_grade_status)
+  const lastAutoGradeAt = opsHealth?.grading?.last_auto_grade_at
+    ? formatDateTime(opsHealth.grading.last_auto_grade_at)
+    : null
   const gradingDetail = opsPending
     ? "Waiting for ops health…"
     : [
         `Status ${opsHealth?.grading?.status ?? "unknown"}`,
-        opsHealth?.grading?.last_auto_grade_status
-          ? `last auto-grade ${String(opsHealth.grading.last_auto_grade_status)}`
-          : null,
+        lastAutoGradeAt ? `last auto-grade ${lastAutoGradeAt}` : null,
+        autoGradeLabel ? autoGradeLabel : null,
       ]
         .filter(Boolean)
         .join(" · ")

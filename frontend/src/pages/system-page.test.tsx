@@ -58,13 +58,14 @@ function renderSystemPage({
     grading: {
       status: "ok",
       events_with_ungraded_positive_ev: 0,
-      last_auto_grade_status: "complete",
+      last_auto_grade_at: "2099-01-01T00:00:00+00:00",
+      last_auto_grade_status: { status: "complete" },
     },
     live_refresh: {
       running: true,
-      heartbeat_age_seconds: 42,
       snapshot_age_seconds: 90,
     },
+    heartbeat_age_seconds: 42,
     ...opsHealth,
   })
   apiMock.getDataHealth.mockResolvedValue(dataHealth ?? buildDataHealth())
@@ -110,7 +111,10 @@ describe("SystemPage", () => {
       )
     })
     expect(screen.getByTestId("system-worker-panel")).toHaveTextContent(/worker/i)
+    expect(screen.getByTestId("system-worker-panel")).toHaveTextContent(/heartbeat age 42s/i)
     expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/grading reconciliation is clear/i)
+    expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
+    expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/complete/i)
     expect(screen.getByTestId("system-storage-panel")).toHaveTextContent(/database, backups, and archives look healthy/i)
     expect(screen.getByTestId("system-jobs-panel")).toHaveTextContent(/no recent grade job is recorded yet/i)
   })
@@ -123,9 +127,9 @@ describe("SystemPage", () => {
         ok: false,
         live_refresh: {
           running: false,
-          heartbeat_age_seconds: 4200,
           snapshot_age_seconds: 4800,
         },
+        heartbeat_age_seconds: 4200,
       },
     })
 
@@ -161,7 +165,7 @@ describe("SystemPage", () => {
         grading: {
           status: "partial",
           events_with_ungraded_positive_ev: 2,
-          last_auto_grade_status: "partial",
+          last_auto_grade_status: { status: "partial" },
         },
       },
     })
@@ -171,5 +175,65 @@ describe("SystemPage", () => {
         /2 completed events still have ungraded \+EV picks/i,
       )
     })
+    expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
+  })
+
+  it("uses singular grammar when leftover event name is missing", async () => {
+    renderSystemPage({
+      opsHealth: {
+        grading: {
+          status: "discrepancies",
+          events_with_ungraded_positive_ev: 1,
+          last_auto_grade_status: { status: "skipped", reason: "no_inventory" },
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(
+        /1 completed event still has ungraded \+ev picks/i,
+      )
+    })
+    expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
+    expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/no pick inventory/i)
+  })
+
+  it("uses singular grammar and never stringifies an auto-grade object", async () => {
+    renderSystemPage({
+      opsHealth: {
+        grading: {
+          status: "discrepancies",
+          events_with_ungraded_positive_ev: 1,
+          leftover_event_name: "Texas Children's Houston Open",
+          last_auto_grade_at: "2099-01-01T00:00:00+00:00",
+          last_auto_grade_status: { status: "complete", event_id: "20" },
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(
+        /texas children's houston open still has ungraded \+ev picks/i,
+      )
+    })
+    expect(screen.getByTestId("system-grading-panel")).not.toHaveTextContent("[object Object]")
+    expect(screen.getByTestId("system-grading-panel")).toHaveTextContent(/complete/i)
+  })
+
+  it("reads heartbeat age from the top-level ops field when nested age is missing", async () => {
+    renderSystemPage({
+      opsHealth: {
+        heartbeat_age_seconds: 12,
+        live_refresh: {
+          running: true,
+          snapshot_age_seconds: 480,
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-worker-panel")).toHaveTextContent(/heartbeat age 12s/i)
+    })
+    expect(screen.getByTestId("system-worker-panel")).not.toHaveTextContent(/heartbeat age unknown/i)
   })
 })

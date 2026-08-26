@@ -73,6 +73,58 @@ type DiagnosticsInput = {
     ev_cap_filtered?: number
     probability_inconsistency_filtered?: number
   }
+  book_stats?: Record<string, { lines_seen?: number; qualifying_edges?: number; card_rows?: number }>
+}
+
+const PAIRING_REASON_CODES = new Set([
+  "missing_player_name",
+  "missing_composite_player",
+  "equal_composite_gap",
+  "below_min_composite_gap",
+  "dg_model_disagreement",
+])
+
+const BOOK_LINE_REASON_CODES = new Set([
+  "below_ev_threshold",
+  "invalid_implied_prob",
+  "exposure_capped",
+])
+
+export function countBookLinesEvaluated(
+  bookStats?: Record<string, { lines_seen?: number }> | null,
+): number {
+  if (!bookStats) return 0
+  return Object.values(bookStats).reduce((sum, book) => sum + Number(book?.lines_seen ?? 0), 0)
+}
+
+export function formatExclusionReasonLabel(code: string): string {
+  const base = code.replaceAll("_", " ")
+  if (PAIRING_REASON_CODES.has(code)) return `${base} (pairings)`
+  if (BOOK_LINE_REASON_CODES.has(code)) return `${base} (book lines)`
+  return base
+}
+
+function buildAiLayerMetric(dashboardAiAvailable?: boolean) {
+  if (dashboardAiAvailable === undefined) {
+    return {
+      label: "AI layer",
+      value: "Unknown",
+      detail: "Dashboard AI status has not loaded yet.",
+    }
+  }
+  if (dashboardAiAvailable) {
+    return {
+      label: "AI layer",
+      value: "Enabled",
+      detail: "An AI key is configured. Live boards still do not run AI on each refresh.",
+      tone: "positive" as const,
+    }
+  }
+  return {
+    label: "AI layer",
+    value: "Off",
+    detail: "Not configured. Live boards do not run AI. A key can be added later.",
+  }
 }
 
 export function buildCourseFeedModel({
@@ -505,7 +557,7 @@ export function buildDiagnosticsModel({
 }: {
   mode: CockpitMode
   diagnostics?: DiagnosticsInput
-  dashboardAiAvailable: boolean
+  dashboardAiAvailable?: boolean
   strategySource?: string
   strategyName?: string
   warnings?: string[]
@@ -517,6 +569,7 @@ export function buildDiagnosticsModel({
   const rawRows = diagnostics?.market_counts?.tournament_matchups?.raw_rows ?? 0
   const selectedRows = diagnostics?.selection_counts?.selected_rows ?? 0
   const qualifyingRows = diagnostics?.selection_counts?.all_qualifying_rows ?? 0
+  const bookLines = countBookLinesEvaluated(diagnostics?.book_stats)
   const selectedEvent = gradingHistory.find((event) => event.event_id === selectedEventId)
 
   return {
@@ -526,12 +579,7 @@ export function buildDiagnosticsModel({
         value: diagnostics?.state ?? "unknown",
         detail: "Latest pipeline state for this cockpit surface",
       },
-      {
-        label: "AI layer",
-        value: dashboardAiAvailable ? "Enabled" : "Unavailable",
-        detail: dashboardAiAvailable ? "Qualitative context is available" : "AI context is currently unavailable",
-        tone: dashboardAiAvailable ? "positive" : "warning",
-      },
+      buildAiLayerMetric(dashboardAiAvailable),
       {
         label: "Strategy source",
         value: strategyName ?? strategySource ?? "--",
@@ -543,11 +591,14 @@ export function buildDiagnosticsModel({
         detail:
           mode === "past"
             ? "Stored replay points available for grading review"
-            : `${qualifyingRows} qualifying rows from ${rawRows} raw matchup rows`,
+            : bookLines > 0
+              ? `${qualifyingRows} qualifying from ${rawRows} pairings · ${bookLines} book lines`
+              : `${qualifyingRows} qualifying rows from ${rawRows} matchup pairings`,
       },
     ] as CockpitMetricModel[],
     counters: [
-      `Matchup rows posted: ${String(rawRows)}`,
+      `Matchup pairings posted: ${String(rawRows)}`,
+      ...(bookLines > 0 ? [`Book lines evaluated: ${String(bookLines)}`] : []),
       `Rows qualifying: ${String(qualifyingRows)}`,
       `Rows selected: ${String(selectedRows)}`,
       `Current secondary rows: ${String(currentSecondaryBets.length)}`,
@@ -556,8 +607,8 @@ export function buildDiagnosticsModel({
     reasonCodes: Object.entries(diagnostics?.reason_codes ?? {})
       .sort((left, right) => right[1] - left[1])
       .slice(0, 6)
-      .map(([label, count]) => ({
-        label: label.replaceAll("_", " "),
+      .map(([code, count]) => ({
+        label: formatExclusionReasonLabel(code),
         count,
       })),
     warnings: warnings ?? [],
