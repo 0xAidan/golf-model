@@ -150,6 +150,7 @@ async def get_ops_health():
             "snapshot_generated_at": generated_at,
             "snapshot_age_seconds": snapshot_age_seconds,
             "stale_after_seconds": stale_after_seconds,
+            "heartbeat_age_seconds": heartbeat_age_seconds,
             "last_auto_grade_at": status.get("last_auto_grade_at"),
             "last_auto_grade_status": status.get("last_auto_grade_status"),
         },

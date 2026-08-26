@@ -243,11 +243,79 @@ describe("buildDiagnosticsModel", () => {
 
     expect(model.reasonCodes[0]).toMatchObject({ label: "missing display odds", count: 4 })
     expect(model.metrics).toContainEqual(
+      expect.objectContaining({ label: "AI layer", value: "Enabled" }),
+    )
+    expect(model.metrics).toContainEqual(
       expect.objectContaining({ label: "Replay captures", value: "2" }),
     )
     expect(model.selectedEventSummary).toMatchObject({
       name: "RBC Heritage",
       profitLabel: "+1.20u",
     })
+  })
+
+  it("treats a missing AI key as Off, not a yellow unavailable failure", () => {
+    const model = buildDiagnosticsModel({
+      mode: "upcoming",
+      diagnostics: {
+        state: "edges_available",
+        reason_codes: {
+          below_ev_threshold: 106,
+          dg_model_disagreement: 35,
+        },
+        market_counts: {
+          tournament_matchups: { raw_rows: 82 },
+        },
+        selection_counts: {
+          selected_rows: 1,
+          all_qualifying_rows: 1,
+        },
+        book_stats: {
+          pinnacle: { lines_seen: 15, qualifying_edges: 1, card_rows: 1 },
+          bet365: { lines_seen: 7 },
+        },
+      },
+      dashboardAiAvailable: false,
+      gradingHistory: [],
+      timelinePoints: [],
+      currentSecondaryBets: [],
+    })
+
+    expect(model.metrics).toContainEqual(
+      expect.objectContaining({
+        label: "AI layer",
+        value: "Off",
+      }),
+    )
+    expect(model.metrics.find((metric) => metric.label === "AI layer")?.tone).toBeUndefined()
+    expect(model.counters).toContain("Matchup pairings posted: 82")
+    expect(model.counters).toContain("Book lines evaluated: 22")
+    expect(model.reasonCodes).toEqual(
+      expect.arrayContaining([
+        { label: "below ev threshold (book lines)", count: 106 },
+        { label: "dg model disagreement (pairings)", count: 35 },
+      ]),
+    )
+    expect(model.metrics).toContainEqual(
+      expect.objectContaining({
+        label: "Rows selected",
+        value: "1",
+        detail: "1 qualifying from 82 pairings · 22 book lines",
+      }),
+    )
+  })
+
+  it("shows Unknown while dashboard AI status has not loaded", () => {
+    const model = buildDiagnosticsModel({
+      mode: "upcoming",
+      dashboardAiAvailable: undefined,
+      gradingHistory: [],
+      timelinePoints: [],
+      currentSecondaryBets: [],
+    })
+
+    expect(model.metrics).toContainEqual(
+      expect.objectContaining({ label: "AI layer", value: "Unknown" }),
+    )
   })
 })

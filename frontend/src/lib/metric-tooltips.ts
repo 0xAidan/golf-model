@@ -106,7 +106,7 @@ export const COCKPIT_METRIC_TOOLTIPS: Partial<Record<string, string>> = {
   "Last snapshot": "When the pipeline last wrote a decision snapshot for this context.",
   "Model lane": "Which model output or blend is driving the current card.",
   "Snapshot state": "Pipeline or replay state label for diagnostics.",
-  "AI layer": "Whether qualitative AI commentary was merged for this run.",
+  "AI layer": "Whether an AI API key is configured on this process. Live boards do not run AI on each refresh.",
   "Strategy source": "Which strategy profile or registry entry supplied weights and gates.",
   "Rows selected": "Lines that passed filters into the exportable card for this run.",
 }

@@ -5,18 +5,23 @@ import { api } from "@/lib/api"
 export type OpsHealthResponse = {
   ok?: boolean
   summary?: string
+  heartbeat_age_seconds?: number | null
   grading?: {
     status?: string
     events_with_ungraded_positive_ev?: number
-    last_auto_grade_at?: string
-    last_auto_grade_status?: string
+    ungraded_positive_ev_picks?: number
+    leftover_event_name?: string | null
+    leftover_event_id?: string | null
+    leftover_tournament_id?: number | null
+    last_auto_grade_at?: string | null
+    last_auto_grade_status?: Record<string, unknown> | string | null
     reconciliation?: { status?: string }
   }
   live_refresh?: {
     running?: boolean
     last_recompute_at?: string
-    heartbeat_age_seconds?: number
-    snapshot_age_seconds?: number
+    heartbeat_age_seconds?: number | null
+    snapshot_age_seconds?: number | null
   }
   disk?: {
     state?: string

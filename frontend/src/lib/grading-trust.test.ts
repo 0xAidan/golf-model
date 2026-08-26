@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import gradingHistoryFixture from "@/__fixtures__/grading-history.json"
-import { buildGradingTrustMetrics } from "@/lib/grading-trust"
+import { buildGradingTrustMetrics, formatAutoGradeStatusLabel } from "@/lib/grading-trust"
 import type { GradingHistoryResponse, GradingSeasonResponse } from "@/lib/types"
 
 const seasonWithUngraded = {
@@ -100,5 +100,17 @@ describe("buildGradingTrustMetrics", () => {
     })
 
     expect(metrics.autoGradeMessage).toMatch(/waiting for Data Golf/i)
+  })
+})
+
+describe("formatAutoGradeStatusLabel", () => {
+  it("never stringifies an object payload", () => {
+    expect(formatAutoGradeStatusLabel({ status: "complete", event_id: "20" })).toBe("complete")
+    expect(formatAutoGradeStatusLabel({ status: "partial" })).toBe("partial")
+    expect(formatAutoGradeStatusLabel({ status: "skipped", reason: "no_inventory" })).toBe(
+      "skipped: no pick inventory",
+    )
+    expect(formatAutoGradeStatusLabel("complete")).toBe("complete")
+    expect(formatAutoGradeStatusLabel(null)).toBeNull()
   })
 })

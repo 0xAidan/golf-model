@@ -31,6 +31,67 @@ function countPositiveEvPicks(tournaments: GradedTournamentSummary[]): number {
   return total
 }
 
+export type AutoGradeStatusPayload = Record<string, unknown> | string | null | undefined
+
+const asAutoGradeObject = (
+  autoGrade: AutoGradeStatusPayload,
+): Record<string, unknown> | null => {
+  if (autoGrade == null) return null
+  if (typeof autoGrade === "string") {
+    const trimmed = autoGrade.trim()
+    return trimmed ? { status: trimmed } : null
+  }
+  if (typeof autoGrade !== "object") return null
+  return autoGrade
+}
+
+/**
+ * Operator-facing last-auto-grade label. Never String(object).
+ * Accepts the production object payload or a legacy string.
+ */
+export const formatAutoGradeStatusLabel = (
+  autoGrade: AutoGradeStatusPayload,
+): string | null => {
+  const payload = asAutoGradeObject(autoGrade)
+  if (!payload) return null
+
+  const status = String(payload.status ?? "").trim().toLowerCase()
+  const reason = String(payload.reason ?? "").trim()
+  const message = String(payload.message ?? "").trim()
+
+  if (status === "error") {
+    return message || "Auto-grade failed — use Grade event or check backend logs."
+  }
+  if (status === "captured" && reason === "awaiting_results") {
+    return "waiting for Data Golf final results"
+  }
+  if (status === "skipped" && reason === "no_inventory") {
+    return "skipped: no pick inventory"
+  }
+  if (status === "skipped" && reason === "already_graded") {
+    return "already graded"
+  }
+  if (status === "skipped" && reason === "awaiting_retry_scheduled") {
+    return "waiting to retry"
+  }
+  if (status === "skipped" && reason === "awaiting_retry_window_expired") {
+    return "retry window expired"
+  }
+  if (status === "skipped" && reason === "no_tracked_picks") {
+    return "skipped: no tracked picks"
+  }
+  if (status === "skipped" && reason === "event_not_gradeable") {
+    return "skipped: event not gradeable"
+  }
+  if (status === "complete") return "complete"
+  if (status === "partial") return reason ? `partial (${reason})` : "partial"
+  if (status === "ok") return "complete"
+  if (status === "skipped") return reason ? `skipped (${reason})` : "skipped"
+  if (status) return reason ? `${status} (${reason})` : status
+  if (message) return message
+  return null
+}
+
 const formatAutoGradeMessage = (
   liveRefreshStatus: LiveRefreshRuntimeStatus | undefined,
 ): string | null => {
