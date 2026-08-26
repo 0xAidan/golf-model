@@ -1,0 +1,16 @@
+[Unit]
+Description=Golf Model daily storage janitor (sweep leftovers, then cleanup)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+Environment=STORAGE_AUTO_CLEANUP=1
+EnvironmentFile=-/opt/golf-model/.env
+Nice=10
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/run_storage_janitor.py
+
+[Install]
+WantedBy=multi-user.target

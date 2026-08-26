@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.db import get_app_metadata, set_app_metadata
+from src.ops_jobs import maybe_enqueue_storage_cleanup
 
 OPS_GRADING_HEALTH_KEY = "ops_grading_health"
 DATA_HEALTH_REPORT_KEY_PREFIX = "data_health_report"
@@ -152,4 +153,7 @@ def refresh_data_health_cache(year: int = 2026) -> dict[str, Any]:
     ensure_analytics_views()
     report = build_data_health_report(year=year)
     write_cached_data_health(report, year=year)
+    if str(report.get("status") or "") == "red":
+        reasons = report.get("storage_red_reasons") or ["storage red"]
+        report["auto_cleanup"] = maybe_enqueue_storage_cleanup(reason=str(reasons[0]))
     return report

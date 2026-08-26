@@ -2776,6 +2776,7 @@ def vacuum_database(*, wal_checkpoint: bool = True) -> dict[str, Any]:
             except sqlite3.OperationalError as exc:
                 _logger.warning("wal_checkpoint failed: %s", exc)
         before = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+        conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
         conn.execute("VACUUM")
         conn.commit()
         after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
@@ -2784,6 +2785,75 @@ def vacuum_database(*, wal_checkpoint: bool = True) -> dict[str, Any]:
             "bytes_before": before,
             "bytes_after": after,
             "bytes_reclaimed": max(0, before - after),
+            "auto_vacuum": "INCREMENTAL",
+        }
+    finally:
+        conn.close()
+
+
+def swap_compacted_database(live_path: str, compacted_path: str) -> dict[str, Any]:
+    """Replace the live DB with a compacted copy using rename, not a third full copy."""
+    if not os.path.isfile(compacted_path):
+        return {"ok": False, "reason": "compacted database missing"}
+    if not os.path.isfile(live_path):
+        return {"ok": False, "reason": "live database missing"}
+
+    pre_path = live_path + ".pre_reclaim"
+    if os.path.isfile(pre_path):
+        os.remove(pre_path)
+
+    os.replace(live_path, pre_path)
+    try:
+        os.replace(compacted_path, live_path)
+    except OSError as exc:
+        os.replace(pre_path, live_path)
+        return {"ok": False, "reason": f"could not install compacted database: {exc}"}
+
+    conn = sqlite3.connect(live_path, timeout=60.0)
+    try:
+        row = conn.execute("PRAGMA quick_check").fetchone()
+        check = str(row[0]) if row else "unknown"
+    finally:
+        conn.close()
+
+    if check != "ok":
+        os.replace(live_path, compacted_path + ".failed")
+        os.replace(pre_path, live_path)
+        return {
+            "ok": False,
+            "reason": f"compacted database failed quick_check: {check}",
+            "quick_check": check,
+        }
+
+    os.remove(pre_path)
+    return {"ok": True, "method": "rename_swap", "quick_check": check}
+
+
+def incremental_reclaim() -> dict[str, Any]:
+    """Reclaim free pages when auto_vacuum is INCREMENTAL. No extra full-file copy."""
+    if not os.path.isfile(DB_PATH):
+        return {"ok": False, "skipped": True, "reason": "database missing"}
+
+    conn = get_conn()
+    try:
+        mode = int(conn.execute("PRAGMA auto_vacuum").fetchone()[0] or 0)
+        if mode != 2:
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "auto_vacuum is not INCREMENTAL",
+                "auto_vacuum": mode,
+            }
+        before_free = int(conn.execute("PRAGMA freelist_count").fetchone()[0] or 0)
+        conn.execute("PRAGMA incremental_vacuum")
+        conn.commit()
+        after_free = int(conn.execute("PRAGMA freelist_count").fetchone()[0] or 0)
+        return {
+            "ok": True,
+            "method": "incremental_vacuum",
+            "freelist_before": before_free,
+            "freelist_after": after_free,
+            "pages_reclaimed": max(0, before_free - after_free),
         }
     finally:
         conn.close()
@@ -3458,6 +3528,8 @@ def reclaim_database_disk(
 
     if db_bytes >= 5 * 1024 ** 3:
         temp_path = DB_PATH + ".vacuum_into"
+        if os.path.isfile(temp_path):
+            os.remove(temp_path)
         conn = get_conn()
         try:
             if wal_checkpoint:
@@ -3466,6 +3538,7 @@ def reclaim_database_disk(
                 except sqlite3.OperationalError as exc:
                     _logger.warning("wal_checkpoint failed: %s", exc)
             before = db_bytes
+            conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
             escaped = temp_path.replace("'", "''")
             conn.execute(f"VACUUM INTO '{escaped}'")
             conn.commit()
@@ -3473,17 +3546,23 @@ def reclaim_database_disk(
             conn.close()
         if not os.path.isfile(temp_path):
             return {"ok": False, "skipped": True, "reason": "VACUUM INTO did not produce output"}
-        backup_path = DB_PATH + ".pre_reclaim"
-        shutil.copy2(DB_PATH, backup_path)
-        os.replace(temp_path, DB_PATH)
+        swap = swap_compacted_database(DB_PATH, temp_path)
+        if not swap.get("ok"):
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": swap.get("reason"),
+                "free_mb": free_mb,
+            }
         after = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
         return {
             "ok": True,
-            "method": "vacuum_into_swap",
+            "method": "vacuum_into_rename",
             "bytes_before": before,
             "bytes_after": after,
             "bytes_reclaimed": max(0, before - after),
             "free_mb": free_mb,
+            "auto_vacuum": "INCREMENTAL",
         }
 
     return vacuum_database(wal_checkpoint=wal_checkpoint)

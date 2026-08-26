@@ -145,9 +145,11 @@ Gunzip JSONL files offline; query with `jq`, Python, or import into a scratch SQ
 
 | Job | Schedule | Command |
 |---|---|---|
-| Nightly backup | 03:00 UTC (`golf-backup.timer`) | `python3 -m src.backup --keep 4` |
+| Daily storage janitor | 02:00 UTC (`golf-storage-janitor.timer`) | `scripts/run_storage_janitor.py` |
+| Nightly backup | 03:00 UTC (`golf-backup.timer`) | `python3 -m src.backup --keep 4 --compress` |
 | Weekly retention | `golf-retention.timer` | `scripts/run_retention_cycle.py --vacuum` |
 | On-demand cleanup | `/system` or API | `POST /api/ops/jobs/cleanup` |
+| Auto cleanup on red | data-health refresh | `maybe_enqueue_storage_cleanup` (6h cooldown) |
 
 Env defaults (see `docs/storage-retention.md`): `DISK_FREE_MB_WARN=10240`, `DISK_FREE_MB_HARD=5120`, `SNAPSHOT_HISTORY_RETAIN_DAYS=210`, `MARKET_PREDICTION_SLIM_PAYLOAD=1`.
 

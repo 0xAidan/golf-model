@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from src import cached_health
 from src.db import ensure_initialized, get_conn
-from src.ops_jobs import create_job, get_job, update_job
+from src.ops_jobs import create_job, execute_cleanup_job, get_job, update_job
 
 router = APIRouter(tags=["ops-jobs"])
 
@@ -211,43 +211,7 @@ async def start_grade_job(request: Request):
 
 
 def _run_cleanup_job(job_id: str, vacuum: bool, retain_days: int | None) -> None:
-    from src.ops_jobs import run_storage_cleanup
-
-    conn = get_conn()
-    try:
-        update_job(conn, job_id, progress_pct=10, message="Sweeping backup sidecars…")
-        update_job(conn, job_id, progress_pct=35, message="Running retention cycle…")
-        report = run_storage_cleanup(vacuum=vacuum, retain_days=retain_days)
-        if report.get("ok"):
-            update_job(
-                conn,
-                job_id,
-                status="complete",
-                progress_pct=100,
-                message="Cleanup complete",
-                result=report,
-            )
-        else:
-            update_job(
-                conn,
-                job_id,
-                status="error",
-                progress_pct=100,
-                message="Cleanup finished with errors",
-                result=report,
-                error="One or more cleanup steps failed; see result.steps",
-            )
-    except Exception as exc:
-        update_job(
-            conn,
-            job_id,
-            status="error",
-            progress_pct=100,
-            message="Cleanup failed",
-            error=str(exc),
-        )
-    finally:
-        conn.close()
+    execute_cleanup_job(job_id, vacuum, retain_days)
 
 
 @router.post("/api/ops/jobs/cleanup")

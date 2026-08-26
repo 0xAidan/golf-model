@@ -105,6 +105,23 @@ def test_sweep_orphan_sidecars_removes_unmatched(tmp_path) -> None:
         backup.BACKUP_DIR = original_backup_dir
 
 
+def test_create_backup_sweeps_leftover_temp_before_creating(tmp_db, monkeypatch, tmp_path) -> None:
+    leftover = tmp_path / "tmplwd_zutb.db"
+    leftover.write_bytes(b"stale-unpacked-backup")
+    os.utime(leftover, (1_000, 1_000))
+    monkeypatch.setenv("STORAGE_JANITOR_TMP_DIR", str(tmp_path))
+    original_backup_dir = backup.BACKUP_DIR
+    try:
+        backup.BACKUP_DIR = str(tmp_path / "backups")
+        os.makedirs(backup.BACKUP_DIR, exist_ok=True)
+        path = backup.create_backup(keep=1)
+        assert path is not None
+        assert leftover.exists() is False
+        assert os.path.isfile(path) is True
+    finally:
+        backup.BACKUP_DIR = original_backup_dir
+
+
 def test_create_backup_refuses_when_it_cannot_fit(tmp_db, monkeypatch, tmp_path) -> None:
     original_backup_dir = backup.BACKUP_DIR
     try:

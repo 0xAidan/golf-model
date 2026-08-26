@@ -18,12 +18,12 @@ import glob
 import gzip
 import json
 import sqlite3
-import tempfile
 from datetime import datetime
 from typing import Any
 
 from src import db
 from src.disk_guard import warn_if_low_disk
+from src.storage_janitor import get_backup_temp_dir, make_backup_temp_db, sweep_disposable_storage
 
 
 def _current_db_path() -> str:
@@ -294,7 +294,7 @@ def verify_backup_integrity(
             if uncompressed <= 0:
                 uncompressed = max(os.path.getsize(backup_path) * 12, BACKUP_FIT_MARGIN_BYTES)
             try:
-                free = int(shutil.disk_usage(tempfile.gettempdir()).free)
+                free = int(shutil.disk_usage(str(get_backup_temp_dir())).free)
             except OSError:
                 free = 0
             if free < uncompressed + BACKUP_FIT_MARGIN_BYTES:
@@ -315,8 +315,7 @@ def verify_backup_integrity(
                     "path": backup_path,
                     "checked_at": datetime.now().isoformat(),
                 }
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
-            os.close(temp_fd)
+            temp_path = make_backup_temp_db(prefix="golf_integrity_")
             with gzip.open(backup_path, "rb") as gz, open(temp_path, "wb") as out:
                 shutil.copyfileobj(gz, out)
             check_path = temp_path
@@ -364,6 +363,14 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
         )
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
+
+    janitor = sweep_disposable_storage(db_path=db_path)
+    if janitor.get("bytes_freed"):
+        print(
+            f"  Swept leftover temp copies: "
+            f"{janitor.get('count', 0)} files, "
+            f"{int(janitor['bytes_freed']) / (1024 ** 2):.1f} MiB freed."
+        )
 
     # Prune *before* creating a new file so peak disk use stays at ~`keep` full
     # copies (not `keep` + 1). Small VPS volumes often fail sqlite backup with

@@ -87,3 +87,31 @@ def test_data_health_uses_cached_report_without_rebuild(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "green"
     assert response.json()["stale"] is False
+
+
+def test_refresh_data_health_enqueues_cleanup_when_red(monkeypatch) -> None:
+    from src import cached_health
+
+    stored: dict[str, object] = {}
+    monkeypatch.setattr(cached_health, "set_app_metadata", lambda key, value: stored.__setitem__(key, value))
+    monkeypatch.setattr(cached_health, "get_app_metadata", lambda key: stored.get(key))
+    monkeypatch.setattr("src.data_views.ensure_analytics_views", lambda: None)
+    monkeypatch.setattr(
+        "src.data_health.build_data_health_report",
+        lambda **kwargs: {
+            "status": "red",
+            "storage_red_reasons": ["next backup cannot fit"],
+        },
+    )
+    enqueued: list[str] = []
+    monkeypatch.setattr(
+        cached_health,
+        "maybe_enqueue_storage_cleanup",
+        lambda **kwargs: enqueued.append(kwargs["reason"]) or {"started": True},
+    )
+
+    report = cached_health.refresh_data_health_cache(2026)
+
+    assert report["status"] == "red"
+    assert enqueued == ["next backup cannot fit"]
+    assert report["auto_cleanup"] == {"started": True}
