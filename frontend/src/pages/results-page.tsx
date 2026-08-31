@@ -156,7 +156,7 @@ export function ResultsPage({ initialTab = "grading" }: { initialTab?: ResultsTa
       />
       <div className="px-5 pb-1">
         <div
-          className="inline-flex flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1"
+          className="inline-flex flex-wrap gap-2 rounded-[var(--r-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-1"
           role="tablist"
           aria-label="Results views"
         >

@@ -134,7 +134,7 @@ export function resolvePastMatchupGrade(
   if (options?.completedReplay) {
     return {
       kind: "ungraded",
-      title: "Not graded yet — use Grade event in the header after the tournament completes.",
+      title: "Not graded yet — open Results and use Grade event after the tournament completes.",
     }
   }
 

@@ -79,7 +79,7 @@ export function GradingTrustStrip({
             title="Ungraded +EV picks remain"
             message={`${metrics.ungradedPositiveEvCount} +EV pick${
               metrics.ungradedPositiveEvCount === 1 ? "" : "s"
-            } still need grading. Use Grade event in the header after the tournament completes.`}
+            } still need grading. Open Results and use Grade event after the tournament completes.`}
           />
         </div>
       ) : null}

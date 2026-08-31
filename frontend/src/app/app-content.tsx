@@ -1,7 +1,7 @@
 import { Suspense, type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Route, Routes, Navigate, useLocation, useParams } from "react-router-dom"
-import { RefreshCw, Star } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
 import { CommandMenu, CommandMenuTrigger } from "@/components/command-menu"
@@ -73,6 +73,9 @@ const AutoresearchViewPage = lazyWithRetry(() =>
   import("@/pages/autoresearch-view-page").then((mod) => ({
     default: mod.AutoresearchViewPage,
   })),
+)
+const NotFoundPage = lazyWithRetry(() =>
+  import("@/pages/not-found-page").then((mod) => ({ default: mod.NotFoundPage })),
 )
 
 /** Deep-link wrapper: /players/:playerKey renders PlayersPage focused on that player. */
@@ -226,11 +229,11 @@ export function AppContent({
         limit: needsGradingPicks ? 100 : 20,
       }),
   })
-  /** When the parallel lab lane is off, lab routes still hydrate from production snapshot so the UI is usable. */
+  /** Lab boards only show lab_* snapshot sections — never Champion/production data. */
   const labDisplaySnapshot = useMemo(() => {
     if (!labRouteActive) return null
-    return labSnapshotMerged ?? liveSnapshot ?? null
-  }, [labRouteActive, labSnapshotMerged, liveSnapshot])
+    return labSnapshotMerged
+  }, [labRouteActive, labSnapshotMerged])
   const labUsingProdSnapshotFallback = Boolean(labRouteActive && !labSnapshotMerged && liveSnapshot)
   /** Only one of lab_live / lab_upcoming populated — merged board mixes lab + production for the missing side. */
   const labLanePartialSections = Boolean(
@@ -883,7 +886,7 @@ export function AppContent({
   const labPowerRankingsSubtitle = useMemo(() => {
     if (!isLabBoardRoute) return null
     if (!labSnapshotMerged) {
-      return "Lab track unavailable — showing production snapshot boards until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh worker, wait for next tick). For an independent Lab vs Dashboard comparison, lab_* sections must be non-null."
+      return "Lab track unavailable — boards stay empty until lab_live_tournament / lab_upcoming_tournament populate (enable live_refresh.lab_profile_enabled, restart live-refresh, wait for a tick). Champion/Dashboard data is not shown here."
     }
     const meta = labWorkspaceHydrated?.strategy_meta
     const champion = meta?.lab_champion_id ?? meta?.strategy_name ?? "lab_champion"
@@ -1116,20 +1119,6 @@ export function AppContent({
         <>
           <CommandMenuTrigger onClick={() => setCommandMenuOpen(true)} />
           <button
-            className="btn btn-ghost"
-            onClick={() => gradeMutation.mutate()}
-            disabled={gradeMutation.isPending || Boolean(gradeJobId)}
-            data-testid="btn-grade"
-            type="button"
-          >
-            <Star size={13} />
-            {gradeJobId
-              ? `Grading… ${gradeJobProgress ?? 0}%`
-              : gradeMutation.isPending
-                ? "Starting…"
-                : "Grade event"}
-          </button>
-          <button
             className="btn btn-primary"
             onClick={() => refreshSnapshotMutation.mutate()}
             disabled={refreshButtonDisabled}
@@ -1288,6 +1277,14 @@ export function AppContent({
         />
         <Route path="/research/diagnostics" element={withRouteRecovery(<Navigate to="/system" replace />)} />
         <Route path="/research/diagnostics-legacy" element={withRouteRecovery(<Navigate to="/system" replace />)} />
+        <Route
+          path="*"
+          element={withRouteRecovery(
+            <Suspense fallback={<RouteFallback />}>
+              <NotFoundPage />
+            </Suspense>,
+          )}
+        />
       </Routes>
     </MonitoringShell>
     <CommandMenu

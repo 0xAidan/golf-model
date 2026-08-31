@@ -10,6 +10,7 @@ import {
   History,
   LayoutDashboard,
   Menu,
+  Search,
   Settings2,
   Swords,
   Trophy,
@@ -27,7 +28,7 @@ import type { WorkspaceId } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
-  id: WorkspaceId | "lab-picks" | "compare" | "compare-players" | "eval"
+  id: WorkspaceId | "lab-picks" | "compare" | "compare-players" | "eval" | "autoresearch"
   label: string
   href: string
   icon: ElementType
@@ -56,6 +57,7 @@ const RESEARCH_NAV: NavItem[] = [
     ? ([{ id: "eval", label: "Eval", href: "/eval", icon: FlaskConical, hint: "Promotion gates" }] as NavItem[])
     : []),
   { id: "champion-challenger", label: "Champ / Challenger", href: "/research/champion-challenger", icon: FlaskConical },
+  { id: "autoresearch", label: "Autoresearch", href: "/research/autoresearch", icon: Search },
   { id: "legacy-model", label: "Legacy Model", href: "/research/legacy-model", icon: History },
 ]
 

@@ -24,7 +24,7 @@ export const buildLaneTrustState = ({
       tone: "warn",
       title: "Lab lane off",
       message:
-        "Boards mirror the main snapshot until the server enables the lab profile and recomputes lab sections.",
+        "Lab boards stay empty until the server enables the lab profile and publishes lab sections. Champion/Dashboard data is not shown here.",
     }
   }
   if (labLanePartialSections) {
@@ -32,7 +32,7 @@ export const buildLaneTrustState = ({
       tone: "warn",
       title: "Partial lab snapshot",
       message:
-        "Only one lab section is populated — the missing side still uses the production board until both fill.",
+        "Only one lab section is populated — the missing side stays empty until both lab_live and lab_upcoming fill.",
     }
   }
   if (snapshotNotice) {
