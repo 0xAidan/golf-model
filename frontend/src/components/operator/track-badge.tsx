@@ -8,7 +8,7 @@ export function TrackBadge({ track }: { track: "champion" | "challenger" }) {
           : "border-[rgba(52,211,153,0.4)] bg-[rgba(52,211,153,0.1)] text-[var(--op-accent)]"
       }`}
     >
-      <span className={`op-dot ${challenger ? "bg-[#c084fc]" : "bg-[var(--op-accent)]"}`} aria-hidden="true" />
+      <span className={`op-dot ${challenger ? "bg-[var(--gold)]" : "bg-[var(--accent-focus)]"}`} aria-hidden="true" />
       {challenger ? "Challenger" : "Champion"}
     </span>
   )

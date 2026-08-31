@@ -4,7 +4,7 @@
 
 **Audience:** AI agents (LLM instances). Optimized for programmatic parsing and minimal ambiguity; not optimized for human narrative.
 
-**Last verified:** 2026-08-23 on `main` (Terminal Overhaul series, PRs #241–#249). Frontend: premium graphite tokens (`themes.css`) + `design-system.css` + **`overhaul.css`** (display numerals, depth/glass panels, heat scales, phase accents build/track/review, calm-mode rules; loads last). New read-only endpoints in `src/routes/redesign_data.py` (betting-record, market-history, course-dna, hole-heat, pairwise compare — all schema-error-safe). Motion primitives in `frontend/src/components/motion/`; Calm Mode toggle persists via `CalmModeProvider`. Phase detection in `lib/tournament-phase.ts`. Compare engine at `/compare/players`. Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
+**Last verified:** 2026-08-31 on `main` (sports-desk tokens in `themes.css` + `desk.css` last). A corrupt `golf.db` must not take the process down. Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
 
 **Production web (operator-facing SPA):** https://golf.shermandavison.com/ (`golf.ancc.blog` 301s there) — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server). A corrupt `golf.db` must not take the process down: `src/db.py` no longer opens SQLite at import; snapshot/ops-health keep last JSON boards; `scripts/db_integrity_probe.py` auto-restores only on confirmed malformed. Caddy static fallback: `docs/runbooks/caddy-static-fallback.md`.
 
@@ -214,13 +214,11 @@ golf-model/
 │       │   ├── live-snapshot-provider.tsx  # Snapshot context; keepPreviousData on poll
 │       │   └── interaction-provider.tsx      # prefers-reduced-motion for MotionCursor / NumberFlow
 │       ├── styles/
-│       │   ├── themes.css                 # Premium graphite tokens (dark+light) — single source of color/type/depth
-│       │   ├── design-system.css          # Token-driven primitives (loads LAST; buttons, chips, cards, shell restyle)
-│       │   ├── operator-tokens.css        # /preview operator prototype tokens (op-* classes)
+│       │   ├── themes.css                 # Sports-desk tokens (paper / clubhouse) — single source of color/type
+│       │   ├── desk.css                   # Sports-desk primitives (loads LAST)
+│       │   ├── design-system.css          # Leftover layout helpers (do not add a fifth layer)
 │       │   ├── page-layouts.css           # Shared page width / gutter / table edge spacing tokens
-│       │   ├── product-shell.css          # Product command-center layout primitives
-│       │   ├── terminal-monitoring-v3.css # Bento shell layout (after terminal-visual-v2)
-│       │   └── terminal-*.css             # Legacy layers (superseded visually by design-system.css)
+│       │   └── leftover terminal-*.css    # Not imported (retired Aug 2026 sports-desk pass)
 │       ├── pages/            # Route-level screens: prediction, lab, compare, players, results, system, eval
 │       ├── lib/
 │       │   ├── api.ts        # API client (fetch wrappers for /api/* endpoints)
@@ -817,7 +815,7 @@ cd frontend && npm run dev   # Vite dev server with API proxy to :8000
 | Frontend route homes | `frontend/src/pages/` for route screens; route map/redirects live in `frontend/src/app/app-content.tsx` |
 | Frontend component homes | `frontend/src/components/monitoring/`, `product/`, `compare/`, `players/`, `cockpit/`, `system/`, `ui/` |
 | Live snapshot context (poll without flash) | `frontend/src/providers/live-snapshot-provider.tsx` |
-| Monitoring V3 typography + turf CSS | `frontend/src/styles/themes.css` (tokens) + `design-system.css` (primitives, loads last); legacy layers under `frontend/src/styles/terminal-*.css`; mono webfont in `public/fonts/` |
+| Sports-desk CSS | `frontend/src/styles/themes.css` (tokens) + `desk.css` (primitives, loads last); contract in `docs/design/ui-design-contract.md`; anti-slop rule `.cursor/rules/anti-slop-ui.mdc` |
 | Grading trust strip (+EV metrics) | `frontend/src/components/monitoring/grading-trust-strip.tsx`, `frontend/src/lib/grading-trust.ts` |
 | Lab board route + research deck | `frontend/src/pages/cockpit-lab-page.tsx` (URL **`/lab`**; **`/cockpit-lab`** → redirect), `frontend/src/components/cockpit/research-instrumentation-deck.tsx` (opt out with `VITE_COCKPIT_LAB=0` at build) |
 | Frontend API client / types | `frontend/src/lib/api.ts`, `frontend/src/lib/types.ts` |

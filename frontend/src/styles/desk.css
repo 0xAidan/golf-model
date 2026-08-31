@@ -1,0 +1,107 @@
+/* Sports desk primitives. Loads last. No glass, no violet, no glow dots. */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1, h2, .header-event-name, .page-title, .display-num {
+  font-family: var(--font-display);
+}
+
+.num, .metric, .kpi-value, [data-numeric="true"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Kill leftover AI tells even if an old class remains in markup */
+.glass-bar,
+.glass {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--surface) !important;
+}
+
+.status-dot--live,
+.status-dot--pulse {
+  animation: none !important;
+  box-shadow: none !important;
+}
+
+.panel,
+.ds-card,
+.op-card,
+.monitoring-bento-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: none;
+}
+
+.chip,
+.lane-chip,
+.tier-badge,
+.phase-chip {
+  font-family: var(--font-body);
+  letter-spacing: 0.04em;
+  border-radius: var(--r-sm);
+}
+
+.monitoring-shell {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.monitoring-shell-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.monitoring-shell-drawer {
+  background: var(--bg-1);
+  border-right: 1px solid var(--border);
+}
+
+.header-event-name {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.status-banner {
+  border-radius: 0;
+  border-left: 4px solid var(--border-hi);
+}
+
+.status-banner--danger {
+  border-left-color: var(--red);
+  background: var(--red-bg);
+}
+
+.status-banner--warn {
+  border-left-color: var(--amber);
+  background: var(--amber-bg);
+}
+
+.btn:disabled,
+button:disabled {
+  opacity: 0.4;
+}
+
+.operator-app {
+  font-family: var(--font-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
