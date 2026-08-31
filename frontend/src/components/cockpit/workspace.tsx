@@ -164,10 +164,8 @@ export function CockpitModeSwitch({
             className={cn("mode-tab", active && "active")}
             data-testid={`mode-btn-${opt.value}`}
           >
-            {isLive && liveActive && (
-              <span className="mode-live-dot" aria-hidden="true" />
-            )}
             {opt.label}
+            {isLive && liveActive ? <span className="mode-tab__live">LIVE</span> : null}
           </button>
         )
       })}
