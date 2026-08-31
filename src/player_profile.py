@@ -7,6 +7,7 @@ request handler.
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 import time
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 from backtester.dashboard_runtime import read_snapshot
 from src import db
 from src.player_normalizer import display_name
+from src.player_photos import lookup_photo_id
 
 _CACHE_TTL_SECONDS = 30.0
 _cache_lock = threading.Lock()
@@ -233,12 +235,23 @@ def build_standalone_profile(player_key: str) -> dict[str, Any]:
     }
     recent_events = _event_payload(rounds)
     availability = _availability(metric_rows, rounds, snapshot_row)
+    photo_row = None
+    if not db.is_db_unavailable():
+        conn = db.get_conn()
+        try:
+            photo_row = lookup_photo_id(conn, player_key)
+        except (db.DatabaseUnavailable, sqlite3.OperationalError):
+            photo_row = None
+        finally:
+            conn.close()
+    country = (photo_row or {}).get("country") or None
     ranking_card = {
         "dg_rank": _float(rankings.get("dg_rank")) or (snapshot_row or {}).get("rank"),
         "owgr_rank": _float(rankings.get("owgr_rank")),
         "dg_skill_estimate": _float(rankings.get("dg_skill_estimate")),
         "primary_tour": rankings.get("primary_tour"),
         "player_name": player_display,
+        "country": country,
         "extra_scalars": {},
     }
     payload = {

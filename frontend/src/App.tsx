@@ -5,6 +5,7 @@ import { AppContent } from "@/app/app-content"
 import { CalmModeProvider } from "@/providers/calm-mode-provider"
 import { InteractionProvider } from "@/providers/interaction-provider"
 import { LiveSnapshotProvider } from "@/providers/live-snapshot-provider"
+import { PlayerIdentityProvider } from "@/providers/player-identity-provider"
 
 export default function App() {
   const location = useLocation()
@@ -19,11 +20,13 @@ export default function App() {
     <CalmModeProvider>
       <InteractionProvider>
         <LiveSnapshotProvider manualRefreshPending={manualRefreshPending} uiAlert={uiAlert}>
-          <AppContent
-            manualRefreshPending={manualRefreshPending}
-            setManualRefreshPending={setManualRefreshPending}
-            setUiAlert={setUiAlert}
-          />
+          <PlayerIdentityProvider>
+            <AppContent
+              manualRefreshPending={manualRefreshPending}
+              setManualRefreshPending={setManualRefreshPending}
+              setUiAlert={setUiAlert}
+            />
+          </PlayerIdentityProvider>
         </LiveSnapshotProvider>
       </InteractionProvider>
     </CalmModeProvider>

@@ -1022,6 +1022,7 @@ export type StandalonePlayerProfile = {
     owgr_rank?: number | null
     dg_skill_estimate?: number | null
     primary_tour?: string | null
+    country?: string | null
     rounds_in_db?: number
     events_tracked?: number
   }

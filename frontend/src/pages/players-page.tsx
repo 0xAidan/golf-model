@@ -16,6 +16,7 @@ import {
 } from "@/components/charts-v2"
 import type { BeeswarmCategory, RollingEvent, ApproachBucket, HistoryEvent } from "@/components/charts-v2"
 import { BentoPanel } from "@/components/monitoring"
+import { PlayerFace } from "@/components/ui/player-face"
 import { PlayerIntelligencePanels } from "@/components/players/intelligence-panels"
 import { PlayersKpiCell } from "@/components/players-kpi-cell"
 import { FieldBoardPanel } from "@/components/players/field-board-panel"
@@ -302,9 +303,18 @@ function PlayerProfileView({
     <div className="players-profile-scroll">
       <div className="players-profile-header">
         <div className="players-profile-header-row">
-          <div>
-            <div className="players-profile-eyebrow">Player Profile</div>
-            <div className="players-profile-name">{p.player_display}</div>
+          <div className="flex items-center gap-3">
+            <PlayerFace
+              playerKey={p.player_key}
+              name={p.player_display}
+              size="lg"
+              country={p.header.country}
+              eager
+            />
+            <div>
+              <div className="players-profile-eyebrow">Player Profile</div>
+              <div className="players-profile-name">{p.player_display}</div>
+            </div>
           </div>
           <div className="players-status-pills">
             {p.has_skill_data ? <span className="status-pill good">DG Skills ✓</span> : null}

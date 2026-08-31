@@ -1,6 +1,7 @@
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { SgTrajectoryMeter } from "@/components/sg-trajectory-meter"
+import { PlayerFace } from "@/components/ui/player-face"
 import { formatNumber } from "@/lib/format"
 import { heatSpectrumFromUnit, heatSpectrumGradientAlongUnit } from "@/lib/metric-heat"
 import {
@@ -78,7 +79,10 @@ export function buildFieldListColumns({
               onSelect(p.player_key, p.player_display)
             }}
           >
-            <div className="players-field-row-name">{p.player_display}</div>
+            <div className="players-field-row-name inline-flex items-center gap-2">
+              <PlayerFace playerKey={p.player_key} name={p.player_display} size="sm" />
+              {p.player_display}
+            </div>
             {!p.inField ? <div className="players-field-row-meta">DB record</div> : null}
             {p.inField && p.model ? (
               <div className="players-field-row-stats">

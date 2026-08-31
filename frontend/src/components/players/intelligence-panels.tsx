@@ -1,5 +1,6 @@
 import { useState } from "react"
 
+import { PlayerFace } from "@/components/ui/player-face"
 import { BettingRecordTab } from "@/components/players/betting-record-tab"
 import { CourseDnaTab } from "@/components/players/course-dna-tab"
 import { Reveal } from "@/components/motion/primitives"
@@ -59,23 +60,16 @@ export function PlayerIntelligencePanels({
 
 /** Hero band shown above the existing profile header on deep links. */
 export function PlayerHeroBand({ profile }: { profile: StandalonePlayerProfile }) {
-  const initials = (profile.header.player_display ?? "?")
-    .split(" ")
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-
   return (
     <Reveal className="mb-4">
       <div className="panel flex flex-wrap items-center gap-5 px-5 py-4" data-testid="player-hero-band">
-        <div
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[var(--border)] bg-[linear-gradient(140deg,color-mix(in_srgb,var(--accent-focus)_22%,transparent),transparent)] text-lg font-bold tracking-wide text-[var(--text)]"
-          aria-hidden
-        >
-          {initials || "?"}
-        </div>
+        <PlayerFace
+          playerKey={profile.player_key}
+          name={profile.header.player_display ?? profile.player_key}
+          size="lg"
+          country={profile.header.country}
+          eager
+        />
         <div className="min-w-0">
           <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
             Player intelligence

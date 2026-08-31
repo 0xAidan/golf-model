@@ -155,6 +155,10 @@ export const api = {
     request<StandalonePlayerProfile>(
       `/api/players/${encodeURIComponent(playerKey)}/standalone-profile`,
     ),
+  getPlayerPhotoIndex: () =>
+    request<{ players: Record<string, { country?: string; has_photo?: boolean }> }>(
+      "/api/players/photo-index",
+    ),
   searchPlayers: (q: string) =>
     request<{ players: Array<{ player_key: string; player_display: string }> }>(`/api/players/search?q=${encodeURIComponent(q)}`),
   getOutputSummaries: () => request<Record<string, unknown>>("/api/output/latest-summaries"),
