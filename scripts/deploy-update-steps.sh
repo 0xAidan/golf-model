@@ -68,7 +68,7 @@ fi
 source venv/bin/activate
 DB_PATH="$(venv/bin/python -m src.backup --print-path)"
 if [ -f "$DB_PATH" ]; then
-    if ! venv/bin/python -m src.backup --keep "$DEPLOY_BACKUP_KEEP"; then
+    if ! venv/bin/python -m src.backup --keep "$DEPLOY_BACKUP_KEEP" --compress; then
         if [ "${DEPLOY_ALLOW_UNVERIFIED_BACKUP:-0}" != "1" ]; then
             echo "[deploy] ERROR: verified backup failed; set DEPLOY_ALLOW_UNVERIFIED_BACKUP=1 only after auditing the risk" >&2
             exit 1
