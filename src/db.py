@@ -102,18 +102,73 @@ DB_PATH = _resolve_db_path()
 
 
 _DB_INITIALIZED = False
+_DB_UNAVAILABLE = False
+_DB_UNAVAILABLE_REASON: str | None = None
+
+_CORRUPT_MARKERS = (
+    "malformed",
+    "not a database",
+    "file is not a database",
+    "disk image is malformed",
+)
+
+
+class DatabaseUnavailable(RuntimeError):
+    """Raised when SQLite reports a corrupt or unusable database file."""
+
+
+def is_corrupt_error(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in _CORRUPT_MARKERS)
+
+
+def is_db_unavailable() -> bool:
+    return _DB_UNAVAILABLE
+
+
+def db_unavailable_reason() -> str | None:
+    return _DB_UNAVAILABLE_REASON
+
+
+def reset_db_availability() -> None:
+    """Clear the process-wide unavailable flag (tests and post-restore)."""
+    global _DB_UNAVAILABLE, _DB_UNAVAILABLE_REASON
+    _DB_UNAVAILABLE = False
+    _DB_UNAVAILABLE_REASON = None
+
+
+def mark_db_unavailable(reason: str) -> None:
+    global _DB_UNAVAILABLE, _DB_UNAVAILABLE_REASON
+    _DB_UNAVAILABLE = True
+    _DB_UNAVAILABLE_REASON = reason
+    _logger.warning("Database marked unavailable: %s", reason)
+
+
+def db_health_payload() -> dict:
+    return {
+        "unavailable": _DB_UNAVAILABLE,
+        "reason": _DB_UNAVAILABLE_REASON,
+    }
 
 
 def get_conn() -> sqlite3.Connection:
+    if _DB_UNAVAILABLE:
+        raise DatabaseUnavailable(_DB_UNAVAILABLE_REASON or "database unavailable")
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=15.0)
-    conn.row_factory = sqlite3.Row
-    # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=15000")
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=15.0)
+        conn.row_factory = sqlite3.Row
+        # WAL mode for concurrent read/write and deploy lock in run_predictions prevents parallel pipeline runs
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=15000")
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+    except sqlite3.Error as exc:
+        if is_corrupt_error(exc):
+            mark_db_unavailable(str(exc))
+            raise DatabaseUnavailable(str(exc)) from exc
+        raise
 
 
 def init_db():
@@ -3679,11 +3734,20 @@ def prune_snapshot_history_tables(
 
 
 def ensure_initialized():
-    """Initialize the database if not already done. Call before first use."""
+    """Initialize the database if not already done. Call before first use.
+
+    Safe to call when the file is corrupt: sets the process-wide unavailable
+    flag and returns instead of crashing the process.
+    """
     global _DB_INITIALIZED
+    if _DB_UNAVAILABLE:
+        return
     if not _DB_INITIALIZED:
-        init_db()
-        _DB_INITIALIZED = True
+        try:
+            init_db()
+            _DB_INITIALIZED = True
+        except DatabaseUnavailable:
+            return
 
 
 def get_app_metadata(key: str) -> Any | None:
@@ -3729,6 +3793,5 @@ def set_app_metadata(key: str, value: Any) -> None:
         conn.close()
 
 
-# Lazy initialization: ensure tables exist on first connection use.
-# This replaces the old module-level init_db() call so .env can load first.
-ensure_initialized()
+# Do not initialize (or open) the database at import time. A corrupt file
+# used to crash every service before FastAPI could bind :8000.

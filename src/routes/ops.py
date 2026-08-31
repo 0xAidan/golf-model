@@ -63,6 +63,11 @@ async def get_ops_health():
     from src.runtime_health import recent_strategy_config_errors
 
     ensure_initialized()
+    from src.db import db_health_payload
+    from src.db_integrity import read_integrity_state
+
+    db_health = db_health_payload()
+    integrity_state = read_integrity_state()
     identity = get_runtime_identity()
     heartbeat = read_heartbeat()
     split = detect_split_brain(heartbeat=heartbeat)
@@ -128,6 +133,11 @@ async def get_ops_health():
         ok = False
         summary = "disk_floor_breached"
 
+    db_unavailable = bool(db_health.get("unavailable") or integrity_state.get("restore_in_progress"))
+    if db_unavailable:
+        ok = False
+        summary = "database_unavailable"
+
     return {
         "ok": ok,
         "summary": summary,
@@ -141,6 +151,12 @@ async def get_ops_health():
         "grading": grading_health,
         "grading_cache": grading_cache,
         "disk": disk,
+        "db": {
+            "unavailable": db_unavailable,
+            "reason": db_health.get("reason") or integrity_state.get("reason"),
+            "restore_in_progress": bool(integrity_state.get("restore_in_progress")),
+        },
+        "db_unavailable": db_unavailable,
         "worker_restart_request": worker_restart_request,
         "live_refresh": {
             "running": bool(status.get("running")),

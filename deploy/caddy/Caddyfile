@@ -1,0 +1,97 @@
+# Production Caddy config for golf.shermandavison.com
+# Cut over by copying to /etc/caddy/Caddyfile and running `systemctl reload caddy`.
+# Do not replace the whole-server Caddyfile blindly — merge the golf site block
+# into the existing Sherman-Davison config. See docs/runbooks/caddy-static-fallback.md.
+
+www.shermandavison.com {
+	redir https://shermandavison.com{uri} 308
+}
+
+shermandavison.com {
+	handle /api/golf/* {
+		uri replace /api/golf /api
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle_path /api/ditto/* {
+		reverse_proxy https://ditto.jungle.win {
+			header_up Host ditto.jungle.win
+		}
+	}
+
+	handle {
+		root * /srv/shermandavison
+		encode gzip
+		file_server
+	}
+}
+
+golf.shermandavison.com {
+	@blocked not method GET HEAD OPTIONS
+	respond @blocked 405
+
+	@options method OPTIONS
+	handle @options {
+		header Access-Control-Allow-Origin https://shermandavison.com
+		header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type"
+		respond 204
+	}
+
+	header Access-Control-Allow-Origin https://shermandavison.com
+	header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				dial_timeout 2s
+			}
+			@api_down status 502 503
+			handle_response @api_down {
+				header Content-Type application/json
+				respond `{"ok":false,"db_unavailable":true,"data_state":"api_down","operator_message":"The API process is down. Last boards may still be cached in your browser."}` 503
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				dial_timeout 2s
+			}
+			@down status 502 503
+			handle_response @down {
+				root * /opt/golf-model/frontend/dist
+				rewrite * /index.html
+				file_server
+			}
+		}
+	}
+}
+
+www.ancc.blog {
+	redir https://shermandavison.com{uri} 301
+}
+
+ancc.blog {
+	redir https://shermandavison.com{uri} 301
+}
+
+golf.ancc.blog {
+	redir https://golf.shermandavison.com{uri} 301
+}
+
+blackjack.ancc.blog {
+	header Access-Control-Allow-Origin https://shermandavison.com
+	header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+	@options {
+		method OPTIONS
+	}
+	handle @options {
+		respond 204
+	}
+	root * /srv/blackjack-trainer
+	encode gzip
+	try_files {path} {path}/ {path}/index.html /index.html
+	file_server
+}

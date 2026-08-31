@@ -53,6 +53,8 @@ export type LiveSnapshotContextValue = {
   liveRuntimeRunning: boolean
   liveRefreshStatus: LiveRefreshStatusResponse | undefined
   snapshotNoticeBase: string | null
+  dbUnavailable: boolean
+  dbRestoreInProgress: boolean
 }
 
 const LiveSnapshotContext = createContext<LiveSnapshotContextValue | null>(null)
@@ -135,6 +137,14 @@ export function LiveSnapshotProvider({
       summaryEnvelope?.split_brain_suspected ||
       envelope?.data_state === "split_brain",
   )
+  const dbUnavailable = Boolean(
+    envelope?.db_unavailable ||
+      summaryEnvelope?.db_unavailable ||
+      liveRefreshStatusQuery.data?.db_unavailable,
+  )
+  const dbRestoreInProgress = Boolean(
+    envelope?.db_restore_in_progress || summaryEnvelope?.db_restore_in_progress,
+  )
   const staleAfterSeconds =
     envelope?.stale_after_seconds ?? summaryEnvelope?.stale_after_seconds ?? null
 
@@ -161,6 +171,9 @@ export function LiveSnapshotProvider({
   const heartbeatAgeSeconds = liveRefreshStatusQuery.data?.status?.heartbeat_age_seconds
 
   const runtimeStatus = useMemo<RuntimeStatus>(() => {
+    if (dbUnavailable) {
+      return { label: "DB down", tone: "bad" }
+    }
     if (splitBrainSuspected) {
       return { label: "Path mismatch", tone: "bad" }
     }
@@ -185,6 +198,7 @@ export function LiveSnapshotProvider({
     }
     return { label: "Live", tone: "good" }
   }, [
+    dbUnavailable,
     splitBrainSuspected,
     statusSustainedFailure,
     snapshotSustainedFailure,
@@ -232,6 +246,8 @@ export function LiveSnapshotProvider({
       liveRuntimeRunning,
       liveRefreshStatus: liveRefreshStatusQuery.data,
       snapshotNoticeBase,
+      dbUnavailable,
+      dbRestoreInProgress,
     }),
     [
       envelope,
@@ -256,6 +272,8 @@ export function LiveSnapshotProvider({
       dataState,
       operatorMessage,
       splitBrainSuspected,
+      dbUnavailable,
+      dbRestoreInProgress,
     ],
   )
 

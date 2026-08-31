@@ -174,6 +174,7 @@ export type MonitoringShellProps = {
   frameStatus?: ReactNode
   headerStatus?: ReactNode
   actions?: ReactNode
+  topBanner?: ReactNode
   className?: string
   testId?: string
 }
@@ -186,6 +187,7 @@ export function MonitoringShell({
   frameStatus,
   headerStatus,
   actions,
+  topBanner,
   className,
   testId = "monitoring-shell",
 }: MonitoringShellProps) {
@@ -320,6 +322,8 @@ export function MonitoringShell({
           </div>
         </div>
       </header>
+
+      {topBanner}
 
       <div className="monitoring-shell-body">
         <aside

@@ -429,34 +429,56 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     return final_path
 
 
+def _drop_sqlite_sidecars(db_path: str) -> None:
+    """Remove WAL/SHM/journal next to ``db_path`` so a restore cannot mix files."""
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = db_path + suffix
+        try:
+            os.remove(sidecar)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            print(f"  Warning: could not remove {sidecar}: {exc}")
+
+
 def restore_backup(backup_path: str) -> bool:
-    """
-    Restore the database from a backup file.
+    """Restore the live database from a backup file.
 
-    Args:
-        backup_path: Path to the backup file.
-
-    Returns:
-        True if restored successfully.
+    The current live file is **moved** aside (not copied) so a known-bad
+    7 GB database cannot fill the disk. WAL/SHM next to the destination
+    are deleted before and after the write.
     """
     if not os.path.exists(backup_path):
         print(f"  Backup not found: {backup_path}")
         return False
 
     db_path = _current_db_path()
+    dest_dir = os.path.dirname(db_path)
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+
     if os.path.exists(db_path):
-        pre_restore = db_path + ".pre_restore"
-        shutil.copy2(db_path, pre_restore)
-        print(f"  Current DB saved to: {pre_restore}")
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        aside = f"{db_path}.malformed_{stamp}"
+        os.replace(db_path, aside)
+        print(f"  Live DB moved aside: {aside}")
+        for suffix in ("-wal", "-shm", "-journal"):
+            src = db_path + suffix
+            if os.path.exists(src):
+                os.replace(src, aside + suffix)
+
+    _drop_sqlite_sidecars(db_path)
 
     if backup_path.endswith(".gz"):
         with gzip.open(backup_path, "rb") as gz, open(db_path, "wb") as out:
             shutil.copyfileobj(gz, out)
         print(f"  Restored from gzip: {backup_path}")
-        return True
+    else:
+        shutil.copy2(backup_path, db_path)
+        print(f"  Restored from: {backup_path}")
 
-    shutil.copy2(backup_path, db_path)
-    print(f"  Restored from: {backup_path}")
+    _drop_sqlite_sidecars(db_path)
+    db.reset_db_availability()
     return True
 
 

@@ -93,7 +93,9 @@ systemctl restart golf-dashboard golf-live-refresh golf-agent
 
 ## Scenario 2: DB corrupted or lost
 
-**Prerequisite:** A backup that passes `quick_check` (see list step above).
+**Prerequisite:** A backup that passes `quick_check` (see list step above). Prefer the `.integrity.json` sidecar — do not decompress a 14 GB backup just to re-check if disk is tight.
+
+Stop writers first (`systemctl stop golf-dashboard golf-live-refresh golf-agent` and the backup/janitor/watchdog timers). Then restore. `restore_backup` **moves** the live file aside and deletes WAL/SHM. It does not copy a 7 GB corrupt file to `.pre_restore`.
 
 ```bash
 cd /opt/golf-model
@@ -113,7 +115,6 @@ print(result)
 sys.exit(0 if result.get("ok") else 1)
 PY
 
-# Restore (writes data/golf.db.pre_restore first)
 BACKUP="$BACKUP" python3 -m src.backup --restore "$BACKUP"
 
 systemctl restart golf-dashboard golf-live-refresh

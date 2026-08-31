@@ -6,7 +6,7 @@
 
 **Last verified:** 2026-08-23 on `main` (Terminal Overhaul series, PRs #241–#249). Frontend: premium graphite tokens (`themes.css`) + `design-system.css` + **`overhaul.css`** (display numerals, depth/glass panels, heat scales, phase accents build/track/review, calm-mode rules; loads last). New read-only endpoints in `src/routes/redesign_data.py` (betting-record, market-history, course-dna, hole-heat, pairwise compare — all schema-error-safe). Motion primitives in `frontend/src/components/motion/`; Calm Mode toggle persists via `CalmModeProvider`. Phase detection in `lib/tournament-phase.ts`. Compare engine at `/compare/players`. Run `python3 -m pytest tests/` and `cd frontend && npm run test && npm run typecheck && npm run build` on PR.
 
-**Production web (operator-facing SPA):** https://golf.ancc.blog/ — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server).
+**Production web (operator-facing SPA):** https://golf.shermandavison.com/ (`golf.ancc.blog` 301s there) — same FastAPI-backed React app as local `python app.py`; deploy still targets the VPS in Section 11 (`deploy.sh --update` from laptop or `--update-local` on the server). A corrupt `golf.db` must not take the process down: `src/db.py` no longer opens SQLite at import; snapshot/ops-health keep last JSON boards; `scripts/db_integrity_probe.py` auto-restores only on confirmed malformed. Caddy static fallback: `docs/runbooks/caddy-static-fallback.md`.
 
 ---
 
@@ -691,7 +691,7 @@ Operator checklist: **`docs/autoresearch/RUNBOOK.md`**.
 
 ### Production Server
 
-- **Public URL (HTTPS):** https://golf.ancc.blog/ — DNS/TLS only; deployment still uses SSH to the VPS below (not the public hostname).
+- **Public URL (HTTPS):** https://golf.shermandavison.com/ (`golf.ancc.blog` 301s there) — DNS/TLS only; deployment still uses SSH to the VPS below (not the public hostname).
 - **Host:** `root@204.168.147.6` (VPS)
 - **Remote path:** `/opt/golf-model`
 - **Branch:** `main`
