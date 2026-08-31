@@ -235,7 +235,7 @@ export function AppContent({
     return labSnapshotMerged
   }, [labRouteActive, labSnapshotMerged])
   const labUsingProdSnapshotFallback = Boolean(labRouteActive && !labSnapshotMerged && liveSnapshot)
-  /** Only one of lab_live / lab_upcoming populated — merged board mixes lab + production for the missing side. */
+  /** Only one of lab_live / lab_upcoming populated — the missing side stays empty. */
   const labLanePartialSections = Boolean(
     liveSnapshot &&
       ((liveSnapshot.lab_upcoming_tournament != null && liveSnapshot.lab_live_tournament == null) ||
