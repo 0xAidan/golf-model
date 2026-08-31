@@ -21,6 +21,7 @@ Tables:
   market_prediction_rows  – dense per-tick betting lines from live refresh
   shadow_event_simulations – append-only shadow Monte Carlo (prob_engine_v1; offline analytics)
   telegram_alert_sent    – dedupe keys for personal Telegram matchup EV notifications
+  player_photo_ids       – PGA Tour IDs for cached headshots
 """
 
 import logging
@@ -1069,6 +1070,22 @@ def _ensure_pick_ledger_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_player_photo_tables(conn: sqlite3.Connection) -> None:
+    """PGA Tour player IDs used to cache headshots locally."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS player_photo_ids (
+            player_key TEXT PRIMARY KEY,
+            pga_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            country TEXT,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.commit()
+
+
 def _ensure_pre_teeoff_tables(conn: sqlite3.Connection) -> None:
     """Pre-teeoff candidate + frozen snapshot tables for Completed tab replay."""
     conn.execute(
@@ -1324,6 +1341,7 @@ def _run_migrations(conn: sqlite3.Connection):
 
     _ensure_pre_teeoff_tables(conn)
     _ensure_pick_ledger_tables(conn)
+    _ensure_player_photo_tables(conn)
 
     try:
         from src.matchup_outcome_store import ensure_matchup_outcome_table

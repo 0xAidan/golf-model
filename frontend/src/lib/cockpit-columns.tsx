@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react"
 import type { ReactNode } from "react"
 
 import { EdgeBadge, TierBadge } from "@/components/ui/edge-badge"
+import { PlayerFace } from "@/components/ui/player-face"
 import { formatNumber, formatUnits } from "@/lib/format"
 import {
   GRADING_TABLE_TOOLTIPS,
@@ -31,12 +32,13 @@ function buildPlayerColumn(onPlayerSelect: (playerKey: string) => void): ColumnD
     cell: ({ row }) => (
       <button
         type="button"
-        className="player-name-btn"
+        className="player-name-btn inline-flex items-center gap-2"
         onClick={(e) => {
           e.stopPropagation()
           onPlayerSelect(row.original.player_key)
         }}
       >
+        <PlayerFace playerKey={row.original.player_key} name={row.original.player_display} size="sm" />
         {row.original.player_display}
       </button>
     ),
@@ -236,6 +238,7 @@ export function buildPickColumns({
         return (
           <div>
             <div className="pick-primary">
+              <PlayerFace playerKey={m.pick_key} name={m.pick} size="sm" />
               {m.pick}
               {m.is_new_live_opportunity ? (
                 <span className="live-opportunity-badge" aria-label="New live opportunity">

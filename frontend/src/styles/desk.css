@@ -98,6 +98,51 @@ button:disabled {
   font-family: var(--font-body);
 }
 
+.player-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-face__disk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+
+.player-face__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.player-face__initials {
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.player-face__country {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.pick-row__pick,
+.pick-row__opponent,
+.pick-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

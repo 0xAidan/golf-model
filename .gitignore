@@ -10,6 +10,7 @@ data/local_recovery/
 data/exports/
 data/csvs/*.csv
 data/course_images/
+data/player_photos/
 data/autoresearch_settings.json
 data/live_refresh_snapshot.json
 data/live_refresh_heartbeat.json

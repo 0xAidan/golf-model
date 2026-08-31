@@ -1,3 +1,4 @@
+import { PlayerFace } from "@/components/ui/player-face"
 import type { MatchupBet } from "@/lib/types"
 import { formatNumber, formatPercent } from "@/lib/format"
 import { normalizeSportsbook } from "@/lib/prediction-board"
@@ -57,11 +58,17 @@ export function PickRow({
       <div className="pick-row__main">
         <span className="pick-row__market">{formatMarketLabel(bet, marketLabel)}</span>
         <div className="pick-row__players">
-          <span className="pick-row__pick">{bet.pick}</span>
+          <span className="pick-row__pick">
+            <PlayerFace playerKey={bet.pick_key} name={bet.pick} size="sm" />
+            {bet.pick}
+          </span>
           {bet.opponent ? (
             <>
               <span className="pick-row__vs">vs</span>
-              <span className="pick-row__opponent">{bet.opponent}</span>
+              <span className="pick-row__opponent">
+                <PlayerFace playerKey={bet.opponent_key} name={bet.opponent} size="sm" />
+                {bet.opponent}
+              </span>
             </>
           ) : null}
         </div>

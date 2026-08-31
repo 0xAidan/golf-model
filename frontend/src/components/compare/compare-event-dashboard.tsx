@@ -23,6 +23,7 @@ import {
 } from "@/components/compare/compare-utils"
 import { BentoGrid } from "@/components/monitoring/bento-grid"
 import { BentoPanel } from "@/components/monitoring/bento-panel"
+import { PlayerFace } from "@/components/ui/player-face"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import type { GradingSeasonEvent } from "@/lib/types"
 
@@ -58,10 +59,11 @@ function CompareFieldBoardSection({
           <span
             className={
               row.original.player_key === highlightedKey
-                ? "font-semibold text-[var(--gold)]"
-                : "font-medium text-[var(--text-primary)]"
+                ? "inline-flex items-center gap-2 font-semibold text-[var(--gold)]"
+                : "inline-flex items-center gap-2 font-medium text-[var(--text-primary)]"
             }
           >
+            <PlayerFace playerKey={row.original.player_key} name={row.original.player} size="sm" />
             {row.original.player}
           </span>
         ),

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { BentoPanel } from "@/components/monitoring"
+import { PlayerFace } from "@/components/ui/player-face"
 import { ErrorState } from "@/components/ui/feedback-state"
 import { ProDataGrid } from "@/components/ui/pro-data-grid"
 import { api } from "@/lib/api"
@@ -39,7 +40,12 @@ export function FieldBoardPanel({
         header: "Player",
         accessorKey: "player",
         meta: { label: "Player", sticky: true },
-        cell: ({ row }) => <span className="font-medium text-[var(--text-primary)]">{row.original.player}</span>,
+        cell: ({ row }) => (
+          <span className="inline-flex items-center gap-2 font-medium text-[var(--text-primary)]">
+            <PlayerFace playerKey={row.original.player_key} name={row.original.player} size="sm" />
+            {row.original.player}
+          </span>
+        ),
       },
       {
         id: "champion_rank",
