@@ -1,0 +1,28 @@
+---
+description: Sports-desk anti-slop rules. Do not restack a fifth design system.
+globs: frontend/**/*.{tsx,ts,css}
+alwaysApply: false
+---
+
+# Anti-slop UI
+
+Anchor: Data Golf + racing form. Diverge: Live/Lab split.
+
+Before writing UI, read `docs/design/ui-design-contract.md`. Tokens live in `frontend/src/styles/themes.css`. New look goes in `frontend/src/styles/desk.css` only.
+
+Do not:
+
+- Add a new CSS file or `@import` overlay
+- Use Inter, Geist, Roboto, or purple/indigo/violet
+- Use `backdrop-filter`, glass, grain, radial glows, or pulsing status dots
+- Put monospace on labels or eyebrows
+- Use four equal KPI tiles unless they are true peers
+- Rebuild `/preview` or load `operator-tokens.css` on the main app
+
+Do:
+
+- Tables over card/bento walls
+- Player face + name as the first column
+- Status as a text pill (`LIVE`, `STALE`, `DOWN`)
+- Disabled controls at 40% opacity
+- Honor `prefers-reduced-motion`

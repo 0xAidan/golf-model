@@ -41,7 +41,7 @@ export function getChartPalette() {
     readCssVar("--chart-c2", "#60a5fa"),
     readCssVar("--chart-c3", "#fbbf24"),
     readCssVar("--chart-c4", "#f87171"),
-    readCssVar("--chart-c5", "#a78bfa"),
+    readCssVar("--chart-c5", "#5c5346"),
     readCssVar("--chart-c6", "#22d3ee"),
   ]
 }

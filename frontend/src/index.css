@@ -3,7 +3,6 @@
 /* Load order: themes (tokens) → page layouts → route CSS in main.tsx */
 @import "./styles/themes.css";
 @import "./styles/page-layouts.css";
-@import "./styles/operator-tokens.css";
 
 /* ─────────────────────────────────────────────────────
    GOLF MODEL — Terminal analytics (tokens in themes.css)
@@ -47,11 +46,10 @@
 .status-dot--muted { background: var(--text-tertiary); }
 .status-dot--live {
   background: var(--accent-positive);
-  animation: pulse-glow 1.8s ease-in-out infinite;
 }
 
 .status-dot--pulse {
-  animation: pulse-glow 1.8s ease-in-out infinite;
+  background: var(--accent-positive);
 }
 
 .chip {
@@ -62,10 +60,10 @@
   border-radius: var(--r-sm);
   border: 1px solid var(--border-mid);
   background: var(--surface);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--text-label);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
@@ -232,12 +230,5 @@
   display: none;
 }
 
-@import "./styles/terminal-base.css";
-@import "./styles/terminal-visual-v2.css";
-@import "./styles/terminal-monitoring-v3.css";
-@import "./styles/product-shell.css";
-/* Premium refinement pass loads LAST so its token-driven primitives
-   (buttons, chips, badges, tables, cards) win the cascade over legacy layers. */
 @import "./styles/design-system.css";
-/* Terminal-overhaul foundation (display type, depth/glass, calm mode) — final layer. */
-@import "./styles/overhaul.css";
+@import "./styles/desk.css";
