@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { CommandMenu, CommandMenuTrigger } from "@/components/command-menu"
 import { CockpitModeSwitch } from "@/components/cockpit/workspace"
+import { DatabaseRebuildBanner } from "@/components/monitoring/database-rebuild-banner"
 import { MonitoringShell } from "@/components/monitoring/monitoring-shell"
 import { FreshnessIndicator } from "@/components/monitoring/freshness-indicator"
 import { RouteErrorBoundaryGate } from "@/components/route-error-boundary-gate"
@@ -1082,6 +1083,7 @@ export function AppContent({
     <MonitoringShell
       headline={shellEventName}
       subheadline={shellEventMeta}
+      topBanner={<DatabaseRebuildBanner />}
       laneSwitcher={
         showBoardModeSwitch ? (
           <CockpitModeSwitch

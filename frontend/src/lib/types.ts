@@ -397,6 +397,9 @@ export type LiveRefreshStatusResponse = {
     autostart?: boolean
     tour?: string
   }
+  db_unavailable?: boolean
+  db_unavailable_reason?: string | null
+  db_restore_in_progress?: boolean
 }
 
 export type LiveRefreshSnapshotResponse = {
@@ -412,6 +415,9 @@ export type LiveRefreshSnapshotResponse = {
   data_state?: string | null
   operator_message?: string | null
   split_brain_suspected?: boolean
+  db_unavailable?: boolean
+  db_unavailable_reason?: string | null
+  db_restore_in_progress?: boolean
   accepted?: boolean
   /** Present on 409 busy responses — merged live-refresh status snapshot. */
   status?: LiveRefreshRuntimeStatus

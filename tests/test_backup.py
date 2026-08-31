@@ -190,6 +190,31 @@ def test_verify_gzip_skips_decompress_when_disk_tight(tmp_path, monkeypatch) -> 
     assert result["skip_reason"] == "insufficient_disk_for_decompress"
 
 
+def test_restore_backup_moves_live_file_and_drops_wal(tmp_path, monkeypatch) -> None:
+    live = tmp_path / "golf.db"
+    live.write_bytes(b"corrupt-bytes")
+    (tmp_path / "golf.db-wal").write_bytes(b"old-wal")
+    (tmp_path / "golf.db-shm").write_bytes(b"old-shm")
+    good = tmp_path / "good.db"
+    conn = sqlite3.connect(good)
+    conn.execute("CREATE TABLE restored (id INTEGER)")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(backup.db, "DB_PATH", str(live))
+    backup.db.reset_db_availability()
+    assert backup.restore_backup(str(good)) is True
+    assert (tmp_path / "golf.db-wal").exists() is False
+    assert (tmp_path / "golf.db-shm").exists() is False
+    asides = list(tmp_path.glob("golf.db.malformed_*"))
+    assert asides
+    check = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
+    try:
+        assert check.execute("SELECT name FROM sqlite_master WHERE name='restored'").fetchone()
+    finally:
+        check.close()
+
+
 def test_create_backup_refuses_below_disk_hard_floor(tmp_db, monkeypatch, tmp_path) -> None:
     original_backup_dir = backup.BACKUP_DIR
     try:

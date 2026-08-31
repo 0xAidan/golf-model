@@ -148,6 +148,29 @@ def _with_live_refresh_worker_status(raw_status: dict) -> dict:
     return status
 
 
+def _with_db_health(payload: dict) -> dict:
+    """Attach db_unavailable so the SPA can keep last boards on screen."""
+    from src.db import db_health_payload
+    from src.db_integrity import read_integrity_state
+
+    health = db_health_payload()
+    state = read_integrity_state()
+    restore_in_progress = bool(state.get("restore_in_progress"))
+    unavailable = bool(health.get("unavailable") or restore_in_progress)
+    payload["db_unavailable"] = unavailable
+    payload["db_unavailable_reason"] = health.get("reason") or state.get("reason")
+    payload["db_restore_in_progress"] = restore_in_progress
+    if unavailable and not payload.get("operator_message"):
+        payload["operator_message"] = (
+            "The database file is damaged. Last boards stay on screen while a backup is restored."
+            if restore_in_progress
+            else "The database file is damaged. You are seeing the last saved boards."
+        )
+        if not payload.get("data_state"):
+            payload["data_state"] = "db_unavailable"
+    return payload
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     from src.autoresearch_settings import get_settings
@@ -2271,10 +2294,10 @@ async def get_live_refresh_runtime_status():
     from backtester.dashboard_runtime import get_live_refresh_status
     from src.autoresearch_settings import get_settings
 
-    return {
+    return _with_db_health({
         "status": _with_live_refresh_worker_status(get_live_refresh_status()),
         "settings": (get_settings().get("live_refresh") or {}),
-    }
+    })
 
 
 @app.get("/api/live-refresh/past-events")
@@ -2540,7 +2563,7 @@ async def get_live_refresh_snapshot():
 
     snapshot = read_snapshot()
     if not snapshot:
-        return {
+        return _with_db_health({
             "ok": False,
             "snapshot": None,
             "data_state": "missing",
@@ -2551,7 +2574,7 @@ async def get_live_refresh_snapshot():
             ),
             "operator_message": "No live data yet. Showing cached data if available.",
             "retry_after": 30,
-        }
+        })
     generated_at = snapshot.get("generated_at")
     age_seconds = None
     if generated_at:
@@ -2571,8 +2594,8 @@ async def get_live_refresh_snapshot():
         split_brain_reasons=split_brain_reasons,
     )
     if not contract.get("ok"):
-        return contract
-    return contract
+        return _with_db_health(contract)
+    return _with_db_health(contract)
 
 
 @app.get("/api/live-refresh/summary")
@@ -2590,12 +2613,12 @@ async def get_live_refresh_summary():
 
     snapshot = read_snapshot()
     if not snapshot:
-        return {
+        return _with_db_health({
             "ok": False,
             "data_state": "missing",
             "snapshot": None,
             "operator_message": "No live data snapshot is available yet.",
-        }
+        })
 
     generated_at = snapshot.get("generated_at")
     age_seconds = None
@@ -2633,7 +2656,7 @@ async def get_live_refresh_summary():
                 f"Data is {age_seconds // 60} minutes old — use Refresh to load the current tournament."
             )
 
-    return {
+    return _with_db_health({
         "ok": True,
         "data_state": data_state,
         "snapshot": snapshot,
@@ -2642,7 +2665,7 @@ async def get_live_refresh_summary():
         "stale_after_seconds": stale_after_seconds,
         "split_brain_suspected": split_brain,
         "operator_message": operator_message,
-    }
+    })
 
 
 @app.post("/api/live-refresh/refresh")

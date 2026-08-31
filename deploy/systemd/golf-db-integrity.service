@@ -1,0 +1,16 @@
+[Unit]
+Description=Golf Model SQLite integrity probe (auto-restore only if malformed)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+Environment=AUTO_RESTORE_ON_CORRUPT=1
+EnvironmentFile=-/opt/golf-model/.env
+Nice=10
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/db_integrity_probe.py --json
+
+[Install]
+WantedBy=multi-user.target

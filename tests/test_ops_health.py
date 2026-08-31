@@ -184,6 +184,49 @@ def test_ops_health_disk_hard_floor_marks_unhealthy(monkeypatch):
     assert response.json()["summary"] == "disk_floor_breached"
 
 
+def test_ops_health_database_unavailable(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr("src.db.ensure_initialized", lambda: None)
+    monkeypatch.setattr(
+        "src.db.db_health_payload",
+        lambda: {"unavailable": True, "reason": "database disk image is malformed"},
+    )
+    monkeypatch.setattr("src.db_integrity.read_integrity_state", lambda: {})
+    monkeypatch.setattr(
+        "backtester.dashboard_runtime.get_live_refresh_status",
+        lambda: {"running": True, "snapshot_age_seconds": 10},
+    )
+    monkeypatch.setattr("backtester.dashboard_runtime.read_snapshot", lambda: {"generated_at": "2099-01-01T00:00:00+00:00"})
+    monkeypatch.setattr("src.runtime_paths.read_heartbeat", lambda: {"running": True, "updated_at": "2099-01-01T00:00:00+00:00"})
+    monkeypatch.setattr(
+        "src.runtime_paths.get_runtime_identity",
+        lambda: {"app_root": "/tmp/test", "production": False},
+    )
+    monkeypatch.setattr("src.runtime_paths.get_app_root", lambda: __import__("pathlib").Path("/tmp/test"))
+    monkeypatch.setattr(
+        "src.runtime_paths.detect_split_brain",
+        lambda heartbeat=None: {
+            "split_brain_suspected": False,
+            "reasons": [],
+            "identity": {},
+            "heartbeat": heartbeat,
+            "heartbeat_age_seconds": 0,
+        },
+    )
+    monkeypatch.setattr("src.cached_health.read_cached_ops_grading_health", lambda: None)
+    monkeypatch.setattr(
+        "src.disk_guard.get_disk_state",
+        lambda _path: {"free_mb": 12000, "state": "healthy", "guard_state": "ok"},
+    )
+    monkeypatch.setattr("src.worker_restart.read_worker_restart_request", lambda: None)
+
+    body = TestClient(app_module.app).get("/api/ops/health").json()
+    assert body["ok"] is False
+    assert body["summary"] == "database_unavailable"
+    assert body["db_unavailable"] is True
+
+
 def test_post_worker_restart_queues_request(monkeypatch):
     import app as app_module
 
