@@ -30,4 +30,16 @@ describe("mergeLabSnapshotSections", () => {
     }
     expect(mergeLabSnapshotSections(snap)).toBeNull()
   })
+
+  it("does not fill a missing lab section from the production board", () => {
+    const snap: LiveRefreshSnapshot = {
+      live_tournament: { event_name: "Prod live" } as LiveRefreshSnapshot["live_tournament"],
+      upcoming_tournament: { event_name: "Prod up" } as LiveRefreshSnapshot["upcoming_tournament"],
+      lab_live_tournament: { event_name: "Lab live" } as LiveRefreshSnapshot["live_tournament"],
+      lab_upcoming_tournament: null,
+    }
+    const merged = mergeLabSnapshotSections(snap)
+    expect(merged?.live_tournament?.event_name).toBe("Lab live")
+    expect(merged?.upcoming_tournament).toBeUndefined()
+  })
 })

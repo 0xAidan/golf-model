@@ -9,15 +9,15 @@ import { cn } from "@/lib/utils"
 const NAV_ITEMS = [
   { id: "prediction", label: "Dashboard", path: "/" },
   { id: "lab-board", label: "Lab", path: "/lab" },
+  { id: "compare", label: "Compare", path: "/compare" },
+  { id: "compare-players", label: "Players H2H", path: "/compare/players" },
   { id: "players", label: "Players", path: "/players" },
   { id: "grading", label: "Results", path: "/results" },
   { id: "diagnostics", label: "System", path: "/system" },
-  { id: "matchups", label: "Picks (legacy)", path: "/matchups" },
-  { id: "lab-picks", label: "Lab picks (legacy)", path: "/lab/picks" },
-  { id: "track-record", label: "Track record (legacy)", path: "/track-record" },
+  { id: "eval", label: "Eval", path: "/eval" },
+  { id: "champion-challenger", label: "Champ / Challenger", path: "/research/champion-challenger" },
+  { id: "autoresearch", label: "Autoresearch", path: "/research/autoresearch" },
   { id: "legacy-model", label: "Legacy model", path: "/research/legacy-model" },
-  { id: "champion-challenger", label: "Champ / challenger", path: "/research/champion-challenger" },
-  { id: "diagnostics-legacy", label: "Diagnostics (legacy)", path: "/research/diagnostics" },
 ] as const
 
 export function CommandMenu({
@@ -138,6 +138,7 @@ export function CommandMenuTrigger({
       type="button"
       className={cn("command-menu-trigger", className)}
       onClick={onClick}
+      data-testid="command-menu-trigger"
       aria-label="Open command menu"
       title="Command menu (⌘K)"
     >

@@ -30,7 +30,7 @@ export function PlayerIntelligencePanels({
 
   return (
     <section className="mt-6" data-testid="player-intelligence-panels">
-      <div className="glass-bar top-[var(--header-h)] z-10 mb-4 flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1.5">
+      <div className="sticky top-[var(--header-h)] z-10 mb-4 flex items-center gap-1 rounded-[var(--r-sm)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5">
         {TABS.map((entry) => (
           <button
             key={entry.id}

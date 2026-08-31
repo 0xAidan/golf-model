@@ -533,6 +533,48 @@ button:disabled {
   font-weight: 600;
 }
 
+.command-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+
+.command-menu {
+  width: min(520px, calc(100vw - 24px));
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.command-menu-trigger {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  padding: 4px 8px;
+}
+
+.page-header-title {
+  font-family: var(--font-display);
+}
+
+.monitor-research-page .page-header,
+.product-page--satellite .page-header {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
 @media (max-width: 767px) {
   .pick-row__main {
     grid-template-columns: 1fr auto;
