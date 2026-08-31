@@ -139,7 +139,7 @@ function MonitoringDrawerNav({
         <LogoMark />
         <div className="sidebar-logo-text">
           <span className="sidebar-logo-name">Golf Model</span>
-          <span className="sidebar-logo-sub">Golf Model</span>
+          <span className="sidebar-logo-sub">Odds desk</span>
         </div>
       </div>
 
@@ -341,7 +341,7 @@ export function MonitoringShell({
         {drawerOpen && isNarrow ? (
           <button
             type="button"
-            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+            className="fixed inset-0 z-30 bg-[var(--bg)]/80 md:hidden"
             aria-label="Close navigation overlay"
             onClick={handleCloseDrawer}
           />

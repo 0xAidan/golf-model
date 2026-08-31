@@ -75,9 +75,17 @@ describe("deriveFreshnessState", () => {
 })
 
 describe("freshnessLabel", () => {
-  it("does not claim refreshing for idle stale state", () => {
+  it("uses a text pill, not a refreshing claim, for idle stale state", () => {
     const label = freshnessLabel("stale", 7200, () => "stale (>60m)")
-    expect(label).toBe("Stale · stale (>60m)")
+    expect(label).toBe("STALE")
     expect(label.toLowerCase()).not.toContain("refreshing")
+  })
+
+  it("maps freshness to LIVE / UPDATING / DOWN pills", () => {
+    const age = () => "1m"
+    expect(freshnessLabel("fresh", 12, age)).toBe("LIVE")
+    expect(freshnessLabel("updating", 12, age)).toBe("UPDATING")
+    expect(freshnessLabel("offline", 12, age)).toBe("DOWN")
+    expect(freshnessLabel("error", 12, age)).toBe("DOWN")
   })
 })

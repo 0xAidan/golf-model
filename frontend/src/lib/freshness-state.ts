@@ -32,21 +32,19 @@ export const deriveFreshnessState = (input: FreshnessInput): FreshnessState => {
 
 export const freshnessLabel = (
   state: FreshnessState,
-  ageSeconds: number | null,
-  formatAge: (seconds: number | null) => string,
+  _ageSeconds: number | null,
+  _formatAge: (seconds: number | null) => string,
 ): string => {
-  const age = formatAge(ageSeconds)
   switch (state) {
     case "fresh":
-      return `Live · ${age}`
+      return "LIVE"
     case "updating":
-      return "Updating…"
+      return "UPDATING"
     case "stale":
-      return `Stale · ${age}`
+      return "STALE"
     case "offline":
-      return "Offline — showing last data"
     case "error":
-      return "Update failed — check System"
+      return "DOWN"
     default: {
       const _exhaustive: never = state
       return _exhaustive

@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom"
-import { RefreshCw } from "lucide-react"
 
 import { deriveFreshnessState, freshnessLabel, type FreshnessState } from "@/lib/freshness-state"
 import { formatAgeLabel } from "@/lib/snapshot-chip"
@@ -72,16 +71,7 @@ export function FreshnessIndicator({
   const label = freshnessLabel(state, ageSeconds, formatAgeLabel)
   const showDetails = (detailLines?.length ?? 0) > 0 || state === "error" || state === "stale"
 
-  const chipBody = (
-    <>
-      {state === "updating" ? (
-        <RefreshCw className="freshness-indicator__spin" size={12} aria-hidden />
-      ) : (
-        <span className="freshness-indicator__dot" aria-hidden />
-      )}
-      <span className="freshness-indicator__label">{label}</span>
-    </>
-  )
+  const chipBody = <span className="freshness-indicator__label">{label}</span>
 
   if (variant === "compact" && showDetails) {
     return (
