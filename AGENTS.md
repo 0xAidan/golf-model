@@ -13,7 +13,7 @@ Both services must run simultaneously for full-stack development. Start the back
 
 ### Quick reference
 
-- **Python tests:** `python3 -m pytest tests/ -v --tb=short` (~493 tests; full run ~5–6 min on this box)
+- **Python tests:** `python3 -m pytest tests/ -v --tb=short` (~683 tests; full run ~75s on this box). 4 tests are known to fail on a clean checkout regardless of environment (see Gotchas) — do not treat them as setup breakage.
 - **Python lint:** `ruff check .` (pre-existing lint issues in `app.py` and `run_predictions.py` are known; do not fix unless explicitly asked)
 - **Frontend lint:** `cd frontend && npm run lint` (pre-existing ESLint errors in `legacy-routes.tsx` are known)
 - **Frontend typecheck:** `cd frontend && npm run typecheck`
@@ -30,6 +30,9 @@ Both services must run simultaneously for full-stack development. Start the back
 - SQLite database `data/golf.db` is auto-created at runtime; no external database needed.
 - The live-refresh worker (`workers/live_refresh_worker.py`) is a separate daemon for production. For local dev, the FastAPI app handles everything — do not run the worker unless specifically testing it.
 - Frontend build chunk warning (>500KB) is expected and harmless.
+- `ruff` is not in `requirements.txt` (installed separately; the startup update script pins `ruff==0.8.6` to match `.pre-commit-config.yaml`). CI installs it via `pip install ruff`.
+- Known pre-existing pytest failures (present on a clean checkout, not env-related; do not "fix" as part of setup): `tests/test_live_refresh_runtime.py::test_live_refresh_snapshot_endpoint_generates_snapshot_on_demand` and three `tests/test_simple_dashboard.py` grading/track-record tests (`test_grading_history_summary_splits_1u_record_by_market_without_result_fanout`, `test_grading_history_coalesces_event_id_from_rounds_when_tournament_null`, `test_track_record_endpoint_returns_pick_details_with_edge_and_lane`). The track-record one is a test-data-vs-schema `picks` UNIQUE-constraint mismatch.
+- The backend serves the built SPA from `frontend/dist/`. For frontend dev use the Vite dev server (`npm run dev`, port 5173, proxies to :8000). To serve the integrated SPA at `:8000` you must run `cd frontend && npm run build` once (the startup update script intentionally does not build).
 
 ### Standard workflows
 
