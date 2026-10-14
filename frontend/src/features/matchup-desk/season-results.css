@@ -1,0 +1,156 @@
+.md-results-view-switch {
+  max-width: 1180px;
+  margin: 0 auto 28px;
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--md-rule);
+}
+.md-results-view-switch a {
+  color: var(--md-muted);
+  padding: 0 0 11px;
+  border-bottom: 3px solid transparent;
+  font-weight: 600;
+}
+.md-results-view-switch a[aria-current="page"] {
+  color: var(--md-accent);
+  border-bottom-color: var(--md-accent);
+}
+.md-results-view-switch a:hover { color: var(--md-accent); }
+.md-season-snapshot { display: grid; gap: 3px; font-size: 13px; color: var(--md-muted); text-align: right; flex-shrink: 0; }
+.md-season-snapshot > span { font-weight: 600; color: var(--md-ink); }
+.md-season-snapshot a { margin-top: 5px; justify-content: flex-end; }
+.md-season-downloads { display: flex; gap: 18px; }
+.md-season-basis { display: flex; gap: 10px; padding: 16px 0; margin: 0 0 28px; border-block: 1px solid var(--md-rule); color: var(--md-muted); }
+.md-season-basis svg { flex-shrink: 0; margin-top: 3px; }
+.md-season-basis p { max-width: 100ch; font-size: 14px; }
+.md-season-basis strong { color: var(--md-ink); }
+.md-season-market-heading, .md-season-subheading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 18px; }
+.md-season-results h2 { font: 600 28px/1.15 "Barlow Condensed", Arial, sans-serif; letter-spacing: -.015em; }
+.md-season-market-heading p, .md-season-subheading p { margin-top: 5px; color: var(--md-muted); font-size: 13px; }
+.md-season-market-heading .md-mode { flex-shrink: 0; }
+.md-season-market-button { color: var(--md-accent); text-align: left; font-weight: 600; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; cursor: pointer; }
+.md-season-market-button:hover, .md-season-market-button[aria-pressed="true"] { text-decoration-color: currentColor; }
+.md-season-markets-table tr.is-selected { background: var(--md-tint); }
+.md-season-markets-table small { font-size: 11px; }
+.md-season-markets-table .md-season-market-note { color: var(--md-warning); white-space: normal; max-width: 26ch; }
+.md-season-mobile-details { display: none; }
+.md-season-table-note { margin-top: 12px; max-width: 100ch; color: var(--md-muted); font-size: 13px; }
+.md-season-scope-control { display: flex; align-items: center; gap: 10px; color: var(--md-muted); font-size: 13px; }
+.md-season-scope-control select { max-width: 260px; }
+.md-season-coverage-count { color: var(--md-muted); font-size: 13px; margin: -5px 0 10px; }
+.md-season-coverage { margin-top: 44px; padding-top: 28px; border-top: 1px solid var(--md-rule); }
+.md-season-subheading > span { font-size: 13px; color: var(--md-muted); text-align: right; padding-top: 7px; }
+.md-season-strip { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 4px; padding-block: 4px; }
+.md-season-strip button { min-width: 0; min-height: 44px; position: relative; cursor: pointer; padding-block: 8px; }
+.md-season-strip button > span { display: block; width: 100%; height: 26px; border: 1px solid var(--md-rule); background: var(--md-tint); }
+.md-season-strip .has-records > span { background: var(--md-accent); border-color: var(--md-accent); }
+.md-season-strip .has-cards > span { background: var(--md-tint); border: 2px solid var(--md-accent); }
+.md-season-strip .is-missing > span { background: var(--md-warning-bg); border-color: var(--md-warning); border-style: dashed; }
+.md-season-strip .is-upcoming > span { background: transparent; }
+.md-season-strip button[aria-pressed="true"]::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; border-bottom: 3px solid var(--md-ink); }
+.md-season-strip button:hover > span { outline: 1px solid var(--md-ink); outline-offset: 1px; }
+.md-season-strip-key { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 12px; color: var(--md-muted); }
+.md-season-strip-key > div { display: flex; gap: 16px; }
+.md-season-strip-key > div span { display: flex; gap: 6px; align-items: center; }
+.md-season-strip-key > div span::before { content: ""; width: 8px; height: 8px; border: 1px solid var(--md-rule); }
+.md-season-strip-key .has-records::before { background: var(--md-accent); border-color: var(--md-accent); }
+.md-season-strip-key .has-cards::before { background: var(--md-tint); border: 2px solid var(--md-accent); }
+.md-season-strip-key .is-missing::before { background: var(--md-warning-bg); border-color: var(--md-warning); border-style: dashed; }
+.md-season-event { display: grid; grid-template-columns: minmax(220px, 1fr) 1.7fr; gap: 18px 32px; margin-top: 22px; padding: 22px 24px; background: var(--md-tint); }
+.md-season-event h3 { font: 600 25px/1.15 "Barlow Condensed", Arial, sans-serif; }
+.md-season-event > div > p { margin-top: 5px; color: var(--md-muted); font-size: 13px; }
+.md-season-event a { margin-top: 9px; font-size: 13px; }
+.md-season-event dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.md-season-event dt { color: var(--md-muted); font-size: 12px; line-height: 1.4; }
+.md-season-event dd { margin-top: 5px; font-size: 19px; font-weight: 600; }
+.md-season-event-note { grid-column: 1/-1; color: var(--md-muted); font-size: 12px; max-width: 100ch; }
+.md-season-details { border-block: 1px solid var(--md-rule); padding: 18px 0; margin-top: 30px; }
+.md-season-details summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 600; cursor: pointer; list-style: none; }
+.md-season-details summary::-webkit-details-marker { display: none; }
+.md-season-details[open] summary { margin-bottom: 22px; }
+.md-season-details[open] summary svg { transform: rotate(180deg); }
+.md-season-details > p { max-width: 75ch; color: var(--md-muted); font-size: 14px; margin-top: 14px; }
+.md-season-event-list { margin-top: 18px; border-top: 0; }
+.md-season-events-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.md-season-events-table th, .md-season-events-table td { padding: 12px; border-bottom: 1px solid var(--md-rule); text-align: left; }
+.md-season-events-table thead th { background: var(--md-tint); color: var(--md-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.md-season-events-table td:nth-child(2), .md-season-events-table td:nth-child(4) { color: var(--md-muted); }
+.md-season-selection { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; margin: 36px 0; }
+.md-season-selection p { margin-top: 8px; max-width: 70ch; color: var(--md-muted); font-size: 14px; }
+.md-season-selection > div:nth-child(2) { border-left: 1px solid var(--md-rule); padding-left: 32px; }
+.md-season-selection strong { font-weight: 600; }
+.md-season-rule-results { grid-column: 1/-1; }
+.md-season-rule-results h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.md-season-rule-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 12px; }
+.md-season-rule-heading h3 { margin-bottom: 0; }
+.md-season-rule-heading label { display: flex; align-items: center; gap: 10px; color: var(--md-muted); font-size: 13px; }
+.md-season-rule-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; }
+.md-season-rule-controls select { max-width: 230px; }
+.md-season-rule-disclosure { margin-top: 16px; }
+.md-season-rule-disclosure > p { font-size: 13px; }
+.md-season-rule-results .md-season-table-wrap { overflow-x: auto; }
+.md-season-rule-table { width: 100%; min-width: 660px; border-collapse: collapse; font-size: 14px; background: var(--md-paper); }
+.md-season-rule-table th, .md-season-rule-table td { padding: 14px; border-bottom: 1px solid var(--md-rule); text-align: right; }
+.md-season-rule-table th:first-child { text-align: left; font-weight: 600; }
+.md-season-rule-table thead th { background: var(--md-tint); color: var(--md-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.md-season-rule-table small { display: block; margin-top: 3px; color: var(--md-muted); font-size: 11px; }
+.md-season-audit { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.md-season-audit dl > div, .md-season-issues li { display: flex; gap: 20px; justify-content: space-between; border-bottom: 1px solid var(--md-rule); padding: 9px 0; font-size: 13px; }
+.md-season-audit dt, .md-season-issues span { color: var(--md-muted); }
+.md-season-audit dd, .md-season-issues strong { font-weight: 600; }
+.md-season-issues { list-style: none; padding: 0; }
+.md-season-report-id { overflow-wrap: anywhere; font-size: 12px !important; }
+.md-season-loading { padding: 24px 0; }
+.md-season-loading p { color: var(--md-muted); margin-bottom: 20px; }
+.md-season-loading > div { height: 64px; background: var(--md-tint); border-bottom: 1px solid var(--md-ground); }
+@media (max-width: 850px) {
+  .md-season-strip { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .md-season-event { grid-template-columns: 1fr; }
+  .md-season-selection { gap: 28px; }
+  .md-season-selection > div:nth-child(2) { padding-left: 24px; }
+  .md-season-audit { gap: 24px; }
+}
+@media (max-width: 560px) {
+  .md-season-snapshot { text-align: left; margin-top: 10px; }
+  .md-season-snapshot a { justify-content: flex-start; }
+  .md-season-market-heading, .md-season-subheading { flex-direction: column; gap: 14px; }
+  .md-season-subheading > span { text-align: left; padding: 0; }
+  .md-season-markets-table tbody { gap: 12px; }
+  .md-season-markets-table th:first-child { padding: 12px 15px 10px; }
+  .md-season-markets-table .md-season-secondary, .md-season-markets-table .md-season-ungraded { display: none; }
+  .md-season-markets-table .md-season-mobile-primary { border-bottom: 0; padding: 10px 15px; }
+  .md-season-markets-table .is-empty th { border-bottom: 0; }
+  .md-season-markets-table .is-empty .md-season-mobile-primary { display: none; }
+  .md-season-markets-table .md-season-market-note { max-width: none; margin-top: 5px; }
+  .md-season-mobile-details { display: block; margin-top: 8px; font-size: 12px; font-weight: 400; }
+  .md-season-mobile-details summary { display: flex; align-items: center; gap: 6px; padding-block: 3px; color: var(--md-accent); cursor: pointer; list-style: none; }
+  .md-season-mobile-details summary::-webkit-details-marker { display: none; }
+  .md-season-mobile-details[open] summary svg { transform: rotate(180deg); }
+  .md-season-mobile-details dl { margin-top: 8px; }
+  .md-season-mobile-details dl > div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--md-rule); white-space: normal; }
+  .md-season-mobile-details dt { color: var(--md-muted); }
+  .md-season-mobile-details dd { text-align: right; }
+  .md-season-strip { gap: 2px; }
+  .md-season-strip-key { flex-wrap: wrap; gap: 6px; }
+  .md-season-strip-key > div { order: 3; width: 100%; justify-content: center; margin-top: 6px; }
+  .md-season-event { padding: 18px; }
+  .md-season-event dl { grid-template-columns: repeat(2, 1fr); }
+  .md-season-selection, .md-season-audit { grid-template-columns: 1fr; gap: 22px; }
+  .md-season-selection > div:nth-child(2) { border-left: 0; border-top: 1px solid var(--md-rule); padding: 18px 0 0; }
+  .md-season-rule-heading { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .md-season-rule-controls { justify-content: flex-start; }
+  .md-season-rule-controls .md-season-scope-control, .md-season-rule-controls > label { width: 100%; justify-content: space-between; }
+  .md-season-rule-controls { width: 100%; }
+  .md-season-rule-controls select { max-width: 240px; }
+  .md-season-rule-table { display: block; min-width: 0; background: transparent; }
+  .md-season-rule-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .md-season-rule-table tbody { display: grid; gap: 14px; }
+  .md-season-rule-table tr { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--md-rule); background: var(--md-paper); }
+  .md-season-rule-table th { grid-column: 1/-1; }
+  .md-season-rule-table td { text-align: left; }
+  .md-season-rule-table td::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 11px; color: var(--md-muted); }
+  .md-season-rule-table td:nth-last-child(-n+2) { border-bottom: 0; }
+  .md-season-rule-table td:last-child { grid-column: 1/-1; border-top: 1px solid var(--md-rule); }
+  .md-season-event-list .md-season-table-wrap { overflow-x: auto; }
+  .md-season-events-table { min-width: 650px; }
+}

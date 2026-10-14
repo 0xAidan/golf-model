@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, NavLink, useLocation, useSearchParams } from "react-router-dom"
 import {
@@ -34,6 +34,9 @@ import {
 } from "./market-rows"
 import { CardPage } from "./card-page"
 import "./matchup-desk.css"
+import "./season-results.css"
+
+const SeasonResults = lazy(() => import("./season-results").then(module => ({ default: module.SeasonResults })))
 
 type Calibration = {
   n: number
@@ -825,6 +828,8 @@ export function MatchupDesk() {
   const [notice, setNotice] = useState("")
   const boardPage = location.pathname !== "/card" && location.pathname !== "/evidence"
   const evidencePage = location.pathname === "/evidence"
+  const currentStoreView = evidencePage && params.get("view") === "store"
+  const needsCurrentEvidence = boardPage || currentStoreView
   const boardQuery = useQuery({
     queryKey: ["matchup-desk", mode],
     queryFn: ({ signal }) => getDeskBoard({ track: "champion", mode }, signal),
@@ -836,16 +841,16 @@ export function MatchupDesk() {
   const evidenceQuery = useQuery({
     queryKey: ["market-evidence", "dashboard"],
     queryFn: ({ signal }) => getEvidence(signal),
-    enabled: boardPage || evidencePage,
+    enabled: needsCurrentEvidence,
     staleTime: 60_000,
-    refetchInterval: boardPage || evidencePage ? 300_000 : false,
+    refetchInterval: needsCurrentEvidence ? 300_000 : false,
     retry: false,
   })
   const board = boardQuery.data
   useEffect(() => {
     if (!boardPage) void queryClient.cancelQueries({ queryKey: ["matchup-desk"] })
-    if (!boardPage && !evidencePage) void queryClient.cancelQueries({ queryKey: ["market-evidence", "dashboard"] })
-  }, [boardPage, evidencePage, queryClient])
+    if (!needsCurrentEvidence) void queryClient.cancelQueries({ queryKey: ["market-evidence", "dashboard"] })
+  }, [boardPage, needsCurrentEvidence, queryClient])
   useEffect(() => {
     document.title = `${location.pathname === "/card" ? "My card" : location.pathname === "/evidence" ? "Market results" : "Matchups"} · Golf Model`
   }, [location.pathname])
@@ -998,15 +1003,23 @@ export function MatchupDesk() {
             marketSearch={location.search}
           />
         ) : location.pathname === "/evidence" ? (
-          <ResultsPage
-            evidence={evidenceQuery.data}
-            loading={evidenceQuery.isLoading}
-            error={
-              evidenceQuery.isError ||
-              evidenceQuery.data?.state === "unavailable"
-            }
-            retry={() => void evidenceQuery.refetch()}
-          />
+          <>
+            <nav className="md-results-view-switch" aria-label="Results view">
+              {[{ key: "season", label: "Season record" }, { key: "store", label: "Current store" }].map(view => {
+                const next = new URLSearchParams(params)
+                if (view.key === "store") next.set("view", "store")
+                else next.delete("view")
+                const selected = view.key === "store" ? currentStoreView : !currentStoreView
+                return <Link key={view.key} to={{ pathname: "/evidence", search: next.toString() }} aria-current={selected ? "page" : undefined}>{view.label}</Link>
+              })}
+            </nav>
+            {currentStoreView ? <ResultsPage
+              evidence={evidenceQuery.data}
+              loading={evidenceQuery.isLoading}
+              error={evidenceQuery.isError || evidenceQuery.data?.state === "unavailable"}
+              retry={() => void evidenceQuery.refetch()}
+            /> : <Suspense fallback={<div className="md-single-page md-season-loading" role="status">Opening the season record…</div>}><SeasonResults /></Suspense>}
+          </>
         ) : (
           <MarketBoard
             board={board}

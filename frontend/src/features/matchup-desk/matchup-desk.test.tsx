@@ -68,8 +68,8 @@ describe("matchup desk user flow", () => {
     expect(screen.getByRole("heading", { name: "Your card." })).toBeInTheDocument()
   })
 
-  it("loads Results without an unrelated board request", async () => {
-    renderDesk("/evidence")
+  it("loads the retained current-store Results without an unrelated board request", async () => {
+    renderDesk("/evidence?view=store")
     expect(await screen.findByText("No settled market evidence yet.")).toBeInTheDocument()
     expect(getBoard).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledTimes(1)
