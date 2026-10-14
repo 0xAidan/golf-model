@@ -83,10 +83,11 @@ Use this sequence before assuming matchup generation is broken:
 ## Dashboard UX
 
 - **Markets**: compare original quotes/probabilities by duration, player and bookmaker; distinguish unavailable, stale and research-only records.
-- **My card**: browser-local saved quote snapshots, with export and removal. Saving does not place a wager.
+- **My card**: browser-local saved quote snapshots, CSV export, and selected-pick sharing. Create a read-only link or copy recipient-ready text with the original prices and source times. Saving does not place a wager; shared snapshots do not claim current availability or verified execution.
 - **Results**: market-level stored outcomes, coverage limitations and forecast calibration. The active database is not the full season.
 - **More tools**: retained player research, comparisons, event archive, lab and system tools.
 - Responsive light/dark layouts and self-hosted fonts. Existing models, probabilities and historical outcomes remain unchanged by this UI release.
+- Route-scoped requests, cancellation on navigation, bounded read deadlines and reduced idle polling keep card work independent of live feeds. The [experience audit](docs/audits/2026-10-13-experience-performance.md) records measured delivery costs and remaining backend work.
 
 ## Deployment (Hetzner-friendly)
 

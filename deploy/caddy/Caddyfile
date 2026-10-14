@@ -27,6 +27,7 @@ shermandavison.com {
 }
 
 golf.shermandavison.com {
+	encode zstd gzip
 	@blocked not method GET HEAD OPTIONS
 	respond @blocked 405
 

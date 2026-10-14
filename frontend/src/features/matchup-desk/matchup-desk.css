@@ -43,6 +43,142 @@
   caret-color: var(--md-accent);
   font-variant-numeric: tabular-nums;
 }
+.md-card-actions,
+.md-share-actions,
+.md-share-link > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.md-share-composer {
+  margin: 28px 0 40px;
+  padding: 24px;
+  background: var(--md-paper);
+  border: 1px solid var(--md-rule);
+}
+.md-share-composer > p,
+.md-share-link > p {
+  color: var(--md-muted);
+  max-width: 70ch;
+}
+.md-share-composer fieldset {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+  min-width: 0;
+}
+.md-share-choices > label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--md-rule);
+  cursor: pointer;
+}
+.md-share-choices input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--md-accent);
+}
+.md-share-choices strong,
+.md-share-choices small {
+  display: block;
+}
+.md-share-choices small {
+  color: var(--md-muted);
+  margin-top: 3px;
+}
+.md-share-choices > label > span:last-child {
+  text-align: right;
+}
+.md-share-actions > span {
+  margin-right: auto;
+  color: var(--md-muted);
+}
+.md-share-link {
+  margin-top: 24px;
+  border-top: 1px solid var(--md-rule);
+  padding-top: 20px;
+}
+.md-share-link > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.md-share-link input,
+.md-copy-picks textarea {
+  border: 1px solid var(--md-rule);
+  border-radius: 3px;
+  background: var(--md-ground);
+  color: var(--md-ink);
+  font: inherit;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.md-share-link input {
+  flex: 1;
+  width: 100%;
+}
+.md-share-link > a {
+  margin: 16px 0 8px;
+}
+.md-share-message,
+.md-copy-picks > p {
+  margin-top: 12px !important;
+  color: var(--md-muted);
+}
+.md-copy-picks textarea {
+  display: block;
+  width: min(100%, 680px);
+  margin-top: 12px;
+  resize: vertical;
+}
+.md-quote-record {
+  color: var(--md-muted);
+  font-size: 13px;
+  margin-top: 12px;
+}
+.md-quote-record summary {
+  width: fit-content;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.md-quote-record dl {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.md-quote-record dl > div {
+  display: grid;
+  grid-template-columns: 85px minmax(0, 1fr);
+  gap: 12px;
+}
+.md-quote-record dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .md-card-actions {
+    margin-top: 16px;
+  }
+  .md-share-composer {
+    padding: 16px;
+  }
+  .md-share-choices > label {
+    gap: 10px;
+  }
+  .md-share-actions > span {
+    flex-basis: 100%;
+  }
+  .md-share-link input {
+    flex-basis: 100%;
+  }
+  .md-shared-page .md-masthead {
+    min-height: 80px;
+  }
+}
 .dark .matchup-desk {
   --md-ground: #101e1a;
   --md-paper: #172b23;
@@ -1062,6 +1198,9 @@
 }
 .md-skip:focus {
   top: 12px;
+}
+.md-skip:not(:focus) {
+  clip-path: inset(50%);
 }
 @media (min-width: 1550px) {
   .md-board-layout {

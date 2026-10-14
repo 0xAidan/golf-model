@@ -1,24 +1,22 @@
 import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, NavLink, useLocation, useSearchParams } from "react-router-dom"
 import {
   ArrowDown,
   ArrowRight,
-  Bookmark,
   Check,
   ChevronDown,
   Clock3,
-  Download,
   Flag,
   Info,
   Plus,
   RefreshCw,
   Search,
-  Trash2,
 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import {
   getDeskBoard,
+  getReadOnlyJson,
   type OperatorBoard,
   type OperatorMode,
 } from "@/features/operator-data/operator-api"
@@ -34,6 +32,7 @@ import {
   type MarketFamily,
   type SavedPick,
 } from "./market-rows"
+import { CardPage } from "./card-page"
 import "./matchup-desk.css"
 
 type Calibration = {
@@ -98,10 +97,8 @@ const bookName = (v: string) =>
   })[v.toLowerCase()] ||
   v ||
   "Book unavailable"
-async function getEvidence(): Promise<Evidence> {
-  const response = await fetch("/api/market-evidence?lane=dashboard")
-  if (!response.ok) throw new Error("Market evidence could not be loaded.")
-  return response.json() as Promise<Evidence>
+function getEvidence(signal?: AbortSignal): Promise<Evidence> {
+  return getReadOnlyJson<Evidence>("/api/market-evidence?lane=dashboard", signal)
 }
 
 function EvidenceAside({
@@ -283,10 +280,12 @@ function CalibrationChart({ markets }: { markets: EvidenceMarket[] }) {
 function MatchupRow({
   row,
   saved,
+  checking,
   onSave,
 }: {
   row: DeskRow
   saved: boolean
+  checking: boolean
   onSave: (row: DeskRow) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -324,9 +323,11 @@ function MatchupRow({
         </div>
         <button
           className={`md-save${saved ? " is-saved" : ""}`}
-          disabled={!row.eligible && !saved}
+          disabled={(!row.eligible || checking) && !saved}
           title={
-            !row.eligible
+            checking && !saved
+              ? "Checking the latest published quote"
+              : !row.eligible
               ? "This quote is not eligible for the betting card"
               : saved
                 ? "Saved to your card"
@@ -394,6 +395,7 @@ function MatchupRow({
 function MarketBoard({
   board,
   loading,
+  checking,
   error,
   refresh,
   evidence,
@@ -403,6 +405,7 @@ function MarketBoard({
 }: {
   board?: OperatorBoard
   loading: boolean
+  checking: boolean
   error: boolean
   refresh: () => void
   evidence?: Evidence
@@ -416,10 +419,18 @@ function MarketBoard({
       ? params.get("market")
       : "72h"
   ) as MarketFamily
-  const [search, setSearch] = useState("")
-  const [book, setBook] = useState("")
-  const [minEdge, setMinEdge] = useState(0)
-  const [sort, setSort] = useState<"edge" | "player">("edge")
+  const search = params.get("q") || ""
+  const book = params.get("book") || ""
+  const minEdge = [2, 3, 5, 8, 10].includes(Number(params.get("ev"))) ? Number(params.get("ev")) : 0
+  const sort = params.get("sort") === "player" ? "player" : "edge"
+  function updateFilter(key: string, value: string) {
+    setParams(previous => {
+      const next = new URLSearchParams(previous)
+      if (value) next.set(key, value)
+      else next.delete(key)
+      return next
+    }, { replace: true })
+  }
   const rows = useMemo(() => boardRows(board), [board])
   const marketRows = rows.filter((row) => row.market === market)
   const books = [
@@ -446,8 +457,8 @@ function MarketBoard({
   function switchMarket(next: MarketFamily) {
     const p = new URLSearchParams(params)
     p.set("market", next)
+    p.delete("book")
     setParams(p)
-    setBook("")
   }
   return (
     <div className="md-board-layout">
@@ -484,7 +495,7 @@ function MarketBoard({
             <Search size={17} />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => updateFilter("q", e.target.value)}
               placeholder="Find a player or matchup"
               aria-label="Find a player or matchup"
             />
@@ -494,7 +505,7 @@ function MarketBoard({
             <select
               aria-label="Sportsbook"
               value={book}
-              onChange={(e) => setBook(e.target.value)}
+              onChange={(e) => updateFilter("book", e.target.value)}
             >
               <option value="">All books</option>
               {books.map((b) => (
@@ -508,7 +519,7 @@ function MarketBoard({
             <span>Min. EV</span>
             <select
               value={minEdge}
-              onChange={(e) => setMinEdge(Number(e.target.value))}
+              onChange={(e) => updateFilter("ev", e.target.value === "0" ? "" : e.target.value)}
               aria-label="Minimum model EV"
             >
               {[0, 2, 3, 5, 8, 10].map((n) => (
@@ -521,13 +532,13 @@ function MarketBoard({
         </div>
         <div className="md-table-head">
           <button
-            onClick={() => setSort(sort === "player" ? "edge" : "player")}
+            onClick={() => updateFilter("sort", sort === "player" ? "" : "player")}
           >
             Matchup {sort === "player" && <ArrowDown size={12} />}
           </button>
           <span>Book price</span>
           <span>Model win</span>
-          <button onClick={() => setSort("edge")}>
+          <button onClick={() => updateFilter("sort", "")}>
             Model EV {sort === "edge" && <ArrowDown size={12} />}
           </button>
           <span>Card</span>
@@ -567,6 +578,7 @@ function MarketBoard({
               <MatchupRow
                 key={row.id}
                 row={row}
+                checking={checking}
                 saved={savedIds.has(row.id)}
                 onSave={save}
               />
@@ -595,9 +607,9 @@ function MarketBoard({
               <button
                 className="md-button"
                 onClick={() => {
-                  setSearch("")
-                  setBook("")
-                  setMinEdge(0)
+                  const next = new URLSearchParams(params)
+                  for (const key of ["q", "book", "ev"]) next.delete(key)
+                  setParams(next, { replace: true })
                 }}
               >
                 Clear filters
@@ -656,142 +668,6 @@ function MarketBoard({
       </section>
       <EvidenceAside evidence={evidence} error={evidenceError} />
     </div>
-  )
-}
-
-function CardPage({
-  card,
-  remove,
-  board,
-}: {
-  card: SavedPick[]
-  remove: (id: string) => void
-  board?: OperatorBoard
-}) {
-  const [exported, setExported] = useState(false)
-  const liveIds = new Set(
-    boardRows(board)
-      .filter((r) => r.eligible)
-      .map((r) => r.id)
-  )
-  function exportCard() {
-    const lines = [
-      "event,market,round,player,opponent,book,odds,model_probability,model_ev,quote_time,snapshot_time,saved_time",
-      ...card.map((r) =>
-        [
-          r.eventName,
-          r.marketType,
-          r.round,
-          r.player,
-          r.opponent,
-          r.book,
-          r.odds,
-          r.probability ?? "",
-          r.ev ?? "",
-          r.lineAt ?? "",
-          r.snapshotAt ?? "",
-          r.savedAt,
-        ]
-          .map((v) => `"${String(v).replaceAll('"', '""')}"`)
-          .join(",")
-      ),
-    ]
-    const blob = new Blob([lines.join("\n")], {
-      type: "text/csv;charset=utf-8",
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `golf-card-${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-    setExported(true)
-  }
-  return (
-    <section className="md-single-page">
-      <div className="md-section-title">
-        <div>
-          <h1>Your card.</h1>
-          <p>Saved quotes, with the original price and prediction attached.</p>
-        </div>
-        {card.length > 0 && (
-          <button className="md-button" onClick={exportCard}>
-            <Download size={16} />
-            {exported ? "Export again" : "Export card"}
-          </button>
-        )}
-      </div>
-      <p className="md-card-notice">
-        <Info size={16} />
-        Stored in this browser. These are saved research selections; no bets
-        have been placed.
-      </p>
-      {!card.length ? (
-        <div className="md-card-empty">
-          <Bookmark size={38} />
-          <h2>A considered card starts here.</h2>
-          <p>
-            Save a matchup from the board to keep its price, probability and
-            reasoning together.
-          </p>
-          <Link className="md-button md-button-primary" to="/">
-            Explore matchups <ArrowRight size={16} />
-          </Link>
-        </div>
-      ) : (
-        <div className="md-saved-list">
-          {card.map((row) => (
-            <article key={row.id} className="md-saved-pick">
-              <div className="md-saved-top">
-                <button
-                  aria-label={`Remove ${row.player} from card`}
-                  onClick={() => remove(row.id)}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-              <div className="md-saved-main">
-                <div>
-                  <h2>{row.player}</h2>
-                  <p>{row.opponent ? `vs ${row.opponent}` : row.marketType}</p>
-                </div>
-                <div>
-                  <strong>{formatPrice(row.odds)}</strong>
-                  <span>{bookName(row.book)}</span>
-                </div>
-                <div>
-                  <strong>{formatProbability(row.probability)}</strong>
-                  <span>Model win</span>
-                </div>
-                <div>
-                  <strong className={row.ev !== null && row.ev > 0 ? "md-positive" : ""}>{formatEdge(row.ev)}</strong>
-                  <span>Model EV</span>
-                </div>
-              </div>
-              <p className="md-saved-event">
-                {row.eventName} · {MARKET_LABELS[row.market]}
-                {row.round ? ` · Round ${row.round}` : ""}
-              </p>
-              <p>
-                {row.reason ||
-                  "No additional explanation was attached to this prediction."}
-              </p>
-              <div className="md-saved-foot">
-                <span>
-                  <Clock3 size={13} />
-                  {date(row.snapshotAt)}
-                </span>
-                <span>
-                  {liveIds.has(row.id)
-                    ? "Quote present in current board · confirm with book"
-                    : "Saved quote · current price unverified"}
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
   )
 }
 
@@ -940,26 +816,36 @@ function ResultsPage({
 }
 
 export function MatchupDesk() {
+  const queryClient = useQueryClient()
   const location = useLocation()
   const [params, setParams] = useSearchParams()
   const mode: OperatorMode = params.get("mode") === "live" ? "live" : "upcoming"
   const [card, setCard] = useState<SavedPick[]>(readSavedCard)
   const [storageError, setStorageError] = useState(false)
   const [notice, setNotice] = useState("")
+  const boardPage = location.pathname !== "/card" && location.pathname !== "/evidence"
+  const evidencePage = location.pathname === "/evidence"
   const boardQuery = useQuery({
     queryKey: ["matchup-desk", mode],
-    queryFn: () => getDeskBoard({ track: "champion", mode }),
+    queryFn: ({ signal }) => getDeskBoard({ track: "champion", mode }, signal),
+    enabled: boardPage,
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: boardPage ? 60_000 : false,
+    retry: false,
   })
   const evidenceQuery = useQuery({
     queryKey: ["market-evidence", "dashboard"],
-    queryFn: getEvidence,
+    queryFn: ({ signal }) => getEvidence(signal),
+    enabled: boardPage || evidencePage,
     staleTime: 60_000,
-    refetchInterval: 300_000,
-    retry: 1,
+    refetchInterval: boardPage || evidencePage ? 300_000 : false,
+    retry: false,
   })
   const board = boardQuery.data
+  useEffect(() => {
+    if (!boardPage) void queryClient.cancelQueries({ queryKey: ["matchup-desk"] })
+    if (!boardPage && !evidencePage) void queryClient.cancelQueries({ queryKey: ["market-evidence", "dashboard"] })
+  }, [boardPage, evidencePage, queryClient])
   useEffect(() => {
     document.title = `${location.pathname === "/card" ? "My card" : location.pathname === "/evidence" ? "Market results" : "Matchups"} · Golf Model`
   }, [location.pathname])
@@ -982,13 +868,15 @@ export function MatchupDesk() {
     }
   }
   function save(row: DeskRow) {
-    if (!row.eligible || card.some((p) => p.id === row.id)) return
+    if (boardQuery.isFetching || boardQuery.isError || !row.eligible || card.some((p) => p.id === row.id)) return
     if (persist([...card, { ...row, savedAt: new Date().toISOString() }]))
       setNotice(`${row.player} saved to your card`)
   }
   const age = board?.source.age_seconds
   const sourceLabel = boardQuery.isError
     ? "Connection unavailable"
+    : boardQuery.isFetching && board
+      ? "Checking latest quotes…"
     : !board
       ? "Loading data"
       : board.state === "stale"
@@ -1000,12 +888,10 @@ export function MatchupDesk() {
             : typeof age === "number"
               ? `Updated ${age < 60 ? "just now" : `${Math.floor(age / 60)}m ago`}`
               : "Timestamp unavailable"
-  const boardPage =
-    location.pathname !== "/card" && location.pathname !== "/evidence"
   return (
     <div className="matchup-desk">
       <a className="md-skip" href="#desk-main">
-        Skip to markets
+        Skip to content
       </a>
       <header className="md-masthead">
         <Link className="md-brand" to="/" aria-label="Golf Model home">
@@ -1015,13 +901,13 @@ export function MatchupDesk() {
           </span>
         </Link>
         <nav aria-label="Main navigation">
-          <NavLink to="/" end>
+          <NavLink to={`/${location.search}`} end>
             Markets
           </NavLink>
-          <NavLink to="/card">
+          <NavLink to={`/card${location.search}`}>
             My card<span className="md-card-count">{card.length}</span>
           </NavLink>
-          <NavLink to="/evidence">Results</NavLink>
+          <NavLink to={`/evidence${location.search}`}>Results</NavLink>
         </nav>
         <div className="md-header-tools">
           <details className="md-more">
@@ -1039,7 +925,7 @@ export function MatchupDesk() {
           <ThemeToggle />
         </div>
       </header>
-      <div className="md-event-bar">
+      {boardPage && <div className="md-event-bar">
         <div className="md-event-name">
           <span className="md-tour">PGA TOUR</span>
           <h2>
@@ -1090,7 +976,7 @@ export function MatchupDesk() {
             </button>
           </div>
         </div>
-      </div>
+      </div>}
       {board?.state === "stale" && boardPage && (
         <div className="md-stale-warning" role="status">
           <Clock3 size={16} />
@@ -1109,7 +995,7 @@ export function MatchupDesk() {
           <CardPage
             card={card}
             remove={(id) => persist(card.filter((r) => r.id !== id))}
-            board={boardQuery.isError ? undefined : board}
+            marketSearch={location.search}
           />
         ) : location.pathname === "/evidence" ? (
           <ResultsPage
@@ -1125,6 +1011,7 @@ export function MatchupDesk() {
           <MarketBoard
             board={board}
             loading={boardQuery.isLoading}
+            checking={boardQuery.isFetching}
             error={boardQuery.isError}
             refresh={() => void boardQuery.refetch()}
             evidence={evidenceQuery.data}

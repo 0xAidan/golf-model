@@ -6,7 +6,7 @@ import { BrowserRouter } from "react-router-dom"
 import App from "@/App"
 import { ChartThemeProvider } from "@/components/chart-theme-provider"
 import { ThemeProvider } from "@/components/theme-provider"
-import { prepareErrorReporting } from "@/observability/sentry-startup"
+import { startErrorReportingAfterPaint } from "@/observability/sentry-startup"
 import "@/index.css"
 
 const queryClient = new QueryClient({
@@ -40,5 +40,5 @@ function renderApplication() {
   )
 }
 
-// Configured reporting is ready before React renders; unconfigured deployments skip the SDK.
-void prepareErrorReporting().then(renderApplication)
+renderApplication()
+startErrorReportingAfterPaint()

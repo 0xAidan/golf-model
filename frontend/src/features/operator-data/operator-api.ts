@@ -97,9 +97,9 @@ export class ApiError extends Error {
   }
 }
 
-const GET_RETRY_ATTEMPTS = 2
+const GET_RETRY_ATTEMPTS = 1
 const GET_RETRY_BASE_MS = 250
-const REQUEST_TIMEOUT_MS = 20_000
+const REQUEST_TIMEOUT_MS = 10_000
 const MAX_RETRY_AFTER_MS = 1_000
 
 const parseRetryAfterMs = (header: string | null): number | null => {
@@ -133,59 +133,73 @@ const createApiError = async (response: Response): Promise<ApiError> => {
   })
 }
 
-const waitForRetry = (delayMs: number, signal?: AbortSignal): Promise<void> =>
+const waitForRetry = (delayMs: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timer = window.setTimeout(resolve, delayMs)
-    signal?.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timer)
-        reject(signal.reason ?? new DOMException("Request aborted", "AbortError"))
-      },
-      { once: true },
-    )
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
+    const cleanup = () => signal.removeEventListener("abort", abort)
+    const timer = window.setTimeout(() => { cleanup(); resolve() }, delayMs)
+    const abort = () => {
+      window.clearTimeout(timer)
+      cleanup()
+      reject(signal.reason)
+    }
+    signal.addEventListener("abort", abort, { once: true })
   })
 
 const isRetryableGetError = (error: unknown): boolean =>
-  error instanceof ApiError ? error.status === 429 || error.status >= 500 : !(error instanceof DOMException)
+  error instanceof ApiError ? error.status === 429 || error.status >= 500 : error instanceof TypeError
 
-const requestGet = async <T>(path: string, signal?: AbortSignal): Promise<T> => {
-  for (let attempt = 0; attempt <= GET_RETRY_ATTEMPTS; attempt += 1) {
-    const controller = signal ? null : new AbortController()
-    const timeout = controller ? window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null
-    try {
-      const response = await fetch(path, { method: "GET", signal: signal ?? controller?.signal })
-      if (!response.ok) throw await createApiError(response)
-      return (await response.json()) as T
-    } catch (error) {
-      const timeoutError =
-        controller?.signal.aborted && !signal?.aborted
-          ? new ApiError({
-              message: `Request timed out after ${REQUEST_TIMEOUT_MS / 1_000}s`,
-              status: 0,
-              code: "timeout",
-              isTimeout: true,
-            })
-          : error
-      if (attempt === GET_RETRY_ATTEMPTS || !isRetryableGetError(timeoutError)) throw timeoutError
-      const retryAfter = timeoutError instanceof ApiError ? timeoutError.retryAfterMs : null
-      await waitForRetry(Math.min(retryAfter ?? GET_RETRY_BASE_MS * 2 ** attempt, MAX_RETRY_AFTER_MS), signal)
-    } finally {
-      if (timeout !== null) window.clearTimeout(timeout)
-    }
+/** Read-only JSON with one retry owner and one deadline, including body/backoff time.
+ * TanStack consumers should pass their signal and set retry: false.
+ */
+export const getReadOnlyJson = async <T>(path: string, signal?: AbortSignal): Promise<T> => {
+  const controller = new AbortController()
+  const abortFromCaller = () => controller.abort(signal?.reason ?? new DOMException("Request aborted", "AbortError"))
+  if (signal?.aborted) {
+    abortFromCaller()
+    throw controller.signal.reason
   }
-  throw new Error("Unreachable GET retry state")
+  signal?.addEventListener("abort", abortFromCaller, { once: true })
+  const timeout = window.setTimeout(() => controller.abort(new ApiError({
+    message: `Request timed out after ${REQUEST_TIMEOUT_MS / 1_000}s`,
+    status: 0,
+    code: "timeout",
+    isTimeout: true,
+  })), REQUEST_TIMEOUT_MS)
+
+  try {
+    for (let attempt = 0; attempt <= GET_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        if (controller.signal.aborted) throw controller.signal.reason
+        const response = await fetch(path, { method: "GET", signal: controller.signal })
+        if (!response.ok) throw await createApiError(response)
+        return (await response.json()) as T
+      } catch (error) {
+        if (controller.signal.aborted) throw controller.signal.reason
+        if (attempt === GET_RETRY_ATTEMPTS || !isRetryableGetError(error)) throw error
+        const retryAfter = error instanceof ApiError ? error.retryAfterMs : null
+        await waitForRetry(Math.min(retryAfter ?? GET_RETRY_BASE_MS, MAX_RETRY_AFTER_MS), controller.signal)
+      }
+    }
+    throw new Error("Unreachable GET retry state")
+  } finally {
+    window.clearTimeout(timeout)
+    signal?.removeEventListener("abort", abortFromCaller)
+  }
 }
 
 export const getOperatorBootstrap = (signal?: AbortSignal): Promise<OperatorBootstrap> =>
-  requestGet<OperatorBootstrap>("/api/operator/bootstrap", signal)
+  getReadOnlyJson<OperatorBootstrap>("/api/operator/bootstrap", signal)
 
 /** Isolated, read-only snapshot service used by the matchup desk. */
 export const getDeskBoard = (
   { track, mode }: { track: OperatorTrack; mode: Exclude<OperatorMode, "past"> },
   signal?: AbortSignal,
 ): Promise<OperatorBoard> =>
-  requestGet<OperatorBoard>(`/api/desk/board?${new URLSearchParams({ track, mode })}`, signal)
+  getReadOnlyJson<OperatorBoard>(`/api/desk/board?${new URLSearchParams({ track, mode })}`, signal)
 
 export const getOperatorBoard = (
   { track, mode, eventId }: { track: OperatorTrack; mode: OperatorMode; eventId?: string | null },
@@ -193,7 +207,7 @@ export const getOperatorBoard = (
 ): Promise<OperatorBoard> => {
   const params = new URLSearchParams({ track, mode })
   if (eventId) params.set("event_id", eventId)
-  return requestGet<OperatorBoard>(`/api/operator/board?${params.toString()}`, signal)
+  return getReadOnlyJson<OperatorBoard>(`/api/operator/board?${params.toString()}`, signal)
 }
 
 /** Manual-only worker wake-up. Mutations deliberately do not retry. */

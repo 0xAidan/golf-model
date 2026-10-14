@@ -8,11 +8,11 @@ web
 
 ## Users
 
-The owner uses the site to research golf betting opportunities. Personal card building is the working priority from the brief; delivering picks to others remains an open decision.
+The owner uses the site to research golf betting opportunities. The confirmed workflow is personal card building plus shared picks. Both should feel fast and dependable across the full stack.
 
 ## Product Purpose
 
-Make the existing predictions useful in one fast workflow: review matchup markets, compare the available price with the frozen model output, save a card, and inspect the evidence after settlement.
+Make the existing predictions useful in one fast workflow: review matchup markets, compare the available price with the frozen model output, save a card, share selected quotes, and inspect the evidence after settlement.
 
 ## Operating Context
 

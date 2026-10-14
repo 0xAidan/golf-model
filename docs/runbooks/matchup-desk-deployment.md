@@ -119,6 +119,8 @@ Save the exact current Caddyfile. In the existing `golf.shermandavison.com` bloc
 add these exact handlers before its general `handle /api/*` block:
 
 ```caddyfile
+encode zstd gzip
+
 handle /api/market-evidence {
     reverse_proxy 127.0.0.1:8011
 }
@@ -131,6 +133,7 @@ handle /api/desk/board {
 Keep the existing method restrictions, CORS headers, legacy API route, static
 fallback, redirects, and all unrelated virtual hosts. The service sets no-store
 headers itself. Do not expose its health endpoint publicly unless needed.
+Compression applies within the golf host and retains the API's no-store policy.
 
 ```sh
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
@@ -162,6 +165,12 @@ build alone does not prove model performance, full historical recovery, or the
 resolution of existing background-job failures.
 
 ## Rollback
+
+The frontend also serves `/shared-card#card=…` through the existing SPA fallback.
+The fragment contains a bounded, unverified saved selection snapshot, decoded
+only in the browser. It needs no new API, database table or server write. Sharing
+does not establish placed bets or current prices. Never log the fragment in
+frontend telemetry; the Sentry scrubber removes it before sending events.
 
 Restore the saved frontend index/root files atomically, retaining both releases'
 fingerprinted assets. Restore the saved Caddy configuration, validate, and reload

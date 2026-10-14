@@ -9,7 +9,7 @@ import { CARD_KEY } from "./market-rows"
 import { MatchupDesk } from "./matchup-desk"
 
 const { getBoard } = vi.hoisted(() => ({ getBoard: vi.fn() }))
-vi.mock("@/features/operator-data/operator-api", () => ({ getDeskBoard: getBoard }))
+vi.mock("@/features/operator-data/operator-api", async importOriginal => ({ ...await importOriginal<typeof import("@/features/operator-data/operator-api")>(), getDeskBoard: getBoard }))
 vi.mock("@/components/theme-toggle", () => ({ ThemeToggle: () => null }))
 
 const quote = {
@@ -46,6 +46,104 @@ afterEach(() => {
 })
 
 describe("matchup desk user flow", () => {
+  it("opens My card without any live API requests", async () => {
+    renderDesk("/card")
+    expect(screen.getByRole("heading", { name: "Your card." })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("heading", { name: "A considered card starts here." })).toBeInTheDocument())
+    expect(getBoard).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.queryByText("Loading event…")).not.toBeInTheDocument()
+  })
+
+  it("cancels an obsolete board request when opening My card", async () => {
+    let requestSignal: AbortSignal | undefined
+    getBoard.mockImplementation((_options, signal: AbortSignal) => {
+      requestSignal = signal
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }))
+    })
+    const user = userEvent.setup()
+    renderDesk()
+    await user.click(screen.getByRole("link", { name: /My card/ }))
+    await waitFor(() => expect(requestSignal?.aborted).toBe(true))
+    expect(screen.getByRole("heading", { name: "Your card." })).toBeInTheDocument()
+  })
+
+  it("loads Results without an unrelated board request", async () => {
+    renderDesk("/evidence")
+    expect(await screen.findByText("No settled market evidence yet.")).toBeInTheDocument()
+    expect(getBoard).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it("keeps filters and event context when visiting My card and returning", async () => {
+    const user = userEvent.setup()
+    renderDesk("/?mode=upcoming&market=72h&q=Scottie&book=fanduel&ev=2&sort=player")
+    await screen.findByRole("button", { name: "Save Scottie Scheffler to card" })
+    await user.click(screen.getByRole("link", { name: /My card/ }))
+    await user.click(screen.getByRole("link", { name: "Markets" }))
+    expect(screen.getByRole("textbox", { name: "Find a player or matchup" })).toHaveValue("Scottie")
+    expect(screen.getByRole("combobox", { name: "Sportsbook" })).toHaveValue("fanduel")
+    expect(screen.getByRole("combobox", { name: "Minimum model EV" })).toHaveValue("2")
+    expect(getBoard).toHaveBeenCalledTimes(1)
+  })
+
+  it("withholds cached quotes while rechecking an aged board after visiting My card", async () => {
+    const user = userEvent.setup()
+    renderDesk()
+    await screen.findByRole("button", { name: "Save Scottie Scheffler to card" })
+    await user.click(screen.getByRole("link", { name: /My card/ }))
+    await clients.at(-1)!.invalidateQueries({ queryKey: ["matchup-desk"] })
+    getBoard.mockImplementation(() => new Promise(() => {}))
+    await user.click(screen.getByRole("link", { name: "Markets" }))
+    const save = screen.getByRole("button", { name: "Save Scottie Scheffler to card" })
+    expect(save).toBeDisabled()
+    expect(screen.getByText("Checking latest quotes…")).toBeInTheDocument()
+    await user.click(save)
+    expect(localStorage.getItem(CARD_KEY)).toBeNull()
+  })
+
+  it("creates a share link from selected original picks without changing the personal card", async () => {
+    const second = { ...quote, pick: "Ludvig Åberg", pick_key: "aberg", odds: "-105" }
+    getBoard.mockResolvedValue(board({ picks: { matchups: [{ ...quote }, second], value_bets: [] } }))
+    const user = userEvent.setup()
+    renderDesk()
+    await user.click(await screen.findByRole("button", { name: "Save Scottie Scheffler to card" }))
+    await user.click(screen.getByRole("button", { name: "Save Ludvig Åberg to card" }))
+    await user.click(screen.getByRole("link", { name: /My card/ }))
+    const original = localStorage.getItem(CARD_KEY)
+    await user.click(screen.getByRole("button", { name: "Share picks" }))
+    await user.click(screen.getByRole("checkbox", { name: /Ludvig Åberg/ }))
+    await user.click(screen.getByRole("button", { name: "Create share link" }))
+    const link = await screen.findByRole("textbox", { name: "Share link" })
+    const url = new URL((link as HTMLInputElement).value)
+    expect(url.pathname).toBe("/shared-card")
+    const { decodeSharedCard } = await import("./shared-card")
+    const shared = await decodeSharedCard(new URLSearchParams(url.hash.slice(1)).get("card")!)
+    expect(shared.picks).toEqual([JSON.parse(original!)[0]])
+    expect(localStorage.getItem(CARD_KEY)).toBe(original)
+    expect(screen.getByRole("link", { name: /Preview shared card/ })).toHaveAttribute("href", url.toString())
+  })
+
+  it("clears manual-copy text when a pick is excluded from sharing", async () => {
+    getBoard.mockResolvedValue(board({ picks: { matchups: [{ ...quote }, { ...quote, pick: "Ludvig Åberg", pick_key: "aberg" }], value_bets: [] } }))
+    const user = userEvent.setup()
+    renderDesk()
+    await user.click(await screen.findByRole("button", { name: "Save Scottie Scheffler to card" }))
+    await user.click(screen.getByRole("button", { name: "Save Ludvig Åberg to card" }))
+    await user.click(screen.getByRole("link", { name: /My card/ }))
+    await user.click(screen.getByRole("button", { name: "Share picks" }))
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("Clipboard denied"))
+    await user.click(screen.getByRole("button", { name: "Copy picks" }))
+    expect((await screen.findByRole("textbox", { name: "Picks to copy" }) as HTMLTextAreaElement).value).toContain("Ludvig Åberg")
+    await user.click(screen.getByRole("checkbox", { name: /Ludvig Åberg/ }))
+    expect(screen.queryByRole("textbox", { name: "Picks to copy" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Copy picks" }))
+    const manual = await screen.findByRole("textbox", { name: "Picks to copy" })
+    expect((manual as HTMLTextAreaElement).value).toContain("Scottie Scheffler")
+    expect((manual as HTMLTextAreaElement).value).not.toContain("Ludvig Åberg")
+  })
+
   it("saves an original quote, restores it after a remount, exports it, and removes it without placing bets", async () => {
     const user = userEvent.setup()
     const first = renderDesk()
