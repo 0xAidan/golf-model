@@ -13,6 +13,7 @@ Artifacts are outside the checkout at `/Users/aidannugent/websites/golf-model-pr
 | `research-cards-output.tar.gz` | Full outer gzip read and all 2,952 tar headers passed; 25,823,472 bytes | Original local-recovery cards and ZIP, output research/cards, 175 provenance JSON files, live-refresh snapshot, static track record. |
 | Static `trackRecord.json` copy | Exclusive copy and checksum manifest | Six named events; individual picks exist only for Arnold Palmer Invitational (14) and Cognizant Classic (15). |
 | `history-evidence-vault.20261014T003000Z.jsonl.gz` | Exclusive new file, SHA256 and full gzip stream validated; 737,360,747 compressed bytes | All six whitelisted core tables from 22 source generations: current copy, four quarantine base files, and 17 tournament exports. All 132 table streams completed. |
+| `quarantines-with-sidecars.tar.gz` | Full gzip CRC/trailer and tar validation; all 18 member names, sizes and SHA256 values match independent server references; 3,125,477,856 compressed bytes | Six quarantined database main files and all their WAL/SHM sidecars, totaling 38,736,687,328 source bytes. No member extracted or database opened. |
 
 Checksums:
 
@@ -20,8 +21,13 @@ Checksums:
 - Exports/audits archive: `a620f3d9e1f552aa8c5b5df63a6f8624e9fcb549c5498b8a6d877c895d93772b`.
 - Research/cards/output archive: `2c896d93418e81289e8653b7136dc34acb3c72a32b9d6a001ca2aaa37b52dbcc`.
 - Logical evidence vault: `4291222388e42905f12ca818fbc4fdb559a8e5da83eaa6b2bbb6937b0a898ee5`.
+- Raw quarantine archive: `d40c7d6ddc00f78fc8d4aebbee1a36e80458b7bcbc101c7d6bc65186258ad3e9`.
 
-Exact member names, sizes and validation timestamps are in `exports-and-audits.manifest.20261014T001602Z.json` and `research-cards-output.manifest.20261014T001958Z.json`. Archive validation does not establish factual accuracy or full-season completeness. The raw quarantine archive transfer remains separate and was not accessed; validate it after completion. A subsequent bounded logical collection read the six core tables directly from the four specified quarantine **base files** using `mode=ro&immutable=1` and `query_only`; their original WAL was deliberately not applied.
+Exact member names, sizes and validation timestamps are in `exports-and-audits.manifest.20261014T001602Z.json` and `research-cards-output.manifest.20261014T001958Z.json`. Archive validation does not establish factual accuracy or full-season completeness. The bounded logical collection read six core tables from four specified quarantine **base files** using `mode=ro&immutable=1` and `query_only`; their original WAL was deliberately not applied.
+
+The raw quarantine transfer exited successfully before validation. Finalization completed at **2026-10-14 01:21:42 UTC** after all **18/18** archived regular members matched `quarantine-source-sha256.txt` and `quarantine-source-file-metadata.json`, with no missing, unexpected or duplicate members. `quarantines-with-sidecars.validation.json` records the full streaming validation, and `quarantines-with-sidecars.comparison-and-finalization.json` records the independent comparison and exclusive final-name publication. The latter maps the validation manifest's original `.partial` name to the final `.tar.gz`; the partial name was removed only after success. The archive, both manifests and both source-reference files have mode `0600`.
+
+This is complete byte preservation of the **18 selected quarantine files**, including the known malformed sources. It does not establish SQLite integrity, valid WAL replay, full-season completeness or successful restoration. No raw database was extracted, imported, repaired, migrated or initialized, and no server source bytes were changed.
 
 ## Logical core vault completed
 
@@ -55,7 +61,7 @@ The detailed event comparison is in `season-source-inventory.20261014T001702Z.js
 
 ## Next safe recovery procedure
 
-1. Finish and validate every quarantine archive together with original WAL/SHM sidecars. Keep all checksummed source generations unchanged. Obtain consistent analysis copies; never copy only an active SQLite main file or ignore its WAL.
+1. Retain the now-validated six quarantine main files together with their original WAL/SHM sidecars and independent comparison manifests. Keep all checksummed source generations unchanged. Obtain consistent disposable analysis copies before recovery; never copy only an active SQLite main file or ignore its WAL. Successful byte preservation does not authorize replay or repair against the source files.
 2. Create a **separate append-only reconciliation store**. Every source row keeps its archive/database hash, member/table, source-local ID, original payload and import-observation timestamp. Preserve conflicting versions instead of choosing one silently.
 3. Resolve tournament identity using tour, vendor event ID and season, cross-checked against name, course and authoritative scheduled dates. Sponsor-name differences need explicit aliases. Missing identity stays unresolved.
 4. Resolve decision identity using event/season/tour, market duration, round or group membership, selected player/opponent, source/lane/model/configuration, book, quoted price, and decision/snapshot time. Do not infer round, bookmaker or publication time when absent.

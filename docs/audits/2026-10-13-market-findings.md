@@ -64,6 +64,16 @@ The export cohort's **unspecified** dashboard matchups have 149 records across f
 
 Placements/other markets are intentionally kept outside the matchup tables. Their exported dashboard subtotal is +47.4850 units over 364 eligible rows, with another 165 void rows. It includes +76.78 at the U.S. Open, +36.28 at Travelers, −44.20 at Bank of Utah, and −35.00 at Baycurrent. That concentration and the mixed market definitions do not support promoting an “obscure market” strategy from the aggregate.
 
+## Bounded group-market recovery check
+
+A further local-only inspection read **52 Markdown files and 188 provenance JSON files** (175 output files plus 13 local-recovery files), totaling 5,238,052 selected payload bytes from the verified `research-cards-output.tar.gz`. This includes the earlier 38 candidate cards/36 distinct hashes. No large ledger was parsed and no server source was queried.
+
+The 22 Markdown files mentioning three-ball/group terms contain **19 “no value plays” placeholders, two “no odds” placeholders, and one team-format exclusion**. They contain zero explicit group selections or same-source settled group results. Exact examples within the archive: `data/local_recovery/md_cards/md cards/masters_tournament_20260408.md`, lines 93–97, says no three-ball value plays; `data/local_recovery/md_cards/md cards/cognizant_classic_20260228.md`, lines 192–196, says no three-ball odds; `output/zurich_classic_of_new_orleans_20260823.md`, line 16, excludes three-ball for the team format. Repeated placeholders are not observations of successful selections.
+
+Of the 188 provenance files, 181 parse as JSON; six are empty and `output/bank_of_utah_championship_provenance_20260930.json` is truncated. Original bytes remain preserved. Neither raw text nor parsed keys/values in these files contains an explicit group/three-ball label; the recorded matchup market labels are round and tournament matchups. The failed files are coverage gaps, not evidence of absent selections.
+
+Per-member hashes, excerpts and parse failures are retained outside git in `group-recovery-inspection.20261014T010819Z.json` and `group-recovery-classification.20261014T010904Z.json`. These bounded sources do not establish group performance. Further discovery should search remaining research/quote payloads for explicit group membership and a linked same-contract settlement; a section heading or three-player prose reference is insufficient.
+
 ## What can guide the next iteration
 
 1. **Information delivery:** give matchups first-class 72h and 18h views, show the selected book/price and evidence coverage beside each pick, and keep lab candidates visibly separate. Display wins, losses, zero returns, voids, and pending states independently. Do not attach a full-season success claim to the current recovered database.
