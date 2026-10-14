@@ -12,6 +12,7 @@ import json
 import math
 import os
 from collections import Counter, defaultdict
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 import re
@@ -28,6 +29,12 @@ MARKETS = {
 }
 MIN_RECORDS = 30
 MIN_EVENTS = 5
+# Per request: leave headroom for four concurrent reports in the 512MiB sidecar.
+# Limits apply before filtering/deduplication so duplicates cannot bypass them.
+MAX_REPORT_ROWS = 10_000
+MAX_REPORT_TEXT_BYTES = 8 * 1024 * 1024
+MAX_SQLITE_LENGTH = 64 * 1024
+REPORT_TIMEOUT_SECONDS = 8.0
 _LANES = {
     "cockpit": "dashboard", "ui_display": "dashboard", "dashboard": "dashboard",
     "lab": "lab", "lab_sandbox": "lab", "lab_sandbox_candidate": "lab", "ui_candidate": "lab",
@@ -40,6 +47,47 @@ _CAVEATS = [
     "Small samples and correlated picks are not evidence of a durable profitable edge.",
     "This report cannot change predictions, weights, calibration, selection, or model promotion.",
 ]
+
+
+class _ReportLimitExceeded(RuntimeError):
+    def __init__(self, kind: str):
+        self.kind = kind
+        super().__init__("Report processing limit exceeded.")
+
+
+class _ReportBudget:
+    def __init__(self):
+        self.deadline = time.monotonic() + REPORT_TIMEOUT_SECONDS
+        self.row_count = 0
+        self.text_bytes = 0
+
+    def expired(self) -> bool:
+        return time.monotonic() >= self.deadline
+
+    def check(self):
+        if self.expired():
+            raise _ReportLimitExceeded("time")
+
+    def add_row(self, row: sqlite3.Row):
+        self.check()
+        self.row_count += 1
+        if self.row_count > MAX_REPORT_ROWS:
+            raise _ReportLimitExceeded("rows")
+        # Preserve SQLite values unchanged; account for text/blob payloads only.
+        # SQLite's connection limit bounds each value before Python receives it.
+        self.text_bytes += sum(
+            len(value.encode("utf-8")) if isinstance(value, str) else len(value)
+            for value in row if isinstance(value, (str, bytes))
+        )
+        if self.text_bytes > MAX_REPORT_TEXT_BYTES:
+            raise _ReportLimitExceeded("text")
+
+
+def _checked(values: Iterable[Any], budget: _ReportBudget | None) -> Iterator[Any]:
+    for value in values:
+        if budget is not None:
+            budget.check()
+        yield value
 
 
 def default_database_path() -> Path:
@@ -147,7 +195,7 @@ def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {str(r[1]) for r in conn.execute(f'PRAGMA table_info("{table}")')}
 
 
-def _load_rows(conn: sqlite3.Connection) -> list[dict]:
+def _load_rows(conn: sqlite3.Connection, budget: _ReportBudget) -> list[dict]:
     cols = {table: _columns(conn, table) for table in ("picks", "pick_outcomes", "tournaments")}
     required = {"picks": {"id", "tournament_id"}, "pick_outcomes": {"id", "pick_id"}, "tournaments": {"id"}}
     if any(not names.issubset(cols[table]) for table, names in required.items()):
@@ -174,26 +222,32 @@ def _load_rows(conn: sqlite3.Connection) -> list[dict]:
     query = f"""SELECT {', '.join(selected)}
                 FROM picks p LEFT JOIN tournaments t ON t.id = p.tournament_id
                 LEFT JOIN pick_outcomes po ON po.pick_id = p.id
-                ORDER BY p.id, po.id"""
-    return [dict(r) for r in conn.execute(query)]
+                ORDER BY p.id, po.id LIMIT ?"""
+    rows = []
+    # Read one sentinel row beyond the cap; never publish a truncated aggregate.
+    for row in conn.execute(query, (MAX_REPORT_ROWS + 1,)):
+        budget.add_row(row)
+        rows.append(dict(row))
+    budget.check()
+    return rows
 
 
-def _project_records(rows: list[dict]) -> tuple[list[dict], int, int]:
+def _project_records(rows: list[dict], budget: _ReportBudget) -> tuple[list[dict], int, int]:
     """Collapse exact repeat evidence only; never select a winning/late quote."""
     groups: dict[tuple, list[dict]] = defaultdict(list)
-    for row in rows:
+    for row in _checked(rows, budget):
         groups[_identity(row)].append(row)
     result = []
     conflicting = 0
     duplicate_picks = 0
     fields = ("market_odds", "model_prob", "hit", "profit", "stake", "actual_finish", "grading_authority", "outcome", "result")
-    for group in groups.values():
+    for group in _checked(groups.values(), budget):
         row = dict(group[0])
         duplicate_picks += max(0, len({r["pick_id"] for r in group}) - 1)
-        signatures = {tuple(r.get(f) for f in fields) + (r.get("outcome_id") is not None,) for r in group}
+        signatures = {tuple(r.get(f) for f in fields) + (r.get("outcome_id") is not None,) for r in _checked(group, budget)}
         # Multiple outcomes for the same pick are ambiguous even if identical.
         outcomes_per_pick: dict[Any, set[Any]] = defaultdict(set)
-        for original in group:
+        for original in _checked(group, budget):
             if original.get("outcome_id") is not None:
                 outcomes_per_pick[original["pick_id"]].add(original["outcome_id"])
         row["conflicting_record"] = len(signatures) > 1 or any(len(ids) > 1 for ids in outcomes_per_pick.values())
@@ -205,9 +259,9 @@ def _project_records(rows: list[dict]) -> tuple[list[dict], int, int]:
     return result, duplicate_picks, conflicting
 
 
-def _calibration(rows: list[dict]) -> dict:
+def _calibration(rows: list[dict], budget: _ReportBudget | None = None) -> dict:
     buckets: dict[int, list[tuple[float, float]]] = defaultdict(list)
-    for row in rows:
+    for row in _checked(rows, budget):
         p, hit = _number(row.get("model_prob")), _number(row.get("hit"))
         result = _token(row.get("outcome") or row.get("result") or row.get("actual_finish"))
         if row["settlement"] not in {"win", "loss"} or p is None or not 0 <= p <= 1 or hit not in {0, 1}:
@@ -231,8 +285,8 @@ def _calibration(rows: list[dict]) -> dict:
     }
 
 
-def _aggregate(rows: list[dict]) -> dict:
-    counts = Counter(row["settlement"] for row in rows)
+def _aggregate(rows: list[dict], budget: _ReportBudget | None = None) -> dict:
+    counts = Counter(row["settlement"] for row in _checked(rows, budget))
     settled = [row for row in rows if row["settlement"] in {"win", "loss", "push", "void"}]
     with_profit = [row for row in settled if _number(row.get("profit")) is not None]
     # Void profit is preserved in net units but a void is not a wager at risk.
@@ -270,7 +324,7 @@ def _aggregate(rows: list[dict]) -> dict:
         "binary_hit_rate_pct": round(100 * counts["win"] / binary_n, 2) if binary_n else None,
         "low_sample": binary_n < MIN_RECORDS or len(settled_events) < MIN_EVENTS,
         "evidence_state": "insufficient" if reasons else "descriptive_only",
-        "limitations": reasons, "calibration": _calibration(rows),
+        "limitations": reasons, "calibration": _calibration(rows, budget),
     }
 
 
@@ -300,6 +354,17 @@ def _base_report(lane: str, season: int | None) -> dict:
     }
 
 
+def _limited_report(lane: str, season: int | None, kind: str) -> dict:
+    # Start from an empty envelope even if a later aggregation hit its deadline.
+    report = _base_report(lane, season)
+    report["reason"] = "Source report exceeds safe processing limits. No partial metrics are shown."
+    report["gaps"] = [{
+        "code": "report_limit_exceeded", "status": "unavailable",
+        "limit": kind, "detail": report["reason"],
+    }]
+    return report
+
+
 def build_market_evidence(
     database_path: str | Path | None = None, *, lane: str = "dashboard", season: int | None = None,
 ) -> dict:
@@ -311,23 +376,33 @@ def build_market_evidence(
     if not path.is_file():
         report["reason"] = "Source database is unavailable. No database was created."
         return report
+    budget = _ReportBudget()
     conn = None
     try:
         # mode=ro prevents file mutation; query_only additionally blocks SQL DDL/DML.
         # Do not use immutable=1: it ignores live WAL records.
         conn = sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True, timeout=2.5)
+        # Bound strings/blobs (and SQLite's encoded rows) before allocating their
+        # Python objects. These limits are per connection, never stored in the DB.
+        conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_SQLITE_LENGTH)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only=ON")
-        started = time.monotonic()
-        conn.set_progress_handler(lambda: int(time.monotonic() - started > 8.0), 10000)
+        conn.set_progress_handler(lambda: int(budget.expired()), 10000)
         conn.execute("BEGIN")
-        all_rows = _load_rows(conn)
+        all_rows = _load_rows(conn, budget)
         table_names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         supporting = {}
         for table in ("historical_matchup_odds", "research_backtest_lines"):
             supporting[table] = int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]) if table in table_names else None
         conn.rollback()
+        budget.check()
+    except _ReportLimitExceeded as exc:
+        return _limited_report(lane, season, exc.kind)
     except (sqlite3.Error, ValueError, OSError) as exc:
+        if getattr(exc, "sqlite_errorcode", None) == sqlite3.SQLITE_TOOBIG:
+            return _limited_report(lane, season, "text")
+        if budget.expired():
+            return _limited_report(lane, season, "time")
         # Expose a usable distinction without leaking paths or opaque SQL to the UI.
         report["reason"] = "Required source schema is unavailable." if isinstance(exc, ValueError) else "Source database could not be read consistently."
         report["gaps"].append({"code": "source_unavailable", "status": "unavailable", "detail": report["reason"]})
@@ -336,10 +411,19 @@ def build_market_evidence(
         if conn is not None:
             conn.close()
 
-    scoped = [row for row in all_rows if season is None or _season(row) == str(season)]
+    try:
+        return _finish_report(report, all_rows, supporting, lane, season, budget)
+    except _ReportLimitExceeded as exc:
+        return _limited_report(lane, season, exc.kind)
+
+
+def _finish_report(report: dict, all_rows: list[dict], supporting: dict,
+                   lane: str, season: int | None, budget: _ReportBudget) -> dict:
+    budget.check()
+    scoped = [row for row in _checked(all_rows, budget) if season is None or _season(row) == str(season)]
     if lane != "all":
-        scoped = [row for row in scoped if _LANES.get(_token(row.get("source")), "other") == lane]
-    records, duplicates, conflicts = _project_records(scoped)
+        scoped = [row for row in _checked(scoped, budget) if _LANES.get(_token(row.get("source")), "other") == lane]
+    records, duplicates, conflicts = _project_records(scoped, budget)
     first_event, last_event = _range(scoped, "event_date")
     first_prediction, last_prediction = _range(scoped, "created_at")
     first_grade, last_grade = _range(scoped, "entered_at")
@@ -359,17 +443,17 @@ def build_market_evidence(
             "group_records_missing_identity": sum(row["market"] == "group" and not (row.get("group_id") or row.get("market_id") or row.get("opponent_key")) for row in records),
             "records_missing_season": sum(not _season(row) for row in records),
         },
-        "summary": _aggregate(records),
+        "summary": _aggregate(records, budget),
         "markets": [
             {
-                "key": key, "label": label, **_aggregate([r for r in records if r["market"] == key]),
+                "key": key, "label": label, **_aggregate([r for r in records if r["market"] == key], budget),
                 "market_types": dict(Counter(str(r.get("market_type") or r.get("bet_type") or "unknown") for r in records if r["market"] == key)),
             }
-            for key, label in MARKETS.items()
+            for key, label in _checked(MARKETS.items(), budget)
         ],
         "lanes": [
-            {"key": key, **_aggregate([r for r in records if r["lane"] == key])}
-            for key in ("dashboard", "lab", "other")
+            {"key": key, **_aggregate([r for r in records if r["lane"] == key], budget)}
+            for key in _checked(("dashboard", "lab", "other"), budget)
         ],
     })
     report["gaps"] = [
@@ -387,6 +471,7 @@ def build_market_evidence(
     if conflicts:
         report["gaps"].append({"code": "conflicting_records", "status": "needs_review", "count": conflicts,
                                "detail": "Conflicting repeated picks or multiple outcomes were excluded from performance and calibration."})
+    budget.check()
     return report
 
 

@@ -6,6 +6,7 @@ import sqlite3
 
 import pytest
 
+from src import market_evidence as evidence
 from src.market_evidence import build_market_evidence, write_report
 
 
@@ -237,3 +238,127 @@ def test_endpoint_isolated_from_application_startup(evidence_db, monkeypatch):
     assert response.json()["summary"]["wins"] == 1
     assert client.get("/api/market-evidence?lane=invalid").status_code == 422
     assert client.get("/api/market-evidence?season=1999").status_code == 422
+
+
+def _source_hashes(path):
+    return {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in path.parent.iterdir() if p.is_file() and not p.name.endswith("-shm")
+    }
+
+
+def _assert_limit_report(report, kind):
+    assert report["state"] == "unavailable"
+    assert "No partial metrics" in report["reason"]
+    assert report["coverage"]["record_count"] == 0
+    assert report["coverage"]["raw_pick_records"] == 0
+    assert report["summary"]["records"] == 0
+    assert report["summary"]["net_units"] is None
+    assert report["summary"]["flat_unit_roi_pct"] is None
+    assert report["summary"]["calibration"]["n"] == 0
+    assert report["markets"] == report["lanes"] == []
+    assert report["gaps"][0]["code"] == "report_limit_exceeded"
+    assert report["gaps"][0]["limit"] == kind
+
+
+def test_row_cap_counts_joined_rows_before_deduplication_and_filtering(evidence_db, monkeypatch):
+    monkeypatch.setattr(evidence, "MAX_REPORT_ROWS", 2)
+    seed(evidence_db, 1)
+    seed(evidence_db, 2)
+    # Exactly at the cap preserves the existing exact-repeat behavior.
+    report = build_market_evidence(evidence_db)
+    assert report["coverage"]["raw_pick_records"] == 2
+    assert report["summary"]["records"] == 1
+    assert report["summary"]["net_units"] == 1
+    with sqlite3.connect(evidence_db) as conn:
+        conn.execute("INSERT INTO pick_outcomes SELECT 3, pick_id, hit, profit, stake, actual_finish, grading_authority, outcome_locked, entered_at FROM pick_outcomes WHERE id=1")
+    before = _source_hashes(evidence_db)
+    # Even a filter with no matching rows must not hide an incomplete source read.
+    _assert_limit_report(build_market_evidence(evidence_db, lane="lab"), "rows")
+    assert _source_hashes(evidence_db) == before
+
+
+def test_aggregate_text_budget_counts_utf8_bytes_without_truncation(evidence_db, monkeypatch):
+    monkeypatch.setattr(evidence, "MAX_REPORT_TEXT_BYTES", 8 * 1024)
+    seed(evidence_db, 1, player="⛳" * 1500)
+    assert build_market_evidence(evidence_db)["summary"]["net_units"] == 1
+    seed(evidence_db, 2, player="⛳" * 1500 + "second")
+    before = _source_hashes(evidence_db)
+    _assert_limit_report(build_market_evidence(evidence_db), "text")
+    assert _source_hashes(evidence_db) == before
+
+
+@pytest.mark.parametrize("value", ["secret-source-text" * 5000, b"private-blob" * 7000])
+def test_sqlite_value_limit_refuses_large_text_or_blob_before_python_materialization(evidence_db, value):
+    seed(evidence_db, 1, player=value)
+    before = _source_hashes(evidence_db)
+    report = build_market_evidence(evidence_db)
+    _assert_limit_report(report, "text")
+    assert "secret-source-text" not in json.dumps(report)
+    assert "private-blob" not in json.dumps(report)
+    assert _source_hashes(evidence_db) == before
+
+
+@pytest.mark.parametrize("phase", ["load", "grouping", "last_aggregate"])
+def test_deadline_covers_loading_and_python_processing_without_partial_metrics(evidence_db, monkeypatch, phase):
+    seed(evidence_db, 1, profit=.4, stake=2)
+    seed(evidence_db, 2, player="c", hit=0, profit=-2, stake=2)
+    now = [100.0]
+    monkeypatch.setattr(evidence.time, "monotonic", lambda: now[0])
+
+    if phase == "load":
+        original = evidence._load_rows
+
+        def load_then_expire(*args):
+            rows = original(*args)
+            now[0] += evidence.REPORT_TIMEOUT_SECONDS + 1
+            return rows
+
+        monkeypatch.setattr(evidence, "_load_rows", load_then_expire)
+    elif phase == "grouping":
+        original = evidence._identity
+
+        def identity_then_expire(row):
+            identity = original(row)
+            now[0] += evidence.REPORT_TIMEOUT_SECONDS + 1
+            return identity
+
+        monkeypatch.setattr(evidence, "_identity", identity_then_expire)
+    else:
+        original = evidence._aggregate
+        calls = [0]
+
+        def aggregate_then_expire(rows, budget=None):
+            result = original(rows, budget)
+            if budget is not None:
+                calls[0] += 1
+                if calls[0] == 8:  # Summary, four markets, and three lanes.
+                    now[0] += evidence.REPORT_TIMEOUT_SECONDS + 1
+            return result
+
+        monkeypatch.setattr(evidence, "_aggregate", aggregate_then_expire)
+
+    before = _source_hashes(evidence_db)
+    _assert_limit_report(build_market_evidence(evidence_db), "time")
+    assert _source_hashes(evidence_db) == before
+
+
+def test_historical_sized_report_fits_default_budget_with_original_metrics(evidence_db):
+    seed(evidence_db, 1)
+    with sqlite3.connect(evidence_db) as conn:
+        conn.executemany(
+            "INSERT INTO picks SELECT ?, tournament_id, source, model_variant, bet_type, market_type, ?, opponent_key, market_book, market_odds, model_prob, created_at, round_num, group_id FROM picks WHERE id=1",
+            ((i, f"player-{i}") for i in range(2, 2501)),
+        )
+        conn.executemany(
+            "INSERT INTO pick_outcomes SELECT ?, ?, hit, profit, stake, actual_finish, grading_authority, outcome_locked, entered_at FROM pick_outcomes WHERE id=1",
+            ((i, i) for i in range(2, 2501)),
+        )
+    before = _source_hashes(evidence_db)
+    report = build_market_evidence(evidence_db)
+    assert report["state"] == "available"
+    assert report["summary"]["records"] == report["summary"]["wins"] == 2500
+    assert report["summary"]["net_units"] == 2500
+    assert report["summary"]["flat_unit_roi_pct"] == 100
+    assert report["summary"]["calibration"]["brier"] == .16
+    assert _source_hashes(evidence_db) == before

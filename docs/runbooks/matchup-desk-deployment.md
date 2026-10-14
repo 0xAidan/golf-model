@@ -68,7 +68,12 @@ The process always binds **127.0.0.1**, never a public interface. It permits at
 most four concurrent report computations and reads snapshots up to 16MiB. The
 unit adds `DynamicUser`, a read-only filesystem, read-only data/code paths,
 loopback-only network access, no elevated privileges, a 512MiB memory cap, and a
-32-task cap. Python bytecode writes are disabled in both script and unit.
+32-task cap. Each evidence computation also enforces 10,000 joined source rows,
+8MiB aggregate text/blob payload, a 64KiB SQLite value/encoded-row cap, and an
+eight-second deadline spanning SQL and Python work. Limits apply before lane or
+season filtering and before deduplication. Exceeding any limit returns unavailable
+with no partial metrics; it never silently truncates the history. Python bytecode
+writes are disabled in both script and unit.
 
 Validate and start **only this new service**:
 

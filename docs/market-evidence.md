@@ -42,3 +42,9 @@ The next safe learning layer is append-only evaluation: timestamped market/book/
 ## Focused verification
 
 `python3 -m pytest tests/test_market_evidence.py -q` verifies byte-preserved input, unchanged schema, no creation of a missing database, committed WAL visibility, event/season/round and lane isolation, unknown/push/void handling, calibration boundaries, duplicate conflicts, and exclusive report creation. Its FastAPI test mounts only this router, bypassing main application startup and migrations.
+
+## Processing limits
+
+Each report permits up to 10,000 joined pick/outcome rows, 8MiB of total text/blob payload, a 64KiB per-connection SQLite value/encoded-row limit, and eight seconds across SQL plus Python processing. These limits apply before filtering and deduplication so duplicated outcomes cannot evade the budget. A limit failure returns `state=unavailable` and `report_limit_exceeded`, with an empty report and no partial metrics. It does not rewrite source data or silently drop records to fit. Large recovered histories need a separately designed indexed reporting store before these bounds are increased.
+
+The focused report/HTTP checks include oversized inputs, deadline expiry during projection/aggregation, no partial publication, source-hash preservation on refusal, and unchanged normal metrics. The complete report for the preserved current database was also compared before/after in dashboard, lab and all lanes; only generation timestamps differ.
