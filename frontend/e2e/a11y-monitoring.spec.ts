@@ -1,9 +1,18 @@
 import { test, expect } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 
-async function runAxe(page: import("@playwright/test").Page, path: string) {
+async function runAxe(page: import("@playwright/test").Page, path: "/" | "/lab" | "/players" | "/results" | "/compare") {
   await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 })
-  await page.waitForTimeout(1500)
+  if (path === "/") {
+    await expect(page.getByRole("heading", { name: "Find your matchups." })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole("button", { name: "Reload published data" })).toBeEnabled({ timeout: 30_000 })
+  } else {
+    const readyId = {
+      "/lab": "lab-command-center", "/players": "players-page",
+      "/results": "results-page", "/compare": "compare-page",
+    }[path]
+    await expect(page.getByTestId(readyId)).toBeVisible({ timeout: 30_000 })
+  }
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze()
@@ -18,7 +27,7 @@ test.describe("monitoring a11y (critical = 0)", () => {
     await page.route(/fontshare|fonts\.googleapis|fonts\.gstatic/i, (route) => route.abort())
   })
 
-  test("dashboard / has no critical axe violations", async ({ page }) => {
+  test("matchup desk / has no critical axe violations", async ({ page }) => {
     const results = await runAxe(page, "/")
     const critical = results.violations.filter((v) => v.impact === "critical")
     expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)

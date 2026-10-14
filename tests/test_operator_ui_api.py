@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app import app
 
@@ -89,3 +90,68 @@ def test_board_challenger_missing_lane_does_not_use_champion(monkeypatch):
     assert body["state"] == "unavailable"
     assert body["reason"]["code"] == "challenger_lane_unavailable"
     assert body["rankings"] == []
+
+
+@pytest.fixture
+def desk_client(monkeypatch):
+    snapshot = _snapshot()
+    snapshot["generated_at"] = datetime.now(timezone.utc).isoformat()
+    snapshot["upcoming_tournament"] = snapshot["live_tournament"]
+    snapshot["upcoming_tournament"]["matchup_bets"] = [{
+        "pick": "Champion Player", "opponent": "Other Player",
+        "market_type": "tournament_matchups", "book": "test-book",
+        "odds": "+110", "model_win_prob": 0.563, "ev": 0.028,
+    }]
+    _patch_runtime(monkeypatch, snapshot)
+
+    def forbid_database_initialization(*args, **kwargs):
+        raise AssertionError("The desk route must not initialize or query completed-event data")
+
+    monkeypatch.setattr("src.routes.operator_ui.db.ensure_initialized", forbid_database_initialization)
+    monkeypatch.setattr("src.routes.operator_ui._runtime_state", forbid_database_initialization)
+    monkeypatch.setattr("src.routes.operator_ui._past_projection_snapshot", forbid_database_initialization)
+    return TestClient(app), snapshot
+
+
+@pytest.mark.parametrize("query", ["", "?track=champion&mode=live&event_id=evt-100"])
+def test_desk_board_route_serves_current_snapshot_without_initialization(desk_client, query):
+    client, _ = desk_client
+    response = client.get(f"/api/desk/board{query}", headers={"If-None-Match": "*"})
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "etag" not in response.headers
+    body = response.json()
+    assert body["state"] == "fresh"
+    assert body["event"]["event_id"] == "evt-100"
+    assert body["picks"]["matchups"] == [{
+        "pick": "Champion Player", "opponent": "Other Player",
+        "market_type": "tournament_matchups", "book": "test-book",
+        "odds": "+110", "model_win_prob": 0.563, "ev": 0.028,
+    }]
+
+
+@pytest.mark.parametrize("query", ["?track=challenger", "?event_id=other-event"])
+def test_desk_board_does_not_substitute_another_lane_or_event(desk_client, query):
+    client, _ = desk_client
+    body = client.get(f"/api/desk/board{query}").json()
+
+    assert body["state"] == "unavailable"
+    assert body["picks"]["matchups"] == []
+
+
+@pytest.mark.parametrize("generated_at, expected", [(None, "unavailable"), (NOW.isoformat(), "stale")])
+def test_desk_board_withholds_readiness_for_missing_or_stale_timestamp(desk_client, generated_at, expected):
+    client, snapshot = desk_client
+    snapshot["generated_at"] = generated_at
+
+    response = client.get("/api/desk/board")
+
+    assert response.status_code == 200
+    assert response.json()["state"] == expected
+
+
+@pytest.mark.parametrize("query", ["mode=past&event_id=evt-100", "mode=invalid", "track=all", "event_id=", "event_id=%20"])
+def test_desk_board_rejects_unsupported_requests_without_database_access(desk_client, query):
+    client, _ = desk_client
+    assert client.get(f"/api/desk/board?{query}").status_code == 422
