@@ -1,0 +1,30 @@
+[
+  {
+    "antipattern": "border-accent-on-rounded",
+    "name": "Border accent on rounded element",
+    "description": "Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/Users/aidannugent/websites/golf-model/frontend/src/features/matchup-desk/matchup-desk.css",
+    "line": 23,
+    "snippet": "border-bottom:3px solid",
+    "importedBy": [
+      "matchup-desk.test.tsx",
+      "matchup-desk.tsx"
+    ]
+  },
+  {
+    "antipattern": "border-accent-on-rounded",
+    "name": "Border accent on rounded element",
+    "description": "Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/Users/aidannugent/websites/golf-model/frontend/src/features/matchup-desk/matchup-desk.css",
+    "line": 57,
+    "snippet": "border-bottom:3px solid",
+    "importedBy": [
+      "matchup-desk.test.tsx",
+      "matchup-desk.tsx"
+    ]
+  }
+]

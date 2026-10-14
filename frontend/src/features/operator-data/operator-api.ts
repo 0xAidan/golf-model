@@ -180,6 +180,13 @@ const requestGet = async <T>(path: string, signal?: AbortSignal): Promise<T> => 
 export const getOperatorBootstrap = (signal?: AbortSignal): Promise<OperatorBootstrap> =>
   requestGet<OperatorBootstrap>("/api/operator/bootstrap", signal)
 
+/** Isolated, read-only snapshot service used by the matchup desk. */
+export const getDeskBoard = (
+  { track, mode }: { track: OperatorTrack; mode: Exclude<OperatorMode, "past"> },
+  signal?: AbortSignal,
+): Promise<OperatorBoard> =>
+  requestGet<OperatorBoard>(`/api/desk/board?${new URLSearchParams({ track, mode })}`, signal)
+
 export const getOperatorBoard = (
   { track, mode, eventId }: { track: OperatorTrack; mode: OperatorMode; eventId?: string | null },
   signal?: AbortSignal,

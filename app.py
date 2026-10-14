@@ -269,6 +269,7 @@ from src.routes.eval import router as eval_router
 from src.routes.ops import router as ops_router
 from src.routes.ops_jobs import router as ops_jobs_router
 from src.routes.operator_ui import router as operator_ui_router
+from src.routes.market_evidence import router as market_evidence_router
 from src.routes.autoresearch_tier2 import router as autoresearch_tier2_router
 from src.routes.autoresearch_view import router as autoresearch_view_router
 
@@ -288,6 +289,7 @@ app.include_router(eval_router)
 app.include_router(ops_router)
 app.include_router(ops_jobs_router)
 app.include_router(operator_ui_router)
+app.include_router(market_evidence_router)
 from src.routes.analytics import router as analytics_router
 from src.routes.grading_season import router as grading_season_router
 
@@ -852,6 +854,7 @@ async def get_grading_history(
             f"""
             SELECT
                 p.id,
+                p.tournament_id,
                 p.model_variant,
                 p.source,
                 p.bet_type,
