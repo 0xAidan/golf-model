@@ -17,9 +17,11 @@ reloaded successfully; the dashboard and model workers were not restarted.
 Preserved configuration:
 `/etc/caddy/Caddyfile.pre-experience-20261014T021411Z`.
 
-**Source-only change, not deployed at this audit checkpoint:** legacy snapshot
-provider polling and request coordination, described below. Other parallel UI
-and delivery work is outside this audit's implementation scope.
+**Frontend release deployed at 02:32:16 UTC:** legacy snapshot polling/request
+coordination, route-scoped requests, bounded reads, deferred telemetry and
+selected-pick sharing. Release `matchup-desk-20261013-experience-v2` serves code
+commit `aeb35f5`. The [delivery report](2026-10-13-delivery.md) records hashes,
+rollback and public verification. No main backend code or service was changed.
 
 ## Measurements
 
@@ -137,7 +139,7 @@ to discover new asset hashes after releases.
    projection can reduce parsing/memory work further while keeping the full
    player/research endpoints available.
 
-## Frontend change prepared locally
+## Frontend change
 
 Owned files:
 
@@ -168,10 +170,8 @@ only when snapshot content changes, not for age-only envelope updates.
 
 Verification at this checkpoint: **27 tests passed** across polling/provider
 regressions and legacy route gating. Focused ESLint has no errors and only the
-existing component/hook export warning in the provider. Full typecheck reached
-unrelated concurrent edits in shared-card and Sentry files; it must be rerun
-after those workers finish before deployment. No source-only provider change
-has been deployed by this audit agent.
+existing component/hook export warning in the provider. Integrated verification
+and the subsequent frontend deployment are recorded below and above.
 
 ### Integrated release verification
 
@@ -208,8 +208,7 @@ flow. The focused design detector returned no findings.
 
 ## Remaining safe priorities
 
-1. Ship the tested provider changes with the current frontend release, then
-   observe requests on a visible legacy screen: no healthy summary request,
+1. Observe requests on a visible legacy screen during normal operation: no healthy summary request,
    idle status 15 seconds, idle upcoming snapshot 60 seconds, active tracking
    unchanged. Confirm manual completion and background/resume behavior.
 2. Introduce a small read-only status projection from heartbeat/snapshot
