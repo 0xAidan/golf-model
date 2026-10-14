@@ -79,3 +79,48 @@ See [the reconciliation runbook](../runbooks/historical-reconciliation.md) for
 reproduction and [the limited delivery runbook](../runbooks/matchup-desk-deployment.md)
 for isolation and rollback. Normal backend rollout remains prohibited because
 source-only grading repairs and automatic retuning are outside this release.
+
+## Verified production release
+
+Release `matchup-desk-20261014-season-v1`, built from
+`8e76279529ca2157d1bca0d8182cf020d768a490`, is live. All 93 packaged files matched
+their SHA-256 hashes before and after installation. Assets were installed first
+and the HTML replaced atomically; older assets and releases remain. Caddy gained
+only the golf host's static `/reports/*` handler, passed configuration validation
+and reloaded. The dashboard PID remained `774128` and evidence PID `1929599`.
+No app/model service restarted, backend source was deployed, or historical
+database was rewritten.
+
+Rollback files are under `/opt/golf-ui-releases/20261014-season-v1/before`;
+the exact pre-release Caddyfile is alongside them as `Caddyfile.before` and the
+verified file inventory is `manifest.json`. The live HTML hash is
+`7ffa347757264e7aad19f1fefb9b380a40db4be3cf5c83f7a1016093d4fe1351`.
+
+Public HTTPS checks verified `/evidence`, both report downloads and the lazy
+season JavaScript against local build hashes. JSON and CSV return their correct
+MIME types, gzip and `public, max-age=60`; unknown report paths return 404 rather
+than SPA HTML. The 77,579-byte report transferred as 6,958 gzip bytes in this
+sample. This is payload size, not a claim about total site latency. The public
+browser rendered the real season data successfully; screenshot:
+`.impeccable/review/season-live.png`.
+
+A second private copy of the derived generation and 15 reproducibility files is
+retained at `/opt/golf-reconciliation/20261014-v1/evidence.tar.gz` with directory
+mode 0700 and file mode 0600. Its archive hash is
+`dd6692a1b41eb70abcf0c1831b270e249597ca331f608f2f2bf7fc2f84a8c6c6`;
+every member was independently hash-verified on the server. It is outside the
+public web root. This adds redundancy without replacing any original archive.
+
+## CI environment correction
+
+The first CI run at `8e76279` passed frontend, accessibility, E2E, frozen-zone,
+bundle and lint checks, but both Python jobs failed two recovery integration
+expectations (1,041 passed each). The runner's distribution SQLite CLI advertises
+`.recover`; that does not establish availability of the required `sqlite_dbpage`
+module. The real-CLI fixture now probes that capability directly and skips only
+the specifically missing-module case. Unexpected errors still fail. Time/output
+bounds and nonzero process exits use a real subprocess emitting controlled SQL,
+so those failure-preservation checks run even without the optional extension.
+All 20 recovery tests pass locally, including actual SQLite recovery. This changes
+test portability only; the reconciled report and deployed implementation bytes
+are unchanged. The final CI run is linked in the PR.

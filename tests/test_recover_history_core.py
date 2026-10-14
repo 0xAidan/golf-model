@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
+import sys
 
 import pytest
 
@@ -108,13 +109,29 @@ def test_incomplete_insert_is_not_emitted():
     assert counts["incomplete_core_statements"] == 1
 
 
-def test_real_cli_salvage_is_exclusive_unverified_and_preserves_copy(tmp_path):
+@pytest.fixture
+def sqlite_recovery_cli():
     cli = shutil.which("sqlite3")
     if (
         not cli
         or ".recover" not in subprocess.run([cli, ":memory:", ".help recover"], capture_output=True, text=True).stdout
     ):
         pytest.skip("SQLite CLI recovery unavailable")
+    # Some distribution shells advertise .recover without its required
+    # sqlite_dbpage module. Probe that capability independently of our wrapper;
+    # never skip an unexpected recovery/parser failure.
+    probe = subprocess.run(
+        [cli, ":memory:", "SELECT count(*) FROM sqlite_dbpage"],
+        capture_output=True, text=True, timeout=5,
+    )
+    if probe.returncode and "no such table: sqlite_dbpage" in probe.stderr:
+        pytest.skip("SQLite CLI lacks the sqlite_dbpage module required by .recover")
+    assert probe.returncode == 0, probe.stderr
+    return cli
+
+
+def test_real_cli_salvage_is_exclusive_unverified_and_preserves_copy(tmp_path, sqlite_recovery_cli):
+    cli = sqlite_recovery_cli
     source = tmp_path / "disposable.sqlite"
     conn = sqlite3.connect(source)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -149,14 +166,30 @@ def test_rejects_nonempty_wal_before_recovery(tmp_path):
     assert not (tmp_path / "rows.gz.partial").exists()
 
 
-@pytest.mark.parametrize("limit, expected", [("time", "time_limit"), ("output", "core_output_limit")])
+def recovery_producer(tmp_path, *, fail=False):
+    """A real subprocess emitting fixture SQL, independent of distro extensions."""
+    cli = tmp_path / "fixture-recovery"
+    cli.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if '--version' in sys.argv:\n"
+        "    print('fixture recovery producer')\n"
+        "    sys.exit(0)\n"
+        "assert '-readonly' in sys.argv\n"
+        "assert any(arg.endswith('?mode=ro&immutable=1') for arg in sys.argv)\n"
+        + ("sys.stderr.write('fixture recovery failure')\nsys.exit(1)\n" if fail else
+           "sys.stdout.write(\"INSERT INTO picks(id,note) VALUES(1,'\" + 'x' * 30000 + \"');\\n\")\n")
+    )
+    cli.chmod(0o700)
+    return str(cli)
+
+
+@pytest.mark.parametrize(
+    "limit, expected",
+    [("time", "time_limit"), ("output", "core_output_limit"), ("process", "sqlite_recover_nonzero_exit")],
+)
 def test_recovery_limits_stop_and_retain_failure_state(tmp_path, limit, expected):
-    cli = shutil.which("sqlite3")
-    if (
-        not cli
-        or ".recover" not in subprocess.run([cli, ":memory:", ".help recover"], capture_output=True, text=True).stdout
-    ):
-        pytest.skip("SQLite CLI recovery unavailable")
+    cli = recovery_producer(tmp_path, fail=limit == "process")
     source = tmp_path / "copy.sqlite"
     conn = sqlite3.connect(source)
     conn.execute("CREATE TABLE picks(id INTEGER PRIMARY KEY, note TEXT)")

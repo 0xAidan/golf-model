@@ -151,6 +151,16 @@ joins, duplication, conflicts, restoration chronology, missing contracts,
 corrupt/truncated vaults, immutable source hashes, salvage isolation, mixed
 selection scopes, chronological splits and exclusive output creation.
 
+The optional real SQLite CLI recovery integration requires `sqlite_dbpage`;
+advertising `.recover` in help is insufficient. Check
+`sqlite3 :memory: 'SELECT count(*) FROM sqlite_dbpage'` before attempting a large
+disposable-copy recovery. SQLite documents the required build option at
+[SQLITE_ENABLE_DBPAGE_VTAB](https://www.sqlite.org/compile.html#enable_dbpage_vtab).
+Tests skip only this real-CLI integration when that module is explicitly absent;
+subprocess limits and failed-recovery preservation are tested independently.
+Never substitute a restore or execute emitted recovery SQL to work around a
+missing extension.
+
 ## Static delivery
 
 The Season record view is the default Results tab. Current store remains at
