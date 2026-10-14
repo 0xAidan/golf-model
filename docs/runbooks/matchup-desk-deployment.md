@@ -231,6 +231,13 @@ WAL content, rather than just the main file's apparent size. Remaining footprint
 reserve, and a **600-second deadline** are checked throughout copy/compression;
 integrity queries have an interruption deadline. An unavailable/corrupt source,
 insufficient disk, or expired deadline fails visibly without pruning anything.
+After the first successful server backup, `systemctl show` confirmed
+`TimeoutStartUSec=infinity`; systemd therefore does not impose an earlier
+90-second startup cutoff. `TimeoutStopUSec=1min 30s` applies to stopping the
+service, not to normal backup runtime. No timeout override is needed for this
+unit. Recheck `TimeoutStartUSec` after future service-definition changes; if it
+falls below the script's deadline, use `TimeoutStartSec=660` so the script has
+time to report failure and clean its private temporary files.
 
 To deploy after reviewing and testing:
 
