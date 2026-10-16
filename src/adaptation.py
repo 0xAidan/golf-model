@@ -26,12 +26,12 @@ def aggregate_market_performance_for_tournament(tournament_id: int) -> dict:
     conn = db.get_conn()
     try:
         rows = conn.execute(
-            """SELECT bet_type,
+            f"""SELECT bet_type,
                       COUNT(*) as bets,
                       SUM(CASE WHEN actual_outcome = 1 THEN 1 ELSE 0 END) as wins,
                       SUM(CASE WHEN actual_outcome = 0 THEN 1 ELSE 0 END) as losses,
                       SUM(profit) as total_profit
-               FROM prediction_log
+               FROM {db.canonical_prediction_log_sql()}
                WHERE tournament_id = ? AND actual_outcome IS NOT NULL
                GROUP BY bet_type""",
             (tournament_id,),
@@ -84,7 +84,7 @@ def aggregate_market_performance_for_tournament(tournament_id: int) -> dict:
 def _count_consecutive_losses(conn, market_type: str) -> int:
     """Count consecutive actual_outcome=0 from the most recent predictions."""
     rows = conn.execute(
-        """SELECT actual_outcome FROM prediction_log
+        f"""SELECT actual_outcome FROM {db.canonical_prediction_log_sql()}
            WHERE bet_type = ? AND actual_outcome IS NOT NULL
            ORDER BY id DESC""",
         (market_type,),
@@ -349,7 +349,7 @@ def check_recovery(market_type: str, last_n_tracking: int = 5) -> dict:
     conn = db.get_conn()
     try:
         rows = conn.execute(
-            """SELECT actual_outcome FROM prediction_log
+            f"""SELECT actual_outcome FROM {db.canonical_prediction_log_sql()}
                WHERE bet_type = ? AND actual_outcome IS NOT NULL
                ORDER BY id DESC LIMIT ?""",
             (market_type, last_n_tracking),

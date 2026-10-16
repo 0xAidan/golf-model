@@ -99,7 +99,9 @@ def _load_results_for_tournament(conn, tournament_id: int) -> tuple[list[dict], 
             }
         )
 
-    db.store_results(tournament_id, fallback_results)
+    # A scorer already owns the write reservation. Reuse it rather than
+    # deadlocking a second connection while persisting round-derived results.
+    db.store_results(tournament_id, fallback_results, conn=conn if conn.in_transaction else None)
     return fallback_results, "rounds"
 
 
@@ -384,6 +386,29 @@ def score_picks_for_tournament(
     *,
     force_audit: bool = False,
     audit_reason: str | None = None,
+    refresh_unlocked_computed: bool = False,
+) -> dict:
+    """Score atomically; only explicit audit may replace protected outcomes."""
+    conn = db.get_conn()
+    try:
+        # Reserve before picks/results/before-images are read. A second writer
+        # cannot replace an outcome between preservation and its correction.
+        conn.execute("BEGIN IMMEDIATE")
+        return _score_picks_for_tournament(
+            tournament_id, conn, force_audit=force_audit,
+            audit_reason=audit_reason, refresh_unlocked_computed=refresh_unlocked_computed,
+        )
+    finally:
+        conn.close()  # Also rolls back an interrupted scoring transaction.
+
+
+def _score_picks_for_tournament(
+    tournament_id: int,
+    conn,
+    *,
+    force_audit: bool = False,
+    audit_reason: str | None = None,
+    refresh_unlocked_computed: bool = False,
 ) -> dict:
     """
     Score all picks against results. Returns summary.
@@ -391,8 +416,6 @@ def score_picks_for_tournament(
     Skips picks with outcome_locked=1 unless force_audit=True (writes audit log).
     """
     from src.pick_ledger import log_grading_audit
-
-    conn = db.get_conn()
 
     picks = conn.execute(
         "SELECT * FROM picks WHERE tournament_id = ?", (tournament_id,)
@@ -406,6 +429,10 @@ def score_picks_for_tournament(
     if not results:
         conn.close()
         return {"status": "no_results", "message": "No results entered yet."}
+
+    from src.history_preservation import preserve_pick_outcome_versions
+
+    preserve_pick_outcome_versions(conn, tournament_id, reason="before_tournament_regrading")
 
     result_map = {r["player_key"]: dict(r) for r in results}
     resolution_context = _build_result_resolution_context(conn, tournament_id, result_map)
@@ -445,6 +472,7 @@ def score_picks_for_tournament(
     resolved = 0
     skipped_non_positive_ev = 0
     skipped_locked = 0
+    skipped_authoritative = 0
     total_profit = 0.0
     voided_picks: list[dict] = []
     resolution_methods = {
@@ -468,6 +496,24 @@ def score_picks_for_tournament(
         if ev is None or ev <= 0:
             skipped_non_positive_ev += 1
             continue
+        if not force_audit:
+            protected = conn.execute(
+                """SELECT * FROM pick_outcomes WHERE pick_id = ?
+                   AND (COALESCE(outcome_locked, 0) = 1 OR
+                        LOWER(TRIM(COALESCE(grading_authority, ''))) NOT IN ('', 'computed', 'void'))
+                   ORDER BY COALESCE(outcome_locked, 0) DESC, id DESC LIMIT 1""",
+                (pick["id"],),
+            ).fetchone()
+            if protected:
+                if int(protected["outcome_locked"] or 0) == 1:
+                    skipped_locked += 1
+                else:
+                    skipped_authoritative += 1
+                resolved += 1
+                total_profit += float(protected["profit"] or 0.0)
+                model_hits += int(bool(protected["model_hit"]))
+                bet_hits += int(bool(protected["hit"]))
+                continue
         pk = pick["player_key"]
         bt = pick["bet_type"]
         matchup_mode = _matchup_grading_mode(pick, bt)
@@ -708,8 +754,7 @@ def score_picks_for_tournament(
         total_profit += profit
 
         existing = conn.execute(
-            """SELECT id, model_hit, outcome_locked, hit, profit, grading_authority, pick_key
-               FROM pick_outcomes WHERE pick_id = ?""",
+            "SELECT * FROM pick_outcomes WHERE pick_id = ?",
             (pick["id"],),
         ).fetchone()
 
@@ -729,7 +774,12 @@ def score_picks_for_tournament(
             existing["pick_key"] if existing else None,
         )
 
-        if existing and force_audit:
+        refresh_existing = (
+            existing is not None and refresh_unlocked_computed
+            and int(existing["outcome_locked"] or 0) == 0
+            and str(existing["grading_authority"] or "").strip().lower() in ("", "computed")
+        )
+        if existing and (force_audit or refresh_existing):
             # Skip the write/audit entirely when the newly computed outcome is
             # identical to what's already stored and the row isn't locked --
             # otherwise a full-tournament force_audit regrade (used to recover
@@ -744,13 +794,21 @@ def score_picks_for_tournament(
                 and str(existing["grading_authority"] or "") == grading_authority
                 and abs(float(existing["profit"] or 0.0) - float(profit)) < 1e-9
             )
+            if refresh_existing:
+                unchanged = unchanged and all((
+                    existing["actual_finish"] == actual_finish,
+                    existing["odds_decimal"] == odds_decimal,
+                    existing["stake"] == stake,
+                    existing["notes"] == notes,
+                    existing["pick_key"] == pick_key,
+                ))
             if not unchanged:
                 log_grading_audit(
                     pick_id=pick["id"],
                     pick_key=pick_key,
                     tournament_id=tournament_id,
                     action="regrade",
-                    reason=audit_reason or "force_audit",
+                    reason=audit_reason or ("computed_result_refresh" if refresh_existing else "force_audit"),
                     previous=dict(existing),
                     new={
                         "hit": hit,
@@ -876,6 +934,7 @@ def score_picks_for_tournament(
         "opponent_resolution_methods": opponent_resolution_methods,
         "skipped_non_positive_ev": skipped_non_positive_ev,
         "skipped_locked": skipped_locked,
+        "skipped_authoritative": skipped_authoritative,
         "scored": scored,
         "scored_count": scored,
         "voided": voided,
@@ -1238,20 +1297,28 @@ def update_prediction_outcomes(tournament_id: int) -> int:
     Update actual_outcome and profit for existing prediction_log entries
     using results that have been ingested since the predictions were logged.
 
-    Returns count of updated entries.
+    Returns count of changed entries; unchanged outcomes retain their exact row.
     """
     conn = db.get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        return _update_prediction_outcomes(tournament_id, conn)
+    finally:
+        conn.close()  # Roll back the journal and updates together on failure.
+
+
+def _update_prediction_outcomes(tournament_id: int, conn) -> int:
+    from src.history_preservation import preserve_prediction_row_versions
 
     results, _ = _load_results_for_tournament(conn, tournament_id)
     if not results:
-        conn.close()
         return 0
 
     result_map = {r["player_key"]: dict(r) for r in results}
     all_results_list = [dict(r) for r in results]
 
     predictions = conn.execute(
-        "SELECT id, player_key, bet_type, odds_decimal FROM prediction_log WHERE tournament_id = ?",
+        "SELECT * FROM prediction_log WHERE tournament_id = ?",
         (tournament_id,),
     ).fetchall()
 
@@ -1311,6 +1378,11 @@ def update_prediction_outcomes(tournament_id: int) -> int:
         if odds_dec:
             profit = compute_profit(actual, fraction, is_push, odds_dec, 1.0)
 
+        if pred["actual_outcome"] == actual and pred["profit"] == profit:
+            continue
+        preserve_prediction_row_versions(
+            conn, "prediction_log", [dict(pred)], reason="before_prediction_outcome_correction",
+        )
         conn.execute(
             "UPDATE prediction_log SET actual_outcome = ?, profit = ? WHERE id = ?",
             (actual, profit, pred["id"]),
@@ -1318,7 +1390,6 @@ def update_prediction_outcomes(tournament_id: int) -> int:
         updated += 1
 
     conn.commit()
-    conn.close()
     return updated
 
 
@@ -1505,8 +1576,8 @@ def post_tournament_learn(tournament_id: int,
         if is_enabled("platt_scaling"):
             conn = db.get_conn()
             matchup_outcomes = conn.execute(
-                """SELECT p.model_prob, p.actual_outcome
-                   FROM prediction_log p
+                f"""SELECT p.model_prob, p.actual_outcome
+                   FROM {db.canonical_prediction_log_sql()} p
                    WHERE p.bet_type = 'matchup'
                      AND p.actual_outcome IS NOT NULL
                      AND p.model_prob IS NOT NULL"""

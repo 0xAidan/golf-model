@@ -8,7 +8,8 @@ import time
 from src.storage_janitor import sweep_disposable_storage, sweep_os_tmp_leftovers
 
 
-def test_janitor_removes_old_tmp_db_and_skips_live_db(tmp_path) -> None:
+def test_janitor_removes_old_tmp_db_and_skips_live_db(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     leftover = tmp_path / "tmplwd_zutb.db"
     leftover.write_bytes(b"leftover-copy")
     live = tmp_path / "tmpkeepme1.db"
@@ -33,7 +34,8 @@ def test_janitor_removes_old_tmp_db_and_skips_live_db(tmp_path) -> None:
     assert any(item["path"] == str(leftover) for item in report["removed"])
 
 
-def test_janitor_removes_old_golf_backup_test_dir(tmp_path) -> None:
+def test_janitor_removes_old_golf_backup_test_dir(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     junk = tmp_path / "golf_backup_integrity_abc123"
     junk.mkdir()
     payload = junk / "scratch.db"
@@ -56,7 +58,8 @@ def test_janitor_removes_old_golf_backup_test_dir(tmp_path) -> None:
     assert report["count"] == 1
 
 
-def test_sweep_disposable_storage_cleans_managed_backup_tmp(tmp_path, tmp_db) -> None:
+def test_sweep_disposable_storage_cleans_managed_backup_tmp(tmp_path, tmp_db, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     backup_tmp = tmp_path / "backup-tmp"
     backup_tmp.mkdir()
     stale = backup_tmp / "golf_integrity_old.db"

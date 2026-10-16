@@ -94,9 +94,9 @@ def evaluate_live_promotion_gates(scope: str = "global") -> PromotionGateResult:
     clv = compute_clv_summary()
     conn = db.get_conn()
     prediction_rows = conn.execute(
-        """
+        f"""
         SELECT bet_type, model_prob, actual_outcome, profit
-        FROM prediction_log
+        FROM {db.canonical_prediction_log_sql()}
         WHERE model_prob IS NOT NULL AND actual_outcome IS NOT NULL
         """
     ).fetchall()

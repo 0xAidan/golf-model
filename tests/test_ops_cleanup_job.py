@@ -18,7 +18,8 @@ from src.ops_jobs import (
 )
 
 
-def test_remove_stale_db_recovery_copies_when_db_ok(tmp_db, tmp_path) -> None:
+def test_remove_stale_db_recovery_copies_when_db_ok(tmp_db, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     stale = tmp_db.DB_PATH + ".pre_reclaim"
     with open(stale, "wb") as fh:
         fh.write(b"leftover")

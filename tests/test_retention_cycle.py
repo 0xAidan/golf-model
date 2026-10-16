@@ -25,9 +25,9 @@ def test_covering_manifest_newer_than_cutoff_passes(tmp_path, tmp_db, monkeypatc
         retain_days=retain_days,
     )
 
-    # Recompute cutoff a few seconds later — string equality would fail; covering should pass.
-    later_cutoff = (datetime.now(timezone.utc) - timedelta(days=retain_days)).replace(microsecond=0).isoformat()
-    assert verified_archive_exists_for_cutoff(later_cutoff, exports_dir=exports_dir) is True
+    # An archive with a wider window covers an earlier deletion cutoff.
+    earlier_cutoff = (datetime.fromisoformat(cutoff) - timedelta(seconds=5)).isoformat()
+    assert verified_archive_exists_for_cutoff(earlier_cutoff, exports_dir=exports_dir, db_path=tmp_db.DB_PATH) is True
 
 
 def test_older_manifest_does_not_cover_cutoff(tmp_path, tmp_db, monkeypatch) -> None:
@@ -44,7 +44,7 @@ def test_older_manifest_does_not_cover_cutoff(tmp_path, tmp_db, monkeypatch) -> 
     )
 
     newer_cutoff = snapshot_history_cutoff_utc(retain_days)
-    assert verified_archive_exists_for_cutoff(newer_cutoff, exports_dir=exports_dir) is False
+    assert verified_archive_exists_for_cutoff(newer_cutoff, exports_dir=exports_dir, db_path=tmp_db.DB_PATH) is False
 
 
 def test_retention_cycle_dry_run(tmp_path, tmp_db, monkeypatch) -> None:

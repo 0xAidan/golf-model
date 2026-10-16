@@ -17,13 +17,17 @@ import shutil
 import glob
 import gzip
 import json
+import hashlib
 import sqlite3
 from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
 from typing import Any
 
 from src import db
 from src.disk_guard import warn_if_low_disk
 from src.storage_janitor import get_backup_temp_dir, make_backup_temp_db, sweep_disposable_storage
+from src.history_preservation import prediction_history_preservation_enabled
 
 
 def _current_db_path() -> str:
@@ -85,6 +89,8 @@ def _sidecar_paths_for_backup(backup_path: str) -> list[str]:
 
 def _remove_backup_artifacts(path: str) -> None:
     """Remove a backup file and any SQLite sidecars tied to the same timestamp."""
+    if prediction_history_preservation_enabled():
+        return
     targets = [path, *_sidecar_paths_for_backup(path)]
     for target in targets:
         try:
@@ -110,6 +116,8 @@ def _live_backup_basenames() -> set[str]:
 
 def sweep_orphan_sidecars() -> list[str]:
     """Remove sidecar files that no longer have a matching backup .db/.db.gz."""
+    if prediction_history_preservation_enabled():
+        return []
     if not os.path.isdir(BACKUP_DIR):
         return []
 
@@ -136,6 +144,8 @@ def prune_old_backups(keep: int, *, before_create: bool = False) -> list[str]:
     When ``before_create`` is True, prune until fewer than ``keep`` copies remain
     so a new backup can be added without exceeding the retention cap.
     """
+    if prediction_history_preservation_enabled():
+        return []
     backups = _sorted_backup_paths()
     removed: list[str] = []
     while backups:
@@ -364,7 +374,7 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
-    janitor = sweep_disposable_storage(db_path=db_path)
+    janitor = {} if prediction_history_preservation_enabled() else sweep_disposable_storage(db_path=db_path)
     if janitor.get("bytes_freed"):
         print(
             f"  Swept leftover temp copies: "
@@ -380,10 +390,13 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
 
     _enforce_backup_can_fit(db_path, BACKUP_DIR)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}.db")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup_path = os.path.join(BACKUP_DIR, f"golf_model_{timestamp}_{uuid4().hex[:8]}.db")
+    with open(backup_path, "xb"):
+        pass
 
-    source_conn = sqlite3.connect(db_path)
+    source_conn = sqlite3.connect(Path(db_path).absolute().as_uri() + "?mode=ro", uri=True)
+    source_conn.execute("PRAGMA query_only=ON")
     backup_conn = sqlite3.connect(backup_path)
     try:
         source_conn.backup(backup_conn)
@@ -405,8 +418,18 @@ def create_backup(keep: int = 7, *, compress: bool = False) -> str | None:
     final_path = backup_path
     if compress:
         gz_path = backup_path + ".gz"
-        with open(backup_path, "rb") as raw, gzip.open(gz_path, "wb", compresslevel=6) as gz:
-            shutil.copyfileobj(raw, gz)
+        original_hash = hashlib.sha256()
+        with open(backup_path, "rb") as raw, open(gz_path, "xb") as output:
+            with gzip.GzipFile(fileobj=output, mode="wb", compresslevel=6, mtime=0) as gz:
+                for block in iter(lambda: raw.read(1024 * 1024), b""):
+                    original_hash.update(block)
+                    gz.write(block)
+        verified_hash = hashlib.sha256()
+        with gzip.open(gz_path, "rb") as archived:
+            for block in iter(lambda: archived.read(1024 * 1024), b""):
+                verified_hash.update(block)
+        if verified_hash.hexdigest() != original_hash.hexdigest():
+            raise OSError("Backup compression verification failed; uncompressed backup retained")
         os.remove(backup_path)
         final_path = gz_path
 

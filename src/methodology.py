@@ -80,8 +80,9 @@ def generate_methodology(ctx: dict, output_dir: str = "output") -> str:
     filename = f"{safe_name}_methodology_{datetime.now().strftime('%Y%m%d')}.md"
     filepath = os.path.join(output_dir, filename)
 
-    with open(filepath, "w") as f:
-        f.write("\n".join(lines))
+    from src.output_manager import write_versioned_output
+
+    filepath = write_versioned_output(filepath, "\n".join(lines))
 
     return filepath
 

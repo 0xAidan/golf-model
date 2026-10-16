@@ -47,7 +47,7 @@ def update_calibration_curve() -> dict[str, Any]:
     """
     conn = db.get_conn()
     rows = conn.execute(
-        "SELECT model_prob, actual_outcome, bet_type FROM prediction_log "
+        f"SELECT model_prob, actual_outcome, bet_type FROM {db.canonical_prediction_log_sql()} "
         "WHERE model_prob IS NOT NULL AND actual_outcome IS NOT NULL"
     ).fetchall()
     conn.close()

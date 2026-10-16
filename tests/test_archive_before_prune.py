@@ -76,6 +76,7 @@ def _seed_old_and_new_rows(tmp_db) -> str:
 
 
 def test_prune_fails_without_archive(tmp_path, tmp_db, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     monkeypatch.setenv("SNAPSHOT_PRUNE_REQUIRE_ARCHIVE", "1")
     _seed_old_and_new_rows(tmp_db)
 
@@ -95,6 +96,7 @@ def test_prune_fails_without_archive(tmp_path, tmp_db, monkeypatch) -> None:
 
 
 def test_prune_succeeds_with_verified_archive(tmp_path, tmp_db, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     monkeypatch.setenv("SNAPSHOT_PRUNE_REQUIRE_ARCHIVE", "1")
     _seed_old_and_new_rows(tmp_db)
 
@@ -111,7 +113,7 @@ def test_prune_succeeds_with_verified_archive(tmp_path, tmp_db, monkeypatch) -> 
         retain_days=retain_days,
     )
 
-    out = db.prune_snapshot_history_tables(retain_days=retain_days, require_archive=True)
+    out = db.prune_snapshot_history_tables(retain_days=retain_days, require_archive=True, cutoff_utc=cutoff)
     assert out["skipped"] is False
     assert out["live_snapshot_history_deleted"] >= 1
 

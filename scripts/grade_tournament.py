@@ -300,30 +300,30 @@ def grade_tournament(
     if dedupe_result.get("removed"):
         print(f"  Removed {dedupe_result['removed']} duplicate pick row(s); kept {dedupe_result['kept']}")
 
-    # Clear unlocked outcomes so scoring reflects deduped pick rows.
-    conn = db.get_conn()
-    conn.execute(
-        """
-        DELETE FROM pick_outcomes
-        WHERE COALESCE(outcome_locked, 0) = 0
-          AND pick_id IN (SELECT id FROM picks WHERE tournament_id = ?)
-        """,
-        (tournament_id,),
-    )
-    conn.commit()
-    conn.close()
+    # The scorer preserves and updates computed grades in one write transaction.
+    from src.history_preservation import prediction_history_preservation_enabled
+
+    preservation_enabled = prediction_history_preservation_enabled()
+    if not preservation_enabled:
+        conn = db.get_conn()
+        conn.execute(
+            """
+            DELETE FROM pick_outcomes
+            WHERE COALESCE(outcome_locked, 0) = 0
+              AND pick_id IN (SELECT id FROM picks WHERE tournament_id = ?)
+            """,
+            (tournament_id,),
+        )
+        conn.commit()
+        conn.close()
 
     # 6. Score picks (respect locked outcomes unless force_audit)
     print("  Scoring picks...")
     from src.learning import score_picks_for_tournament
-    if unscored_only and not force_audit:
-        score_result = score_picks_for_tournament(tournament_id)
-    else:
-        score_result = score_picks_for_tournament(
-            tournament_id,
-            force_audit=force_audit,
-            audit_reason=audit_reason,
-        )
+    score_kwargs = {"refresh_unlocked_computed": True} if preservation_enabled else {}
+    if not unscored_only or force_audit:
+        score_kwargs.update(force_audit=force_audit, audit_reason=audit_reason)
+    score_result = score_picks_for_tournament(tournament_id, **score_kwargs)
     report["steps"]["scoring"] = score_result
     print(f"  Scoring: {score_result.get('status', 'done')}")
 

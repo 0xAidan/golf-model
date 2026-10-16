@@ -20,74 +20,72 @@ def run_retention_cycle(
     dry_run: bool = False,
     vacuum: bool = False,
 ) -> dict:
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(
+            dry_run=dry_run, retain_days=retain_days,
+            prune_preview=preservation_skip() if dry_run else None,
+            research_rotation=preservation_skip(),
+        )
+
     from src import db
     from src.cold_archive import (
-        export_tick_tables_before_cutoff,
-        snapshot_history_cutoff_utc,
+        export_tick_tables_before_cutoff, snapshot_history_cutoff_utc,
         verified_archive_exists_for_cutoff,
     )
     from src.runtime_paths import get_runtime_identity
 
     identity = get_runtime_identity()
     db_path = identity.get("db_path") or str(ROOT / "data" / "golf.db")
+    if Path(db_path).resolve() != Path(db.DB_PATH).resolve():
+        return {"ok": False, "skipped": True, "dry_run": dry_run,
+                "reason": "runtime/archive database differs from pruning database"}
     exports_dir = (os.environ.get("SNAPSHOT_ARCHIVE_EXPORTS_DIR") or "").strip() or None
-
-    days = retain_days
-    if days is None:
-        raw = (os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS") or "").strip()
-        if not raw:
-            return {
-                "ok": False,
-                "skipped": True,
-                "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set",
-            }
-        days = int(raw)
-
-    cutoff = snapshot_history_cutoff_utc(int(days))
+    try:
+        days = int(retain_days if retain_days is not None else os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", ""))
+    except (ValueError, TypeError):
+        return {"ok": False, "skipped": True, "dry_run": dry_run,
+                "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set or invalid"}
+    if days <= 0:
+        return {"ok": False, "skipped": True, "dry_run": dry_run, "reason": "retain_days must be positive"}
+    cutoff = snapshot_history_cutoff_utc(days)
     report: dict = {
-        "ok": True,
-        "dry_run": dry_run,
-        "retain_days": int(days),
-        "cutoff_utc": cutoff,
-        "db_path": db_path,
+        "ok": True, "dry_run": dry_run, "retain_days": days,
+        "cutoff_utc": cutoff, "db_path": db_path,
     }
-
     if dry_run:
-        report["archive_exists"] = verified_archive_exists_for_cutoff(cutoff, exports_dir=exports_dir)
-        prune_preview = db.prune_snapshot_history_tables(retain_days=int(days), require_archive=True)
-        report["prune_preview"] = prune_preview
-        from src.output_manager import rotate_research_artifacts
-
-        report["research_rotation"] = rotate_research_artifacts(dry_run=True)
+        report["prune_preview"] = db.prune_snapshot_history_tables(
+            retain_days=days, dry_run=True, cutoff_utc=cutoff,
+        )
+        report["archive_exists"] = report["prune_preview"].get("archive_verified", False)
+        # Do not invoke output rotation even in preview: older implementations
+        # created archive directories before their dry-run branch.
+        report["research_rotation"] = {
+            "ok": True, "skipped": True, "dry_run": True, "reason": "read-only preview; no rotation",
+        }
+        report["ok"] = bool(report["prune_preview"].get("ok", False))
         return report
 
-    export_result = export_tick_tables_before_cutoff(
-        db_path=db_path,
-        cutoff_utc=cutoff,
-        output_dir=exports_dir,
-        retain_days=int(days),
+    report["export"] = export_tick_tables_before_cutoff(
+        db_path=db_path, cutoff_utc=cutoff, output_dir=exports_dir, retain_days=days,
     )
-    export_dir = Path(export_result["export_dir"])
-    report["export"] = export_result
-
-    if not verified_archive_exists_for_cutoff(cutoff, exports_dir=exports_dir):
-        report["ok"] = False
-        report["reason"] = "archive verification failed after export"
-        return report
-
-    prune_result = db.prune_snapshot_history_tables(retain_days=int(days), require_archive=True)
+    if not verified_archive_exists_for_cutoff(cutoff, exports_dir=exports_dir, db_path=db_path):
+        return {**report, "ok": False, "reason": "archive verification failed after export"}
+    # Pass the identical cutoff; verification is repeated under the delete lock.
+    prune_result = db.prune_snapshot_history_tables(retain_days=days, cutoff_utc=cutoff)
     report["prune"] = prune_result
-
-    if vacuum and not prune_result.get("skipped"):
+    report["ok"] = bool(prune_result.get("ok", False))
+    if prune_result.get("skipped"):
+        report["skipped"] = True
+        return report
+    if vacuum:
         report["reclaim"] = db.reclaim_database_disk()
-
     from src.output_manager import rotate_research_artifacts
 
-    research_rotation = rotate_research_artifacts(dry_run=False)
-    report["research_rotation"] = research_rotation
-    if not research_rotation.get("ok", True) and not research_rotation.get("skipped"):
+    report["research_rotation"] = rotate_research_artifacts(dry_run=False)
+    if not report["research_rotation"].get("ok", True):
         report["ok"] = False
-
     return report
 
 

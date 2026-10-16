@@ -63,5 +63,6 @@ def write_run_provenance(
         "blend_by_market": _collect_blend_by_market(value_bets),
         "matchup_diagnostics": matchup_diagnostics or {},
     }
-    output_path.write_text(json.dumps(_json_safe(payload), indent=2), encoding="utf-8")
-    return str(output_path)
+    from src.output_manager import write_versioned_output
+
+    return write_versioned_output(output_path, json.dumps(_json_safe(payload), indent=2), encoding="utf-8")

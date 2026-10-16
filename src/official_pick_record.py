@@ -154,6 +154,15 @@ def dedupe_picks_by_grading_identity(
     tournament_id: int | None = None,
 ) -> dict[str, int]:
     """Collapse duplicate pick rows to one per grading identity (best odds kept)."""
+    from src.history_preservation import prediction_history_preservation_enabled
+
+    if prediction_history_preservation_enabled():
+        query = "SELECT COUNT(*) FROM picks"
+        params = ()
+        if tournament_id is not None:
+            query += " WHERE tournament_id = ?"
+            params = (int(tournament_id),)
+        return {"removed": 0, "kept": conn.execute(query, params).fetchone()[0]}
     params: tuple = ()
     tournament_filter = ""
     if tournament_id is not None:

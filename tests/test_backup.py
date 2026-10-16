@@ -57,7 +57,8 @@ def test_verify_backup_integrity_gzip(tmp_db) -> None:
         backup.BACKUP_DIR = original_backup_dir
 
 
-def test_prune_old_backups_removes_sidecars(tmp_db, tmp_path) -> None:
+def test_prune_old_backups_removes_sidecars(tmp_db, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     original_backup_dir = backup.BACKUP_DIR
     try:
         backup.BACKUP_DIR = str(tmp_path)
@@ -86,7 +87,8 @@ def test_prune_old_backups_removes_sidecars(tmp_db, tmp_path) -> None:
         backup.BACKUP_DIR = original_backup_dir
 
 
-def test_sweep_orphan_sidecars_removes_unmatched(tmp_path) -> None:
+def test_sweep_orphan_sidecars_removes_unmatched(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     original_backup_dir = backup.BACKUP_DIR
     try:
         backup.BACKUP_DIR = str(tmp_path)
@@ -106,6 +108,7 @@ def test_sweep_orphan_sidecars_removes_unmatched(tmp_path) -> None:
 
 
 def test_create_backup_sweeps_leftover_temp_before_creating(tmp_db, monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     leftover = tmp_path / "tmplwd_zutb.db"
     leftover.write_bytes(b"stale-unpacked-backup")
     os.utime(leftover, (1_000, 1_000))

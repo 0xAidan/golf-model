@@ -173,7 +173,8 @@ def test_grading_api_season_summary_counts_same_matchup_at_each_event(tmp_db, mo
         conn.close()
 
 
-def test_global_dedupe_only_collapses_true_duplicates_within_each_event(tmp_db):
+def test_global_dedupe_only_collapses_true_duplicates_within_each_event(tmp_db, monkeypatch):
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     first_event = tmp_db.get_or_create_tournament("First Event", year=2026)
     second_event = tmp_db.get_or_create_tournament("Second Event", year=2026)
     conn = tmp_db.get_conn()
