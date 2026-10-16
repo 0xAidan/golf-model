@@ -190,10 +190,10 @@ function, and an archive checksum/window alone did not prove coverage of the
 current database's candidate rows. The production retention period was 120 days;
 current active tick rows started October 1, so this inspection does not establish
 that the defect caused any earlier historical loss. Default preservation guards
-and regression tests have been implemented locally. They also cover colliding
+and regression tests were implemented and deployed on October 16. They also cover colliding
 card/backup filenames, same-day forecast versions, duplicate historical records
-and grading before-images. They have **not been deployed**; production deletion
-timers remain paused pending a separately verified patch. New forecasts must
+and grading before-images. The reviewed 20-file release was installed at 04:22:52 UTC; production deletion
+timers remain paused. See [the preservation release audit](2026-10-16-preservation-release.md). New forecasts must
 continue to write successfully even when historical duplicates prevent a unique
 index, which has its own dirty-database and concurrent-writer regression cases.
 

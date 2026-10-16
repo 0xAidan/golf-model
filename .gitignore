@@ -32,3 +32,7 @@ frontend/dist/
 
 # Local agent/git worktrees
 .worktrees/
+
+# Generated local browser verification artifacts
+frontend/test-results/
+frontend/playwright-report/
