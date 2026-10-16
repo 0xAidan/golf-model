@@ -1114,6 +1114,29 @@ def _ensure_pre_teeoff_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _journal_migration_rows(
+    conn: sqlite3.Connection, source_table: str, where: str, *, reason: str
+) -> None:
+    """Keep exact before-images under the migration's write lock and transaction."""
+    from src.history_preservation import (
+        prediction_history_preservation_enabled,
+        preserve_prediction_row_versions,
+    )
+
+    if not prediction_history_preservation_enabled():
+        return
+    if source_table not in {"picks", "pick_outcomes", "metrics"}:
+        raise ValueError("Unsupported historical migration table")
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    else:
+        conn.execute(f"UPDATE {source_table} SET id = id WHERE 0")
+    cursor = conn.execute(f"SELECT * FROM {source_table} WHERE {where}")
+    columns = [column[0] for column in cursor.description]
+    originals = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    preserve_prediction_row_versions(conn, source_table, originals, reason=reason)
+
+
 def _run_migrations(conn: sqlite3.Connection):
     """Add columns/tables that may be missing in older databases."""
     # Add source column to csv_imports if missing
@@ -1137,6 +1160,12 @@ def _run_migrations(conn: sqlite3.Connection):
             conn.execute(f"ALTER TABLE pick_outcomes ADD COLUMN {col} {col_type}{default_clause}")
             conn.commit()
     try:
+        _journal_migration_rows(
+            conn,
+            "pick_outcomes",
+            "model_hit IS NULL AND hit IS NOT NULL",
+            reason="migration_model_hit_backfill",
+        )
         conn.execute(
             """
             UPDATE pick_outcomes
@@ -1151,6 +1180,7 @@ def _run_migrations(conn: sqlite3.Connection):
         )
         conn.commit()
     except (sqlite3.OperationalError, sqlite3.IntegrityError):
+        conn.rollback()
         # Keep startup resilient if this backfill cannot run on a given DB state.
         # Runtime reads use COALESCE(model_hit, hit), so null model_hit is safe.
         pass
@@ -1184,6 +1214,19 @@ def _run_migrations(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE picks ADD COLUMN model_config_hash TEXT")
         conn.commit()
+    has_market_type = any(
+        row[1] == "market_type" for row in conn.execute("PRAGMA table_info(picks)")
+    )
+    normalization_where = (
+        "model_variant IS NULL OR TRIM(model_variant) = '' "
+        "OR source IS NULL OR TRIM(source) = '' OR market_book IS NULL "
+        "OR opponent_key IS NULL OR opponent_display IS NULL"
+    )
+    if not has_market_type:
+        normalization_where += " OR bet_type = 'matchup'"
+    _journal_migration_rows(
+        conn, "picks", normalization_where, reason="migration_pick_identity_normalization"
+    )
     conn.execute("UPDATE picks SET model_variant = 'baseline' WHERE model_variant IS NULL OR TRIM(model_variant) = ''")
     conn.execute("UPDATE picks SET source = 'ui_display' WHERE source IS NULL OR TRIM(source) = ''")
     try:
@@ -1423,6 +1466,13 @@ def _run_migrations(conn: sqlite3.Connection):
     # Add UNIQUE index on metrics for dedup (prevents duplicate SG:TOT rows per player/window)
     try:
         # First deduplicate: keep the row with the highest id (most recent)
+        _journal_migration_rows(
+            conn,
+            "metrics",
+            "id NOT IN (SELECT MAX(id) FROM metrics GROUP BY tournament_id, "
+            "player_key, metric_category, data_mode, round_window, metric_name)",
+            reason="migration_metrics_identity_dedup",
+        )
         conn.execute("""
             DELETE FROM metrics
             WHERE id NOT IN (
@@ -1432,6 +1482,7 @@ def _run_migrations(conn: sqlite3.Connection):
         """)
         conn.commit()
     except Exception:
+        conn.rollback()
         logging.getLogger(__name__).debug("Metrics dedup skipped (table may be empty or not exist yet)", exc_info=True)
 
     try:
@@ -1502,6 +1553,7 @@ def _ensure_hot_path_indexes(conn: sqlite3.Connection) -> None:
 
 def _add_unique_constraints(conn: sqlite3.Connection):
     """Add UNIQUE indexes for dedup. Deduplicates existing data first."""
+    from src.history_preservation import prediction_history_preservation_enabled
     constraint_defs = [
         (
             "idx_results_unique",
@@ -1527,6 +1579,17 @@ def _add_unique_constraints(conn: sqlite3.Connection):
             (idx_name,),
         ).fetchone()
         if existing:
+            continue
+
+        if prediction_history_preservation_enabled():
+            # New/clean stores still receive the required index. Dirty legacy
+            # stores keep every original observation instead of deleting rows
+            # (and linked outcomes) merely to make an index fit.
+            try:
+                conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table} {cols}")
+                conn.commit()
+            except sqlite3.IntegrityError:
+                _logger.warning("Preserved duplicate historical %s rows; unique index %s deferred", table, idx_name)
             continue
 
         # Deduplicate: keep the row with the highest id (most recent)
@@ -1625,22 +1688,54 @@ def log_csv_import(tournament_id, filename, file_type, data_mode, round_window,
 
 
 def store_metrics(rows: list[dict]):
-    """Bulk insert/update metric rows. Uses INSERT OR REPLACE for dedup."""
+    """Update each metric identity while retaining changed source observations."""
     if not rows:
         return
-    conn = get_conn()
-    conn.executemany(
-        """INSERT OR REPLACE INTO metrics
-           (tournament_id, csv_import_id, player_key, player_display,
-            metric_category, data_mode, round_window,
-            metric_name, metric_value, metric_text)
-           VALUES (:tournament_id, :csv_import_id, :player_key, :player_display,
-                    :metric_category, :data_mode, :round_window,
-                    :metric_name, :metric_value, :metric_text)""",
-        rows,
+    from src.history_preservation import preserve_prediction_row_versions
+
+    columns = (
+        "tournament_id", "csv_import_id", "player_key", "player_display",
+        "metric_category", "data_mode", "round_window", "metric_name",
+        "metric_value", "metric_text",
     )
-    conn.commit()
-    conn.close()
+    identity_columns = (
+        "tournament_id", "player_key", "metric_category", "data_mode",
+        "round_window", "metric_name",
+    )
+    conn = get_conn()
+    try:
+        # Protect the identity read, before-image, and update together even on a
+        # legacy store where the unique index could not yet be created.
+        conn.execute("BEGIN IMMEDIATE")
+        identity_where = " AND ".join(f"{column} IS ?" for column in identity_columns)
+        for row in rows:
+            values = tuple(row[column] for column in columns)
+            existing = conn.execute(
+                f"SELECT * FROM metrics WHERE {identity_where} ORDER BY id DESC LIMIT 1",
+                tuple(row[column] for column in identity_columns),
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    f"INSERT INTO metrics ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+                    values,
+                )
+                continue
+            original = dict(existing)
+            if all(original[column] == row[column] for column in columns):
+                continue
+            preserve_prediction_row_versions(
+                conn, "metrics", [original], reason="store_metrics_update"
+            )
+            conn.execute(
+                f"UPDATE metrics SET {', '.join(f'{column} = ?' for column in columns)} WHERE id = ?",
+                (*values, original["id"]),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ── Metrics query helpers ───────────────────────────────────────────
@@ -1896,7 +1991,7 @@ def store_picks(picks: list[dict]):
         return
     conn = get_conn()
     select_sql = """
-        SELECT id, market_odds, ev, market_book FROM picks
+        SELECT * FROM picks
         WHERE tournament_id = :tournament_id
           AND model_variant = :model_variant
           AND source = :source
@@ -1904,7 +1999,7 @@ def store_picks(picks: list[dict]):
           AND bet_type = :bet_type
           AND market_type = :market_type
           AND opponent_key = :opponent_key
-        LIMIT 1
+        ORDER BY id DESC LIMIT 1
     """
     insert_sql = """
         INSERT INTO picks
@@ -1937,42 +2032,69 @@ def store_picks(picks: list[dict]):
             model_config_hash = :model_config_hash
         WHERE id = :existing_id
     """
-    for row in normalized_rows:
-        existing = conn.execute(select_sql, row).fetchone()
-        if existing is None:
-            conn.execute(insert_sql, row)
-            continue
-        better_odds = american_odds_rank(row.get("market_odds")) > american_odds_rank(existing["market_odds"])
-        better_ev = float(row.get("ev") or 0) > float(existing["ev"] or 0)
-        if better_odds or better_ev:
-            conn.execute(update_sql, {**row, "existing_id": existing["id"]})
-    conn.commit()
-    conn.close()
+    from src.history_preservation import preserve_prediction_row_versions
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for row in normalized_rows:
+            existing = conn.execute(select_sql, row).fetchone()
+            if existing is None:
+                conn.execute(insert_sql, row)
+                continue
+            better_odds = american_odds_rank(row.get("market_odds")) > american_odds_rank(existing["market_odds"])
+            better_ev = float(row.get("ev") or 0) > float(existing["ev"] or 0)
+            if better_odds or better_ev:
+                preserve_prediction_row_versions(conn, "picks", [dict(existing)], reason="before_pick_quote_improvement")
+                conn.execute(update_sql, {**row, "existing_id": existing["id"]})
+        conn.commit()
+    finally:
+        conn.close()
 
 
-def store_results(tournament_id: int, results_list: list[dict]):
+def store_results(tournament_id: int, results_list: list[dict], *, conn=None):
+    """Store corrections, optionally inside a caller-owned scoring transaction."""
     if not results_list:
         return
-    conn = get_conn()
-    conn.executemany(
-        """INSERT INTO results
-           (tournament_id, player_key, player_display, finish_position,
-            finish_text, made_cut)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(tournament_id, player_key) DO UPDATE SET
-               player_display = excluded.player_display,
-               finish_position = excluded.finish_position,
-               finish_text = excluded.finish_text,
-               made_cut = excluded.made_cut,
-               entered_at = datetime('now')""",
-        [
-            (tournament_id, r["player_key"], r["player_display"],
-             r.get("finish_position"), r.get("finish_text"), r.get("made_cut"))
-            for r in results_list
-        ],
-    )
-    conn.commit()
-    conn.close()
+    from src.history_preservation import preserve_prediction_row_versions
+
+    owns_connection = conn is None
+    conn = get_conn() if owns_connection else conn
+    try:
+        # Legacy duplicates deliberately defer the unique index. Serialize the
+        # identity check with its write so admission works in either store.
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        else:
+            conn.execute("UPDATE results SET id = id WHERE 0")
+        for result in results_list:
+            existing = conn.execute(
+                "SELECT * FROM results WHERE tournament_id = ? AND player_key = ? ORDER BY id DESC LIMIT 1",
+                (tournament_id, result["player_key"]),
+            ).fetchone()
+            values = (result["player_display"], result.get("finish_position"),
+                      result.get("finish_text"), result.get("made_cut"))
+            if existing is None:
+                conn.execute(
+                    """INSERT INTO results(tournament_id, player_key, player_display,
+                       finish_position, finish_text, made_cut) VALUES (?, ?, ?, ?, ?, ?)""",
+                    (tournament_id, result["player_key"], *values),
+                )
+                continue
+            if tuple(existing[key] for key in ("player_display", "finish_position", "finish_text", "made_cut")) == values:
+                # A repeated ingestion is not a result correction. Retain its
+                # original observation time and avoid a synthetic new version.
+                continue
+            preserve_prediction_row_versions(conn, "results", [dict(existing)], reason="before_result_correction")
+            conn.execute(
+                """UPDATE results SET player_display = ?, finish_position = ?,
+                   finish_text = ?, made_cut = ?, entered_at = datetime('now') WHERE id = ?""",
+                (*values, existing["id"]),
+            )
+        if owns_connection:
+            conn.commit()
+    finally:
+        if owns_connection:
+            conn.close()
 
 
 def try_claim_telegram_alert(alert_hash: str) -> bool:
@@ -2191,18 +2313,25 @@ def log_predictions(predictions: list[dict]):
     if not predictions:
         return
     conn = get_conn()
-    _migrate_prediction_log_timing(conn)
-    conn.executemany(
-        """INSERT OR IGNORE INTO prediction_log
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        _migrate_prediction_log_timing(conn)
+        conn.executemany(
+            """INSERT OR IGNORE INTO prediction_log
            (tournament_id, player_key, bet_type, model_prob, dg_prob,
             market_implied_prob, actual_outcome, odds_decimal, profit, odds_timing)
-           VALUES (:tournament_id, :player_key, :bet_type, :model_prob, :dg_prob,
+           SELECT :tournament_id, :player_key, :bet_type, :model_prob, :dg_prob,
                     :market_implied_prob, :actual_outcome, :odds_decimal, :profit,
-                    :odds_timing)""",
-        predictions,
-    )
-    conn.commit()
-    conn.close()
+                    :odds_timing
+           WHERE NOT EXISTS (
+               SELECT 1 FROM prediction_log WHERE tournament_id = :tournament_id
+                 AND player_key = :player_key AND bet_type = :bet_type
+           )""",
+            predictions,
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def has_predictions(tournament_id: int) -> bool:
@@ -2217,20 +2346,31 @@ def has_predictions(tournament_id: int) -> bool:
 
 
 def _migrate_prediction_log_timing(conn: sqlite3.Connection):
-    """Add odds_timing column to prediction_log if missing."""
+    """Add odds_timing inside the caller's serialized write transaction."""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(prediction_log)").fetchall()]
     if "odds_timing" not in cols:
         conn.execute(
             "ALTER TABLE prediction_log ADD COLUMN odds_timing TEXT DEFAULT 'unknown'"
         )
-        conn.commit()
+
+
+def canonical_prediction_log_sql() -> str:
+    """Operational observations, matching the former MAX(id) startup deduper.
+
+    Raw source versions remain in prediction_log. Calibration/adaptation must
+    not treat repeated versions of one tournament/player/market as extra bets.
+    This is a fixed SQL fragment, never assembled from caller input.
+    """
+    return """(SELECT * FROM prediction_log WHERE id IN (
+        SELECT MAX(id) FROM prediction_log GROUP BY tournament_id, player_key, bet_type
+    ))"""
 
 
 def get_calibration_data(min_tournaments: int = 3) -> list[dict]:
-    """Get all prediction log entries for calibration analysis."""
+    """Get one operational log observation per original calibration identity."""
     conn = get_conn()
     rows = conn.execute(
-        "SELECT * FROM prediction_log ORDER BY created_at"
+        f"SELECT * FROM {canonical_prediction_log_sql()} ORDER BY created_at"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -2788,55 +2928,19 @@ def list_completed_snapshot_events(
 
 
 def prune_live_snapshot_history(retain_days: int) -> int:
-    """Delete ``live_snapshot_history`` rows older than ``retain_days`` (by ``generated_at``).
-
-    Returns the number of rows deleted. When ``retain_days`` is 0 or negative, performs
-    no work and returns 0 (callers should treat non-positive retention as disabled).
-    """
-    days = int(retain_days)
-    if days <= 0:
-        return 0
-    from datetime import datetime, timezone
-
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    conn = get_conn()
-    try:
-        cur = conn.execute(
-            """
-            DELETE FROM live_snapshot_history
-            WHERE generated_at IS NOT NULL
-              AND generated_at < ?
-            """,
-            (cutoff,),
-        )
-        conn.commit()
-        return int(cur.rowcount or 0)
-    finally:
-        conn.close()
+    """Prune only after explicit opt-in and exact same-database archive proof."""
+    result = prune_snapshot_history_tables(
+        retain_days, tables=frozenset({"live_snapshot_history"}),
+    )
+    return int(result.get("live_snapshot_history_deleted", 0))
 
 
 def prune_market_prediction_rows(retain_days: int) -> int:
-    """Delete ``market_prediction_rows`` older than ``retain_days`` (by ``generated_at``)."""
-    days = int(retain_days)
-    if days <= 0:
-        return 0
-    from datetime import datetime, timezone
-
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    conn = get_conn()
-    try:
-        cur = conn.execute(
-            """
-            DELETE FROM market_prediction_rows
-            WHERE generated_at IS NOT NULL
-              AND generated_at < ?
-            """,
-            (cutoff,),
-        )
-        conn.commit()
-        return int(cur.rowcount or 0)
-    finally:
-        conn.close()
+    """Prune only after explicit opt-in and exact same-database archive proof."""
+    result = prune_snapshot_history_tables(
+        retain_days, tables=frozenset({"market_prediction_rows"}),
+    )
+    return int(result.get("market_prediction_rows_deleted", 0))
 
 
 def vacuum_database(*, wal_checkpoint: bool = True) -> dict[str, Any]:
@@ -2866,6 +2970,10 @@ def vacuum_database(*, wal_checkpoint: bool = True) -> dict[str, Any]:
 
 def swap_compacted_database(live_path: str, compacted_path: str) -> dict[str, Any]:
     """Replace the live DB with a compacted copy using rename, not a third full copy."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(bytes_reclaimed=0)
     if not os.path.isfile(compacted_path):
         return {"ok": False, "reason": "compacted database missing"}
     if not os.path.isfile(live_path):
@@ -3566,6 +3674,10 @@ def reclaim_database_disk(
     wal_checkpoint: bool = True,
 ) -> dict[str, Any]:
     """Disk-guarded reclaim after large DELETEs. Refuses when free space is insufficient."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(bytes_reclaimed=0)
     import shutil
 
     from src.disk_guard import warn_if_low_disk
@@ -3645,110 +3757,88 @@ def prune_snapshot_history_tables(
     retain_days: int | None = None,
     *,
     require_archive: bool | None = None,
+    dry_run: bool = False,
+    cutoff_utc: str | None = None,
+    tables: frozenset[str] | None = None,
 ) -> dict[str, Any]:
-    """Delete rows older than ``retain_days`` from append-heavy live-refresh tables.
+    """Preserve by default; an explicit opt-in still needs exact archive proof.
 
-    Intended for explicit operator/cron use only — not called from HTTP handlers.
-
-    When ``retain_days`` is None, reads ``SNAPSHOT_HISTORY_RETAIN_DAYS``; if unset,
-    returns a skipped result without deleting (default no-op until configured).
+    ``require_archive=False`` is retained for call compatibility but cannot bypass
+    preservation. Verification and deletion share a BEGIN IMMEDIATE transaction,
+    preventing an intervening backfill from escaping the verified rowset.
+    Preview connections are read-only and never initialize or migrate the DB.
     """
-    days = retain_days
-    if days is None:
-        raw = (os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS") or "").strip()
-        if not raw:
-            return {
-                "skipped": True,
-                "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set; refusing delete.",
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-            }
-        try:
-            days = int(raw)
-        except ValueError:
-            return {
-                "skipped": True,
-                "reason": "invalid SNAPSHOT_HISTORY_RETAIN_DAYS",
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-            }
-    if int(days) <= 0:
-        return {
-            "skipped": True,
-            "reason": "retain_days must be positive",
-            "live_snapshot_history_deleted": 0,
-            "market_prediction_rows_deleted": 0,
-        }
+    from pathlib import Path
 
-    from src.cold_archive import snapshot_history_cutoff_utc, verified_archive_exists_for_cutoff
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
 
-    cutoff = snapshot_history_cutoff_utc(int(days))
-
-    if require_archive is None:
-        require_archive = (
-            os.environ.get("SNAPSHOT_PRUNE_REQUIRE_ARCHIVE", "1").strip().lower()
-            not in {"0", "false", "no", "off"}
-        )
-
-    conn = get_conn()
-    try:
-        old_live = conn.execute(
-            """
-            SELECT COUNT(*) FROM live_snapshot_history
-            WHERE generated_at IS NOT NULL AND generated_at < ?
-            """,
-            (cutoff,),
-        ).fetchone()[0]
-        old_market = conn.execute(
-            """
-            SELECT COUNT(*) FROM market_prediction_rows
-            WHERE generated_at IS NOT NULL AND generated_at < ?
-            """,
-            (cutoff,),
-        ).fetchone()[0]
-    finally:
-        conn.close()
-
-    would_delete = int(old_live) + int(old_market)
-    if require_archive and would_delete > 0:
-        exports_dir = (os.environ.get("SNAPSHOT_ARCHIVE_EXPORTS_DIR") or "").strip() or None
-        if not verified_archive_exists_for_cutoff(cutoff, exports_dir=exports_dir):
-            return {
-                "skipped": True,
-                "reason": (
-                    "no verified cold archive for cutoff; export tick tables before prune"
-                ),
-                "retain_days": int(days),
-                "cutoff_utc": cutoff,
-                "live_snapshot_history_deleted": 0,
-                "market_prediction_rows_deleted": 0,
-                "require_archive": True,
-                "rows_pending_delete": would_delete,
-            }
-
-    conn = get_conn()
-    try:
-        conn.execute(
-            "DELETE FROM live_snapshot_history WHERE generated_at IS NOT NULL AND generated_at < ?",
-            (cutoff,),
-        )
-        n1 = conn.execute("SELECT changes()").fetchone()[0]
-        conn.execute(
-            "DELETE FROM market_prediction_rows WHERE generated_at IS NOT NULL AND generated_at < ?",
-            (cutoff,),
-        )
-        n2 = conn.execute("SELECT changes()").fetchone()[0]
-        conn.commit()
-    finally:
-        conn.close()
-    return {
-        "skipped": False,
-        "retain_days": int(days),
-        "cutoff_utc": cutoff,
-        "live_snapshot_history_deleted": int(n1),
-        "market_prediction_rows_deleted": int(n2),
-        "require_archive": bool(require_archive),
+    report: dict[str, Any] = {
+        "ok": True, "dry_run": dry_run, "require_archive": True,
+        "live_snapshot_history_deleted": 0, "market_prediction_rows_deleted": 0,
     }
+    if prediction_history_preservation_enabled():
+        return preservation_skip(**report)
+
+    from src.cold_archive import (
+        PRUNABLE_TICK_TABLES, open_readonly_database,
+        snapshot_history_cutoff_utc, verified_archive_exists_for_cutoff,
+    )
+
+    requested = PRUNABLE_TICK_TABLES if tables is None else tables
+    if not requested or not set(requested).issubset(PRUNABLE_TICK_TABLES):
+        return {**report, "skipped": True, "reason": "unsupported prediction history tables"}
+    try:
+        raw_days = retain_days if retain_days is not None else os.environ.get("SNAPSHOT_HISTORY_RETAIN_DAYS", "")
+        days = int(raw_days)
+    except (TypeError, ValueError):
+        return {**report, "skipped": True, "reason": "SNAPSHOT_HISTORY_RETAIN_DAYS not set or invalid"}
+    if days <= 0:
+        return {**report, "skipped": True, "reason": "retain_days must be positive"}
+    cutoff = cutoff_utc or snapshot_history_cutoff_utc(days)
+    report.update(retain_days=days, cutoff_utc=cutoff)
+    exports_dir = (os.environ.get("SNAPSHOT_ARCHIVE_EXPORTS_DIR") or "").strip() or None
+    conn = None
+    try:
+        # mode=rw refuses to create a missing source. Do not call get_conn(),
+        # ensure_initialized(), WAL checkpoints, or schema migrations here.
+        conn = open_readonly_database(DB_PATH) if dry_run else sqlite3.connect(
+            f"{Path(DB_PATH).resolve().as_uri()}?mode=rw", uri=True, timeout=15.0,
+        )
+        conn.row_factory = sqlite3.Row
+        conn.execute("BEGIN" if dry_run else "BEGIN IMMEDIATE")
+        counts = {
+            table: int(conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE generated_at IS NOT NULL AND generated_at < ?",
+                (cutoff,),
+            ).fetchone()[0]) for table in requested
+        }
+        report["rows_pending_delete"] = sum(counts.values())
+        verified = verified_archive_exists_for_cutoff(
+            cutoff, exports_dir=exports_dir, db_path=DB_PATH, connection=conn, tables=requested,
+        )
+        report["archive_verified"] = verified
+        if dry_run:
+            return {**report, "skipped": True, "reason": "read-only preview; no rows deleted"}
+        if report["rows_pending_delete"] and not verified:
+            return {**report, "skipped": True, "reason": "no verified same-database archive for the exact current rowset"}
+        # Re-check the policy immediately before any deletion as well.
+        if prediction_history_preservation_enabled():
+            return preservation_skip(**report)
+        for table in sorted(requested):
+            cursor = conn.execute(
+                f"DELETE FROM {table} WHERE generated_at IS NOT NULL AND generated_at < ?", (cutoff,),
+            )
+            report[f"{table}_deleted"] = int(cursor.rowcount)
+        conn.commit()
+        return {**report, "skipped": False}
+    except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+        if conn is not None:
+            conn.rollback()
+        report.update(live_snapshot_history_deleted=0, market_prediction_rows_deleted=0)
+        return {**report, "ok": False, "skipped": True, "reason": f"prediction history retention refused: {exc}"}
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def ensure_initialized():

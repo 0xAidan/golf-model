@@ -50,7 +50,7 @@ def test_ensure_event_grading_readiness_backfills_ledger_from_picks(tmp_db):
     assert int(ledger) >= 1
 
 
-def test_ensure_all_completed_pga_events_graded_includes_picks_without_rounds(monkeypatch, tmp_db):
+def test_ensure_all_completed_pga_events_graded_includes_final_results_without_rounds(monkeypatch, tmp_db):
     from src.event_pick_freeze import ensure_all_completed_pga_events_graded
 
     event_id = "30"
@@ -75,6 +75,14 @@ def test_ensure_all_completed_pga_events_graded_includes_picks_without_rounds(mo
             }
         ]
     )
+    db.store_results(tid, [{
+        "player_key": "scottie_scheffler",
+        "player_display": "Scottie Scheffler",
+        "finish_position": 1,
+        "finish_text": "1",
+        "made_cut": 1,
+    }])
+    monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: [])
 
     seen: list[str] = []
 
@@ -102,6 +110,10 @@ def test_ensure_all_completed_pga_events_graded_accepts_complete_status(monkeypa
         },
     )
     monkeypatch.setattr("src.event_pick_freeze.db.get_conn", lambda: _FakeConn())
+    monkeypatch.setattr(
+        "src.event_pick_freeze._completed_events_for_sweep",
+        lambda conn, *, year: [{"event_id": "34", "event_name": "Travelers Championship", "year": year}],
+    )
 
     report = ensure_all_completed_pga_events_graded(year=2026)
     assert report["ok"] is True

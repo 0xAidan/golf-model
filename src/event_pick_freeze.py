@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime, timezone
 from typing import Any
 
 from src import db
@@ -435,14 +436,17 @@ def ensure_event_grading_readiness(
 
 
 def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
-    """Completed PGA events from DG schedule, rounds, or tournaments with +EV picks."""
+    """Find events with completion evidence; posted picks alone are not evidence."""
     from src.datagolf import is_schedule_event_completed
 
+    today = datetime.now(timezone.utc).date()
     by_key: dict[tuple[str, int], dict[str, Any]] = {}
 
     def _add(event_id: str, event_year: int, event_name: str | None) -> None:
         normalized_id = str(event_id or "").strip()
-        if not normalized_id:
+        if not normalized_id.isascii() or not normalized_id.isdecimal() or int(normalized_id) <= 0:
+            return
+        if event_year != year or event_year > today.year:
             return
         key = (normalized_id, int(event_year))
         by_key[key] = {
@@ -459,8 +463,37 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
         WHERE t.year = ?
           AND t.event_id IS NOT NULL AND TRIM(t.event_id) != ''
           AND p.ev IS NOT NULL AND p.ev > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM historical_event_info h
+            WHERE h.event_id = t.event_id AND h.year = t.year
+              AND LOWER(TRIM(COALESCE(h.tour, ''))) NOT IN ('', 'pga')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM rounds other
+            WHERE other.event_id = t.event_id AND other.year = t.year
+              AND LOWER(TRIM(COALESCE(other.tour, ''))) NOT IN ('', 'pga')
+              AND NOT EXISTS (
+                SELECT 1 FROM rounds pga
+                WHERE pga.event_id = t.event_id AND pga.year = t.year
+                  AND LOWER(TRIM(COALESCE(pga.tour, ''))) = 'pga'
+              )
+          )
+          AND (
+            EXISTS (
+                SELECT 1 FROM results r
+                WHERE r.tournament_id = t.id
+                  AND (r.finish_position IS NOT NULL OR TRIM(COALESCE(r.finish_text, '')) != '')
+            )
+            OR EXISTS (
+                SELECT 1 FROM historical_event_info h
+                WHERE h.event_id = t.event_id AND h.year = t.year
+                  AND LOWER(TRIM(COALESCE(h.tour, ''))) = 'pga'
+                  AND strftime('%Y', h.end_date) = CAST(t.year AS TEXT)
+                  AND date(h.end_date) < date(?)
+            )
+          )
         """,
-        (year,),
+        (year, today.isoformat()),
     ).fetchall()
     for row in pick_rows:
         _add(str(row["event_id"]), int(row["year"] or year), str(row["event_name"] or ""))
@@ -470,12 +503,13 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
         SELECT r.event_id, r.event_name, r.year
         FROM rounds r
         WHERE r.year = ?
-          AND LOWER(COALESCE(r.tour, 'pga')) = 'pga'
+          AND LOWER(TRIM(COALESCE(r.tour, ''))) = 'pga'
           AND r.event_id IS NOT NULL AND TRIM(r.event_id) != ''
-          AND r.event_completed IS NOT NULL
+          AND strftime('%Y', r.event_completed) = CAST(r.year AS TEXT)
+          AND date(r.event_completed) <= date(?)
         GROUP BY r.event_id, r.event_name, r.year
         """,
-        (year,),
+        (year, today.isoformat()),
     ).fetchall()
     for row in round_rows:
         _add(str(row["event_id"]), int(row["year"] or year), str(row["event_name"] or ""))
@@ -486,10 +520,30 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
         schedule = _call_api("get-schedule", {"tour": "pga"})
         events = schedule if isinstance(schedule, list) else schedule.get("schedule", [])
         for event in events or []:
-            event_year = int(event.get("calendar_year") or event.get("year") or year)
+            if not isinstance(event, dict):
+                continue
+            # Missing or contradictory source identity cannot be repaired by
+            # assigning the sweep's requested year to an old/fixture event.
+            end_raw = str(event.get("end_date") or "").strip()
+            declared_year = event.get("calendar_year") or event.get("year")
+            try:
+                end_date = date.fromisoformat(end_raw) if end_raw else None
+                event_year = int(declared_year) if declared_year else (end_date.year if end_date else None)
+            except (ValueError, TypeError):
+                continue
             if event_year != year:
                 continue
-            if not is_schedule_event_completed(event):
+            if str(event.get("tour") or "pga").strip().lower() != "pga":
+                continue
+            if end_date and (end_date.year != event_year or end_date > today):
+                continue
+            if not is_schedule_event_completed(event, today=today):
+                continue
+            # A date without a final status does not prove that today's play
+            # has finished. An explicit completed status remains authoritative.
+            if str(event.get("status") or "").strip().lower() != "completed" and str(
+                event.get("end_date") or ""
+            ) >= today.isoformat():
                 continue
             _add(
                 str(event.get("event_id", "")),
@@ -497,7 +551,9 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
                 str(event.get("event_name") or event.get("name") or ""),
             )
     except Exception as exc:
-        logger.warning("DG schedule sweep source failed: %s", exc)
+        # Provider exceptions can embed authenticated URLs. Log only the type;
+        # local completion evidence still allows the rest of the sweep to run.
+        logger.warning("DG schedule sweep source failed (%s)", type(exc).__name__)
 
     return sorted(by_key.values(), key=lambda row: (row.get("event_name") or "", row["event_id"]))
 
@@ -506,22 +562,41 @@ def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[s
     """Backfill + grade every completed PGA event that still has ungraded +EV picks."""
     db.ensure_initialized()
     conn = db.get_conn()
-    current_year = year or __import__("datetime").datetime.now().year
-    rows = _completed_events_for_sweep(conn, year=current_year)
-    conn.close()
+    current_year = year or datetime.now(timezone.utc).year
+    try:
+        rows = _completed_events_for_sweep(conn, year=current_year)
+    finally:
+        conn.close()
 
     results: list[dict[str, Any]] = []
     for row in rows:
         event_id = str(row["event_id"])
         event_year = int(row["year"] or current_year)
-        result = freeze_completed_event_picks(
-            event_id,
-            year=event_year,
-            event_name=str(row["event_name"] or ""),
-        )
+        try:
+            result = freeze_completed_event_picks(
+                event_id,
+                year=event_year,
+                event_name=str(row["event_name"] or ""),
+            )
+        except Exception as exc:
+            # Never serialize/log the exception text or traceback: requests
+            # embeds provider API keys in the failing request URL.
+            error_type = type(exc).__name__
+            logger.warning("Grading failed for event %s/%s (%s)", event_id, event_year, error_type)
+            result = {
+                "status": "error",
+                "reason": "grading_failed",
+                "event_id": event_id,
+                "year": event_year,
+                "error": error_type,
+            }
+        if result.get("reason") == "awaiting_results":
+            # Capturing inventory is useful progress, but a completed-event
+            # grading sweep has not succeeded until results become available.
+            result = {**result, "status": "unavailable"}
         results.append(result)
 
-    success_statuses = {"ok", "captured", "skipped", "success", "complete"}
+    success_statuses = {"ok", "skipped", "success", "complete"}
     failures = []
     for result in results:
         if result.get("status") == "skipped" and result.get("reason") == "no_inventory":

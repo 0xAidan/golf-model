@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "@/App"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -25,6 +25,10 @@ const { apiMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => ({
   api: apiMock,
+}))
+
+vi.mock("@/features/learning-workspace/learning-workspace", () => ({
+  LearningWorkspace: () => <div data-testid="learning-workspace">Rankings workspace</div>,
 }))
 
 vi.mock("@/hooks/use-live-refresh-runtime", () => ({
@@ -64,8 +68,21 @@ function renderAppAtRoute(route: string) {
 }
 
 describe("App legacy route replay gating", () => {
+  beforeAll(async () => {
+    // Transform the legacy module graph outside each route assertion's timeout.
+    // App.delivery.test separately verifies that rankings defer legacy delivery.
+    await import("@/app/legacy-app")
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it.each(["/", "/rankings", "/markets", "/models", "/performance", "/card", "/evidence"])("keeps %s within the primary workspace without loading legacy providers", async route => {
+    renderAppAtRoute(route)
+    expect(await screen.findByTestId("learning-workspace")).toBeInTheDocument()
+    expect(apiMock.getGradingSeason).not.toHaveBeenCalled()
+    expect(apiMock.getLiveRefreshSnapshot).not.toHaveBeenCalled()
   })
 
   // /matchups redirects to dashboard ?tab=full-picks (Phase 4 lane merge).
@@ -73,7 +90,7 @@ describe("App legacy route replay gating", () => {
     renderAppAtRoute("/matchups")
 
     await waitFor(() => {
-      expect(screen.getByTestId("monitoring-shell-main")).toBeInTheDocument()
+      expect(screen.getByTestId("learning-workspace")).toBeInTheDocument()
     })
     expect(screen.queryByText("Legacy matchups route unavailable in replay mode")).not.toBeInTheDocument()
   })
@@ -118,14 +135,13 @@ describe("App legacy route replay gating", () => {
     })
   })
 
-  it("defers grading-season includePicks on dashboard boot", async () => {
+  it("does not load legacy grading data on rankings workspace boot", async () => {
     renderAppAtRoute("/")
 
     await waitFor(() => {
-      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
-        expect.objectContaining({ lane: "cockpit", includePicks: false, limit: 20 }),
-      )
+      expect(screen.getByTestId("learning-workspace")).toBeInTheDocument()
     })
+    expect(apiMock.getGradingSeason).not.toHaveBeenCalled()
   })
 
   it("loads grading-season with picks on /results", async () => {
@@ -138,7 +154,7 @@ describe("App legacy route replay gating", () => {
     })
   })
 
-  it("does not load grading-season picks when past replay tab is active", async () => {
+  it("does not mount legacy replay providers on the rankings workspace", async () => {
     vi.mocked(usePredictionTab).mockReturnValue({
       predictionTab: "past",
       setPredictionTab: vi.fn(),
@@ -146,9 +162,8 @@ describe("App legacy route replay gating", () => {
     renderAppAtRoute("/")
 
     await waitFor(() => {
-      expect(apiMock.getGradingSeason).toHaveBeenCalledWith(
-        expect.objectContaining({ includePicks: false, limit: 20 }),
-      )
+      expect(screen.getByTestId("learning-workspace")).toBeInTheDocument()
     })
+    expect(apiMock.getGradingSeason).not.toHaveBeenCalled()
   })
 })

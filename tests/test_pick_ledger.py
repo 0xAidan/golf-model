@@ -276,7 +276,8 @@ def test_canonical_market_rows_keep_full_payload_json(tmp_db, sample_tournament)
     assert row["payload_json"] == '{"full": true, "book": "draftkings"}'
 
 
-def test_prune_generated_pick_ledger_keeps_displayed_rows(tmp_db, sample_tournament):
+def test_prune_generated_pick_ledger_preserves_all_rows_without_archive(tmp_db, sample_tournament, monkeypatch):
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     _, tid = sample_tournament
     generated = [{
         "snapshot_id": "snap-gen-prune",
@@ -310,11 +311,12 @@ def test_prune_generated_pick_ledger_keeps_displayed_rows(tmp_db, sample_tournam
     preview = prune_generated_pick_ledger(dry_run=True)
     assert preview["would_delete"] >= 1
     result = prune_generated_pick_ledger()
-    assert result["deleted"] >= 1
+    assert result["deleted"] == 0
+    assert result["skipped"] is True
 
     conn = db.get_conn()
     rows = conn.execute("SELECT lifecycle, snapshot_id FROM pick_ledger").fetchall()
     conn.close()
     lifecycles = {row["snapshot_id"]: row["lifecycle"] for row in rows}
-    assert "snap-gen-prune" not in lifecycles
+    assert lifecycles["snap-gen-prune"] == "generated"
     assert lifecycles["snap-displayed-keep"] == "displayed"

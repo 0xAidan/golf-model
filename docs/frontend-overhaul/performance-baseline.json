@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "capturedAt": "2026-06-29",
-  "notes": "Wave 0 audit — operator terminal master upgrade. Per-trigger metrics require verify-this harness on production.",
+  "capturedAt": "2026-10-13",
+  "notes": "Historical Wave 0 measurements remain below. The October delivery comparison fully drains gzip output; the former budget script could undercount compressed bytes. Both October builds use the same installed dependencies. Per-trigger metrics still require verify-this harness on production.",
   "before": {
     "label": "pre-operator-terminal-master (monitoring-v3)",
     "capturedAt": "2026-06-04",
@@ -13,6 +13,24 @@
     "tabStartWarmDataMs": null,
     "refreshFeedbackMs": null,
     "gradeFeedbackMs": null
+  },
+  "remeasuredHead": {
+    "label": "pre-matchup-desk source rebuilt with current dependencies",
+    "capturedAt": "2026-10-13",
+    "commit": "cb868501ec68333a280461cded7b3750c5f87345",
+    "viteVersion": "8.0.3",
+    "mainChunkBytes": 286300,
+    "mainChunkGzipBytes": 88015,
+    "htmlEntryAndModulepreloadGzipBytes": 649924
+  },
+  "after": {
+    "label": "matchup desk with optional reporting and legacy route delivery",
+    "capturedAt": "2026-10-13",
+    "viteVersion": "8.0.3",
+    "mainChunkBytes": 240545,
+    "mainChunkGzipBytes": 75973,
+    "htmlEntryAndModulepreloadGzipBytes": 84026,
+    "measurement": "Node gzipSync default compression; cross-checked against fully drained streaming gzip. HTML preload totals exclude runtime-loaded route chunks."
   },
   "targets": {
     "tabStartWarmUiMs": 1000,

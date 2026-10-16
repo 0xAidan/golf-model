@@ -14,7 +14,8 @@ def test_prune_skips_without_env_or_days(monkeypatch, tmp_db) -> None:
     assert out["live_snapshot_history_deleted"] == 0
 
 
-def test_prune_deletes_rows_older_than_cutoff(tmp_db) -> None:
+def test_prune_deletes_rows_older_than_cutoff(tmp_db, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     conn = db.get_conn()
     conn.execute("DELETE FROM live_snapshot_history")
     conn.execute("DELETE FROM market_prediction_rows")
@@ -53,7 +54,13 @@ def test_prune_deletes_rows_older_than_cutoff(tmp_db) -> None:
     conn.commit()
     conn.close()
 
-    out = db.prune_snapshot_history_tables(retain_days=365, require_archive=False)
+    from src.cold_archive import export_tick_tables_before_cutoff, snapshot_history_cutoff_utc
+    cutoff = snapshot_history_cutoff_utc(365)
+    exports = tmp_path / "exports"
+    monkeypatch.setenv("SNAPSHOT_ARCHIVE_EXPORTS_DIR", str(exports))
+    export_tick_tables_before_cutoff(db_path=tmp_db.DB_PATH, cutoff_utc=cutoff, output_dir=exports)
+    # Legacy require_archive=False cannot bypass proof; a real archive is required.
+    out = db.prune_snapshot_history_tables(retain_days=365, require_archive=False, cutoff_utc=cutoff)
     assert out["skipped"] is False
     assert out["live_snapshot_history_deleted"] >= 1
 

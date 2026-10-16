@@ -138,3 +138,23 @@ async def get_operator_board(
             snapshot_id=payload["source"].get("snapshot_id"),
         ),
     )
+
+
+@router.get("/api/desk/board")
+async def get_desk_board(
+    track: str = Query(default="champion", pattern="^(champion|challenger)$"),
+    mode: str = Query(default="upcoming", pattern="^(live|upcoming)$"),
+    event_id: str | None = Query(default=None, min_length=1, max_length=128, pattern=r".*\S.*"),
+):
+    """Local/CI equivalent of the isolated desk sidecar; current snapshots only."""
+    payload = build_board(
+        dashboard_runtime.read_snapshot(),
+        track=track,  # type: ignore[arg-type]
+        mode=mode,  # type: ignore[arg-type]
+        event_id=event_id,
+        stale_after_seconds=_snapshot_stale_after_seconds(),
+    )
+    # Freshness can change without a new snapshot ID. Never reuse a cached
+    # readiness decision. Legacy runtime status and completed-event helpers
+    # can initialize the database, so neither belongs on this snapshot path.
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})

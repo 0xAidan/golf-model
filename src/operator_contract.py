@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 SCHEMA_VERSION = "operator-read-model/v1"
@@ -45,6 +45,16 @@ class PicksContract(TypedDict):
     value_bets: list[dict[str, Any]]
 
 
+class MarketCountContract(TypedDict, total=False):
+    raw_rows: int
+    reason_code: str | None
+
+
+class BoardMetadataContract(TypedDict, total=False):
+    market_counts: dict[str, MarketCountContract]
+    research_counts: dict[str, int]
+
+
 class BoardContract(TypedDict):
     schema_version: str
     track: OperatorTrack
@@ -57,6 +67,7 @@ class BoardContract(TypedDict):
     rankings: list[dict[str, Any]]
     leaderboard: list[dict[str, Any]]
     picks: PicksContract
+    metadata: NotRequired[BoardMetadataContract]
 
 
 class BootstrapSectionContract(TypedDict):

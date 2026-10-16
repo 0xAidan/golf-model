@@ -9,7 +9,8 @@ import time
 from src.output_manager import rotate_research_artifacts, summarize_research_output
 
 
-def test_rotate_research_artifacts_archives_old_files(tmp_path) -> None:
+def test_rotate_research_artifacts_archives_old_files(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     research = tmp_path / "output" / "research"
     archive = tmp_path / "data" / "exports" / "research_archive"
     research.mkdir(parents=True)
@@ -38,7 +39,8 @@ def test_rotate_research_artifacts_archives_old_files(tmp_path) -> None:
         assert '"trial": 1' in gz.read()
 
 
-def test_rotate_research_artifacts_dry_run(tmp_path) -> None:
+def test_rotate_research_artifacts_dry_run(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     research = tmp_path / "research"
     archive = tmp_path / "archive"
     research.mkdir(parents=True)

@@ -40,6 +40,7 @@ from src.odds import fetch_odds_api, load_manual_odds, get_best_odds
 from src.value import find_value_bets
 from src.card import generate_card
 from src.player_normalizer import normalize_name
+from src.market_generation_policy import get_market_generation_policy, market_enabled
 
 
 def _run_calibration_dashboard():
@@ -127,6 +128,7 @@ def main():
     parser.add_argument("--calibration", action="store_true",
                         help="Show calibration dashboard (Brier, CLV, wins/losses by market)")
     args = parser.parse_args()
+    generation_policy = get_market_generation_policy()
 
     # Calibration dashboard only (no tournament needed)
     if args.calibration:
@@ -288,6 +290,8 @@ def main():
 
         # Try API
         for market in ["outrights", "top_5", "top_10", "top_20"]:
+            if not market_enabled(market, generation_policy):
+                continue
             api_odds = fetch_odds_api(market)
             if api_odds:
                 all_odds.extend(api_odds)
@@ -311,6 +315,8 @@ def main():
 
             # Find value for each market
             for market, market_odds in odds_by_market.items():
+                if not market_enabled(market, generation_policy):
+                    continue
                 best = get_best_odds(market_odds)
                 bt = "outright" if market == "outrights" else market.replace("top_", "top")
                 vb = find_value_bets(composite, best, bet_type=bt,

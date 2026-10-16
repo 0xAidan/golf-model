@@ -7,6 +7,7 @@ import { createReadStream } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { createGzip } from "node:zlib"
+import { Writable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -17,10 +18,13 @@ const baselinePath = path.join(repoRoot, "docs/frontend-overhaul/performance-bas
 async function gzipSize(filePath) {
   const gzip = createGzip()
   let bytes = 0
-  gzip.on("data", (chunk) => {
-    bytes += chunk.length
+  const counter = new Writable({
+    write(chunk, _encoding, callback) {
+      bytes += chunk.length
+      callback()
+    },
   })
-  await pipeline(createReadStream(filePath), gzip)
+  await pipeline(createReadStream(filePath), gzip, counter)
   return bytes
 }
 

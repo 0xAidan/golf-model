@@ -1,0 +1,32 @@
+[Unit]
+Description=Golf matchup desk read-only reports
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/golf-evidence/current
+ExecStart=/usr/bin/python3 /opt/golf-evidence/current/serve_matchup_reports.py --port 8011
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=GOLF_DB_PATH=/opt/golf-model/data/golf.db
+Environment=GOLF_SNAPSHOT_PATH=/opt/golf-model/data/live_refresh_snapshot.json
+Environment=GOLF_SNAPSHOT_STALE_SECONDS=3720
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+ProtectSystem=strict
+ReadOnlyPaths=/opt/golf-model/data /opt/golf-evidence
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=512M
+TasksMax=32
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

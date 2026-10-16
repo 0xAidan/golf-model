@@ -11,6 +11,8 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL,
+    // Optional local browser fallback; CI keeps the bundled browser by default.
+    channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL || undefined,
     trace: "on-first-retry",
     colorScheme: "dark",
   },

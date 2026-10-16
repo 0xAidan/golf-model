@@ -557,6 +557,11 @@ def _persist_snapshot_tail(
 
 def _maybe_prune_snapshot_history_tables(snapshot: dict[str, Any]) -> None:
     """Prune append-heavy history tables periodically to enforce retention."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        snapshot.setdefault("diagnostics", {})["history_prune"] = preservation_skip()
+        return
     global _last_snapshot_prune_at
     interval_seconds = max(60, int(config.SNAPSHOT_HISTORY_PRUNE_INTERVAL_SECONDS))
     now_ts = time.time()

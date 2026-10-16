@@ -128,7 +128,7 @@ def test_grading_season_returns_lane_split(monkeypatch, tmp_path):
     assert event["picks"] == []
 
 
-def test_grading_season_exposes_voided_count(tmp_db, monkeypatch, tmp_path):
+def test_grading_season_exposes_voided_count(monkeypatch, tmp_path):
     import app as app_module
     from src import db as db_module
 

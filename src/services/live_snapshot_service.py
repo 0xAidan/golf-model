@@ -78,6 +78,8 @@ def run_lab_snapshot_analysis(
         result["output_file"] = result["card_filepath"]
     result["model_lane"] = "lab_champion"
     result["model_variant"] = resolved_variant
+    if result.get("market_generation_policy"):
+        strategy_meta["market_generation_policy"] = result["market_generation_policy"]
     result["strategy_meta"] = strategy_meta
     result["live_model_name"] = strategy.name or pipeline_cfg.get("name", "lab_champion")
     return result
@@ -135,6 +137,8 @@ def run_snapshot_analysis(
         result["output_file"] = result["card_filepath"]
     result["model_lane"] = strategy_meta.get("strategy_source", "default")
     result["model_variant"] = resolved_variant
+    if result.get("market_generation_policy"):
+        strategy_meta["market_generation_policy"] = result["market_generation_policy"]
     result["strategy_meta"] = strategy_meta
     result["live_model_name"] = strategy.name or pipeline_cfg.get("name", "strategy")
     return result

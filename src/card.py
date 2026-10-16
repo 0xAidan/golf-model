@@ -171,7 +171,7 @@ def generate_card(tournament_name: str,
     try:
         conn = db.get_conn()
         matchup_preds = conn.execute(
-            "SELECT actual_outcome, profit FROM prediction_log WHERE bet_type = 'matchup' AND actual_outcome IS NOT NULL"
+            f"SELECT actual_outcome, profit FROM {db.canonical_prediction_log_sql()} WHERE bet_type = 'matchup' AND actual_outcome IS NOT NULL"
         ).fetchall()
         conn.close()
         if matchup_preds:
@@ -469,8 +469,9 @@ def generate_card(tournament_name: str,
     filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
     filepath = os.path.join(output_dir, filename)
 
-    with open(filepath, "w") as f:
-        f.write("\n".join(lines))
+    from src.output_manager import write_versioned_output
+
+    filepath = write_versioned_output(filepath, "\n".join(lines))
 
     return filepath
 
@@ -791,6 +792,7 @@ def generate_team_event_card(
 
     filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d')}.md"
     filepath = os.path.join(output_dir, filename)
-    with open(filepath, "w") as f:
-        f.write("\n".join(lines))
+    from src.output_manager import write_versioned_output
+
+    filepath = write_versioned_output(filepath, "\n".join(lines))
     return filepath

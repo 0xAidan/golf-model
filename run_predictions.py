@@ -75,6 +75,7 @@ from src.ai_brain import (
 from backtester.strategy import StrategyConfig
 from src.strategy_resolution import map_strategy_to_runtime_settings, resolve_runtime_strategy
 from src.run_provenance import write_run_provenance
+from src.market_generation_policy import get_market_generation_policy, market_enabled, placement_generation_enabled
 
 
 logger = logging.getLogger(__name__)
@@ -579,8 +580,11 @@ def main():
         print(f"  Mode: {pipeline_mode}")
 
     pipeline_ctx = {"metric_counts": {}, "rounds_by_year": {}}
+    generation_policy = get_market_generation_policy()
+    pipeline_ctx["market_generation_policy"] = generation_policy
     strategy_cfg, strategy_meta = resolve_runtime_strategy("global")
     runtime_settings = map_strategy_to_runtime_settings(strategy_cfg)
+    runtime_settings["market_generation_policy"] = generation_policy
     model_variant = str(config.DEFAULT_MODEL_VARIANT).strip().lower() or "v5"
     if model_variant not in config.ALLOWED_MODEL_VARIANTS:
         model_variant = "v5"
@@ -1129,7 +1133,11 @@ def main():
     print(f"  Preferred book: {_pbook} (used as a hint only; all books remain available)")
     print("  Also tracking: DraftKings, FanDuel, BetMGM, Pinnacle, + 10 others")
 
-    all_odds_by_market = safe_api_call("outright odds", fetch_all_outright_odds, "pga")
+    all_odds_by_market = (
+        safe_api_call("outright odds", fetch_all_outright_odds, "pga")
+        if pipeline_mode in ("full", "placements-only") and placement_generation_enabled(generation_policy)
+        else {}
+    )
     if all_odds_by_market is None:
         all_odds_by_market = {}
 
@@ -1152,6 +1160,8 @@ def main():
             else:
                 bt = market_key.replace("top_", "top")
             _fstr = get_field_strength(composite)
+            if not market_enabled(bt, generation_policy):
+                continue
             if bt not in runtime_settings["allowed_markets"]:
                 continue
             vb = find_value_bets(
@@ -1190,6 +1200,8 @@ def main():
             aggregated_all_books = []
             aggregated_failed = []
             for market_key, label in matchup_markets:
+                if not market_enabled(market_key, generation_policy):
+                    continue
                 matchup_odds = safe_api_call(f"{label} odds", fetch_matchup_odds, market=market_key)
                 if not matchup_odds:
                     print(f"    {label}: no odds available")
@@ -1232,7 +1244,7 @@ def main():
     threeball_bets = []
     try:
         from src.feature_flags import is_enabled
-        if is_enabled("3ball"):
+        if is_enabled("3ball") and market_enabled("group", generation_policy):
             from src.value import find_3ball_value_bets
             threeball_odds = safe_api_call("3-ball odds", fetch_matchup_odds, market="3_balls")
             if threeball_odds:

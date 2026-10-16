@@ -1,0 +1,10 @@
+[Unit]
+Description=Golf Model weekly research report (Tuesday 04:30 UTC)
+
+[Timer]
+OnCalendar=Tue *-*-* 04:30:00 UTC
+Persistent=true
+Unit=golf-learning-refresh.service
+
+[Install]
+WantedBy=timers.target

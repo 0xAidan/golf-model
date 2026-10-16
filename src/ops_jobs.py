@@ -120,6 +120,10 @@ def get_job(conn: sqlite3.Connection, job_id: str) -> dict[str, Any] | None:
 
 def remove_stale_db_recovery_copies(db_path: str) -> list[str]:
     """Remove leftover reclaim/restore temp files when the live DB passes quick_check."""
+    from src.history_preservation import prediction_history_preservation_enabled
+
+    if prediction_history_preservation_enabled():
+        return []
     if not os.path.isfile(db_path):
         return []
 
@@ -172,6 +176,14 @@ def run_storage_cleanup(
     retain_days: int | None = None,
 ) -> dict[str, Any]:
     """Idempotent storage maintenance for operator cleanup jobs."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        steps = {name: preservation_skip() for name in (
+            "janitor", "sidecar_sweep", "generated_ledger_prune", "stale_db_copies",
+            "wal_checkpoint", "retention", "reclaim", "incremental_reclaim",
+        )}
+        return preservation_skip(steps=steps)
     from src import db
     from src.backup import sweep_orphan_sidecars
     from src.pick_ledger import prune_generated_pick_ledger

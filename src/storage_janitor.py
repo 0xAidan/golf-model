@@ -111,6 +111,10 @@ def sweep_os_tmp_leftovers(
     now: float | None = None,
 ) -> dict[str, Any]:
     """Remove crashed sqlite temps and golf backup test dirs from the OS temp dir."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(removed=[], bytes_freed=0, count=0)
     root = Path(tmp_dir) if tmp_dir else get_os_tmp_dir()
     protected = _protected_paths(db_path)
     clock = time.time() if now is None else now
@@ -162,6 +166,10 @@ def sweep_backup_temp_dir(
     now: float | None = None,
 ) -> dict[str, Any]:
     """Remove leftover integrity-decompress files from the managed backup temp dir."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(removed=[], bytes_freed=0, count=0)
     root = Path(backup_tmp_dir) if backup_tmp_dir else get_backup_temp_dir()
     protected = _protected_paths(db_path)
     clock = time.time() if now is None else now
@@ -211,6 +219,10 @@ def sweep_disposable_storage(
     dir_min_age_seconds: int = DEFAULT_DIR_MIN_AGE_SECONDS,
 ) -> dict[str, Any]:
     """Run every disposable-file sweep. Safe to call from backup and cleanup."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(removed=[], bytes_freed=0, count=0)
     live_db = db_path or db_mod.DB_PATH
     os_tmp = sweep_os_tmp_leftovers(
         tmp_dir=tmp_dir,

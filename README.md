@@ -2,16 +2,18 @@
 
 Production-focused golf betting platform that continuously ingests DataGolf data, computes player rankings and matchup edges, and powers an always-on dashboard with separate **Live Tournament** and **Upcoming Tournament** views.
 
-For a product-level overview, see [`ABOUT.md`](ABOUT.md).
+For the current matchup workflow, see [`PRODUCT.md`](PRODUCT.md) and [`DESIGN.md`](DESIGN.md). The [October 13 delivery report](docs/audits/2026-10-13-delivery.md) records what is live, what was verified, and remaining historical recovery work. The [project map](docs/audits/2026-10-13-project-map.md) traces predictions, delivery, storage and existing learning behavior.
+
+**Current production rollout:** use the [isolated desk deployment runbook](docs/runbooks/matchup-desk-deployment.md). The published UI/report service and repaired backup are separate from source-only grading safety changes. Do not apply this entire branch through the general backend deployment instructions below: existing grading invokes model retuning, and the owner has frozen model changes. Never run application initialization against preserved historical databases.
 
 ## Core Capabilities
 
 - **Always-on live refresh**: background runtime updates snapshots without manual button clicks.
-- **Live + upcoming views**: top-nav dashboard tabs for active and next tournament contexts.
+- **Matchup workspace**: Markets / My card / Results, with upcoming/in-play event context and separate 72-hole, 18-hole, group and other markets.
 - **Quant model pipeline**: course fit, form, and momentum blended into composite rankings.
 - **Odds + value detection**: compares model probabilities vs sportsbook odds across placements and matchups.
 - **Autoresearch control plane**: walk-forward evaluation, Optuna studies, and guarded strategy iteration.
-- **Post-event learning**: grading, calibration tracking, and model adaptation feedback loops.
+- **Read-only evaluation**: market coverage, stored outcomes and original forecast calibration. Existing post-event adaptation remains a separate mutating workflow; this release does not alter or expand it.
 
 ## Requirements
 
@@ -23,7 +25,7 @@ For a product-level overview, see [`ABOUT.md`](ABOUT.md).
 | `DATAGOLF_API_KEY` | Yes | [datagolf.com/api-access](https://datagolf.com/api-access) |
 | `OPENAI_API_KEY` | Optional | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | `ANTHROPIC_API_KEY` | Optional | [console.anthropic.com](https://console.anthropic.com) |
-| `ODDS_API_KEY` | Optional | [the-odds-api.com](https://the-odds-api.com/) — unlocks outright / top-5 / top-10 / make-cut picks; without it, only head-to-head matchup picks appear |
+| `ODDS_API_KEY` | Optional legacy adapter | [the-odds-api.com](https://the-odds-api.com/); the audited `GolfModelService` odds path uses DataGolf. |
 
 Optional:
 - `AI_BRAIN_PROVIDER` (`openai`, `anthropic`, `gemini`)
@@ -31,14 +33,9 @@ Optional:
 - `QUIET_DEV_ACCESS_LOGS=1` (reduce local access-log noise)
 - `LIVE_REFRESH_ENABLED=0` (hard kill switch for live-refresh runtime)
 
-### Enable placement-market picks (`ODDS_API_KEY`)
+### Odds coverage
 
-Matchup (head-to-head) picks use Data Golf odds and work with `DATAGOLF_API_KEY` alone. To also surface **outright winner**, **top 5**, **top 10**, and **make cut** value bets:
-
-1. Create a free account at [the-odds-api.com](https://the-odds-api.com/).
-2. Copy your API key from the dashboard.
-3. Open `.env` in the project root and add: `ODDS_API_KEY=your_key_here`
-4. Restart the backend (`python3 app.py` locally, or `systemctl restart golf-dashboard` on the server).
+The audited `GolfModelService` fetches matchup and placement odds through DataGolf adapters. A legacy Odds API key alone does not establish that a market is available. Check the published snapshot's market diagnostics and the configured provider's coverage before changing credentials or runtime settings. The [project map](docs/audits/2026-10-13-project-map.md) records the inspected source path.
 
 ## Quick Start
 
@@ -85,12 +82,12 @@ Use this sequence before assuming matchup generation is broken:
 
 ## Dashboard UX
 
-- Top navigation (no side nav for primary workflow)
-- Primary tabs:
-  - **Live Tournament**
-  - **Upcoming Tournament**
-- Manual controls moved to **Ops** tab to keep core views clean
-- Visibility-aware polling to reduce hidden-tab API traffic
+- **Markets**: compare original quotes/probabilities by duration, player and bookmaker; distinguish unavailable, stale and research-only records.
+- **My card**: browser-local saved quote snapshots, CSV export, and selected-pick sharing. Create a read-only link or copy recipient-ready text with the original prices and source times. Saving does not place a wager; shared snapshots do not claim current availability or verified execution.
+- **Results**: market-level stored outcomes, coverage limitations and forecast calibration. The active database is not the full season.
+- **More tools**: retained player research, comparisons, event archive, lab and system tools.
+- Responsive light/dark layouts and self-hosted fonts. Existing models, probabilities and historical outcomes remain unchanged by this UI release.
+- Route-scoped requests, cancellation on navigation, bounded read deadlines and reduced idle polling keep card work independent of live feeds. The [experience audit](docs/audits/2026-10-13-experience-performance.md) records measured delivery costs and remaining backend work.
 
 ## Deployment (Hetzner-friendly)
 

@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -11,7 +12,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
 import { mergeLabSnapshotSections } from "@/lib/lab-snapshot"
-import { POLLING, SUSTAINED_FAILURE_THRESHOLD } from "@/lib/query-polling"
+import { SUSTAINED_FAILURE_THRESHOLD } from "@/lib/query-polling"
 import type {
   LiveRefreshSnapshot,
   LiveRefreshSnapshotResponse,
@@ -20,6 +21,7 @@ import type {
 } from "@/lib/types"
 import { readIdbWarmSnapshotEnvelope, writeIdbWarmSnapshotEnvelope } from "@/lib/warm-snapshot-idb"
 import { readWarmSnapshotEnvelope, writeWarmSnapshotEnvelope } from "@/lib/warm-snapshot"
+import { IDLE_SNAPSHOT_POLL_MS, refreshIsActive, snapshotPollInterval, statusPollInterval } from "./live-snapshot-polling"
 
 export type RuntimeStatus = {
   label: string
@@ -86,48 +88,77 @@ export function LiveSnapshotProvider({
   const tabPollingSuspended = useTabPollingSuspended()
   const warmEnvelope = useMemo(() => readWarmSnapshotEnvelope(), [])
   const [idbEnvelope, setIdbEnvelope] = useState<LiveRefreshSnapshotResponse | null>(null)
+  const [lastGoodEnvelope, setLastGoodEnvelope] = useState<LiveRefreshSnapshotResponse | null>(null)
 
   useEffect(() => {
     void readIdbWarmSnapshotEnvelope().then(setIdbEnvelope)
   }, [])
 
-  const summaryQuery = useQuery({
-    queryKey: ["live-refresh-summary"],
-    queryFn: api.getLiveRefreshSummary,
-    refetchInterval: tabPollingSuspended ? false : POLLING.liveSnapshot,
+  const liveRefreshStatusQuery = useQuery({
+    // Share the same status cache as the results/tools panels. Manual refresh
+    // changes cadence, not the identity of the resource being requested.
+    queryKey: ["live-refresh-status"],
+    queryFn: api.getLiveRefreshStatus,
+    enabled: !tabPollingSuspended,
+    refetchInterval: query => statusPollInterval(query.state.data, manualRefreshPending, tabPollingSuspended),
     placeholderData: keepPreviousData,
-    initialData: warmEnvelope ?? idbEnvelope ?? undefined,
   })
+  const refreshing = refreshIsActive(liveRefreshStatusQuery.data, manualRefreshPending)
 
   const liveSnapshotQuery = useQuery({
     queryKey: ["live-refresh-snapshot"],
     queryFn: api.getLiveRefreshSnapshot,
-    refetchInterval: tabPollingSuspended ? false : POLLING.liveSnapshot,
+    enabled: !tabPollingSuspended,
+    refetchInterval: query => snapshotPollInterval({
+      envelope: query.state.data,
+      updatedAt: query.state.dataUpdatedAt,
+      refreshing,
+      hidden: tabPollingSuspended,
+    }),
     placeholderData: keepPreviousData,
     initialData: warmEnvelope ?? idbEnvelope ?? undefined,
+    initialDataUpdatedAt: 0,
   })
+  const wasRefreshing = useRef(refreshing)
+  const refetchSnapshot = liveSnapshotQuery.refetch
+  useEffect(() => {
+    // Fetch the completed cycle immediately rather than switching to the idle
+    // interval while the screen still holds the previous cycle's snapshot.
+    if (wasRefreshing.current && !refreshing && !tabPollingSuspended) {
+      void refetchSnapshot()
+    }
+    wasRefreshing.current = refreshing
+  }, [refreshing, tabPollingSuspended, refetchSnapshot])
 
-  const liveRefreshStatusQuery = useQuery({
-    queryKey: ["live-refresh-status", manualRefreshPending],
-    queryFn: api.getLiveRefreshStatus,
-    refetchInterval: (query) => {
-      if (tabPollingSuspended) return false
-      const data = query.state.data
-      const pr = data?.status?.progress?.refresh_state
-      if (manualRefreshPending || data?.status?.running || pr === "busy") {
-        return POLLING.liveRefreshStatusBusy
-      }
-      return POLLING.liveRefreshStatusIdle
-    },
+  // The "summary" contains another full snapshot. Fetch it only to recover
+  // display context when the authoritative contract cannot provide a board.
+  const summaryNeeded = !liveSnapshotQuery.isPending
+    && (liveSnapshotQuery.isError || !liveSnapshotQuery.data?.snapshot || liveSnapshotQuery.data?.ok === false)
+  const summaryQuery = useQuery({
+    queryKey: ["live-refresh-summary"],
+    queryFn: api.getLiveRefreshSummary,
+    enabled: !tabPollingSuspended && summaryNeeded,
+    staleTime: IDLE_SNAPSHOT_POLL_MS,
+    refetchInterval: !tabPollingSuspended && summaryNeeded ? IDLE_SNAPSHOT_POLL_MS : false,
     placeholderData: keepPreviousData,
   })
 
+  const receivedEnvelope = liveSnapshotQuery.data?.snapshot
+    ? liveSnapshotQuery.data
+    : summaryNeeded && summaryQuery.data?.snapshot ? summaryQuery.data : null
+  // Retain the last complete payload when a later contract intentionally hides
+  // stale rows. React Query shares unchanged snapshot objects between polls;
+  // age-only envelope changes need neither another state update nor disk writes.
+  if (receivedEnvelope?.snapshot && receivedEnvelope.snapshot !== lastGoodEnvelope?.snapshot) {
+    setLastGoodEnvelope(receivedEnvelope)
+  }
+
   const envelope = liveSnapshotQuery.data
-  const summaryEnvelope = summaryQuery.data
+  const summaryEnvelope = summaryNeeded ? summaryQuery.data : undefined
   const contractSnapshot = envelope?.ok === false ? null : envelope?.snapshot ?? null
   const summarySnapshot = summaryEnvelope?.snapshot ?? null
   const warmSnapshot =
-    warmEnvelope?.snapshot ?? idbEnvelope?.snapshot ?? null
+    lastGoodEnvelope?.snapshot ?? warmEnvelope?.snapshot ?? idbEnvelope?.snapshot ?? null
   const displaySnapshot = contractSnapshot ?? summarySnapshot ?? warmSnapshot
   const dataState =
     envelope?.data_state ?? summaryEnvelope?.data_state ?? (displaySnapshot ? "stale" : null)
@@ -149,15 +180,10 @@ export function LiveSnapshotProvider({
     envelope?.stale_after_seconds ?? summaryEnvelope?.stale_after_seconds ?? null
 
   useEffect(() => {
-    const toPersist = liveSnapshotQuery.data?.snapshot
-      ? liveSnapshotQuery.data
-      : summaryQuery.data?.snapshot
-        ? summaryQuery.data
-        : null
-    if (!toPersist?.snapshot) return
-    writeWarmSnapshotEnvelope(toPersist)
-    void writeIdbWarmSnapshotEnvelope(toPersist)
-  }, [liveSnapshotQuery.data, summaryQuery.data])
+    if (!lastGoodEnvelope?.snapshot) return
+    writeWarmSnapshotEnvelope(lastGoodEnvelope)
+    void writeIdbWarmSnapshotEnvelope(lastGoodEnvelope)
+  }, [lastGoodEnvelope])
 
   const labSnapshotMerged = useMemo(() => mergeLabSnapshotSections(displaySnapshot), [displaySnapshot])
 

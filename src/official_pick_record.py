@@ -57,9 +57,14 @@ def grading_matchup_key(pick: dict) -> tuple:
 
 
 def grading_pick_identity_key(pick: dict) -> tuple:
-    """Canonical grading identity — one scored pick per player/market lane (best odds kept)."""
+    """One scored pick per tournament/player/market lane (best odds kept).
+
+    Keep tournament_id on rows spanning events: the same play in another
+    tournament is a separate prediction and can have a different outcome.
+    """
     bet_type = str(pick.get("bet_type") or "").strip().lower()
     base = (
+        str(pick.get("tournament_id") or ""),
         str(pick.get("source") or ""),
         str(pick.get("model_variant") or ""),
         bet_type,
@@ -149,6 +154,15 @@ def dedupe_picks_by_grading_identity(
     tournament_id: int | None = None,
 ) -> dict[str, int]:
     """Collapse duplicate pick rows to one per grading identity (best odds kept)."""
+    from src.history_preservation import prediction_history_preservation_enabled
+
+    if prediction_history_preservation_enabled():
+        query = "SELECT COUNT(*) FROM picks"
+        params = ()
+        if tournament_id is not None:
+            query += " WHERE tournament_id = ?"
+            params = (int(tournament_id),)
+        return {"removed": 0, "kept": conn.execute(query, params).fetchone()[0]}
     params: tuple = ()
     tournament_filter = ""
     if tournament_id is not None:
@@ -157,7 +171,7 @@ def dedupe_picks_by_grading_identity(
 
     rows = conn.execute(
         f"""
-        SELECT id, model_variant, source, bet_type, market_type, player_key, player_display,
+        SELECT id, tournament_id, model_variant, source, bet_type, market_type, player_key, player_display,
                opponent_key, opponent_display, market_odds, market_book
         FROM picks
         {tournament_filter}
@@ -174,6 +188,11 @@ def dedupe_picks_by_grading_identity(
     for row in rows:
         pick = dict(row)
         pick_id = int(pick["id"])
+        if pick.get("tournament_id") is None:
+            # Unknown event identity cannot prove two stored picks are the same
+            # play. Preserve legacy rows and their outcomes for reconciliation.
+            keep_ids.add(pick_id)
+            continue
         odds_by_id[pick_id] = pick.get("market_odds")
         key = grading_pick_identity_key(pick)
         existing_id = indexes.get(key)

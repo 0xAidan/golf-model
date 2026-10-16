@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "state": "recovered_source_inventory",
+  "as_of": "2026-10-16",
+  "basis": "Preserved source artifacts; versions, refreshes and research rows are not independent wagers.",
+  "summary": {
+    "complete_card_versions": 233,
+    "named_event_labels": 30,
+    "complete_notices_without_indexed_forecasts": 9,
+    "indexed_observations": 12707,
+    "payloads_with_observations": 355,
+    "distinct_preserved_payloads": 5055
+  },
+  "events": [
+    {
+      "label": "WM Phoenix Open",
+      "card_versions": 2,
+      "first_generated": "2026-02-07T14:34",
+      "last_generated": "2026-02-07T15:23",
+      "missing_generated_n": 0,
+      "observations": 69,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "AT&T Pebble Beach Pro-Am",
+      "card_versions": 5,
+      "first_generated": "2026-02-11T15:17",
+      "last_generated": "2026-02-15T16:55",
+      "missing_generated_n": 0,
+      "observations": 289,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "The Genesis Invitational",
+      "card_versions": 7,
+      "first_generated": "2026-02-15T19:18",
+      "last_generated": "2026-02-17T15:04",
+      "missing_generated_n": 0,
+      "observations": 490,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Cognizant Classic",
+      "card_versions": 7,
+      "first_generated": "2026-02-23T11:23",
+      "last_generated": "2026-02-28T16:40",
+      "missing_generated_n": 0,
+      "observations": 469,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Arnold Palmer Invitational",
+      "card_versions": 4,
+      "first_generated": "2026-03-04T13:54",
+      "last_generated": "2026-04-05T16:13",
+      "missing_generated_n": 0,
+      "observations": 196,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "THE PLAYERS Championship",
+      "card_versions": 6,
+      "first_generated": "2026-03-09T20:32",
+      "last_generated": "2026-03-15T19:31",
+      "missing_generated_n": 0,
+      "observations": 439,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Valspar Championship",
+      "card_versions": 3,
+      "first_generated": "2026-03-16T13:52",
+      "last_generated": "2026-03-18T17:29",
+      "missing_generated_n": 0,
+      "observations": 174,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Texas Children's Houston Open",
+      "card_versions": 9,
+      "first_generated": "2026-03-23T12:51",
+      "last_generated": "2026-03-25T22:59",
+      "missing_generated_n": 1,
+      "observations": 413,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Valero Texas Open",
+      "card_versions": 4,
+      "first_generated": "2026-03-30T12:22",
+      "last_generated": "2026-04-01T13:27",
+      "missing_generated_n": 0,
+      "observations": 177,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Masters Tournament",
+      "card_versions": 8,
+      "first_generated": "2026-04-06T12:32",
+      "last_generated": "2026-08-23T18:48",
+      "missing_generated_n": 0,
+      "observations": 274,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "RBC Heritage",
+      "card_versions": 7,
+      "first_generated": "2026-04-13T13:43",
+      "last_generated": "2026-08-23T18:50",
+      "missing_generated_n": 0,
+      "observations": 203,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Cadillac Championship",
+      "card_versions": 1,
+      "first_generated": "2026-04-29T18:50",
+      "last_generated": "2026-04-29T18:50",
+      "missing_generated_n": 0,
+      "observations": 41,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Truist Championship",
+      "card_versions": 3,
+      "first_generated": "2026-05-04T18:37",
+      "last_generated": "2026-05-06T11:34",
+      "missing_generated_n": 0,
+      "observations": 85,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "RBC Canadian Open",
+      "card_versions": 2,
+      "first_generated": "2026-06-14T22:43",
+      "last_generated": "2026-06-14T22:43",
+      "missing_generated_n": 0,
+      "observations": 70,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "U.S. Open",
+      "card_versions": 13,
+      "first_generated": "2026-06-14T23:51",
+      "last_generated": "2026-08-23T18:49",
+      "missing_generated_n": 0,
+      "observations": 286,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Travelers Championship",
+      "card_versions": 13,
+      "first_generated": "2026-06-18T23:58",
+      "last_generated": "2026-06-29T13:00",
+      "missing_generated_n": 0,
+      "observations": 303,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "John Deere Classic",
+      "card_versions": 12,
+      "first_generated": "2026-06-25T23:45",
+      "last_generated": "2026-07-05T22:16",
+      "missing_generated_n": 0,
+      "observations": 344,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Genesis Scottish Open",
+      "card_versions": 12,
+      "first_generated": "2026-07-02T23:55",
+      "last_generated": "2026-07-12T19:03",
+      "missing_generated_n": 0,
+      "observations": 285,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "The Open Championship",
+      "card_versions": 12,
+      "first_generated": "2026-07-09T23:47",
+      "last_generated": "2026-07-19T19:42",
+      "missing_generated_n": 0,
+      "observations": 310,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "ISCO Championship",
+      "card_versions": 2,
+      "first_generated": "2026-07-12T23:50",
+      "last_generated": "2026-07-12T23:51",
+      "missing_generated_n": 0,
+      "observations": 75,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "3M Open",
+      "card_versions": 12,
+      "first_generated": "2026-07-16T23:43",
+      "last_generated": "2026-07-26T22:17",
+      "missing_generated_n": 0,
+      "observations": 300,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Rocket Classic",
+      "card_versions": 13,
+      "first_generated": "2026-07-23T23:14",
+      "last_generated": "2026-08-03T01:43",
+      "missing_generated_n": 0,
+      "observations": 404,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Wyndham Championship",
+      "card_versions": 13,
+      "first_generated": "2026-07-30T23:19",
+      "last_generated": "2026-08-10T01:04",
+      "missing_generated_n": 0,
+      "observations": 370,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "FedEx St. Jude Championship",
+      "card_versions": 11,
+      "first_generated": "2026-08-06T23:50",
+      "last_generated": "2026-08-16T22:39",
+      "missing_generated_n": 0,
+      "observations": 273,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "BMW Championship",
+      "card_versions": 11,
+      "first_generated": "2026-08-13T23:04",
+      "last_generated": "2026-08-23T22:44",
+      "missing_generated_n": 0,
+      "observations": 290,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "TOUR Championship",
+      "card_versions": 9,
+      "first_generated": "2026-08-20T23:56",
+      "last_generated": "2026-08-27T01:57",
+      "missing_generated_n": 0,
+      "observations": 211,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Biltmore Championship Asheville",
+      "card_versions": 4,
+      "first_generated": "2026-08-27T01:56",
+      "last_generated": "2026-09-13T01:33",
+      "missing_generated_n": 0,
+      "observations": 116,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Bank of Utah Championship",
+      "card_versions": 6,
+      "first_generated": "2026-10-01T23:19",
+      "last_generated": "2026-10-05T00:38",
+      "missing_generated_n": 0,
+      "observations": 219,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Baycurrent Classic",
+      "card_versions": 12,
+      "first_generated": "2026-10-01T23:19",
+      "last_generated": "2026-10-11T21:02",
+      "missing_generated_n": 0,
+      "observations": 288,
+      "status": "publication_unverified"
+    },
+    {
+      "label": "Butterfield Bermuda Championship",
+      "card_versions": 10,
+      "first_generated": "2026-10-08T23:25",
+      "last_generated": "2026-10-16T01:10",
+      "missing_generated_n": 0,
+      "observations": 312,
+      "status": "publication_unverified"
+    }
+  ],
+  "observation_kinds": {
+    "ai_recommendation": 54,
+    "matchup_projection": 277,
+    "priced_prediction": 2330,
+    "qualitative_prediction": 2366,
+    "ranking": 6890,
+    "ranking_frozen_pre_teeoff_rankings": 204,
+    "ranking_live_rankings": 216,
+    "ranking_pre_tournament_rankings": 216,
+    "saved_market_prediction": 154
+  },
+  "sources": {
+    "markdown_index_sha256": "84fef02145352ae80430a9a69a73e0c527dc8902c84e29133c85f7feef163492",
+    "structured_index_sha256": "b21d156d4562528262a84988e77eb02e8b3a9f4927049dcf308d21b1acdec2bc",
+    "complete_card_inventory_sha256": "16425d8eda0388a460976ba441ff0628e2516d2d9348d51b9a58ef8d3257fd2b"
+  },
+  "qualification": {
+    "publication_verified": false,
+    "independent_bet_count": null,
+    "roi_pct": null,
+    "clv_pct": null,
+    "generation_timezone": "unknown"
+  },
+  "additional_evidence": [
+    {
+      "label": "Charles Schwab Challenge",
+      "kind": "saved_api_response",
+      "ranking_rows": 132,
+      "frozen_ranking_rows": 132,
+      "status": "capture_verified_publication_unverified",
+      "source_sha256": "9fb269051e7e3b7593e72f0a2f7361b53f894f2a672407627f2d20120778c31e"
+    },
+    {
+      "label": "the Memorial Tournament",
+      "kind": "saved_api_subtree",
+      "ranking_rows": 72,
+      "frozen_ranking_rows": 72,
+      "status": "capture_verified_publication_unverified",
+      "source_sha256": "a42486578feab0a5ad4ef85fa3eeeeb17f91998c1cfe87b14a92df45f518708a"
+    },
+    {
+      "label": "RBC Canadian Open",
+      "kind": "saved_api_subtree",
+      "ranking_rows": 72,
+      "frozen_ranking_rows": null,
+      "status": "capture_verified_publication_unverified",
+      "source_sha256": "b6294332d54bac890f4799a911972f18ce68d0b849f2ce75691e34e8b6b0d54a"
+    }
+  ],
+  "gaps": [
+    "PGA Championship: full original field snapshot remains missing; a partial May 12 screenshot survives.",
+    "Cloud-only research files and bounded filesystem listings remain outside confirmed recovery.",
+    "No original 2025 published card was confirmed. Historical round inputs are a separate evidence class.",
+    "Damaged-database salvage is preserved separately and excluded from verified performance and promotion."
+  ],
+  "notes": [
+    "Dates are source-written generation labels with unknown timezone, not official event dates or publication proof.",
+    "Event titles are source labels. Restored or stale cards can carry an event title on an unrelated date.",
+    "Every conflicting version remains in the private evidence archive; identical bytes share one payload.",
+    "The smaller performance cohort has separate timing, event identity, price and settlement requirements."
+  ]
+}

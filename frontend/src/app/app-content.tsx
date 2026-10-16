@@ -31,15 +31,16 @@ import { POLLING } from "@/lib/query-polling"
 import { useLocalStorageState } from "@/lib/storage"
 import type { CompositePlayer, FlattenedSecondaryBet, PredictionRunRequest, PredictionRunResponse } from "@/lib/types"
 import { useLiveSnapshot } from "@/providers/live-snapshot-provider"
-import { CockpitLabPage } from "@/pages/cockpit-lab-page"
-import { PredictionWorkspacePage, type PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
+import type { PredictionWorkspacePageProps } from "@/pages/prediction-workspace-page"
 
-// Code-split heavy / rarely-visited routes. The default "/" route
-// (PredictionWorkspacePage) and the primary Picks route stay eager so the
-// dashboard boots without a Suspense flicker. Players, Results,
-// and Champion-Challenger are all secondary nav targets — the operator
-// clicks into them, so a single network round-trip on first visit is
-// acceptable and trims ~400-600 kB off the initial bundle.
+// The matchup desk now owns the home route. Load legacy workspaces and their
+// charts only on the routes that use them, keeping system/results visits light.
+const PredictionWorkspacePage = lazyWithRetry(() =>
+  import("@/pages/prediction-workspace-page").then((mod) => ({ default: mod.PredictionWorkspacePage })),
+)
+const CockpitLabPage = lazyWithRetry(() =>
+  import("@/pages/cockpit-lab-page").then((mod) => ({ default: mod.CockpitLabPage })),
+)
 const PlayersPage = lazyWithRetry(() =>
   import("@/pages/players-page").then((mod) => ({ default: mod.PlayersPage })),
 )
@@ -1152,18 +1153,24 @@ export function AppContent({
       <Routes>
         <Route
           path="/"
-          element={withRouteRecovery(<PredictionWorkspacePage {...cockpitWorkspaceProps} />)}
+          element={withRouteRecovery(
+            <Suspense fallback={<RouteFallback />}>
+              <PredictionWorkspacePage {...cockpitWorkspaceProps} />
+            </Suspense>,
+          )}
         />
         <Route path="/lab/picks" element={withRouteRecovery(<Navigate to="/lab?tab=full-picks" replace />, "lab")} />
         <Route
           path="/lab"
           element={withRouteRecovery(
             COCKPIT_LAB_ENABLED ? (
-              <CockpitLabPage
-                cockpitWorkspaceProps={labBoardWorkspaceProps}
-                usingProdSnapshotFallback={labUsingProdSnapshotFallback}
-                labLanePartialSections={labLanePartialSections}
-              />
+              <Suspense fallback={<RouteFallback />}>
+                <CockpitLabPage
+                  cockpitWorkspaceProps={labBoardWorkspaceProps}
+                  usingProdSnapshotFallback={labUsingProdSnapshotFallback}
+                  labLanePartialSections={labLanePartialSections}
+                />
+              </Suspense>
             ) : (
               <Navigate to="/" replace />
             ),
@@ -1194,7 +1201,7 @@ export function AppContent({
             </div>
           )}
         />
-        <Route path="/matchups" element={withRouteRecovery(<Navigate to="/?tab=full-picks" replace />)} />
+        <Route path="/matchups" element={withRouteRecovery(<Navigate to="/markets" replace />)} />
         <Route
           path="/compare"
           element={withRouteRecovery(

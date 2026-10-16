@@ -1,0 +1,32 @@
+{
+  "id": "recovered-rounds-shadow-v2",
+  "pinned_at": "2026-10-16",
+  "target": "mean_sg_over_actual_played_rounds",
+  "tour": "pga",
+  "train_start": "2020-01-01",
+  "validation_start": "2025-01-01",
+  "test_start": "2026-01-01",
+  "test_status": "exposed_retrospective_2026_audit",
+  "selection_objective": "validation_pair_log_loss_then_sg_rmse",
+  "calibration": "four expanding event blocks, completed training events only",
+  "minimum_history_rounds": 8,
+  "minimum_event_players": 20,
+  "history": "verified calendar aligned PGA rounds; team/sealed events excluded from features and targets",
+  "course_feature": "single official calendar course only; unknown/multi-course features omitted",
+  "candidates": [
+    {"id": "sg50-prior8", "kind": "sg50_shrink", "prior_rounds": 8},
+    {"id": "recency-ridge-001", "kind": "ridge", "ridge": 0.01},
+    {"id": "recency-ridge-01", "kind": "ridge", "ridge": 0.1},
+    {"id": "recency-ridge-1", "kind": "ridge", "ridge": 1.0},
+    {"id": "spline-ridge-01", "kind": "spline_ridge", "ridge": 0.1},
+    {"id": "stumps-120", "kind": "boosted_stumps", "iterations": 120, "learning_rate": 0.05},
+    {"id": "stumps-240", "kind": "boosted_stumps", "iterations": 240, "learning_rate": 0.03}
+  ],
+  "stump_quantiles": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+  "stump_min_leaf_event_weight": 0.02,
+  "stump_leaf_l2": 0.01,
+  "bootstrap": {"unit": "paired event", "resamples": 2000, "seed": 20261016},
+  "automatic_promotion": false,
+  "market_probability": "conditional decisive finish-order shadow probability only",
+  "roi_clv_inferred": false
+}

@@ -9,6 +9,7 @@ output/archive/.
 
 import glob
 import gzip
+import hashlib
 import logging
 import os
 import shutil
@@ -16,12 +17,71 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
+
+from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
 
 logger = logging.getLogger("output_manager")
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_RESEARCH_DIR = _REPO_ROOT / "output" / "research"
 _DEFAULT_RESEARCH_ARCHIVE = _REPO_ROOT / "data" / "exports" / "research_archive"
+
+
+def _file_hash(path: Path, *, compressed: bool = False) -> str:
+    digest = hashlib.sha256()
+    opener = gzip.open if compressed else open
+    with opener(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _unique_archive_path(source: Path, destination: Path, *, compressed: bool = False) -> tuple[Path, bool]:
+    """Never replace different historical bytes, including flattened-name collisions."""
+    original_hash = _file_hash(source)
+    candidate = destination
+    while candidate.exists():
+        try:
+            if _file_hash(candidate, compressed=compressed) == original_hash:
+                return candidate, True
+        except (OSError, EOFError):
+            pass
+        suffix = original_hash if candidate == destination else f"{original_hash}.{uuid4().hex[:8]}"
+        candidate = destination.with_name(f"{destination.stem}.{suffix}{destination.suffix}")
+    return candidate, False
+
+
+def _archive_card(source: str, destination: str) -> str:
+    original = Path(source)
+    target, existing = _unique_archive_path(original, Path(destination))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not existing:
+        with original.open("rb") as raw, target.open("xb") as output:
+            shutil.copyfileobj(raw, output)
+        if _file_hash(original) != _file_hash(target):
+            raise OSError(f"Archive copy verification failed for {original}")
+        shutil.copystat(original, target)
+    if not prediction_history_preservation_enabled():
+        original.unlink()
+    return str(target)
+
+
+def write_versioned_output(path: str | Path, text: str, *, encoding: str = "utf-8") -> str:
+    """Write a new forecast artifact exclusively; return its actual versioned path."""
+    requested = Path(path)
+    if not prediction_history_preservation_enabled():
+        requested.write_text(text, encoding=encoding)
+        return str(requested)
+    candidate = requested
+    while True:
+        try:
+            with candidate.open("x", encoding=encoding) as handle:
+                handle.write(text)
+            return str(candidate)
+        except FileExistsError:
+            stamp = datetime.now(timezone.utc).strftime("%H%M%S_%f")
+            candidate = requested.with_name(f"{requested.stem}_{stamp}_{uuid4().hex[:8]}{requested.suffix}")
 
 
 def _display_path(path: Path) -> str:
@@ -58,7 +118,7 @@ def archive_previous(output_dir: str, safe_name: str, file_type: str = "card") -
             if basename.startswith("shadow_") or "_methodology" in basename:
                 continue
             dest = os.path.join(archive_dir, basename)
-            shutil.move(old_file, dest)
+            _archive_card(old_file, dest)
             logger.info("Archived %s -> archive/%s", basename, basename)
             archived += 1
         return archived
@@ -68,7 +128,7 @@ def archive_previous(output_dir: str, safe_name: str, file_type: str = "card") -
     for old_file in matches:
         basename = os.path.basename(old_file)
         dest = os.path.join(archive_dir, basename)
-        shutil.move(old_file, dest)
+        _archive_card(old_file, dest)
         logger.info("Archived %s -> archive/%s", basename, basename)
         archived += 1
     return archived
@@ -98,7 +158,7 @@ def cleanup_output_directory(output_dir: str = "output") -> dict:
     research_files = [f for f in all_files if os.path.basename(f).startswith("research_")]
     for f in research_files:
         dest = os.path.join(research_dir, os.path.basename(f))
-        shutil.move(f, dest)
+        _archive_card(f, dest)
         actions["research"].append(os.path.basename(f))
 
     remaining = [f for f in all_files if f not in research_files]
@@ -107,7 +167,7 @@ def cleanup_output_directory(output_dir: str = "output") -> dict:
     backtest_files = [f for f in remaining if "backtest" in os.path.basename(f)]
     for f in shadow_files + backtest_files:
         dest = os.path.join(archive_dir, os.path.basename(f))
-        shutil.move(f, dest)
+        _archive_card(f, dest)
         actions["archived"].append(os.path.basename(f))
 
     remaining = [f for f in remaining if f not in shadow_files and f not in backtest_files]
@@ -135,7 +195,7 @@ def cleanup_output_directory(output_dir: str = "output") -> dict:
             actions["kept"].append(os.path.basename(files[0][0]))
         for f, _, basename in files[1:]:
             dest = os.path.join(archive_dir, basename)
-            shutil.move(f, dest)
+            _archive_card(f, dest)
             actions["archived"].append(basename)
 
     return actions
@@ -167,6 +227,9 @@ def rotate_research_artifacts(
             "dry_run": dry_run,
         }
 
+    if prediction_history_preservation_enabled():
+        return preservation_skip(archived=[], archived_count=0, research_dir=str(research_path), dry_run=dry_run)
+
     archive_path.mkdir(parents=True, exist_ok=True)
     cutoff_ts = time.time() - (int(retain_days) * 86400)
     archived: list[dict[str, Any]] = []
@@ -187,7 +250,9 @@ def rotate_research_artifacts(
 
         stamp = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y%m%d")
         dest_name = f"{stamp}_{source.name}.gz"
-        dest = archive_path / dest_name
+        dest = archive_path / source.relative_to(research_path).parent / dest_name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest, already_archived = _unique_archive_path(source, dest, compressed=True)
         entry = {
             "source": _display_path(source),
             "archive": _display_path(dest),
@@ -197,20 +262,18 @@ def rotate_research_artifacts(
             continue
 
         try:
-            with open(source, "rb") as raw, gzip.open(dest, "wb", compresslevel=6) as gz:
-                shutil.copyfileobj(raw, gz)
-            if dest.stat().st_size <= 0:
-                raise OSError("empty gzip archive")
+            if not already_archived:
+                with open(source, "rb") as raw, open(dest, "xb") as output:
+                    with gzip.GzipFile(fileobj=output, mode="wb", compresslevel=6, mtime=0) as gz:
+                        shutil.copyfileobj(raw, gz)
+            if _file_hash(source) != _file_hash(dest, compressed=True):
+                raise OSError("gzip archive content verification failed")
             source.unlink()
             archived.append(entry)
             logger.info("Archived research artifact %s -> %s", source.name, dest.name)
         except OSError as exc:
             errors.append(f"archive failed for {source}: {exc}")
-            if dest.exists():
-                try:
-                    dest.unlink()
-                except OSError:
-                    pass
+            # Preserve failed artifacts for inspection; never remove an older archive.
 
     return {
         "ok": not errors,

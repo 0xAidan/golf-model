@@ -403,6 +403,7 @@ def test_slim_market_payload_stores_empty_payload_for_duplicate_snapshots(monkey
 
 
 def test_reclaim_database_disk_runs_vacuum_on_small_db(monkeypatch):
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     monkeypatch.delenv("DISK_RECLAIM_MIN_FREE_MB", raising=False)
     conn = db.get_conn()
     conn.execute("DELETE FROM market_prediction_rows")
@@ -413,7 +414,8 @@ def test_reclaim_database_disk_runs_vacuum_on_small_db(monkeypatch):
     assert result.get("bytes_before", 0) >= 0
 
 
-def test_swap_compacted_database_renames_and_drops_pre_copy(tmp_path):
+def test_swap_compacted_database_renames_and_drops_pre_copy(tmp_path, monkeypatch):
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     live = tmp_path / "golf.db"
     compact = tmp_path / "golf.db.vacuum_into"
     source = sqlite3.connect(live)

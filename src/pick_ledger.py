@@ -549,26 +549,27 @@ KEEP_LEDGER_LIFECYCLES = frozenset({
 
 
 def prune_generated_pick_ledger(*, dry_run: bool = False) -> dict[str, Any]:
-    """Delete tick-level generated ledger rows. Displayed/frozen/graded stay."""
-    if "generated" in KEEP_LEDGER_LIFECYCLES:
-        raise RuntimeError("generated must not be in KEEP_LEDGER_LIFECYCLES")
-    db.ensure_initialized()
-    conn = db.get_conn()
+    """Preserve generated picks too; lifecycle alone is never archive proof."""
+    from src.history_preservation import prediction_history_preservation_enabled, preservation_skip
+
+    if prediction_history_preservation_enabled():
+        return preservation_skip(dry_run=dry_run, deleted=0, would_delete=0)
+    # Tick-table exports do not contain ledger rows. Until an exact-rowset
+    # ledger archive contract exists, even an operator opt-out cannot delete.
+    from contextlib import closing
+    from src.cold_archive import open_readonly_database
+
+    count = 0
     try:
-        count_row = conn.execute(
-            "SELECT COUNT(*) AS c FROM pick_ledger WHERE LOWER(COALESCE(lifecycle, '')) = 'generated'"
-        ).fetchone()
-        count = int(count_row["c"] or 0) if count_row else 0
-        if dry_run:
-            return {"ok": True, "dry_run": True, "would_delete": count}
-        if count:
-            conn.execute(
-                "DELETE FROM pick_ledger WHERE LOWER(COALESCE(lifecycle, '')) = 'generated'"
-            )
-            conn.commit()
-        return {"ok": True, "deleted": count}
-    finally:
-        conn.close()
+        with closing(open_readonly_database(db.DB_PATH)) as conn:
+            count = int(conn.execute(
+                "SELECT COUNT(*) FROM pick_ledger WHERE LOWER(COALESCE(lifecycle, '')) = 'generated'"
+            ).fetchone()[0])
+    except Exception as exc:
+        return {"ok": False, "skipped": True, "dry_run": dry_run, "deleted": 0,
+                "would_delete": 0, "reason": f"ledger preview unavailable: {exc}"}
+    return {"ok": True, "skipped": True, "dry_run": dry_run, "deleted": 0,
+            "would_delete": count, "reason": "no verified same-database rowset archive for generated pick ledger"}
 
 
 def tournament_has_locked_outcomes(tournament_id: int) -> bool:

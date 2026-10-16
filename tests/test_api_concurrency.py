@@ -14,6 +14,13 @@ import pytest
 pytestmark = pytest.mark.anyio
 
 
+@pytest.fixture
+def anyio_backend():
+    # Production serves these asyncio routes with Uvicorn. These guarantees use
+    # asyncio.gather/to_thread and must run against that same event-loop backend.
+    return "asyncio"
+
+
 def _fresh_ops_cache() -> dict:
     return {
         "report": {"grading": {"status": "ok"}, "tracks": {"active": {}}},

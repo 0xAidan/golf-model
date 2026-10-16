@@ -8,8 +8,10 @@ from typing import Any
 from src.operator_contract import (
     SCHEMA_VERSION,
     BoardContract,
+    BoardMetadataContract,
     BootstrapContract,
     DataState,
+    MarketCountContract,
     OperatorMode,
     OperatorTrack,
     ReasonContract,
@@ -52,8 +54,9 @@ def _snapshot_metadata(
     *,
     stale_after_seconds: int,
     now: datetime,
+    require_timestamp: bool = True,
 ) -> tuple[dict[str, Any], DataState | None, ReasonContract | None]:
-    if not snapshot:
+    if not isinstance(snapshot, dict) or not snapshot:
         return (
             {
                 "snapshot_id": None,
@@ -76,6 +79,12 @@ def _snapshot_metadata(
         "age_seconds": age_seconds,
         "stale_after_seconds": stale_after_seconds,
     }
+    if parsed_generated_at is None and require_timestamp:
+        return (
+            source,
+            DataState.UNAVAILABLE,
+            _reason("snapshot_timestamp_invalid", "Snapshot time is missing or invalid; freshness cannot be verified."),
+        )
     if age_seconds is not None and age_seconds > stale_after_seconds:
         return (
             source,
@@ -91,7 +100,8 @@ def _string_or_none(value: object) -> str | None:
 
 
 def _section_event_id(section: dict[str, Any]) -> str | None:
-    eligibility = section.get("eligibility") or {}
+    eligibility = section.get("eligibility")
+    eligibility = eligibility if isinstance(eligibility, dict) else {}
     return _string_or_none(
         section.get("source_event_id")
         or section.get("tournament_id")
@@ -106,7 +116,7 @@ def _eligible_section(
 ) -> ReasonContract | None:
     eligibility = section.get("eligibility")
     if not isinstance(eligibility, dict) or eligibility.get("verified") is not True:
-        code = str((eligibility or {}).get("code") or "field_verification_failed")
+        code = str(eligibility.get("code") or "field_verification_failed") if isinstance(eligibility, dict) else "field_verification_failed"
         return _reason(code, "Board rows are withheld until field verification succeeds.")
 
     section_event_id = _section_event_id(section)
@@ -125,6 +135,53 @@ def _rows(section: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return [dict(row) for row in raw_rows if isinstance(row, dict)]
 
 
+def _value_rows(section: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten display markets without changing any supplied pricing fields."""
+    value_bets = section.get("value_bets")
+    if not isinstance(value_bets, dict):
+        return _rows(section, "value_bets")
+    rows: list[dict[str, Any]] = []
+    for market, raw_rows in value_bets.items():
+        if not isinstance(market, str) or not market.strip() or not isinstance(raw_rows, list):
+            continue
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                continue
+            row = dict(raw)
+            if not row.get("bet_type"):
+                row["bet_type"] = market
+            rows.append(row)
+    return rows
+
+
+def _display_metadata(section: dict[str, Any]) -> BoardMetadataContract:
+    """Allowlist ingest counts; research rows never become executable picks."""
+    metadata: BoardMetadataContract = {}
+    diagnostics = section.get("diagnostics")
+    market_counts = diagnostics.get("market_counts") if isinstance(diagnostics, dict) else None
+    if isinstance(market_counts, dict):
+        counts: dict[str, MarketCountContract] = {}
+        for market, raw in market_counts.items():
+            if not isinstance(market, str) or not isinstance(raw, dict):
+                continue
+            entry: MarketCountContract = {}
+            raw_rows = raw.get("raw_rows")
+            if type(raw_rows) is int and raw_rows >= 0:
+                entry["raw_rows"] = raw_rows
+            reason_code = raw.get("reason_code")
+            if "reason_code" in raw and (reason_code is None or isinstance(reason_code, str)):
+                entry["reason_code"] = reason_code
+            if entry:
+                counts[market] = entry
+        metadata["market_counts"] = counts
+    shadow_groups = section.get("live_groups_shadow")
+    if isinstance(shadow_groups, list):
+        metadata["research_counts"] = {
+            "live_groups_shadow": sum(isinstance(row, dict) for row in shadow_groups),
+        }
+    return metadata
+
+
 def _board(
     *,
     track: OperatorTrack,
@@ -135,6 +192,7 @@ def _board(
     reason: ReasonContract,
 ) -> BoardContract:
     safe_section = section or {}
+    eligibility = safe_section.get("eligibility")
     return {
         "schema_version": SCHEMA_VERSION,
         "track": track,
@@ -147,7 +205,7 @@ def _board(
             "course_name": _string_or_none(safe_section.get("course_name")),
         },
         "source": {**source, "section": section_name_for(track, mode)},
-        "eligibility": dict(safe_section.get("eligibility") or {}),
+        "eligibility": dict(eligibility) if isinstance(eligibility, dict) else {},
         "rankings": [],
         "leaderboard": [],
         "picks": {"matchups": [], "value_bets": []},
@@ -171,6 +229,7 @@ def build_board(
         snapshot,
         stale_after_seconds=stale_after_seconds,
         now=current_time,
+        require_timestamp=mode != "past",
     )
     if split_brain_reasons:
         return _board(
@@ -217,8 +276,8 @@ def build_board(
 
     rankings = _rows(section, "rankings")
     leaderboard = _rows(section, "leaderboard")
-    matchups = _rows(section, "matchup_bets")
-    value_bets = _rows(section, "value_bets")
+    matchups = _rows(section, "matchup_bets_all_books") or _rows(section, "matchup_bets")
+    value_bets = _value_rows(section)
     if snapshot_state == DataState.STALE:
         state = DataState.STALE
         reason = snapshot_reason or _reason("snapshot_stale", "Snapshot stale.")
@@ -243,6 +302,9 @@ def build_board(
     board["rankings"] = rankings
     board["leaderboard"] = leaderboard
     board["picks"] = {"matchups": matchups, "value_bets": value_bets}
+    metadata = _display_metadata(section)
+    if metadata:
+        board["metadata"] = metadata
     return board
 
 

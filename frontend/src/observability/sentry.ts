@@ -15,6 +15,8 @@ export const getRelease = (): string => import.meta.env.VITE_APP_RELEASE || "unk
 const scrubUrl = (value: string): string => {
   try {
     const url = new URL(value, window.location.origin)
+    // Shared cards live in the fragment. They must never enter telemetry.
+    url.hash = ""
     for (const [key] of url.searchParams) {
       if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
         url.searchParams.set(key, "[Filtered]")
@@ -22,11 +24,34 @@ const scrubUrl = (value: string): string => {
     }
     return url.toString()
   } catch {
-    return value
+    return value.split("#", 1)[0]
   }
 }
 
-export const scrubSentryEvent = (event: Sentry.ErrorEvent): Sentry.ErrorEvent => {
+function scrubFragments(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return value.replace(/#[^\r\n]*/g, "#[Filtered]")
+  if (!value || typeof value !== "object") return value
+  if (seen.has(value)) return "[Circular]"
+  seen.add(value)
+  const result = Array.isArray(value)
+    ? value.map(item => scrubFragments(item, seen))
+    : Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      ["url", "from", "to"].includes(key) && typeof item === "string"
+        ? scrubUrl(item)
+        : scrubFragments(item, seen),
+    ]))
+  seen.delete(value)
+  return result
+}
+
+export const scrubSentryBreadcrumb = (breadcrumb: Sentry.Breadcrumb): Sentry.Breadcrumb =>
+  scrubFragments(breadcrumb) as Sentry.Breadcrumb
+
+export const scrubSentryEvent = <T extends Sentry.Event>(event: T): T => {
+  // Apply even when request is absent: navigation breadcrumbs, tags, spans and
+  // console arguments can also contain the current URL or its fragment.
+  event = scrubFragments(event) as T
   if (!event.request) return event
 
   if (event.request.headers) {
@@ -53,6 +78,8 @@ export const initSentry = (): void => {
     release: getRelease(),
     tracesSampleRate: 0.1,
     beforeSend: scrubSentryEvent,
+    beforeSendTransaction: scrubSentryEvent,
+    beforeBreadcrumb: scrubSentryBreadcrumb,
     sendDefaultPii: false,
   })
 }

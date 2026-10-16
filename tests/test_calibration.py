@@ -7,7 +7,7 @@ from src.calibration import (
 )
 
 
-def test_get_calibration_correction_returns_float():
+def test_get_calibration_correction_returns_float(tmp_db):
     """Correction factor should always be a positive float."""
     result = get_calibration_correction(0.10)
     assert isinstance(result, float)
@@ -20,7 +20,7 @@ def test_get_calibration_correction_out_of_range():
     assert result == 1.0
 
 
-def test_update_calibration_curve_empty():
+def test_update_calibration_curve_empty(tmp_db):
     """No prediction_log data -> empty dict."""
     result = update_calibration_curve()
     assert result == {} or isinstance(result, dict)
