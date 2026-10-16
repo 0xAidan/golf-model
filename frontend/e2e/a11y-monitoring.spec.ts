@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 
 async function runAxe(page: import("@playwright/test").Page, path: "/" | "/models" | "/performance" | "/lab" | "/players" | "/results" | "/compare") {
+  const reportResponse = path === "/performance" ? page.waitForResponse(response => new URL(response.url()).pathname === "/reports/performance-2026.json") : null
   await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 })
   if (path === "/") {
     await expect(page.getByRole("heading", { name: "Rankings", exact: true })).toBeVisible({ timeout: 30_000 })
@@ -11,6 +12,10 @@ async function runAxe(page: import("@playwright/test").Page, path: "/" | "/model
     await expect(page.locator(".lw-loading")).toHaveCount(0)
     await expect(page.getByRole("heading", { name: "Model runs", exact: true })).toBeVisible()
   } else if (path === "/performance") {
+    const response = await reportResponse!
+    expect(response.status()).toBe(200)
+    expect(response.headers()["content-type"]).toContain("application/json")
+    expect(await response.json()).toMatchObject({ schema_version: 1, scopes: { "pre_event|dashboard|all": expect.any(Object) } })
     await expect(page.getByRole("heading", { name: "The event record", exact: true })).toBeVisible({ timeout: 30_000 })
   } else {
     const readyId = {

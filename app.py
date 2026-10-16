@@ -251,6 +251,17 @@ async def _mutating_api_auth(request: Request, call_next):
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
 FRONTEND_DIST_INDEX = FRONTEND_DIST_DIR / "index.html"
+
+
+class _ReportStaticFiles(StaticFiles):
+    async def check_config(self) -> None:
+        # Reports are optional before the frontend is built. Missing files must
+        # resolve to the static handler's 404 rather than the React shell.
+        if self.directory is not None and not os.path.exists(self.directory):
+            return
+        await super().check_config()
+
+
 app.mount(
     "/assets",
     ImmutableStaticFiles(directory=str(FRONTEND_DIST_DIR / "assets"), check_dir=False),
@@ -260,6 +271,11 @@ app.mount(
     "/fonts",
     StaticFiles(directory=str(FRONTEND_DIST_DIR / "fonts"), check_dir=False),
     name="frontend-fonts",
+)
+app.mount(
+    "/reports",
+    _ReportStaticFiles(directory=str(FRONTEND_DIST_DIR / "reports"), check_dir=False),
+    name="frontend-reports",
 )
 
 from src.routes.research import router as research_router
