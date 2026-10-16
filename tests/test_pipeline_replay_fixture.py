@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def fixture_db(monkeypatch):
+def fixture_db(monkeypatch, tmp_path):
     assert _FIXTURE_DB.is_file(), (
         "Missing tests/fixtures/golf_2026_one_event.db — "
         "run scripts/build_regression_fixture_db.py and commit the fixture"
@@ -26,7 +27,9 @@ def fixture_db(monkeypatch):
 
     original_path = db.DB_PATH
     original_init = db._DB_INITIALIZED
-    db.DB_PATH = str(_FIXTURE_DB)
+    working_copy = tmp_path / "golf_2026_one_event.db"
+    shutil.copy2(_FIXTURE_DB, working_copy)
+    db.DB_PATH = str(working_copy)
     db._DB_INITIALIZED = False
     db.ensure_initialized()
     with open(_FIXTURE_META, encoding="utf-8") as f:

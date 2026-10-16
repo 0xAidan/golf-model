@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import tempfile
 import pytest
@@ -61,7 +62,8 @@ def test_analytics_views_queryable(tmp_db, sample_tournament):
     assert row is not None
 
 
-def test_prune_then_vacuum(tmp_db):
+def test_prune_then_vacuum(tmp_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("PRESERVE_PREDICTION_HISTORY", "0")
     import src.db as db
 
     conn = db.get_conn()
@@ -76,13 +78,19 @@ def test_prune_then_vacuum(tmp_db):
     )
     conn.commit()
     conn.close()
+    from src.cold_archive import export_tick_tables_before_cutoff
+    exports = tmp_path / "exports"
+    monkeypatch.setenv("SNAPSHOT_ARCHIVE_EXPORTS_DIR", str(exports))
+    export_tick_tables_before_cutoff(
+        db_path=tmp_db.DB_PATH, cutoff_utc="2100-01-01T00:00:00+00:00", output_dir=exports,
+    )
     deleted = db.prune_market_prediction_rows(30)
     assert deleted >= 1
     result = db.vacuum_database()
     assert result["ok"] is True
 
 
-def test_regression_fixture_db_exists():
+def test_regression_fixture_db_exists(tmp_path):
     path = os.path.join(
         os.path.dirname(__file__),
         "fixtures",
@@ -92,7 +100,9 @@ def test_regression_fixture_db_exists():
         "Missing tests/fixtures/golf_2026_one_event.db — "
         "run scripts/build_regression_fixture_db.py and commit the fixture"
     )
-    report = build_data_health_report(db_path=path, year=2026)
+    working_copy = tmp_path / "health-fixture.db"
+    shutil.copy2(path, working_copy)
+    report = build_data_health_report(db_path=str(working_copy), year=2026)
     assert report["row_counts"]["picks"] >= 1
 
 
