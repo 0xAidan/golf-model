@@ -1201,7 +1201,7 @@ export function AppContent({
             </div>
           )}
         />
-        <Route path="/matchups" element={withRouteRecovery(<Navigate to="/?tab=full-picks" replace />)} />
+        <Route path="/matchups" element={withRouteRecovery(<Navigate to="/markets" replace />)} />
         <Route
           path="/compare"
           element={withRouteRecovery(

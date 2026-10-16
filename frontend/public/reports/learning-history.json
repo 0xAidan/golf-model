@@ -1,0 +1,43 @@
+{
+  "basis": "Dated research runs; no run was automatically promoted.",
+  "latest_report_sha256": "ce11bdcdbbb91edfffe475b675810b71c9fc740246aab840ce6545b902b8820e",
+  "notes": [
+    "Compare results only within the same protocol, source corpus and event cohort.",
+    "Several development runs on one date are not evidence of improvement over multiple weeks.",
+    "Invalidated artifacts remain preserved privately and are excluded from this view."
+  ],
+  "runs": [
+    {
+      "as_of": "2026-10-16",
+      "brier": 0.225974,
+      "comparison_group": "a8a0ae45fc0b8028609a2587f8c72353241455405beffd320f6ec6fa29c2a914",
+      "events": 37.0,
+      "forward_model_hash": "0c8ac0eb645685dd648f2e572cc81b3e60456f623b1af9ffa2095134990ebbe1",
+      "generated_at": "2026-10-16T04:14:23.272419+00:00",
+      "model_hash": "ccbdc9f0e2620f7f83f5007d2b2cb60aa6f9aa0959d8f21a5cca7009bfd1c34d",
+      "pair_log_loss": 0.642518,
+      "promotion_eligible": false,
+      "promotion_status": "research_only",
+      "protocol_hash": "71f9706ee1e0c9ff6581f0e61dc54751f9e254dc3ca2362b6849f9fc2d18a852",
+      "report_sha256": "ce11bdcdbbb91edfffe475b675810b71c9fc740246aab840ce6545b902b8820e",
+      "run_id": "20261016-3b828fe0d23747a7",
+      "schema_version": 2,
+      "sg_rmse": 1.642753,
+      "simple_prior_log_loss": 0.656387,
+      "state": "completed",
+      "test_status": "exposed_retrospective"
+    }
+  ],
+  "schema_version": 1,
+  "state": "available",
+  "summary": {
+    "comparable_groups": 1,
+    "displayed_runs": 1,
+    "excluded": {
+      "invalidated_artifact": 5
+    },
+    "total_runs": 1,
+    "truncated": false,
+    "weeks_observed": 1
+  }
+}

@@ -1,8 +1,19 @@
 import type { OperatorBoard } from "@/features/operator-data/operator-api"
 
-export type MarketFamily = "72h" | "18h" | "group" | "other"
+export type MarketFamily = "72h" | "18h" | "group" | "outright" | "top5" | "top10" | "top20" | "frl" | "make_cut" | "miss_cut" | "other"
 export const MARKET_LABELS: Record<MarketFamily, string> = {
-  "72h": "72 holes", "18h": "18 holes", group: "Groups", other: "Other markets",
+  "72h": "72 holes", "18h": "18 holes", group: "Groups", outright: "Outrights",
+  top5: "Top 5", top10: "Top 10", top20: "Top 20", frl: "First-round leader",
+  make_cut: "Make cut", miss_cut: "Miss cut", other: "Other markets",
+}
+export const MARKET_FAMILIES = Object.keys(MARKET_LABELS) as MarketFamily[]
+export const VISIBLE_MARKETS_KEY = "golf-model.visible-markets.v1"
+export function readVisibleMarkets(): MarketFamily[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(VISIBLE_MARKETS_KEY) || "null")
+    if (Array.isArray(value) && value.every(v => MARKET_FAMILIES.includes(v))) return [...new Set(value)] as MarketFamily[]
+  } catch { /* A blocked preference store must not block the market board. */ }
+  return [...MARKET_FAMILIES]
 }
 export type DeskRow = {
   id: string; eventId: string; eventName: string; mode: string; market: MarketFamily;
@@ -19,6 +30,13 @@ function roundIdentity(raw: Record<string, unknown>, type: string): string {
 }
 export function marketFamily(value: unknown): MarketFamily {
   const v = str(value).toLowerCase().replace(/[\s-]+/g, "_")
+  if (/^(?:frl|first_round_leader|round_1_leader)$/.test(v)) return "frl"
+  if (/^top_?5(?:_finish)?$/.test(v)) return "top5"
+  if (/^top_?10(?:_finish)?$/.test(v)) return "top10"
+  if (/^top_?20(?:_finish)?$/.test(v)) return "top20"
+  if (/^(?:win|winner|outright|outrights)$/.test(v)) return "outright"
+  if (/^make_?cut$/.test(v)) return "make_cut"
+  if (/^miss_?cut$/.test(v)) return "miss_cut"
   if (/three_?ball|3_?ball|group|two_?ball|2_?ball/.test(v)) return "group"
   if (/round|18_?h|18_?hole/.test(v)) return "18h"
   if (/tournament.*(matchup|h2h)|72_?h|72_?hole/.test(v)) return "72h"
@@ -26,6 +44,9 @@ export function marketFamily(value: unknown): MarketFamily {
 }
 export function boardRows(board: OperatorBoard | undefined): DeskRow[] {
   if (!board || ["unavailable", "error"].includes(board.state)) return []
+  if (board.eligibility?.verified !== true) return []
+  const fieldEventId = board.eligibility.field_event_id
+  if (fieldEventId != null && String(fieldEventId) !== String(board.event.event_id)) return []
   const items = [...board.picks.matchups, ...board.picks.value_bets]
   const result = new Map<string, DeskRow>()
   for (const raw of items) {
@@ -48,7 +69,7 @@ export function boardRows(board: OperatorBoard | undefined): DeskRow[] {
     // Keep existing saved-card identities stable when no upstream market ID exists.
     if (marketId) identity.push(marketId)
     const id = JSON.stringify(identity)
-    const research = raw.shadow_only === true || raw.research_only === true || /shadow|research|simulated/i.test(str(raw.market_provenance))
+    const research = raw.shadow_only === true || raw.research_only === true || /shadow|research|simulated|synthetic/i.test(str(raw.market_provenance)) || /^(?:dg|data[\s_]?golf|model|synthetic)$/i.test(book.trim())
     result.set(id, {
       id, eventId, eventName: board.event.event_name || "Unknown event", mode: board.mode,
       market, marketType: type, round, player, playerKey, opponent,
@@ -81,7 +102,7 @@ export function readSavedCard(): SavedPick[] {
     const value: unknown = JSON.parse(localStorage.getItem(CARD_KEY) || "[]")
     return Array.isArray(value) ? value.filter((v): v is SavedPick => !!v && typeof v === "object" &&
       ["id", "player", "eventId", "eventName", "mode", "marketType", "round", "playerKey", "opponent", "book", "odds", "reason", "savedAt"].every(key => typeof v[key] === "string") &&
-      ["72h", "18h", "group", "other"].includes(v.market) &&
+      MARKET_FAMILIES.includes(v.market) &&
       (v.probability === null || (typeof v.probability === "number" && Number.isFinite(v.probability) && v.probability >= 0 && v.probability <= 1)) &&
       (v.ev === null || (typeof v.ev === "number" && Number.isFinite(v.ev))) &&
       (v.snapshotAt === null || typeof v.snapshotAt === "string") && (v.lineAt === null || typeof v.lineAt === "string")) : []

@@ -33,6 +33,13 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("shared snapshot preservation", () => {
+  it("preserves both legacy catch-all placement cards and explicit market cards", async () => {
+    for (const market of ["other", "top20"] as const) {
+      const original = pick({ market, marketType: "top_20", opponent: "" })
+      const decoded = await decodeSharedCard(await encodeSharedCard(createSharedCard([original], sharedAt)))
+      expect(decoded.picks).toEqual([original])
+    }
+  })
   it("round-trips every original field, unicode, prices and timestamp precision through gzip", async () => {
     const input = [pick(), pick({ market: "18h", marketType: "round_matchups", round: "2", odds: "-105" })]
     const before = structuredClone(input)

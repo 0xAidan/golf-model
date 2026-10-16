@@ -27,6 +27,9 @@ import {
   formatPrice,
   formatProbability,
   MARKET_LABELS,
+  MARKET_FAMILIES,
+  VISIBLE_MARKETS_KEY,
+  readVisibleMarkets,
   readSavedCard,
   type DeskRow,
   type MarketFamily,
@@ -417,8 +420,10 @@ function MarketBoard({
   save: (row: DeskRow) => void
 }) {
   const [params, setParams] = useSearchParams()
+  const [visibleMarkets, setVisibleMarkets] = useState(readVisibleMarkets)
+  const [preferenceError, setPreferenceError] = useState(false)
   const market = (
-    ["72h", "18h", "group", "other"].includes(params.get("market") || "")
+    MARKET_FAMILIES.includes(params.get("market") as MarketFamily)
       ? params.get("market")
       : "72h"
   ) as MarketFamily
@@ -457,6 +462,14 @@ function MarketBoard({
   const activeFilters = !!search || !!book || minEdge !== 0
   const savedIds = new Set(savedCard.map((row) => row.id))
   const unavailable = board?.state === "unavailable" || board?.state === "error"
+  const marketEnabled = visibleMarkets.includes(market)
+  const firstAvailable = MARKET_FAMILIES.find(family => rows.some(row => row.market === family))
+  function toggleMarket(key: MarketFamily, enabled: boolean) {
+    const next = MARKET_FAMILIES.filter(family => family === key ? enabled : visibleMarkets.includes(family))
+    setVisibleMarkets(next)
+    try { localStorage.setItem(VISIBLE_MARKETS_KEY, JSON.stringify(next)); setPreferenceError(false) }
+    catch { setPreferenceError(true) }
+  }
   function switchMarket(next: MarketFamily) {
     const p = new URLSearchParams(params)
     p.set("market", next)
@@ -468,21 +481,29 @@ function MarketBoard({
       <section className="md-market-section" aria-label="Market board">
         <div className="md-section-title">
           <div>
-            <h1>Find your matchups.</h1>
-            <p>The price, the model, and the case for each side.</p>
+            <h1>Find your markets.</h1>
+            <p>The price, the model, and the case for each selection.</p>
           </div>
-          <span className="md-total">
+          {firstAvailable && !marketRows.length ? <button className="md-total md-available-quotes" onClick={() => { if (!visibleMarkets.includes(firstAvailable)) toggleMarket(firstAvailable, true); switchMarket(firstAvailable) }}>View {rows.length} {rows.length === 1 ? "quote" : "quotes"} <ArrowRight size={14}/></button> : <span className="md-total">
             {loading
               ? "Loading"
               : `${rows.length} ${rows.length === 1 ? "quote" : "quotes"}`}
-          </span>
+          </span>}
         </div>
+        <details className="md-market-settings">
+          <summary>Visible markets <span>{visibleMarkets.length} enabled</span></summary>
+          <fieldset><legend>Show these market boards on this browser</legend>
+            {MARKET_FAMILIES.map(key => <label key={key}><input type="checkbox" checked={visibleMarkets.includes(key)} onChange={e => toggleMarket(key, e.target.checked)}/>{MARKET_LABELS[key]}</label>)}
+          </fieldset>
+          <p>Visibility changes your workspace. Quotes appear when the source publishes them.</p>
+          {preferenceError && <p role="status">Browser storage is blocked. This selection applies for this session.</p>}
+        </details>
         <div
           className="md-market-tabs"
           role="group"
-          aria-label="Market duration"
+          aria-label="Market family"
         >
-          {(Object.keys(MARKET_LABELS) as MarketFamily[]).map((key) => (
+          {MARKET_FAMILIES.filter(key => visibleMarkets.includes(key)).map((key) => (
             <button
               key={key}
               aria-pressed={market === key}
@@ -537,16 +558,16 @@ function MarketBoard({
           <button
             onClick={() => updateFilter("sort", sort === "player" ? "" : "player")}
           >
-            Matchup {sort === "player" && <ArrowDown size={12} />}
+            Selection {sort === "player" && <ArrowDown size={12} />}
           </button>
           <span>Book price</span>
-          <span>Model win</span>
+          <span>Model probability</span>
           <button onClick={() => updateFilter("sort", "")}>
             Model EV {sort === "edge" && <ArrowDown size={12} />}
           </button>
           <span>Card</span>
         </div>
-        {loading ? (
+        {!marketEnabled ? <div className="md-board-empty"><h2>{MARKET_LABELS[market]} is hidden.</h2><p>Enable this board to view its published quotes. Your card is preserved.</p><button className="md-button" onClick={() => toggleMarket(market, true)}>Show {MARKET_LABELS[market]}</button></div> : loading ? (
           <div className="md-board-empty" role="status">
             <RefreshCw size={30} />
             <h2>Reading the market.</h2>
@@ -592,7 +613,7 @@ function MarketBoard({
             <Flag size={32} />
             <h2>
               {activeFilters
-                ? "No matchups fit these filters."
+                ? "No selections fit these filters."
                 : market === "group"
                   ? "No eligible group prices yet."
                   : market === "other"
@@ -626,7 +647,7 @@ function MarketBoard({
         )}
         <div className="md-board-foot">
           <span>
-            {filtered.length} displayed · {MARKET_LABELS[market]}
+            {marketEnabled ? filtered.length : 0} displayed · {MARKET_LABELS[market]}
           </span>
           <span>Prices can move. Check the book before placing a bet.</span>
         </div>
@@ -818,7 +839,7 @@ function ResultsPage({
   )
 }
 
-export function MatchupDesk() {
+export function MatchupDesk({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const location = useLocation()
   const [params, setParams] = useSearchParams()
@@ -898,7 +919,7 @@ export function MatchupDesk() {
       <a className="md-skip" href="#desk-main">
         Skip to content
       </a>
-      <header className="md-masthead">
+      {!embedded && <header className="md-masthead">
         <Link className="md-brand" to="/" aria-label="Golf Model home">
           <Flag size={24} />
           <span>
@@ -906,7 +927,7 @@ export function MatchupDesk() {
           </span>
         </Link>
         <nav aria-label="Main navigation">
-          <NavLink to={`/${location.search}`} end>
+          <NavLink to={`/markets${location.search}`} end>
             Markets
           </NavLink>
           <NavLink to={`/card${location.search}`}>
@@ -929,7 +950,7 @@ export function MatchupDesk() {
           </details>
           <ThemeToggle />
         </div>
-      </header>
+      </header>}
       {boardPage && <div className="md-event-bar">
         <div className="md-event-name">
           <span className="md-tour">PGA TOUR</span>

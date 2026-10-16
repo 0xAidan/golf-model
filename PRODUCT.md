@@ -12,7 +12,7 @@ The owner uses the site to research golf betting opportunities. The confirmed wo
 
 ## Product Purpose
 
-Make the existing predictions useful in one fast workflow: review matchup markets, compare the available price with the frozen model output, save a card, share selected quotes, and inspect the evidence after settlement.
+Make rankings the center of a connected research workflow: understand the field, compare market prices, save a card, inspect performance, and refine models using chronological evidence.
 
 ## Operating Context
 
@@ -20,11 +20,11 @@ The primary markets are head-to-head matchups over 72 holes and 18 holes, group 
 
 ## Capabilities and Constraints
 
-- The user explicitly prohibits changes to the models and loss or alteration of historical data/results.
-- Presentation, navigation, delivery, reporting, operational reliability and additive evaluation are authorized.
+- The user requires the current model to remain accessible and all historical data/results to be preserved.
+- As of October 15, 2026, the user explicitly authorizes developing and training better challengers, extensive backtests, data acquisition, weekly learning, configurable markets, and a full product redesign. Earlier model-freeze instructions are superseded by this authorization.
 - Existing model probabilities, prices and EV must retain their source, event, lane and timestamp. Unverified, stale, absent and research-only markets remain explicit.
 - Stored predictions are not proof of placed bets. Unknown stakes and missing history must not be presented as a verified betting return.
-- Learning in this scope evaluates existing predictions; it never promotes models, retunes weights, rewrites outcomes or runs the existing mutating learning pipeline.
+- Training creates versioned challenger artifacts. Historical predictions and outcomes remain immutable. Retrospective improvements are distinguished from prospective evidence, and a failed challenger remains visible rather than being promoted to manufacture progress.
 
 ## Evidence on Hand
 
@@ -32,8 +32,8 @@ Production source was cloned from commit cb86850 on 2026-10-13. Read-only inspec
 
 ## Product Principles
 
-1. Start with the matchup and the price.
+1. Start with the rankings, then connect the player to the market and the price.
 2. Preserve every source record and explain the limits of its evidence.
 3. Keep a single event context through market selection and card building.
 4. Put research and operations behind the daily workflow.
-5. Improve decisions without silently changing predictions.
+5. Measure learning by version, event and market; keep the baseline available and show missing evidence.

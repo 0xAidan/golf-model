@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.market_evidence import build_market_evidence  # noqa: E402
+from src.operator_read_model import build_board  # noqa: E402
 
 
 def main():
@@ -26,6 +27,7 @@ def main():
     parser.add_argument("--db", required=True)
     parser.add_argument("--port", type=int, default=5398)
     parser.add_argument("--fixture-board", type=Path, help="Local UI test board; never used by the production service")
+    parser.add_argument("--snapshot", type=Path, help="Read-only captured production snapshot for local verification")
     args = parser.parse_args()
     static = ROOT / "frontend" / "dist"
 
@@ -35,6 +37,17 @@ def main():
 
         def do_GET(self):
             route = urlsplit(self.path)
+            if route.path == "/api/desk/board" and args.snapshot:
+                query = parse_qs(route.query)
+                payload = build_board(json.loads(args.snapshot.read_text()), track=query.get("track", ["champion"])[0], mode=query.get("mode", ["upcoming"])[0])
+                body = json.dumps(payload, allow_nan=False).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if route.path == "/api/desk/board" and args.fixture_board:
                 payload = json.loads(args.fixture_board.read_text())
                 payload["event"]["event_name"] = "UI verification fixture — not live market"

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 
-const MatchupDesk = lazy(() => import("@/features/matchup-desk/matchup-desk").then(module => ({default: module.MatchupDesk})))
+const LearningWorkspace = lazy(() => import("@/features/learning-workspace/learning-workspace").then(module => ({default: module.LearningWorkspace})))
 
 const SharedCardPage = lazy(() => import("@/features/matchup-desk/shared-card-page"))
 
@@ -10,7 +10,7 @@ const LegacyToaster = lazy(() => import("sonner").then(module => ({ default: mod
 
 export default function App() {
   const location = useLocation()
-  const deskRoute = ["/", "/card", "/evidence"].includes(location.pathname)
+  const deskRoute = ["/", "/rankings", "/markets", "/models", "/performance", "/card", "/evidence"].includes(location.pathname)
   const previewRoute = location.pathname === "/preview" || location.pathname.startsWith("/preview/")
   const sharedRoute = location.pathname === "/shared-card"
   const legacyRoute = !deskRoute && !previewRoute && !sharedRoute
@@ -19,7 +19,7 @@ export default function App() {
   if (legacyRoute && !hasOpenedLegacy) setHasOpenedLegacy(true)
 
   return <>
-    {deskRoute ? <Suspense fallback={<main className="matchup-desk"><p style={{padding:32}} role="status">Loading matchups…</p></main>}><MatchupDesk /></Suspense>
+    {deskRoute ? <Suspense fallback={<main className="matchup-desk"><p style={{padding:32}} role="status">Opening Golf Model…</p></main>}><LearningWorkspace /></Suspense>
       : sharedRoute ? <Suspense fallback={<main className="matchup-desk"><p style={{padding:32}} role="status">Opening shared picks…</p></main>}><SharedCardPage /></Suspense>
       : previewRoute ? <Navigate to="/" replace />
       : <Suspense fallback={<div className="matchup-desk"><p style={{padding:32}} role="status">Loading research tools…</p></div>}><LegacyApp/></Suspense>}

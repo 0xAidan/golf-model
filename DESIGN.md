@@ -1,344 +1,340 @@
 ---
-name: Golf Model — Matchup Desk
-description: The shipped team-golf broadcast system for Markets, My card and Results.
+name: "Golf Model — Rankings Workspace"
+description: "The shipped field index, evidence charts and model-learning workspace."
 colors:
-  ground: '#f4f6f3'
-  paper: '#fff'
-  ink: '#142d28'
-  muted: '#5c6e65'
-  rule: '#d9e1d9'
-  tint: '#eaf0e8'
-  accent: '#155a42'
-  positive: '#236b41'
-  warning: '#795117'
-  warning-bg: '#fff4df'
-  mast: '#133e32'
-  gold: '#d8dc82'
-  dark-ground: '#101e1a'
-  dark-paper: '#172b23'
-  dark-ink: '#e6ede4'
-  dark-muted: '#adbcaf'
-  dark-rule: '#34483b'
-  dark-tint: '#20362b'
-  dark-accent: '#b4d58c'
-  dark-positive: '#b4d58c'
-  dark-warning: '#edc47b'
-  dark-warning-bg: '#342c1c'
-  dark-mast: '#10382c'
-  mast-text: '#eff5ec'
-  mast-link: '#c5d7c7'
-  mast-tools: '#d5e3d3'
-  card-count-bg: '#2c5343'
-  card-count-text: '#eaf2e6'
+  bg: "#f6f8f7"
+  paper: "#fff"
+  ink: "#182e28"
+  muted: "#596b64"
+  faint: "#6b7c74"
+  rule: "#dce5df"
+  tint: "#edf3ef"
+  accent: "#1c684e"
+  positive: "#1b6e4d"
+  negative: "#a33e39"
+  rail: "#163d32"
+  rail-text: "#c0d1c6"
+  warning: "#78541d"
+  warning-bg: "#f7f0e3"
+  dark-bg: "#14231e"
+  dark-paper: "#192b24"
+  dark-ink: "#e6eee9"
+  dark-muted: "#b1c4b8"
+  dark-faint: "#a0b3a7"
+  dark-rule: "#344b3e"
+  dark-tint: "#243b2f"
+  dark-accent: "#a0cbb0"
+  dark-positive: "#a4d5b7"
+  dark-negative: "#f0a29c"
+  dark-rail: "#10342a"
+  dark-rail-text: "#c3d5c9"
+  dark-warning: "#e9c281"
+  dark-warning-bg: "#3b3222"
+  rail-active: "#e2eddf"
+  rail-active-ink: "#234836"
+  rail-hover: "#254d3e"
+  dark-button-ink: "#163025"
 typography:
   display:
-    fontFamily: Barlow Condensed, Arial, sans-serif
-    fontSize: 44px
-    fontWeight: 600
-    lineHeight: 1.1
-    letterSpacing: -0.015em
-  display-compact:
-    fontFamily: Barlow Condensed, Arial, sans-serif
-    fontSize: 39px
-    fontWeight: 600
-    lineHeight: 1.1
-    letterSpacing: -0.015em
-  display-mobile:
-    fontFamily: Barlow Condensed, Arial, sans-serif
-    fontSize: 37px
-    fontWeight: 600
-    lineHeight: 1.03
-    letterSpacing: -0.015em
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "34px"
+    fontWeight: 500
+    lineHeight: 1.18
+    letterSpacing: "-0.035em"
+  rankings-heading:
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "27px"
+    fontWeight: 500
+    lineHeight: 1.18
+    letterSpacing: "-0.035em"
+  rankings-heading-mobile:
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "25px"
+    fontWeight: 500
+    lineHeight: 1.18
+    letterSpacing: "-0.035em"
   headline:
-    fontFamily: Barlow Condensed, Arial, sans-serif
-    fontSize: 29px
-    fontWeight: 600
-    lineHeight: 1.1
-    letterSpacing: -0.015em
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "18px"
+    fontWeight: 500
+    lineHeight: 1.35
+    letterSpacing: "-0.015em"
   title:
-    fontFamily: Barlow Condensed, Arial, sans-serif
-    fontSize: 25px
-    fontWeight: 600
-    lineHeight: 1.15
-    letterSpacing: -0.015em
-  player:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 18px
-    fontWeight: 600
-    lineHeight: 1.2
-  price:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 20px
-    fontWeight: 600
-    lineHeight: 1.25
-  metric:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 17px
-    fontWeight: 600
-    lineHeight: 1.5
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "15px"
+    fontWeight: 500
+    lineHeight: 1.4
   body:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 15px
-    fontWeight: 400
-    lineHeight: 1.5
-  support:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 14px
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.5
   control:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 14px
-    fontWeight: 600
-    lineHeight: 1.25
-  label:
-    fontFamily: Barlow, Arial, sans-serif
-    fontSize: 11px
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "12px"
+    fontWeight: 500
+    lineHeight: 1.5
+  table:
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.5
-    letterSpacing: 0.05em
+  support:
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "11px"
+    fontWeight: 400
+    lineHeight: 1.6
+  metric:
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "22px"
+    fontWeight: 500
+    lineHeight: 1.5
+    letterSpacing: "-0.02em"
+  player-score:
+    fontFamily: "Switzer, Arial, sans-serif"
+    fontSize: "43px"
+    fontWeight: 500
+    lineHeight: 1
+    letterSpacing: "-0.045em"
 rounded:
-  square: '0'
-  focus: 2px
-  control: 3px
-  segmented: 4px
-  marker: 50%
+  segment: "3px"
+  control: "4px"
+  panel: "5px"
+  circle: "50%"
 spacing:
-  compact: 8px
-  control-gap: 12px
-  row: 16px
-  mobile-gutter: 20px
-  section: 24px
-  desktop-gutter: 32px
-  page-top: 40px
-  column-gap: 48px
-  page-bottom: 64px
+  compact: "8px"
+  control-gap: "12px"
+  mobile-rankings-gutter: "16px"
+  compact-panel: "18px"
+  mobile-panel: "20px"
+  panel: "22px"
+  section: "24px"
+  compact-main: "25px"
+  board-gap: "30px"
+  main-gutter: "38px"
+  wide-gutter: "48px"
 components:
   button-primary:
-    backgroundColor: '{colors.accent}'
-    textColor: '{colors.paper}'
-    typography: '{typography.control}'
-    rounded: '{rounded.control}'
-    padding: 10px 15px
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.paper}"
+    typography: "{typography.control}"
+    rounded: "{rounded.control}"
+    padding: "10px 15px"
   button-primary-hover:
-    backgroundColor: color-mix(in srgb, var(--md-accent) 90%, var(--md-ink))
-    textColor: '{colors.paper}'
+    backgroundColor: "color-mix(in srgb, var(--lw-accent) 88%, var(--lw-ink))"
+  button-primary-dark:
+    backgroundColor: "{colors.dark-accent}"
+    textColor: "{colors.dark-button-ink}"
   button-secondary:
-    backgroundColor: '{colors.paper}'
-    textColor: '{colors.ink}'
-    typography: '{typography.control}'
-    rounded: '{rounded.control}'
-    padding: 10px 15px
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    typography: "{typography.control}"
+    rounded: "{rounded.control}"
+    padding: "10px 15px"
   button-secondary-hover:
-    backgroundColor: '{colors.tint}'
-  button-save:
-    backgroundColor: '{colors.paper}'
-    textColor: '{colors.ink}'
-    rounded: '{rounded.control}'
-    width: 32px
-    height: 32px
-  button-save-selected:
-    backgroundColor: '{colors.tint}'
-    textColor: '{colors.accent}'
+    backgroundColor: "{colors.tint}"
+  button-icon:
+    textColor: "{colors.muted}"
+    rounded: "{rounded.control}"
+    width: "36px"
+    height: "36px"
   input-search:
-    backgroundColor: '{colors.paper}'
-    textColor: '{colors.ink}'
-    rounded: '{rounded.control}'
-    height: 38px
-    padding: 0 11px
+    backgroundColor: "{colors.bg}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "10px 12px"
   input-select:
-    backgroundColor: '{colors.paper}'
-    textColor: '{colors.ink}'
-    rounded: '{rounded.control}'
-    height: 40px
-    padding: 8px 5px
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "8px 28px 8px 10px"
   nav-primary:
-    backgroundColor: '{colors.mast}'
-    textColor: '{colors.mast-link}'
-  chip-count:
-    backgroundColor: '{colors.tint}'
-    textColor: '{colors.muted}'
-    rounded: '{rounded.focus}'
-    padding: 0 5px
+    backgroundColor: "{colors.rail}"
+    textColor: "{colors.rail-text}"
+  nav-selected:
+    backgroundColor: "{colors.rail-active}"
+    textColor: "{colors.rail-active-ink}"
+    rounded: "{rounded.panel}"
+    padding: "12px 15px"
   segmented-control:
-    rounded: '{rounded.segmented}'
-    padding: 3px
+    backgroundColor: "{colors.tint}"
+    rounded: "{rounded.panel}"
+    padding: "3px"
   segmented-selected:
-    backgroundColor: '{colors.tint}'
-    textColor: '{colors.ink}'
-    rounded: '{rounded.focus}'
-    padding: 6px 12px
-  saved-card:
-    backgroundColor: '{colors.paper}'
-    textColor: '{colors.ink}'
-    rounded: '{rounded.square}'
-    padding: 20px 22px
-  matchup-detail:
-    backgroundColor: '{colors.tint}'
-    textColor: '{colors.ink}'
-    padding: 24px
-  evidence-notice:
-    backgroundColor: '{colors.warning-bg}'
-    textColor: '{colors.warning}'
-    rounded: '{rounded.square}'
-    padding: 18px 22px
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.segment}"
+    padding: "6px 12px"
+  chip-research:
+    backgroundColor: "{colors.warning-bg}"
+    textColor: "{colors.warning}"
+    rounded: "{rounded.segment}"
+    padding: "5px 8px"
+  panel:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.panel}"
+    padding: "22px"
+  panel-analysis:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.panel}"
+    padding: "23px"
+  ranking-selected:
+    backgroundColor: "{colors.tint}"
+    textColor: "{colors.ink}"
+    typography: "{typography.table}"
 ---
 
-# Design System: Golf Model — Matchup Desk
+# Design System: Golf Model — Rankings Workspace
 
 ## Overview
 
-**Creative North Star: "The Team-Golf Broadcast Desk"**
+**Creative North Star: "The Club Field Index"**
 
-The desk takes its visual character from international team-golf broadcast graphics: an evergreen masthead, cool pale surfaces, condensed headings and aligned numerical comparisons. It is compact and factual, with visible rules separating records and a small amount of yellow-green used in the masthead and browser selection.
+A quiet field index pairs deep pine navigation with cool paper, pale sage selection and precise ruled records. Switzer carries headings, controls and tabular data in one voice. The application is compact enough to compare a full field while keeping source dates, model identity and uncertain evidence close to the values they qualify.
 
-This system applies to the implemented Markets (`/`), My card (`/card`) and Results (`/evidence`) surfaces. The dark theme translates the same structure into green-black ground and pale foliage accents. Retained research and operations routes use their incumbent styles; their terminal tokens have not been redesigned or absorbed into this system.
+This system covers the shipped Rankings, Markets, Performance, Models, My card and Season archive workspace. Light and dark themes share structure and semantic roles. Embedded market and archive surfaces inherit the new palette and heading family while retaining their existing record geometry. Linked player, research, evaluation and system tools retain their earlier terminal system; the standalone shared-card reader retains the earlier desk shell.
 
 **Key Characteristics:**
 
-- Evergreen masthead with a yellow-green active navigation rule.
-- Self-hosted Barlow Condensed headings and Barlow body text with tabular numerals.
-- Flat, ruled records and minimally rounded controls.
-- A shared probability scale distinguished by a round model marker and a vertical bookmaker marker.
-- Visible labels and text explanations for saved, stale, unavailable and research-only states.
+- Pine navigation with a pale, text-labeled active item.
+- Self-hosted Switzer throughout the workspace, with tabular numerals.
+- Flat paper panels, thin rules and modest control corners.
+- Persistent selected-player identity with a shared field distribution and component bars.
+- Charts and tables that keep units, cohort, model version and missing evidence visible.
 
-Extracted from `frontend/src/features/matchup-desk/matchup-desk.css`, `matchup-desk.tsx`, `market-rows.ts` and `frontend/src/App.tsx`; product constraints come from `PRODUCT.md` and world context from `.impeccable/surfaces/matchup-desk.md`. The reviewed desktop, mobile, dark and fixture captures corroborate the structure. Fixture numbers are examples, not live data. Frontmatter records the actual reused values; CSS custom properties are scoped to the desk, with dark overrides under `.dark`.
+This refresh supersedes the old Matchup Desk world for the workspace routes. Its durable commitments to tabular comparisons, explicit evidence states, paired themes and SVG markers remain. Source evidence: `frontend/src/features/learning-workspace/learning-workspace.css`, its TSX pages and charts, embedded `frontend/src/features/matchup-desk/` styles and components, and `frontend/src/App.tsx`. The finished desktop, tablet, mobile, dark, Performance, Markets and Models captures in `.impeccable/review/` corroborate the implementation. `PRODUCT.md` supplies the durable obligation to preserve the baseline and historical evidence; the surface contract supplies the confirmed world, not token values.
 
 ## Colors
 
-A restrained evergreen palette combines cool paper, green-tinted rules and a yellow-green masthead accent. The frontmatter is the normative value table. The sidecar’s eight-step OKLCH ramps are synthesized swatch previews, not additional shipped palette tokens.
+Cool paper and sage work areas sit beside a deep pine rail. Green identifies selection and measured data; amber and muted red qualify evidence and results. The frontmatter owns the exact shipped values. The sidecar's eight-step OKLCH ramps are synthesized preview swatches, not additional application tokens.
 
 ### Primary
 
-- **Evergreen accent** (`accent`, `dark-accent`): selected market tabs, interactive links, focus outlines, comparison markers and the primary action.
-- **Broadcast evergreen** (`mast`, `dark-mast`): the full-width masthead in each theme.
-- **Positive green** (`positive`, `dark-positive`): positive model EV on the market board and saved card. Dark positive shares the accent value.
+- **Field green** (`accent`, `dark-accent`): primary buttons, selected score marks, chart lines, component bars, links and focus outlines.
+- **Pine rail** (`rail`, `dark-rail`): persistent navigation in both themes.
+- **Positive green** (`positive`, `dark-positive`): positive paper results and market EV; it remains distinct from a verified outcome claim.
 
 ### Secondary
 
-- **Tournament gold** (`gold`): the second word of the brand, active masthead navigation underline and selection background. It does not change between themes.
-- **Amber caution** (`warning`, `warning-bg`, and their dark counterparts): stale or unavailable data, incomplete evidence and limited-sample explanations. Warning panels use a border mixed from warning color at 23% and transparency.
+- **Amber caution** (`warning`, `warning-bg`, and dark counterparts): research status, source age, incomplete evidence and availability notices.
+- **Muted result red** (`negative`, `dark-negative`): negative measured results and error feedback.
 
 ### Neutral
 
-- **Cool ground / paper** (`ground`, `paper`, and dark counterparts): page ground and record or control surfaces.
-- **Ink / muted ink** (`ink`, `muted`, and dark counterparts): primary content and supporting labels.
-- **Rule / tint** (`rule`, `tint`, and dark counterparts): separators, table headers, selected small controls and expanded records.
-- **Masthead text** (`mast-text`, `mast-link`, `mast-tools`): the fixed pale masthead palette. Active and hovered navigation uses paper-white; the masthead itself stays dark in both themes.
-- **Saved-count palette** (`card-count-bg`, `card-count-text`): the small count beside My card.
+- **Cool ground / paper** (`bg`, `paper`, and dark counterparts): page ground and bordered data surfaces.
+- **Ink / supporting ink** (`ink`, `muted`, `faint`, and dark counterparts): primary values, readable context and minor chart guides.
+- **Rule / sage tint** (`rule`, `tint`, and dark counterparts): separators, table headings, selected records and control tracks.
+- **Rail text / active sage** (`rail-text`, `dark-rail-text`, `rail-active`, `rail-active-ink`, `rail-hover`): navigation labels and a pale selected item. On mobile, selected text uses the existing pine-rail value and a green bottom rule.
+- **Dark action ink** (`dark-button-ink`): legible dark lettering on the pale dark-theme primary button.
 
-**The Paired State Rule.** Use color with text, shape or an underline: a selected tab has an underline, a saved quote has a check, and a warning has an explanation.
+**The Paired State Rule.** Pair state color with text, a marker or a structural change: selected records retain their identity, warnings explain the limitation, and saved quotes show a check.
 
 ## Typography
 
-**Display Font:** Barlow Condensed, with Arial and sans-serif fallback.
-**Body Font:** Barlow, with Arial and sans-serif fallback.
-**Label/Mono Font:** Barlow; the desk does not introduce a separate monospace family.
+**Display Font:** Switzer, with Arial and sans-serif fallbacks.
+**Body Font:** Switzer, with the same fallbacks.
+**Label/Mono Font:** Switzer; run identifiers also inherit it rather than introducing a second family.
 
-The self-hosted files are `Barlow-Regular.ttf`, `Barlow-SemiBold.ttf` and `BarlowCondensed-SemiBold.ttf`, loaded with `font-display: swap`. The semibold files are declared for the 600–900 range; they are not separate bold assets. Condensed headings give short titles a broadcast character while the wider body face keeps records and controls legible.
+The workspace self-hosts `switzer-regular.woff2` at weight 400 and `switzer-medium.woff2` declared for weights 500–800, with swap loading. This is a regular/medium file pairing, not evidence of a variable font or separate bold files. Numerical content uses `font-variant-numeric: tabular-nums` throughout.
 
 ### Hierarchy
 
-- **Display:** page heading, reduced through the `display-compact` and `display-mobile` roles at the recorded breakpoints.
-- **Headline:** evidence aside heading. Other implemented condensed headings include empty-board (31px/1.15), saved player (27px/1.1), section heading (26px), and supporting subsection (22px/1.2).
-- **Title:** event heading; it becomes 23px at the compact desktop breakpoint and 24px/1.15 on mobile.
-- **Player / price / metric:** stronger Barlow data roles. Mobile price and metric values use 18px; saved-card values use 19px.
-- **Body / support:** normal prose. Supporting descriptions commonly use 13px; secondary metadata uses 10–12px and is not the size model for primary content.
-- **Label:** uppercase table column labels with tracking. Mobile value labels use 10px and 0.03em tracking; they remain attached to their data.
+- **Display:** general page heading. It reduces to 30px at the compact desktop breakpoint and 29px on mobile. Rankings uses the separate `rankings-heading` and `rankings-heading-mobile` roles to keep the field high in the viewport.
+- **Headline / title:** section headings and supporting headings. Event names and individual panels make local size adjustments within the same medium-weight family.
+- **Body / table:** the workspace base and aligned record values. Table headers and some metadata are smaller contextual annotations, not a second display voice.
+- **Control:** the shared framed-action role. Navigation uses 13px on desktop; native fields and most buttons use 12px.
+- **Support:** compact explanatory prose. Longer context typically caps at 70–80ch; evidence explanations can reach 95ch.
+- **Metric / player score:** emphasized numerical roles. Selected-player names use 24px, falling to 22px on mobile; these stay subordinate to the selected score.
 
-There is no fabricated modular ratio: this is a role-specific pixel ramp. The desk sets `font-variant-numeric: tabular-nums` globally. Page descriptions cap at 70ch; record explanations at 72ch; compact explanatory copy generally at 48–49ch.
+The scale follows implemented roles rather than a fabricated modular ratio. The existing market records retain larger player, price and EV sizing and their semibold weight while inheriting Switzer. In the integrated desk, general heading tracking is -0.025em and the main title is 28px.
 
-**The Two Voices Rule.** Use Barlow Condensed for headings and Barlow for controls, prose and data; keep numerical columns tabular and aligned.
+**The One Typeface Rule.** Use Switzer for workspace headings, controls, prose and data. Keep numerical comparisons tabular and aligned.
 
 ## Layout
 
-The shell is full width with a centered main area (maximum 1504px including 32px desktop gutters). Desktop main padding is 40px at the top and 64px below; masthead, event bar and footer align to a 1440px content region with a minimum 32px side inset. Single-page card and evidence sections cap at 1180px inside that shell.
+The desktop shell is a two-column grid: a pine navigation rail (210px) and a flexible workarea. The rail is sticky, fills the viewport height and contains grouped navigation. A paper topbar (minimum 72px) and the main content share horizontal insets. Main content caps at 1700px including its padding; the usual main inset is 38px, with 38px top and 26px bottom padding. Rankings uses a compact 25px top inset and closer event, verification and table spacing.
 
-The market board pairs a flexible main column with a 256px evidence aside and a 48px gap. Rows align player, book price, model win, EV and save action in the grid `minmax(160px, 1fr) 125px 90px 90px 36px`, with 12px gaps. Records have a 90px minimum height and 15px by 16px padding. The saved-card collection uses two equal columns with a 24px gap.
+The field grid pairs a flexible table with a sticky selected-player panel (285px), separated by 25px. The table panel clips its corners while an inner wrapper handles horizontal scrolling. Ranking rows use the final compact 11px vertical cell padding, with 9px header padding. General data tables use 15px by 12px cells. Standard panels use roughly 20–26px internal space; small controls use 8–15px, with the exact component values recorded above.
 
-The reusable spacing is an observed set, not a forced single increment: compact control gaps, 12–16px record spacing, 20–24px internal or mobile spacing, and 32–64px shell spacing. Preserve the component-specific values recorded above.
+Responsive behavior follows the final cascade rather than earlier overwritten declarations:
 
-Responsive behavior follows the source cascade:
-
-- **At 1550px and wider:** the evidence aside becomes 290px with a 64px gap.
-- **At 1100px and narrower:** the aside becomes 210px with a 28px gap; rows tighten to `minmax(130px, 1fr) 96px 72px 72px 32px`; page headings use the compact role.
-- **At 850px and narrower:** gutters become 24px; the evidence aside moves below the board; saved cards become one column. Market records in the evidence aside use three columns. The final stylesheet override makes the aside a block, superseding the earlier two-column aside rule.
-- **At 560px and narrower:** gutters become 20px, the masthead navigation wraps below the brand, event controls form a second row, and search occupies a full filter row. Horizontally scrollable market tabs remain visible. Matchups become two-row records: player and save above, three labeled numerical values below. The evidence aside remains below the board.
-- **Mobile Results:** the actual table becomes a series of bordered records with two columns of labeled values; semantic headers remain visually hidden. The desktop table minimum width is 840px, while mobile removes that minimum. Calibration and explanatory content stack into a single column. SVG plot labels grow from 11 to 17 user units at the mobile breakpoint.
+- **At 1600px and wider:** the selected-player column becomes 310px with a 30px gap; main padding becomes 44px by 48px and the player panel uses 26px. Rankings retains its later compact vertical row override.
+- **At 1200px and narrower:** the rail becomes 180px, the main inset becomes 25px, and the player column becomes 250px with an 18px gap. General page headings reduce to 30px; Rankings retains its own role.
+- **At 1050px and narrower:** the field becomes one column. Player insight is closed initially, reachable from the selected-player summary at the table, and appears above the field when opened. Its content uses two columns until the mobile breakpoint. Model overview becomes one column; toolbars stack. Research fields become two columns, with the final field spanning the row.
+- **At 760px and narrower:** navigation becomes a static top brand and four equal primary tabs, retaining icon and text labels. Secondary rail links and the rail footer are hidden. The topbar minimum height becomes 42px. Rankings uses 16px page gutters; other workspace pages use 20px. Player insight becomes a single column. Analysis panels stack and the four-metric row becomes two columns.
+- **Rankings on mobile:** retain the full semantic comparison table with a 530px minimum width inside its horizontal scroller. The final compact cell padding is 9px vertically. The selected-player summary stays reachable above the headers.
+- **Event record, benchmark and run-history tables on mobile:** the implemented responsive variant keeps semantic headers visually hidden and turns each record into labeled two-column values beneath a full-width record name. The challenger value stays in the second column of its benchmark row; run promotion status spans both columns. Other simple tables may continue to scroll.
+- **Embedded Markets / My card / Season archive:** inherit workspace color and type, but retain their own record breakpoints (1100px, 850px and 560px) and wide aside expansion (1550px). Market rows become player identity plus three labeled values at 560px; saved cards collapse to one column at 850px. Archive record tables reflow at 560px. The outer shell still changes at 760px.
 
 ## Elevation & Depth
 
-The desk is flat at rest. Paper and tint establish layers, and one-pixel rules establish boundaries. The More tools menu alone floats over content with an ambient shadow (`0 10px 25px -12px #001a2260`); it is not a repeated card treatment. Focus uses an outline rather than a shadow.
+Depth is mostly tonal: ground, paper, sage tint and one-pixel rules organize the information. Data panels do not lift on hover. The selected segment has a small ambient shadow (`0 1px 3px #142d2410`). The retained More tools menu has the earlier ambient shadow (`0 10px 25px -12px #001a2260`), but its masthead is hidden inside the workspace; this is not a new workspace card token.
 
-**The Ruled Surface Rule.** Use tonal fills and thin rules to separate records. The More tools menu is the only desk surface with an ambient shadow.
+**The Ruled Surface Rule.** Separate records with tonal fills and thin rules. Keep data panels flat; the small pressed-segment shadow is a control state, not a card treatment.
 
-State changes are immediate: the desk defines no entrance animation or transition timing vocabulary. The expanded-row chevron rotates 180 degrees without an authored transition. Reduced-motion mode explicitly removes animations and transitions and restores automatic scrolling.
+Movement communicates state rather than page spectacle. Buttons transition background and border color over 150ms with ease-out; rail items and table-row fills use 160ms ease-out. Selected-player field markers, guides and component bars update over 220ms with `cubic-bezier(.16,1,.3,1)`. There is no authored entrance-animation system. Reduced-motion mode removes transitions and animations and restores automatic scrolling.
 
 ## Shapes
 
-Records and evidence panels have square corners. Most small controls have the `control` radius; selected segments and count tags use `focus`; the segmented-control wrapper uses `segmented`. This modest radius system does not turn records into large rounded tiles. One-pixel borders use the semantic rule color.
+Panels, event headers, evidence sections and the navigation selection use modest panel corners. Buttons, fields and search use the smaller control corner; selected segments and research tags use the segment corner. One-pixel borders establish structure. Integrated market records retain their square form and smaller three-pixel controls; the system does not force all records into identical cards.
 
-Round shapes are functional: the model marker and chart observations use circles. The bookmaker marker is a narrow vertical stroke. Icons are Lucide SVG strokes, commonly 14–18px in controls and larger in empty states, with a flag in the brand. The PGA TOUR label is factual event identification beside the title, not an invented eyebrow.
+Circles are functional: chart observations, the event emblem and status marks. The brand uses a small arched flag frame. Icons are Lucide SVG strokes; the factual PGA TOUR identifier is event context. No raster illustration or decorative image layer is part of the workspace.
 
 ## Components
 
 ### Buttons
 
-Compact and lightly framed. The secondary button uses paper, ink and a rule border; hover fills it with tint. The primary variant uses accent with paper text; hover mixes 90% accent with ink and retains paper text. Both use the `control` type role and the recorded padding/radius. Text links use accent and gain an underline on hover. Global disabled buttons use opacity 0.5 and a default cursor.
+Compact, labeled actions. Primary buttons use field green with paper text; the dark variant uses dark action ink on pale green. Secondary buttons use paper, ink and a rule border. Both use the control radius, a minimum height of 40px, a 10px icon gap and the recorded padding. Hover adds tint and an accent border; the primary hover mixes 88% accent with ink. Disabled buttons use half opacity and a not-allowed cursor. Icon-only buttons are framed 36px squares; Rankings refresh becomes 30px on mobile.
 
-The save button is square (32px) with a drawn plus. Hover and saved state use tint with accent border and icon; saved state changes the icon to a check. Ineligible unsaved records disable saving. Refresh is a related 30px by 32px bordered control.
-
-Keyboard focus is a two-pixel accent outline offset by four pixels, with no shadow and a two-pixel radius. The search group uses a two-pixel outline offset by two pixels instead, and suppresses the inner field outline.
+Keyboard focus is a two-pixel accent outline offset by four pixels. Search uses the same width with a two-pixel offset around the group. Text links gain an underline on hover and keep their SVG direction cue.
 
 ### Chips
 
-Small counts belong to their parent navigation or market tab. Market counts use tint, muted text and a two-pixel radius, with 11px text on an 18px line. The masthead count uses its dedicated dark-green palette, a three-pixel radius, and 12px text on a 20px line. These are counts, not a general status-pill vocabulary.
+Research status is a small amber text-and-SVG tag with a three-pixel corner and its recorded padding. Counts remain attached to a heading or tab, using tint and supporting ink. The navigation selection is a full labeled navigation item, not an isolated status badge.
 
 ### Cards / Containers
 
-Saved selections use square paper containers with a rule border and no shadow. The default internal spacing is recorded in `saved-card`; mobile uses 17px. Removal sits at the top right. The player identity is prominent, followed by the preserved price, probability, EV, event and source timestamp. On mobile the identity spans the width above three values.
-
-Empty states use a centered SVG, condensed heading, short explanation and a useful action. Loading, error, unavailable and no-lines states have distinct copy. Do not borrow their centered composition for populated records.
+Paper and a thin rule frame organize field rankings, player insight, charts, model comparisons and run history. Their radius is consistent; internal padding varies with content and breakpoint. Baseline preservation uses a sage banner. Caution notices use amber text and background rather than a floating toast. Empty and loading states keep the same flat surface vocabulary and explicit text.
 
 ### Inputs / Fields
 
-Search is a paper field with a rule border, muted SVG and explicit accessible label. Its input is 38px high; the enclosing border adds to its rendered height. Selects are native, bordered paper controls with a 40px height; on mobile they become 35px high. Placeholders use the same muted color at full opacity.
-
-The event mode control has a bordered four-pixel wrapper and two smaller segments. `aria-pressed` drives tint, ink and semibold selected text. Market filters retain their visible or accessible names as space contracts.
+Native selects use paper, ink, a rule border, a four-pixel radius and a minimum height of 36px. Search pairs an SVG magnifier with an unframed input inside a single ground-filled bordered group. Placeholder text uses supporting ink; the group carries focus. Research settings use the same field border, radius and palette. Errors and saved status appear as inline text near their controls.
 
 ### Navigation
 
-The evergreen masthead uses Barlow semibold links and a three-pixel gold active underline. Hover raises link text to white. The active state is an underline rather than a filled tab. The mobile masthead wraps the same primary links into a second line. More tools opens a bordered paper menu with tint hover and the single floating shadow.
+Desktop primary links pair an 18px SVG icon and a text label inside a minimum 44px target; the active item gains a pale fill, darker lettering and a trailing chevron. Hover uses a brighter pine fill and white text. Secondary links sit below a ruled divider. At the mobile breakpoint, four equal icon-and-label tabs replace the rail, with a pale selected tab and a bottom rule. Season access remains in the topbar.
 
-Market tabs use a three-pixel accent underline, accent text for the selected tab, and muted text otherwise. Counts stay adjacent. They scroll horizontally on narrow screens without hiding market families behind a menu.
+### Segmented Controls
 
-### Probability Comparison
+A tinted, bordered wrapper contains native buttons. Selected state uses paper, ink and the small ambient control shadow; unselected labels use supporting ink. Selection is exposed with `aria-pressed`. These switch view context without changing the surrounding shell.
 
-An expanded matchup places both supplied probabilities on one horizontal 0–100% rule (4px high). The model is a 12px round accent marker with a two-pixel paper border; the bookmaker break-even is a 2px by 16px ink stroke. Labels repeat those shapes. The component is omitted unless both source probabilities are present; no invented complementary probability is drawn.
+### Ranked Field and Player Insight
 
-### Evidence and Results
+A thin-rule table aligns rank, player identity and tabular metrics. Hover changes ground; selection uses sage tint. Top-three rank numbers and composite scores use accent. The player name is a real button, and the visible selected summary can reopen details on compact screens. Selecting a player updates the common-scale distribution and the component bars; closing compact detail restores focus to the selection control. Research projections keep their own units and version context.
 
-Warnings use the amber pairing, thin tinted border and SVG information mark. Market evidence rows use separators with readable sample limits. Result values are right-aligned in the desktop table and explicitly labeled after mobile reflow. Missing probability, EV and price values use an em dash rather than zero.
+### Evidence Charts and Mobile Records
 
-The calibration plot uses rule-colored grid lines, a muted dashed reference (4 5), and accent points at 0.85 opacity with paper strokes. Points retain their source-derived sizes; larger points represent more results. Dark mode changes semantic colors without changing the chart grammar.
+SVG charts use rule-colored grids, green data marks, a dashed zero line or guide where implemented, and visible value/date readouts. The cumulative paper-return chart has a keyboard-accessible range control; the selected event stays identified above it. Calibration observations use circle area to show sample size and a shared diagonal comparison. Model cohorts appear as three adjacent chronological segments, using related greens. On small screens, only the explicitly responsive tables become labeled records, preserving the metric-to-model relationship.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** keep the light and dark semantic palettes paired; the gold masthead accent stays the same in both themes.
-- **Do** preserve text labels and distinct marker shapes alongside state color.
-- **Do** use the same tabular number treatment for prices, probabilities, EV and evidence tables.
-- **Do** reflow a record into labeled values on narrow screens while retaining its identity and source context.
-- **Do** show the probability comparison only when both supplied probabilities exist; missing values remain explicit.
-- **Do** keep actual table headers and market labels; they identify data and are not decorative heading labels.
+- **Do** use the paired light and dark semantic palettes and the visible pale navigation selection.
+- **Do** keep units, source age, model identity and evidence limitations next to the affected values.
+- **Do** preserve stable player identity and a shared comparison scale when selection changes.
+- **Do** retain horizontal comparison for the Rankings table and use labeled mobile records only for the tables that implement that pattern.
+- **Do** keep color accompanied by text, marker shape or selection structure.
+- **Do** retain semantic table headers when mobile presentation visually hides them.
 
 ### Don't:
 
-- **Don't** extend this desk specification to retained legacy routes without an explicit design change.
-- **Don't** turn saved research selections or recorded model results into visual claims of placed bets or verified profit.
-- **Don't** replace the round model marker and vertical bookmaker marker with a filled proportion that implies an opponent complement.
-- **Don't** add decorative kickers, hard offset shadows, glyph icons or system-font display headings.
-- **Don't** prohibit cards globally: saved selections and mobile result records are flat bordered containers in the shipped system.
+- **Don't** present recorded model selections or paper returns as verified placed bets or profit.
+- **Don't** erase missing data, uncertain provenance or research status with a success treatment.
+- **Don't** extend the retained terminal or standalone shared-reader styling into the new workspace by default.
+- **Don't** add decorative kickers, glyph icons, hard offset shadows or system-font display headings.
+- **Don't** turn the observed 9–10px supporting annotations into a reusable primary-text standard.
 
-Not canonized or repaired: retained legacy terminal styling remains outside this desk scope; 10px supporting metadata is documented as an observation, not a primary-text standard. No craft-floor defect was identified in the sampled desk sources.
+Not canonized or repaired: retained terminal routes and the standalone shared-card reader remain outside this workspace world; observed 9–10px supporting and chart annotations are not promoted to primary-text tokens. No new craft-floor defect was found in the sampled workspace sources. This documentation pass checked source and final captures; it did not re-run the detector, tests, live-data verification or deployment. No approved raster comp or QUALITY BAR card exists for this code-led build, and no shipping raster assets were introduced.

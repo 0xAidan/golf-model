@@ -7,11 +7,11 @@ import App from "@/App"
 
 const { loadNotifications } = vi.hoisted(() => ({ loadNotifications: vi.fn() }))
 
-vi.mock("@/features/matchup-desk/matchup-desk", () => ({
-  MatchupDesk: () => <main><h1>Matchup desk</h1><Link to="/system">Open research tools</Link></main>,
+vi.mock("@/features/learning-workspace/learning-workspace", () => ({
+  LearningWorkspace: () => <main><h1>Rankings workspace</h1><Link to="/system">Open research tools</Link></main>,
 }))
 vi.mock("@/app/legacy-app", () => ({
-  default: () => <main><h1>Research tools</h1><Link to="/">Return to markets</Link></main>,
+  default: () => <main><h1>Research tools</h1><Link to="/">Return to rankings</Link></main>,
 }))
 vi.mock("sonner", () => {
   loadNotifications()
@@ -21,11 +21,11 @@ vi.mock("sonner", () => {
 afterEach(cleanup)
 
 describe("route delivery", () => {
-  it("defers legacy notifications until needed and retains them on return to the desk", async () => {
+  it("defers legacy notifications until needed and retains them on return to rankings", async () => {
     const user = userEvent.setup()
     render(<MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>)
 
-    expect(await screen.findByRole("heading", { name: "Matchup desk" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Rankings workspace" })).toBeInTheDocument()
     expect(loadNotifications).not.toHaveBeenCalled()
     expect(screen.queryByText("Legacy notifications available")).not.toBeInTheDocument()
 
@@ -34,8 +34,8 @@ describe("route delivery", () => {
     const notificationHost = await screen.findByText("Legacy notifications available")
     expect(loadNotifications).toHaveBeenCalledOnce()
 
-    await user.click(screen.getByRole("link", { name: "Return to markets" }))
-    expect(await screen.findByRole("heading", { name: "Matchup desk" })).toBeInTheDocument()
+    await user.click(screen.getByRole("link", { name: "Return to rankings" }))
+    expect(await screen.findByRole("heading", { name: "Rankings workspace" })).toBeInTheDocument()
     expect(screen.getByText("Legacy notifications available")).toBe(notificationHost)
   })
 })

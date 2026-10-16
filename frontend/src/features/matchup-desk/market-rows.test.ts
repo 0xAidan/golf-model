@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { OperatorBoard } from "@/features/operator-data/operator-api"
-import { boardRows, CARD_KEY, formatEdge, formatProbability, marketFamily, readSavedCard } from "./market-rows"
+import { boardRows, CARD_KEY, formatEdge, formatProbability, marketFamily, readSavedCard, readVisibleMarkets, MARKET_FAMILIES, VISIBLE_MARKETS_KEY } from "./market-rows"
 
 const quote = {
   pick: "Scottie Scheffler", pick_key: "scottie", opponent: "Rory McIlroy", opponent_key: "rory",
@@ -33,6 +33,9 @@ describe("market identity and original values", () => {
     ["tournament_matchups", "72h"], ["72-hole", "72h"],
     ["round_matchups", "18h"], ["18 holes", "18h"],
     ["three_ball", "group"], ["3_balls", "group"], ["group", "group"],
+    ["win", "outright"], ["outright", "outright"], ["top_5", "top5"],
+    ["top10", "top10"], ["top-20", "top20"], ["first_round_leader", "frl"],
+    ["make_cut", "make_cut"], ["miss_cut", "miss_cut"],
   ])("recognizes explicit market duration %s", (input, expected) => {
     expect(marketFamily(input)).toBe(expected)
   })
@@ -98,6 +101,12 @@ describe("card eligibility", () => {
   it.each(["unavailable", "error"] as const)("withholds %s board rows", state => {
     expect(boardRows(board({ state }))).toEqual([])
   })
+  it.each([{ verified: false }, { verified: true, field_event_id: "wrong-event" }])("withholds a failed or mismatched field %j", eligibility => {
+    expect(boardRows(board({ eligibility }))).toEqual([])
+  })
+  it.each(["DataGolf", "Data Golf", "dg", "synthetic"])("keeps %s model prices in research", book => {
+    expect(boardRows(withQuote({ book }))[0].eligible).toBe(false)
+  })
   it.each(["live", "past"] as const)("does not allow %s context onto the card", mode => {
     expect(boardRows(board({ mode }))[0].eligible).toBe(false)
   })
@@ -129,6 +138,21 @@ describe("card eligibility", () => {
     const [row] = boardRows(withQuote({ model_win_prob: probability }))
     expect(row.probability).toBeNull()
     expect(row.eligible).toBe(false)
+  })
+})
+
+describe("visible market preferences", () => {
+  it("restores an explicit all-off preference without changing saved selections", () => {
+    localStorage.setItem(VISIBLE_MARKETS_KEY, "[]")
+    localStorage.setItem(CARD_KEY, "preserved")
+    expect(readVisibleMarkets()).toEqual([])
+    expect(localStorage.getItem(CARD_KEY)).toBe("preserved")
+  })
+  it("falls back safely on malformed or blocked preference storage", () => {
+    localStorage.setItem(VISIBLE_MARKETS_KEY, '["not-a-market"]')
+    expect(readVisibleMarkets()).toEqual(MARKET_FAMILIES)
+    vi.spyOn(localStorage, "getItem").mockImplementation(() => { throw new Error("Blocked") })
+    expect(readVisibleMarkets()).toEqual(MARKET_FAMILIES)
   })
 })
 

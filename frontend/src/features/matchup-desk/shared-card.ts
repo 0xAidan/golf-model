@@ -1,4 +1,4 @@
-import { marketFamily, type SavedPick } from "./market-rows"
+import { MARKET_FAMILIES, MARKET_LABELS, marketFamily, type SavedPick } from "./market-rows"
 
 /** These are untrusted, user-shared quote snapshots, never verified wagers. */
 export type SharedCard = { version: 1; createdAt: string; picks: SavedPick[] }
@@ -11,7 +11,7 @@ const requiredPickKeys = [
   "opponent", "book", "odds", "probability", "ev", "reason", "lineAt", "snapshotAt", "eligible", "savedAt",
 ] as const
 const allowedPickKeys = new Set<string>([...requiredPickKeys, "impliedProbability"])
-const markets = new Set(["72h", "18h", "group", "other"])
+const markets = new Set<string>(MARKET_FAMILIES)
 const modes = new Set(["upcoming", "live", "past"])
 const encoder = new TextEncoder()
 
@@ -60,7 +60,11 @@ function validatePick(value: unknown): SavedPick {
   text(row.mode, "mode", 16)
   text(row.market, "market", 16)
   if (!modes.has(row.mode as string) || !markets.has(row.market as string)) fail("Unsupported quote mode or market.")
-  if (marketFamily(row.marketType) !== row.market) fail("Conflicting market duration.")
+  const family = marketFamily(row.marketType)
+  // Older saved/shared placement quotes used the original catch-all family.
+  // Accept those unchanged; the original quote identity still verifies below.
+  const legacyPlacement = row.market === "other" && !["72h", "18h", "group", "other"].includes(family)
+  if (family !== row.market && !legacyPlacement) fail("Conflicting market duration.")
   const odds = text(row.odds, "price", 32)
   if (!/^[+-]?\d+(?:\.\d+)?$/.test(odds) || !Number.isFinite(Number(odds)) || Math.abs(Number(odds)) < 100) fail("Invalid original price.")
   probability(row.probability, "model probability")
@@ -180,7 +184,7 @@ function percent(value: number | null, signed = false): string {
 }
 export function formatSharedPicksText(card: SharedCard): string {
   const checked = validateCard(card)
-  const marketLabels = { "72h": "72 holes", "18h": "18 holes", group: "Group", other: "Other / unspecified duration" }
+  const marketLabels = { ...MARKET_LABELS, group: "Group", other: "Other / unspecified duration" }
   const lines = ["Golf shared card", `Shared: ${checked.createdAt}`, "Saved prices are unverified and not live; availability may have changed."]
   for (const [index, pick] of checked.picks.entries()) {
     let market = `${marketLabels[pick.market]}${pick.round ? ` · Round ${pick.round}` : ""}`

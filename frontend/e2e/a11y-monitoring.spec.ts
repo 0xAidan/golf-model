@@ -1,11 +1,17 @@
 import { test, expect } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 
-async function runAxe(page: import("@playwright/test").Page, path: "/" | "/lab" | "/players" | "/results" | "/compare") {
+async function runAxe(page: import("@playwright/test").Page, path: "/" | "/models" | "/performance" | "/lab" | "/players" | "/results" | "/compare") {
   await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 })
   if (path === "/") {
-    await expect(page.getByRole("heading", { name: "Find your matchups." })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByRole("button", { name: "Reload published data" })).toBeEnabled({ timeout: 30_000 })
+    await expect(page.getByRole("heading", { name: "Rankings", exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole("button", { name: "Reload rankings" })).toBeEnabled({ timeout: 30_000 })
+  } else if (path === "/models") {
+    await expect(page.getByRole("heading", { name: "Better is something we measure." })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator(".lw-loading")).toHaveCount(0)
+    await expect(page.getByRole("heading", { name: "Model runs", exact: true })).toBeVisible()
+  } else if (path === "/performance") {
+    await expect(page.getByRole("heading", { name: "The event record", exact: true })).toBeVisible({ timeout: 30_000 })
   } else {
     const readyId = {
       "/lab": "lab-command-center", "/players": "players-page",
@@ -20,15 +26,29 @@ async function runAxe(page: import("@playwright/test").Page, path: "/" | "/lab" 
 }
 
 test.describe("monitoring a11y (critical = 0)", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, baseURL }) => {
+    if (!baseURL || !["127.0.0.1", "localhost", "[::1]"].includes(new URL(baseURL).hostname)) throw new Error("Accessibility checks require an isolated local preview.")
+    await page.route("**/api/**", route => ["GET", "HEAD", "OPTIONS"].includes(route.request().method()) ? route.continue() : route.fulfill({ status: 405, body: "Accessibility checks are read-only" }))
     await page.addInitScript(() => {
       localStorage.setItem("golf-model.theme", "dark")
     })
     await page.route(/fontshare|fonts\.googleapis|fonts\.gstatic/i, (route) => route.abort())
   })
 
-  test("matchup desk / has no critical axe violations", async ({ page }) => {
+  test("rankings / has no critical axe violations", async ({ page }) => {
     const results = await runAxe(page, "/")
+    const critical = results.violations.filter((v) => v.impact === "critical")
+    expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
+  })
+
+  test("models /models has no critical axe violations, including withheld research reports", async ({ page }) => {
+    const results = await runAxe(page, "/models")
+    const critical = results.violations.filter((v) => v.impact === "critical")
+    expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
+  })
+
+  test("performance /performance has no critical axe violations", async ({ page }) => {
+    const results = await runAxe(page, "/performance")
     const critical = results.violations.filter((v) => v.impact === "critical")
     expect(critical, JSON.stringify(critical, null, 2)).toHaveLength(0)
   })

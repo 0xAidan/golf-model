@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { OperatorBoard } from "@/features/operator-data/operator-api"
-import { CARD_KEY } from "./market-rows"
+import { CARD_KEY, VISIBLE_MARKETS_KEY } from "./market-rows"
 import { MatchupDesk } from "./matchup-desk"
 
 const { getBoard } = vi.hoisted(() => ({ getBoard: vi.fn() }))
@@ -46,6 +46,24 @@ afterEach(() => {
 })
 
 describe("matchup desk user flow", () => {
+  it("opens real placement quotes and persists market visibility without altering the card", async () => {
+    getBoard.mockResolvedValue(board({ picks: { matchups: [quote], value_bets: [
+      { player: "Ludvig Åberg", player_key: "aberg", bet_type: "top_20", book: "pinnacle", odds: "+125", model_prob: 0.5, ev: 0.125 },
+    ] } }))
+    const user = userEvent.setup()
+    const first = renderDesk("/?market=top20")
+    expect(await screen.findByRole("button", { name: "Save Ludvig Åberg to card" })).toBeEnabled()
+    await user.click(screen.getByText(/Visible markets/))
+    await user.click(screen.getByRole("checkbox", { name: "Top 20" }))
+    expect(screen.getByRole("heading", { name: "Top 20 is hidden." })).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(VISIBLE_MARKETS_KEY)!)).not.toContain("top20")
+    expect(localStorage.getItem(CARD_KEY)).toBeNull()
+    first.unmount()
+    renderDesk("/?market=top20")
+    expect(screen.getByRole("heading", { name: "Top 20 is hidden." })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Show Top 20" }))
+    expect(await screen.findByRole("button", { name: "Save Ludvig Åberg to card" })).toBeEnabled()
+  })
   it("opens My card without any live API requests", async () => {
     renderDesk("/card")
     expect(screen.getByRole("heading", { name: "Your card." })).toBeInTheDocument()
@@ -181,14 +199,14 @@ describe("matchup desk user flow", () => {
     getBoard.mockResolvedValue(board({ picks: { matchups: [{ ...quote, market_type: "matchup" }], value_bets: [] } }))
     const user = userEvent.setup()
     renderDesk()
-    const durations = screen.getByRole("group", { name: "Market duration" })
+    const durations = screen.getByRole("group", { name: "Market family" })
     await waitFor(() => expect(within(durations).getByRole("button", { name: /Other markets\s*1/ })).toBeInTheDocument())
     expect(within(durations).getByRole("button", { name: /72 holes\s*0/ })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Save Scottie Scheffler to card" })).not.toBeInTheDocument()
-    await user.click(within(durations).getByRole("button", { name: /Other markets/ }))
+    await user.click(screen.getByRole("button", { name: "View 1 quote" }))
     expect(await screen.findByText("+2.8%")).toBeInTheDocument()
     await user.selectOptions(screen.getByRole("combobox", { name: "Minimum model EV" }), "3")
-    expect(screen.getByRole("heading", { name: "No matchups fit these filters." })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "No selections fit these filters." })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Clear filters" }))
     expect(screen.getByText("+2.8%")).toBeInTheDocument()
   })

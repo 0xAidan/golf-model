@@ -1,602 +1,683 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-14T00:34:51.183562+00:00",
-  "title": "Design System: Golf Model — Matchup Desk",
+  "generatedAt": "2026-10-16T04:33:53.289666Z",
+  "title": "Design System: Golf Model — Rankings Workspace",
   "extensions": {
     "colorMeta": {
-      "ground": {
+      "bg": {
         "role": "neutral",
-        "displayName": "Ground",
+        "displayName": "Cool Ground",
         "tonalRamp": [
-          "oklch(15.00% 0.00448 134.85)",
-          "oklch(26.43% 0.00448 134.85)",
-          "oklch(37.86% 0.00448 134.85)",
-          "oklch(49.29% 0.00448 134.85)",
-          "oklch(60.71% 0.00448 134.85)",
-          "oklch(72.14% 0.00448 134.85)",
-          "oklch(83.57% 0.00448 134.85)",
-          "oklch(95.00% 0.00448 134.85)"
+          "oklch(15.00% 0.00249 165.08)",
+          "oklch(26.43% 0.00249 165.08)",
+          "oklch(37.86% 0.00249 165.08)",
+          "oklch(49.29% 0.00249 165.08)",
+          "oklch(60.71% 0.00249 165.08)",
+          "oklch(72.14% 0.00249 165.08)",
+          "oklch(83.57% 0.00249 165.08)",
+          "oklch(95.00% 0.00249 165.08)"
         ]
       },
       "paper": {
         "role": "neutral",
         "displayName": "Paper",
         "tonalRamp": [
-          "oklch(15.00% 0.00000 89.88)",
-          "oklch(26.43% 0.00000 89.88)",
-          "oklch(37.86% 0.00000 89.88)",
-          "oklch(49.29% 0.00000 89.88)",
-          "oklch(60.71% 0.00000 89.88)",
-          "oklch(72.14% 0.00000 89.88)",
-          "oklch(83.57% 0.00000 89.88)",
-          "oklch(95.00% 0.00000 89.88)"
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
         ]
       },
       "ink": {
         "role": "neutral",
-        "displayName": "Ink",
+        "displayName": "Evergreen Ink",
         "tonalRamp": [
-          "oklch(15.00% 0.03269 179.24)",
-          "oklch(26.43% 0.03269 179.24)",
-          "oklch(37.86% 0.03269 179.24)",
-          "oklch(49.29% 0.03269 179.24)",
-          "oklch(60.71% 0.03269 179.24)",
-          "oklch(72.14% 0.03269 179.24)",
-          "oklch(83.57% 0.03269 179.24)",
-          "oklch(95.00% 0.03269 179.24)"
+          "oklch(15.00% 0.03040 174.67)",
+          "oklch(26.43% 0.03040 174.67)",
+          "oklch(37.86% 0.03040 174.67)",
+          "oklch(49.29% 0.03040 174.67)",
+          "oklch(60.71% 0.03040 174.67)",
+          "oklch(72.14% 0.03040 174.67)",
+          "oklch(83.57% 0.03040 174.67)",
+          "oklch(95.00% 0.03040 174.67)"
         ]
       },
       "muted": {
         "role": "neutral",
-        "displayName": "Muted",
+        "displayName": "Supporting Ink",
         "tonalRamp": [
-          "oklch(15.00% 0.02575 163.77)",
-          "oklch(26.43% 0.02575 163.77)",
-          "oklch(37.86% 0.02575 163.77)",
-          "oklch(49.29% 0.02575 163.77)",
-          "oklch(60.71% 0.02575 163.77)",
-          "oklch(72.14% 0.02575 163.77)",
-          "oklch(83.57% 0.02575 163.77)",
-          "oklch(95.00% 0.02575 163.77)"
+          "oklch(15.00% 0.02429 169.82)",
+          "oklch(26.43% 0.02429 169.82)",
+          "oklch(37.86% 0.02429 169.82)",
+          "oklch(49.29% 0.02429 169.82)",
+          "oklch(60.71% 0.02429 169.82)",
+          "oklch(72.14% 0.02429 169.82)",
+          "oklch(83.57% 0.02429 169.82)",
+          "oklch(95.00% 0.02429 169.82)"
+        ]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Chart Guide Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.02346 165.53)",
+          "oklch(26.43% 0.02346 165.53)",
+          "oklch(37.86% 0.02346 165.53)",
+          "oklch(49.29% 0.02346 165.53)",
+          "oklch(60.71% 0.02346 165.53)",
+          "oklch(72.14% 0.02346 165.53)",
+          "oklch(83.57% 0.02346 165.53)",
+          "oklch(95.00% 0.02346 165.53)"
         ]
       },
       "rule": {
         "role": "neutral",
-        "displayName": "Rule",
+        "displayName": "Sage Rule",
         "tonalRamp": [
-          "oklch(15.00% 0.01376 145.46)",
-          "oklch(26.43% 0.01376 145.46)",
-          "oklch(37.86% 0.01376 145.46)",
-          "oklch(49.29% 0.01376 145.46)",
-          "oklch(60.71% 0.01376 145.46)",
-          "oklch(72.14% 0.01376 145.46)",
-          "oklch(83.57% 0.01376 145.46)",
-          "oklch(95.00% 0.01376 145.46)"
+          "oklch(15.00% 0.01254 156.98)",
+          "oklch(26.43% 0.01254 156.98)",
+          "oklch(37.86% 0.01254 156.98)",
+          "oklch(49.29% 0.01254 156.98)",
+          "oklch(60.71% 0.01254 156.98)",
+          "oklch(72.14% 0.01254 156.98)",
+          "oklch(83.57% 0.01254 156.98)",
+          "oklch(95.00% 0.01254 156.98)"
         ]
       },
       "tint": {
         "role": "neutral",
-        "displayName": "Tint",
+        "displayName": "Sage Tint",
         "tonalRamp": [
-          "oklch(15.00% 0.01237 137.78)",
-          "oklch(26.43% 0.01237 137.78)",
-          "oklch(37.86% 0.01237 137.78)",
-          "oklch(49.29% 0.01237 137.78)",
-          "oklch(60.71% 0.01237 137.78)",
-          "oklch(72.14% 0.01237 137.78)",
-          "oklch(83.57% 0.01237 137.78)",
-          "oklch(95.00% 0.01237 137.78)"
+          "oklch(15.00% 0.00827 157.09)",
+          "oklch(26.43% 0.00827 157.09)",
+          "oklch(37.86% 0.00827 157.09)",
+          "oklch(49.29% 0.00827 157.09)",
+          "oklch(60.71% 0.00827 157.09)",
+          "oklch(72.14% 0.00827 157.09)",
+          "oklch(83.57% 0.00827 157.09)",
+          "oklch(95.00% 0.00827 157.09)"
         ]
       },
       "accent": {
         "role": "primary",
-        "displayName": "Accent",
+        "displayName": "Field Green",
         "tonalRamp": [
-          "oklch(15.00% 0.07847 165.13)",
-          "oklch(26.43% 0.07847 165.13)",
-          "oklch(37.86% 0.07847 165.13)",
-          "oklch(49.29% 0.07847 165.13)",
-          "oklch(60.71% 0.07847 165.13)",
-          "oklch(72.14% 0.07847 165.13)",
-          "oklch(83.57% 0.07847 165.13)",
-          "oklch(95.00% 0.07847 165.13)"
+          "oklch(15.00% 0.08476 165.85)",
+          "oklch(26.43% 0.08476 165.85)",
+          "oklch(37.86% 0.08476 165.85)",
+          "oklch(49.29% 0.08476 165.85)",
+          "oklch(60.71% 0.08476 165.85)",
+          "oklch(72.14% 0.08476 165.85)",
+          "oklch(83.57% 0.08476 165.85)",
+          "oklch(95.00% 0.08476 165.85)"
         ]
       },
       "positive": {
         "role": "primary",
-        "displayName": "Positive",
+        "displayName": "Positive Green",
         "tonalRamp": [
-          "oklch(15.00% 0.09858 154.15)",
-          "oklch(26.43% 0.09858 154.15)",
-          "oklch(37.86% 0.09858 154.15)",
-          "oklch(49.29% 0.09858 154.15)",
-          "oklch(60.71% 0.09858 154.15)",
-          "oklch(72.14% 0.09858 154.15)",
-          "oklch(83.57% 0.09858 154.15)",
-          "oklch(95.00% 0.09858 154.15)"
+          "oklch(15.00% 0.09457 161.94)",
+          "oklch(26.43% 0.09457 161.94)",
+          "oklch(37.86% 0.09457 161.94)",
+          "oklch(49.29% 0.09457 161.94)",
+          "oklch(60.71% 0.09457 161.94)",
+          "oklch(72.14% 0.09457 161.94)",
+          "oklch(83.57% 0.09457 161.94)",
+          "oklch(95.00% 0.09457 161.94)"
+        ]
+      },
+      "negative": {
+        "role": "secondary",
+        "displayName": "Muted Result Red",
+        "tonalRamp": [
+          "oklch(15.00% 0.13507 25.94)",
+          "oklch(26.43% 0.13507 25.94)",
+          "oklch(37.86% 0.13507 25.94)",
+          "oklch(49.29% 0.13507 25.94)",
+          "oklch(60.71% 0.13507 25.94)",
+          "oklch(72.14% 0.13507 25.94)",
+          "oklch(83.57% 0.13507 25.94)",
+          "oklch(95.00% 0.13507 25.94)"
+        ]
+      },
+      "rail": {
+        "role": "primary",
+        "displayName": "Pine Rail",
+        "tonalRamp": [
+          "oklch(15.00% 0.04859 171.98)",
+          "oklch(26.43% 0.04859 171.98)",
+          "oklch(37.86% 0.04859 171.98)",
+          "oklch(49.29% 0.04859 171.98)",
+          "oklch(60.71% 0.04859 171.98)",
+          "oklch(72.14% 0.04859 171.98)",
+          "oklch(83.57% 0.04859 171.98)",
+          "oklch(95.00% 0.04859 171.98)"
+        ]
+      },
+      "rail-text": {
+        "role": "neutral",
+        "displayName": "Pale Rail Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.02379 157.51)",
+          "oklch(26.43% 0.02379 157.51)",
+          "oklch(37.86% 0.02379 157.51)",
+          "oklch(49.29% 0.02379 157.51)",
+          "oklch(60.71% 0.02379 157.51)",
+          "oklch(72.14% 0.02379 157.51)",
+          "oklch(83.57% 0.02379 157.51)",
+          "oklch(95.00% 0.02379 157.51)"
         ]
       },
       "warning": {
         "role": "secondary",
-        "displayName": "Warning",
+        "displayName": "Amber Caution",
         "tonalRamp": [
-          "oklch(15.00% 0.08900 71.68)",
-          "oklch(26.43% 0.08900 71.68)",
-          "oklch(37.86% 0.08900 71.68)",
-          "oklch(49.29% 0.08900 71.68)",
-          "oklch(60.71% 0.08900 71.68)",
-          "oklch(72.14% 0.08900 71.68)",
-          "oklch(83.57% 0.08900 71.68)",
-          "oklch(95.00% 0.08900 71.68)"
+          "oklch(15.00% 0.08475 74.20)",
+          "oklch(26.43% 0.08475 74.20)",
+          "oklch(37.86% 0.08475 74.20)",
+          "oklch(49.29% 0.08475 74.20)",
+          "oklch(60.71% 0.08475 74.20)",
+          "oklch(72.14% 0.08475 74.20)",
+          "oklch(83.57% 0.08475 74.20)",
+          "oklch(95.00% 0.08475 74.20)"
         ]
       },
       "warning-bg": {
         "role": "secondary",
-        "displayName": "Warning Bg",
+        "displayName": "Amber Ground",
         "tonalRamp": [
-          "oklch(15.00% 0.03001 83.63)",
-          "oklch(26.43% 0.03001 83.63)",
-          "oklch(37.86% 0.03001 83.63)",
-          "oklch(49.29% 0.03001 83.63)",
-          "oklch(60.71% 0.03001 83.63)",
-          "oklch(72.14% 0.03001 83.63)",
-          "oklch(83.57% 0.03001 83.63)",
-          "oklch(95.00% 0.03001 83.63)"
+          "oklch(15.00% 0.01881 83.06)",
+          "oklch(26.43% 0.01881 83.06)",
+          "oklch(37.86% 0.01881 83.06)",
+          "oklch(49.29% 0.01881 83.06)",
+          "oklch(60.71% 0.01881 83.06)",
+          "oklch(72.14% 0.01881 83.06)",
+          "oklch(83.57% 0.01881 83.06)",
+          "oklch(95.00% 0.01881 83.06)"
         ]
       },
-      "mast": {
-        "role": "primary",
-        "displayName": "Mast",
-        "tonalRamp": [
-          "oklch(15.00% 0.05213 171.51)",
-          "oklch(26.43% 0.05213 171.51)",
-          "oklch(37.86% 0.05213 171.51)",
-          "oklch(49.29% 0.05213 171.51)",
-          "oklch(60.71% 0.05213 171.51)",
-          "oklch(72.14% 0.05213 171.51)",
-          "oklch(83.57% 0.05213 171.51)",
-          "oklch(95.00% 0.05213 171.51)"
-        ]
-      },
-      "gold": {
-        "role": "secondary",
-        "displayName": "Gold",
-        "tonalRamp": [
-          "oklch(15.00% 0.11320 110.74)",
-          "oklch(26.43% 0.11320 110.74)",
-          "oklch(37.86% 0.11320 110.74)",
-          "oklch(49.29% 0.11320 110.74)",
-          "oklch(60.71% 0.11320 110.74)",
-          "oklch(72.14% 0.11320 110.74)",
-          "oklch(83.57% 0.11320 110.74)",
-          "oklch(95.00% 0.11320 110.74)"
-        ]
-      },
-      "dark-ground": {
+      "dark-bg": {
         "role": "neutral",
-        "displayName": "Dark Ground",
+        "displayName": "Dark Cool Ground",
         "tonalRamp": [
-          "oklch(15.00% 0.02106 174.37)",
-          "oklch(26.43% 0.02106 174.37)",
-          "oklch(37.86% 0.02106 174.37)",
-          "oklch(49.29% 0.02106 174.37)",
-          "oklch(60.71% 0.02106 174.37)",
-          "oklch(72.14% 0.02106 174.37)",
-          "oklch(83.57% 0.02106 174.37)",
-          "oklch(95.00% 0.02106 174.37)"
+          "oklch(15.00% 0.02274 171.42)",
+          "oklch(26.43% 0.02274 171.42)",
+          "oklch(37.86% 0.02274 171.42)",
+          "oklch(49.29% 0.02274 171.42)",
+          "oklch(60.71% 0.02274 171.42)",
+          "oklch(72.14% 0.02274 171.42)",
+          "oklch(83.57% 0.02274 171.42)",
+          "oklch(95.00% 0.02274 171.42)"
         ]
       },
       "dark-paper": {
         "role": "neutral",
         "displayName": "Dark Paper",
         "tonalRamp": [
-          "oklch(15.00% 0.03021 166.82)",
-          "oklch(26.43% 0.03021 166.82)",
-          "oklch(37.86% 0.03021 166.82)",
-          "oklch(49.29% 0.03021 166.82)",
-          "oklch(60.71% 0.03021 166.82)",
-          "oklch(72.14% 0.03021 166.82)",
-          "oklch(83.57% 0.03021 166.82)",
-          "oklch(95.00% 0.03021 166.82)"
+          "oklch(15.00% 0.02727 167.92)",
+          "oklch(26.43% 0.02727 167.92)",
+          "oklch(37.86% 0.02727 167.92)",
+          "oklch(49.29% 0.02727 167.92)",
+          "oklch(60.71% 0.02727 167.92)",
+          "oklch(72.14% 0.02727 167.92)",
+          "oklch(83.57% 0.02727 167.92)",
+          "oklch(95.00% 0.02727 167.92)"
         ]
       },
       "dark-ink": {
         "role": "neutral",
-        "displayName": "Dark Ink",
+        "displayName": "Dark Evergreen Ink",
         "tonalRamp": [
-          "oklch(15.00% 0.01409 138.71)",
-          "oklch(26.43% 0.01409 138.71)",
-          "oklch(37.86% 0.01409 138.71)",
-          "oklch(49.29% 0.01409 138.71)",
-          "oklch(60.71% 0.01409 138.71)",
-          "oklch(72.14% 0.01409 138.71)",
-          "oklch(83.57% 0.01409 138.71)",
-          "oklch(95.00% 0.01409 138.71)"
+          "oklch(15.00% 0.01079 158.84)",
+          "oklch(26.43% 0.01079 158.84)",
+          "oklch(37.86% 0.01079 158.84)",
+          "oklch(49.29% 0.01079 158.84)",
+          "oklch(60.71% 0.01079 158.84)",
+          "oklch(72.14% 0.01079 158.84)",
+          "oklch(83.57% 0.01079 158.84)",
+          "oklch(95.00% 0.01079 158.84)"
         ]
       },
       "dark-muted": {
         "role": "neutral",
-        "displayName": "Dark Muted",
+        "displayName": "Dark Supporting Ink",
         "tonalRamp": [
-          "oklch(15.00% 0.02458 149.29)",
-          "oklch(26.43% 0.02458 149.29)",
-          "oklch(37.86% 0.02458 149.29)",
-          "oklch(49.29% 0.02458 149.29)",
-          "oklch(60.71% 0.02458 149.29)",
-          "oklch(72.14% 0.02458 149.29)",
-          "oklch(83.57% 0.02458 149.29)",
-          "oklch(95.00% 0.02458 149.29)"
+          "oklch(15.00% 0.02663 158.06)",
+          "oklch(26.43% 0.02663 158.06)",
+          "oklch(37.86% 0.02663 158.06)",
+          "oklch(49.29% 0.02663 158.06)",
+          "oklch(60.71% 0.02663 158.06)",
+          "oklch(72.14% 0.02663 158.06)",
+          "oklch(83.57% 0.02663 158.06)",
+          "oklch(95.00% 0.02663 158.06)"
+        ]
+      },
+      "dark-faint": {
+        "role": "neutral",
+        "displayName": "Dark Chart Guide Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.02707 157.99)",
+          "oklch(26.43% 0.02707 157.99)",
+          "oklch(37.86% 0.02707 157.99)",
+          "oklch(49.29% 0.02707 157.99)",
+          "oklch(60.71% 0.02707 157.99)",
+          "oklch(72.14% 0.02707 157.99)",
+          "oklch(83.57% 0.02707 157.99)",
+          "oklch(95.00% 0.02707 157.99)"
         ]
       },
       "dark-rule": {
         "role": "neutral",
-        "displayName": "Dark Rule",
+        "displayName": "Dark Sage Rule",
         "tonalRamp": [
-          "oklch(15.00% 0.03351 155.97)",
-          "oklch(26.43% 0.03351 155.97)",
-          "oklch(37.86% 0.03351 155.97)",
-          "oklch(49.29% 0.03351 155.97)",
-          "oklch(60.71% 0.03351 155.97)",
-          "oklch(72.14% 0.03351 155.97)",
-          "oklch(83.57% 0.03351 155.97)",
-          "oklch(95.00% 0.03351 155.97)"
+          "oklch(15.00% 0.03607 159.39)",
+          "oklch(26.43% 0.03607 159.39)",
+          "oklch(37.86% 0.03607 159.39)",
+          "oklch(49.29% 0.03607 159.39)",
+          "oklch(60.71% 0.03607 159.39)",
+          "oklch(72.14% 0.03607 159.39)",
+          "oklch(83.57% 0.03607 159.39)",
+          "oklch(95.00% 0.03607 159.39)"
         ]
       },
       "dark-tint": {
         "role": "neutral",
-        "displayName": "Dark Tint",
+        "displayName": "Dark Sage Tint",
         "tonalRamp": [
-          "oklch(15.00% 0.03446 161.76)",
-          "oklch(26.43% 0.03446 161.76)",
-          "oklch(37.86% 0.03446 161.76)",
-          "oklch(49.29% 0.03446 161.76)",
-          "oklch(60.71% 0.03446 161.76)",
-          "oklch(72.14% 0.03446 161.76)",
-          "oklch(83.57% 0.03446 161.76)",
-          "oklch(95.00% 0.03446 161.76)"
+          "oklch(15.00% 0.03610 160.79)",
+          "oklch(26.43% 0.03610 160.79)",
+          "oklch(37.86% 0.03610 160.79)",
+          "oklch(49.29% 0.03610 160.79)",
+          "oklch(60.71% 0.03610 160.79)",
+          "oklch(72.14% 0.03610 160.79)",
+          "oklch(83.57% 0.03610 160.79)",
+          "oklch(95.00% 0.03610 160.79)"
         ]
       },
       "dark-accent": {
         "role": "primary",
-        "displayName": "Dark Accent",
+        "displayName": "Dark Field Green",
         "tonalRamp": [
-          "oklch(15.00% 0.10310 128.24)",
-          "oklch(26.43% 0.10310 128.24)",
-          "oklch(37.86% 0.10310 128.24)",
-          "oklch(49.29% 0.10310 128.24)",
-          "oklch(60.71% 0.10310 128.24)",
-          "oklch(72.14% 0.10310 128.24)",
-          "oklch(83.57% 0.10310 128.24)",
-          "oklch(95.00% 0.10310 128.24)"
+          "oklch(15.00% 0.05925 157.23)",
+          "oklch(26.43% 0.05925 157.23)",
+          "oklch(37.86% 0.05925 157.23)",
+          "oklch(49.29% 0.05925 157.23)",
+          "oklch(60.71% 0.05925 157.23)",
+          "oklch(72.14% 0.05925 157.23)",
+          "oklch(83.57% 0.05925 157.23)",
+          "oklch(95.00% 0.05925 157.23)"
         ]
       },
       "dark-positive": {
         "role": "primary",
-        "displayName": "Dark Positive",
+        "displayName": "Dark Positive Green",
         "tonalRamp": [
-          "oklch(15.00% 0.10310 128.24)",
-          "oklch(26.43% 0.10310 128.24)",
-          "oklch(37.86% 0.10310 128.24)",
-          "oklch(49.29% 0.10310 128.24)",
-          "oklch(60.71% 0.10310 128.24)",
-          "oklch(72.14% 0.10310 128.24)",
-          "oklch(83.57% 0.10310 128.24)",
-          "oklch(95.00% 0.10310 128.24)"
+          "oklch(15.00% 0.06610 157.73)",
+          "oklch(26.43% 0.06610 157.73)",
+          "oklch(37.86% 0.06610 157.73)",
+          "oklch(49.29% 0.06610 157.73)",
+          "oklch(60.71% 0.06610 157.73)",
+          "oklch(72.14% 0.06610 157.73)",
+          "oklch(83.57% 0.06610 157.73)",
+          "oklch(95.00% 0.06610 157.73)"
+        ]
+      },
+      "dark-negative": {
+        "role": "secondary",
+        "displayName": "Dark Muted Result Red",
+        "tonalRamp": [
+          "oklch(15.00% 0.09385 24.27)",
+          "oklch(26.43% 0.09385 24.27)",
+          "oklch(37.86% 0.09385 24.27)",
+          "oklch(49.29% 0.09385 24.27)",
+          "oklch(60.71% 0.09385 24.27)",
+          "oklch(72.14% 0.09385 24.27)",
+          "oklch(83.57% 0.09385 24.27)",
+          "oklch(95.00% 0.09385 24.27)"
+        ]
+      },
+      "dark-rail": {
+        "role": "primary",
+        "displayName": "Dark Pine Rail",
+        "tonalRamp": [
+          "oklch(15.00% 0.04532 171.91)",
+          "oklch(26.43% 0.04532 171.91)",
+          "oklch(37.86% 0.04532 171.91)",
+          "oklch(49.29% 0.04532 171.91)",
+          "oklch(60.71% 0.04532 171.91)",
+          "oklch(72.14% 0.04532 171.91)",
+          "oklch(83.57% 0.04532 171.91)",
+          "oklch(95.00% 0.04532 171.91)"
+        ]
+      },
+      "dark-rail-text": {
+        "role": "neutral",
+        "displayName": "Dark Pale Rail Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.02540 156.65)",
+          "oklch(26.43% 0.02540 156.65)",
+          "oklch(37.86% 0.02540 156.65)",
+          "oklch(49.29% 0.02540 156.65)",
+          "oklch(60.71% 0.02540 156.65)",
+          "oklch(72.14% 0.02540 156.65)",
+          "oklch(83.57% 0.02540 156.65)",
+          "oklch(95.00% 0.02540 156.65)"
         ]
       },
       "dark-warning": {
         "role": "secondary",
-        "displayName": "Dark Warning",
+        "displayName": "Dark Amber Caution",
         "tonalRamp": [
-          "oklch(15.00% 0.10258 81.06)",
-          "oklch(26.43% 0.10258 81.06)",
-          "oklch(37.86% 0.10258 81.06)",
-          "oklch(49.29% 0.10258 81.06)",
-          "oklch(60.71% 0.10258 81.06)",
-          "oklch(72.14% 0.10258 81.06)",
-          "oklch(83.57% 0.10258 81.06)",
-          "oklch(95.00% 0.10258 81.06)"
+          "oklch(15.00% 0.09387 79.69)",
+          "oklch(26.43% 0.09387 79.69)",
+          "oklch(37.86% 0.09387 79.69)",
+          "oklch(49.29% 0.09387 79.69)",
+          "oklch(60.71% 0.09387 79.69)",
+          "oklch(72.14% 0.09387 79.69)",
+          "oklch(83.57% 0.09387 79.69)",
+          "oklch(95.00% 0.09387 79.69)"
         ]
       },
       "dark-warning-bg": {
         "role": "secondary",
-        "displayName": "Dark Warning Bg",
+        "displayName": "Dark Amber Ground",
         "tonalRamp": [
-          "oklch(15.00% 0.02922 84.18)",
-          "oklch(26.43% 0.02922 84.18)",
-          "oklch(37.86% 0.02922 84.18)",
-          "oklch(49.29% 0.02922 84.18)",
-          "oklch(60.71% 0.02922 84.18)",
-          "oklch(72.14% 0.02922 84.18)",
-          "oklch(83.57% 0.02922 84.18)",
-          "oklch(95.00% 0.02922 84.18)"
+          "oklch(15.00% 0.02944 81.64)",
+          "oklch(26.43% 0.02944 81.64)",
+          "oklch(37.86% 0.02944 81.64)",
+          "oklch(49.29% 0.02944 81.64)",
+          "oklch(60.71% 0.02944 81.64)",
+          "oklch(72.14% 0.02944 81.64)",
+          "oklch(83.57% 0.02944 81.64)",
+          "oklch(95.00% 0.02944 81.64)"
         ]
       },
-      "dark-mast": {
-        "role": "primary",
-        "displayName": "Dark Mast",
-        "tonalRamp": [
-          "oklch(15.00% 0.04985 169.94)",
-          "oklch(26.43% 0.04985 169.94)",
-          "oklch(37.86% 0.04985 169.94)",
-          "oklch(49.29% 0.04985 169.94)",
-          "oklch(60.71% 0.04985 169.94)",
-          "oklch(72.14% 0.04985 169.94)",
-          "oklch(83.57% 0.04985 169.94)",
-          "oklch(95.00% 0.04985 169.94)"
-        ]
-      },
-      "mast-text": {
+      "rail-active": {
         "role": "neutral",
-        "displayName": "Mast Text",
+        "displayName": "Active Sage",
         "tonalRamp": [
-          "oklch(15.00% 0.01347 134.90)",
-          "oklch(26.43% 0.01347 134.90)",
-          "oklch(37.86% 0.01347 134.90)",
-          "oklch(49.29% 0.01347 134.90)",
-          "oklch(60.71% 0.01347 134.90)",
-          "oklch(72.14% 0.01347 134.90)",
-          "oklch(83.57% 0.01347 134.90)",
-          "oklch(95.00% 0.01347 134.90)"
+          "oklch(15.00% 0.02200 138.98)",
+          "oklch(26.43% 0.02200 138.98)",
+          "oklch(37.86% 0.02200 138.98)",
+          "oklch(49.29% 0.02200 138.98)",
+          "oklch(60.71% 0.02200 138.98)",
+          "oklch(72.14% 0.02200 138.98)",
+          "oklch(83.57% 0.02200 138.98)",
+          "oklch(95.00% 0.02200 138.98)"
         ]
       },
-      "mast-link": {
+      "rail-active-ink": {
         "role": "neutral",
-        "displayName": "Mast Link",
+        "displayName": "Active Pine Ink",
         "tonalRamp": [
-          "oklch(15.00% 0.02917 148.55)",
-          "oklch(26.43% 0.02917 148.55)",
-          "oklch(37.86% 0.02917 148.55)",
-          "oklch(49.29% 0.02917 148.55)",
-          "oklch(60.71% 0.02917 148.55)",
-          "oklch(72.14% 0.02917 148.55)",
-          "oklch(83.57% 0.02917 148.55)",
-          "oklch(95.00% 0.02917 148.55)"
+          "oklch(15.00% 0.05332 161.03)",
+          "oklch(26.43% 0.05332 161.03)",
+          "oklch(37.86% 0.05332 161.03)",
+          "oklch(49.29% 0.05332 161.03)",
+          "oklch(60.71% 0.05332 161.03)",
+          "oklch(72.14% 0.05332 161.03)",
+          "oklch(83.57% 0.05332 161.03)",
+          "oklch(95.00% 0.05332 161.03)"
         ]
       },
-      "mast-tools": {
+      "rail-hover": {
         "role": "neutral",
-        "displayName": "Mast Tools",
+        "displayName": "Hover Pine",
         "tonalRamp": [
-          "oklch(15.00% 0.02621 141.76)",
-          "oklch(26.43% 0.02621 141.76)",
-          "oklch(37.86% 0.02621 141.76)",
-          "oklch(49.29% 0.02621 141.76)",
-          "oklch(60.71% 0.02621 141.76)",
-          "oklch(72.14% 0.02621 141.76)",
-          "oklch(83.57% 0.02621 141.76)",
-          "oklch(95.00% 0.02621 141.76)"
+          "oklch(15.00% 0.05265 167.08)",
+          "oklch(26.43% 0.05265 167.08)",
+          "oklch(37.86% 0.05265 167.08)",
+          "oklch(49.29% 0.05265 167.08)",
+          "oklch(60.71% 0.05265 167.08)",
+          "oklch(72.14% 0.05265 167.08)",
+          "oklch(83.57% 0.05265 167.08)",
+          "oklch(95.00% 0.05265 167.08)"
         ]
       },
-      "card-count-bg": {
+      "dark-button-ink": {
         "role": "neutral",
-        "displayName": "Card Count Bg",
+        "displayName": "Dark Action Ink",
         "tonalRamp": [
-          "oklch(15.00% 0.05252 165.54)",
-          "oklch(26.43% 0.05252 165.54)",
-          "oklch(37.86% 0.05252 165.54)",
-          "oklch(49.29% 0.05252 165.54)",
-          "oklch(60.71% 0.05252 165.54)",
-          "oklch(72.14% 0.05252 165.54)",
-          "oklch(83.57% 0.05252 165.54)",
-          "oklch(95.00% 0.05252 165.54)"
-        ]
-      },
-      "card-count-text": {
-        "role": "neutral",
-        "displayName": "Card Count Text",
-        "tonalRamp": [
-          "oklch(15.00% 0.01801 134.92)",
-          "oklch(26.43% 0.01801 134.92)",
-          "oklch(37.86% 0.01801 134.92)",
-          "oklch(49.29% 0.01801 134.92)",
-          "oklch(60.71% 0.01801 134.92)",
-          "oklch(72.14% 0.01801 134.92)",
-          "oklch(83.57% 0.01801 134.92)",
-          "oklch(95.00% 0.01801 134.92)"
+          "oklch(15.00% 0.03842 164.57)",
+          "oklch(26.43% 0.03842 164.57)",
+          "oklch(37.86% 0.03842 164.57)",
+          "oklch(49.29% 0.03842 164.57)",
+          "oklch(60.71% 0.03842 164.57)",
+          "oklch(72.14% 0.03842 164.57)",
+          "oklch(83.57% 0.03842 164.57)",
+          "oklch(95.00% 0.03842 164.57)"
         ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Page title."
+        "purpose": "General workspace page title."
       },
-      "display-compact": {
-        "displayName": "Display Compact",
-        "purpose": "Page title at 1100px and narrower."
+      "rankings-heading": {
+        "displayName": "Rankings Heading",
+        "purpose": "Compact Rankings page title."
       },
-      "display-mobile": {
-        "displayName": "Display Mobile",
-        "purpose": "Page title at 560px and narrower."
+      "rankings-heading-mobile": {
+        "displayName": "Rankings Heading Mobile",
+        "purpose": "Rankings title at 760px and narrower."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Evidence aside heading."
+        "purpose": "Reusable section heading."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Event heading."
-      },
-      "player": {
-        "displayName": "Player",
-        "purpose": "Player identity in market records."
-      },
-      "price": {
-        "displayName": "Price",
-        "purpose": "Quoted book price."
-      },
-      "metric": {
-        "displayName": "Metric",
-        "purpose": "Market probability and model EV."
+        "purpose": "Supporting panel heading."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Desk prose and navigation base."
-      },
-      "support": {
-        "displayName": "Support",
-        "purpose": "Supporting prose."
+        "purpose": "Workspace text base."
       },
       "control": {
         "displayName": "Control",
-        "purpose": "Framed primary and secondary actions."
+        "purpose": "Framed primary and secondary buttons."
       },
-      "label": {
-        "displayName": "Label",
-        "purpose": "Uppercase desktop table headings."
+      "table": {
+        "displayName": "Table",
+        "purpose": "Aligned ranking and evidence values."
+      },
+      "support": {
+        "displayName": "Support",
+        "purpose": "Compact explanatory prose."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "Statistical summary values."
+      },
+      "player-score": {
+        "displayName": "Player Score",
+        "purpose": "Selected-player score."
       }
     },
     "shadows": [
       {
-        "name": "more-tools",
-        "value": "0 10px 25px -12px #001a2260",
-        "purpose": "Only the floating More tools menu."
+        "name": "selected-segment",
+        "value": "0 1px 3px #142d2410",
+        "purpose": "Pressed workspace segment only; panels stay flat."
       }
     ],
-    "motion": [],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "150ms ease-out",
+        "purpose": "Button fills/borders and player-chevron opacity."
+      },
+      {
+        "name": "row-navigation-state",
+        "value": "160ms ease-out",
+        "purpose": "Navigation color and ranking-row fill."
+      },
+      {
+        "name": "player-comparison",
+        "value": "220ms cubic-bezier(.16,1,.3,1)",
+        "purpose": "Selected-field marker, guide and component bars."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "prefers-reduced-motion removes transitions/animations and restores auto scrolling."
+      }
+    ],
     "breakpoints": [
       {
-        "name": "mobile-max",
+        "name": "workspace-mobile-max",
+        "value": "760px"
+      },
+      {
+        "name": "insight-compact-max",
+        "value": "1050px"
+      },
+      {
+        "name": "workspace-compact-max",
+        "value": "1200px"
+      },
+      {
+        "name": "workspace-wide-min",
+        "value": "1600px"
+      },
+      {
+        "name": "embedded-record-mobile-max",
         "value": "560px"
       },
       {
-        "name": "stacked-max",
+        "name": "embedded-record-stack-max",
         "value": "850px"
       },
       {
-        "name": "compact-max",
+        "name": "embedded-record-compact-max",
         "value": "1100px"
       },
       {
-        "name": "wide-min",
+        "name": "embedded-aside-wide-min",
         "value": "1550px"
       }
     ]
   },
   "components": [
     {
-      "name": "Primary action",
+      "name": "Primary button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The accent action used by the empty saved card; hover mixes accent with ink and keeps paper text.",
-      "html": "<a class=\"ds-primary\" href=\"#\">Explore matchups <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></a>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-primary{font-family:Barlow, Arial, sans-serif;font-size:14px;font-weight:600;line-height:1.25;border-radius:3px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;background:var(--md-accent, #155a42);color:var(--md-paper, #fff);border:1px solid var(--md-accent, #155a42)}.ds-primary:hover{background:color-mix(in srgb,var(--md-accent, #155a42) 90%,var(--md-ink, #142d28));color:var(--md-paper, #fff)}.ds-primary:focus-visible{outline:2px solid var(--md-accent, #155a42);outline-offset:4px;box-shadow:none;border-radius:2px}"
+      "description": "Main action; the dark theme switches its lettering to dark action ink.",
+      "html": "<button class=\"ds-button ds-primary\">Explore markets<svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M7 17 17 7M7 7h10v10\"/></svg></button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:40px;padding:10px 15px;border:1px solid var(--lw-rule,#dce5df);border-radius:4px;background:var(--lw-paper,#fff);color:var(--lw-ink,#182e28);font:500 12px/1.5 Switzer,Arial,sans-serif;cursor:pointer;transition:background 150ms ease-out,border-color 150ms ease-out}.ds-button:hover{background:var(--lw-tint,#edf3ef);border-color:var(--lw-accent,#1c684e)}.ds-button:focus-visible{outline:2px solid var(--lw-accent,#1c684e);outline-offset:4px}.ds-button:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-primary{background:var(--lw-accent,#1c684e);border-color:var(--lw-accent,#1c684e);color:var(--lw-paper,#fff)}.ds-primary:hover{background:color-mix(in srgb,var(--lw-accent,#1c684e) 88%,var(--lw-ink,#182e28))}.ds-primary:active{background:color-mix(in srgb,var(--lw-accent,#1c684e) 88%,var(--lw-ink,#182e28))}:host-context(.dark) .ds-primary{color:#163025}"
     },
     {
-      "name": "Secondary action",
+      "name": "Secondary button",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "A framed retry or export action.",
-      "html": "<button class=\"ds-secondary\">Export card</button>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-secondary{font-family:Barlow, Arial, sans-serif;font-size:14px;font-weight:600;line-height:1.25;border-radius:3px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;background:var(--md-paper, #fff);color:var(--md-ink, #142d28);border:1px solid var(--md-rule, #d9e1d9)}.ds-secondary:hover{background:var(--md-tint, #eaf0e8)}.ds-secondary:disabled{opacity:.5;cursor:default}.ds-secondary:focus-visible{outline:2px solid var(--md-accent, #155a42);outline-offset:4px;box-shadow:none;border-radius:2px}"
+      "description": "A bordered supporting action.",
+      "html": "<button class=\"ds-button\">Season archive<svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M7 17 17 7M7 7h10v10\"/></svg></button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:40px;padding:10px 15px;border:1px solid var(--lw-rule,#dce5df);border-radius:4px;background:var(--lw-paper,#fff);color:var(--lw-ink,#182e28);font:500 12px/1.5 Switzer,Arial,sans-serif;cursor:pointer;transition:background 150ms ease-out,border-color 150ms ease-out}.ds-button:hover{background:var(--lw-tint,#edf3ef);border-color:var(--lw-accent,#1c684e)}.ds-button:focus-visible{outline:2px solid var(--lw-accent,#1c684e);outline-offset:4px}.ds-button:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}"
     },
     {
-      "name": "Save quote",
-      "kind": "button",
-      "refersTo": "button-save",
-      "description": "A plus becomes a check when saved; hover and saved state share the accent border.",
-      "html": "<button class=\"ds-save\" aria-label=\"Save quote\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg></button>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-save{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--md-rule, #d9e1d9);background:var(--md-paper, #fff);color:var(--md-ink, #142d28);border-radius:3px;cursor:pointer}.ds-save:hover,.ds-save[aria-pressed=\"true\"]{background:var(--md-tint, #eaf0e8);color:var(--md-accent, #155a42);border-color:var(--md-accent, #155a42)}.ds-save:disabled{opacity:.5;cursor:default}.ds-save:focus-visible{outline:2px solid var(--md-accent, #155a42);outline-offset:4px;box-shadow:none;border-radius:2px}"
-    },
-    {
-      "name": "Player search",
+      "name": "Search field",
       "kind": "input",
       "refersTo": "input-search",
-      "description": "The focus outline belongs to the whole search field.",
-      "html": "<label class=\"ds-search\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input aria-label=\"Find a player or matchup\" placeholder=\"Find a player or matchup\" /></label>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-search{display:flex;align-items:center;gap:9px;min-width:150px;border:1px solid var(--md-rule, #d9e1d9);border-radius:3px;padding:0 11px;background:var(--md-paper, #fff);color:var(--md-muted, #5c6e65)}.ds-search input{font-family:Barlow, Arial, sans-serif;font-size:14px;color:var(--md-ink, #142d28);width:100%;min-width:0;height:38px;background:transparent;border:0;outline:none}.ds-search input::placeholder{color:var(--md-muted, #5c6e65);opacity:1}.ds-search:focus-within{outline:2px solid var(--md-accent, #155a42);outline-offset:2px}.ds-search input:focus-visible{outline:none}"
+      "description": "One bordered search group with a single focus treatment.",
+      "html": "<label class=\"ds-search\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input aria-label=\"Find a player\" placeholder=\"Find a player…\"><span>72 players</span></label>",
+      "css": ".ds-search{display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--lw-bg,#f6f8f7);border:1px solid var(--lw-rule,#dce5df);border-radius:4px;color:var(--lw-muted,#596b64);font-family:Switzer,Arial,sans-serif;font-variant-numeric:tabular-nums;}.ds-search input{width:100%;min-width:0;border:0;outline:none;background:transparent;color:var(--lw-ink,#182e28);font:400 12px/1.5 Switzer,Arial,sans-serif}.ds-search input::placeholder{color:var(--lw-muted,#596b64)}.ds-search span{font-size:10px;white-space:nowrap}.ds-search:focus-within{outline:2px solid var(--lw-accent,#1c684e);outline-offset:2px}"
     },
     {
-      "name": "Masthead navigation",
+      "name": "Native select",
+      "kind": "input",
+      "refersTo": "input-select",
+      "description": "Native model or market selection.",
+      "html": "<select class=\"ds-select\" aria-label=\"Model\"><option>Original model</option><option>Research challenger</option></select>",
+      "css": ".ds-select{font:400 12px/1.5 Switzer,Arial,sans-serif;background:var(--lw-paper,#fff);border:1px solid var(--lw-rule,#dce5df);color:var(--lw-ink,#182e28);border-radius:4px;padding:8px 28px 8px 10px;min-height:36px;max-width:100%}.ds-select:focus-visible{outline:2px solid var(--lw-accent,#1c684e);outline-offset:4px}"
+    },
+    {
+      "name": "Primary navigation",
       "kind": "nav",
-      "refersTo": "nav-primary",
-      "description": "Active navigation uses a gold underline on evergreen.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Main navigation\"><a class=\"ds-nav-link\" href=\"#\" aria-current=\"page\">Markets</a><a class=\"ds-nav-link\" href=\"#\">My card</a><a class=\"ds-nav-link\" href=\"#\">Results</a></nav>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-nav{display:flex;gap:34px;min-height:80px;padding:0 24px;background:var(--md-mast, #133e32);font-family:Barlow, Arial, sans-serif;font-size:15px;line-height:1.5}.ds-nav-link{display:flex;align-items:center;padding-top:3px;border-bottom:3px solid transparent;color:#c5d7c7;font-weight:600;text-decoration:none}.ds-nav-link[aria-current=\"page\"]{color:#fff;border-bottom-color:var(--md-gold, #d8dc82)}.ds-nav-link:hover{color:#fff}.ds-nav-link:focus-visible{outline:2px solid var(--md-accent, #155a42);outline-offset:4px;box-shadow:none;border-radius:2px}@media(max-width:560px){.ds-nav{min-height:41px;gap:30px}.ds-nav-link{font-size:14px;padding-bottom:7px}}"
+      "refersTo": "nav-selected",
+      "description": "Pine navigation with a pale labeled selection.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><a href=\"#rankings\" aria-current=\"page\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M4 6h1M4 12h1M4 18h1M10 6h10M10 12h10M10 18h10\"/></svg>Rankings<svg class=\"ds-nav-arrow\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m9 6 6 6-6 6\"/></svg></a><a href=\"#markets\">Markets</a></nav>",
+      "css": ".ds-nav{display:flex;flex-direction:column;gap:6px;padding:18px;background:var(--lw-rail,#163d32);font-family:Switzer,Arial,sans-serif;font-variant-numeric:tabular-nums;}.ds-nav a{display:flex;align-items:center;gap:12px;padding:12px 15px;min-height:44px;border-radius:5px;font-size:13px;color:var(--lw-rail-text,#c0d1c6);text-decoration:none;transition:background 160ms ease-out,color 160ms ease-out}.ds-nav a:hover{background:#254d3e;color:#fff}.ds-nav a[aria-current=page]{background:#e2eddf;color:#234836;font-weight:500}.ds-nav-arrow{margin-left:auto}.ds-nav a:focus-visible{outline:2px solid var(--lw-accent,#1c684e);outline-offset:4px}@media(prefers-reduced-motion:reduce){.ds-nav a{transition:none}}"
     },
     {
-      "name": "Market count",
+      "name": "Segmented control",
+      "kind": "button",
+      "refersTo": "segmented-selected",
+      "description": "Context selection with a small pressed-state shadow.",
+      "html": "<div class=\"ds-segmented\" role=\"group\" aria-label=\"Event view\"><button aria-pressed=\"true\">Upcoming</button><button aria-pressed=\"false\">In play</button></div>",
+      "css": ".ds-segmented{display:inline-flex;background:var(--lw-tint,#edf3ef);border:1px solid var(--lw-rule,#dce5df);border-radius:5px;padding:3px;gap:3px}.ds-segmented button{border:0;background:transparent;color:var(--lw-muted,#596b64);padding:6px 12px;border-radius:3px;font:400 11px/1.5 Switzer,Arial,sans-serif;min-height:30px;cursor:pointer}.ds-segmented button[aria-pressed=true]{background:var(--lw-paper,#fff);color:var(--lw-ink,#182e28);box-shadow:0 1px 3px #142d2410}.ds-segmented button:hover{color:var(--lw-accent,#1c684e)}.ds-segmented button:focus-visible{outline:2px solid var(--lw-accent,#1c684e);outline-offset:4px}"
+    },
+    {
+      "name": "Research status",
       "kind": "chip",
-      "refersTo": "chip-count",
-      "description": "A compact count beside a market tab; not a status badge.",
-      "html": "<span class=\"ds-count\">3</span>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-count{display:inline-block;font-family:Barlow, Arial, sans-serif;font-size:11px;font-weight:400;line-height:18px;background:var(--md-tint, #eaf0e8);color:var(--md-muted, #5c6e65);border-radius:2px;padding:0 5px}"
+      "refersTo": "chip-research",
+      "description": "Visible research status paired with text and SVG.",
+      "html": "<span class=\"ds-research\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M9 3h6M10 3v7l-6 10h16l-6-10V3M8 16h8\"/></svg>Research challenger</span>",
+      "css": ".ds-research{display:inline-flex;align-items:center;gap:6px;font:400 10px/1.5 Switzer,Arial,sans-serif;background:var(--lw-warning-bg,#f7f0e3);color:var(--lw-warning,#78541d);padding:5px 8px;border-radius:3px}"
     },
     {
-      "name": "Event context",
-      "kind": "custom",
-      "refersTo": "segmented-control",
-      "description": "Upcoming and In play use an aria-pressed selected segment.",
-      "html": "<div class=\"ds-mode\" role=\"group\" aria-label=\"Event context\"><button class=\"ds-mode-button\" aria-pressed=\"true\">Upcoming</button><button class=\"ds-mode-button\" aria-pressed=\"false\">In play</button></div>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-mode{display:inline-flex;border:1px solid var(--md-rule, #d9e1d9);border-radius:4px;padding:3px}.ds-mode-button{font-family:Barlow, Arial, sans-serif;font-size:13px;line-height:1.2;padding:6px 12px;border:0;border-radius:2px;background:none;color:var(--md-muted, #5c6e65);cursor:pointer}.ds-mode-button[aria-pressed=\"true\"]{background:var(--md-tint, #eaf0e8);color:var(--md-ink, #142d28);font-weight:600}.ds-mode-button:focus-visible{outline:2px solid var(--md-accent, #155a42);outline-offset:4px;box-shadow:none;border-radius:2px}@media(max-width:560px){.ds-mode-button{font-size:12px;padding:7px 10px}}"
-    },
-    {
-      "name": "Saved selection",
+      "name": "Evidence panel",
       "kind": "card",
-      "refersTo": "saved-card",
-      "description": "A square record preserves identity, quoted values and timestamp; example values are demonstration only.",
-      "html": "<article class=\"ds-card\"><div class=\"ds-card-main\"><div class=\"ds-identity\"><h2 class=\"ds-player\">Example player</h2><p class=\"ds-opponent\">vs Example opponent</p></div><div class=\"ds-value\"><strong>−110</strong><span>Example book</span></div><div class=\"ds-value\"><strong>58.7%</strong><span>Model win</span></div><div class=\"ds-value\"><strong class=\"ds-positive\">+4.0%</strong><span>Model EV</span></div></div><p class=\"ds-event\">Example event · 72 holes</p><p class=\"ds-reason\">Demonstration values, not live predictions.</p><div class=\"ds-card-foot\"><span>Original timestamp</span><span>Saved quote · current price unverified</span></div></article>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-card{font-family:Barlow, Arial, sans-serif;line-height:1.5;font-variant-numeric:tabular-nums;background:var(--md-paper, #fff);color:var(--md-ink, #142d28);border:1px solid var(--md-rule, #d9e1d9);padding:20px 22px}.ds-card-main{display:grid;grid-template-columns:minmax(110px,1fr) repeat(3,auto);align-items:center;gap:18px;padding-top:15px}.ds-identity{padding-right:15px}.ds-player{font-family:Barlow Condensed, Arial, sans-serif;font-size:27px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:0}.ds-opponent{font-size:12px;color:var(--md-muted, #5c6e65);margin:4px 0 0}.ds-value{display:flex;flex-direction:column;text-align:right}.ds-value strong{font-size:19px;font-weight:600}.ds-value span{font-size:10px;color:var(--md-muted, #5c6e65)}.ds-event{font-size:12px;color:var(--md-muted, #5c6e65);margin:15px 0 0}.ds-reason{font-size:13px;color:var(--md-muted, #5c6e65);margin:9px 0 0}.ds-card-foot{display:flex;justify-content:space-between;gap:12px;font-size:10px;color:var(--md-muted, #5c6e65);padding-top:16px;margin-top:20px;border-top:1px solid var(--md-rule, #d9e1d9)}@media(max-width:560px){.ds-card{padding:17px}.ds-card-main{grid-template-columns:repeat(3,1fr);gap:15px}.ds-identity{grid-column:1/-1}.ds-value{text-align:left}.ds-card-foot{flex-direction:column;gap:7px}}.ds-positive{color:var(--md-positive, #236b41)}"
+      "refersTo": "panel-analysis",
+      "description": "Flat paper panel with a rule and compact explanatory text.",
+      "html": "<section class=\"ds-panel\"><h2>Probability calibration</h2><p>Does a 60% forecast win about 60% of the time?</p></section>",
+      "css": ".ds-panel{background:var(--lw-paper,#fff);border:1px solid var(--lw-rule,#dce5df);border-radius:5px;padding:23px;color:var(--lw-ink,#182e28);font-family:Switzer,Arial,sans-serif;font-variant-numeric:tabular-nums;}.ds-panel h2{margin:0;font-size:18px;font-weight:500;line-height:1.35;letter-spacing:-.015em}.ds-panel p{font-size:12px;color:var(--lw-muted,#596b64);line-height:1.5;margin:5px 0 0;max-width:70ch}"
     },
     {
-      "name": "Probability comparison",
+      "name": "Selected field record",
       "kind": "custom",
-      "refersTo": "matchup-detail",
-      "description": "A shared scale with two independent supplied values; this snippet uses labeled demonstration values.",
-      "html": "<div class=\"ds-comparison\"><div class=\"ds-probability-labels\"><div class=\"ds-model-label\"><strong>Model win probability</strong><span>58.7%</span></div><div class=\"ds-book-label\"><span>52.0%</span><strong>Book break-even</strong></div></div><div class=\"ds-probability-rule\" role=\"img\" aria-label=\"Demonstration: model 58.7%; book break-even 52.0% on a shared probability scale\"><span class=\"ds-model-mark\" style=\"left:58.7%\"></span><span class=\"ds-book-mark\" style=\"left:52%\"></span></div></div>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-comparison{padding:24px;background:var(--md-tint, #eaf0e8);color:var(--md-ink, #142d28);font-family:Barlow, Arial, sans-serif;font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}.ds-probability-labels{display:grid;grid-template-columns:1fr 1fr;gap:18px}.ds-model-label,.ds-book-label{display:flex;justify-content:space-between;gap:8px}.ds-probability-labels strong{font-weight:600}.ds-probability-rule{position:relative;height:4px;margin:10px 0;background:var(--md-rule, #d9e1d9)}.ds-model-mark{position:absolute;top:-4px;width:12px;height:12px;border-radius:50%;transform:translateX(-50%);background:var(--md-accent, #155a42);border:2px solid var(--md-paper, #fff);box-sizing:border-box}.ds-book-mark{position:absolute;top:-6px;width:2px;height:16px;transform:translateX(-50%);background:var(--md-ink, #142d28)}.ds-model-label strong:before{content:\"\";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--md-accent, #155a42);margin-right:6px}.ds-book-label strong:before{content:\"\";display:inline-block;width:2px;height:11px;background:var(--md-ink, #142d28);margin-right:6px;vertical-align:-1px}@media(max-width:560px){.ds-comparison{padding:18px 14px}.ds-probability-labels{gap:8px}.ds-model-label{flex-direction:column;font-size:12px}.ds-book-label{flex-direction:column-reverse;font-size:12px;text-align:right}}"
-    },
-    {
-      "name": "Evidence notice",
-      "kind": "custom",
-      "refersTo": "evidence-notice",
-      "description": "Amber explains incomplete coverage without treating it as an error or an achievement.",
-      "html": "<aside class=\"ds-notice\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4\"/><path d=\"M12 8h.01\"/></svg><div><strong>Available history, not a complete season.</strong><p>Historical recovery is still being reconciled. These records describe model selections, not verified placed bets.</p></div></aside>",
-      "css": "@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-Regular.ttf\") format(\"truetype\");font-weight:400;font-display:swap}@font-face{font-family:Barlow;src:url(\"/fonts/Barlow-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}@font-face{font-family:\"Barlow Condensed\";src:url(\"/fonts/BarlowCondensed-SemiBold.ttf\") format(\"truetype\");font-weight:600 900;font-display:swap}.ds-notice{display:flex;gap:12px;font-family:Barlow, Arial, sans-serif;line-height:1.5;background:var(--md-warning-bg, #fff4df);color:var(--md-warning, #795117);padding:18px 22px;border:1px solid color-mix(in srgb,var(--md-warning, #795117) 23%,transparent)}.ds-notice svg{flex-shrink:0;margin-top:3px}.ds-notice strong{font-size:15px;font-weight:600}.ds-notice p{font-size:13px;margin:4px 0 0;max-width:100ch}@media(max-width:560px){.ds-notice{padding:15px;gap:9px}.ds-notice strong{font-size:14px}.ds-notice p{font-size:12px;line-height:1.6}}@media(max-width:560px){.ds-notice>svg{width:17px}}"
+      "refersTo": "ranking-selected",
+      "description": "Stable player identity and an aligned highlighted score.",
+      "html": "<table class=\"ds-rank-table\"><thead><tr><th>Rank</th><th>Player</th><th>Score</th></tr></thead><tbody><tr class=\"ds-selected\"><td>1</td><th><button>Doug Ghim<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m9 6 6 6-6 6\"/></svg></button></th><td class=\"ds-score\">72.1</td></tr><tr><td>2</td><th><button>Jacob Bridgeman</button></th><td class=\"ds-score\">71.9</td></tr></tbody></table>",
+      "css": ".ds-rank-table{border-collapse:collapse;width:100%;font:400 12px/1.5 Switzer,Arial,sans-serif;font-variant-numeric:tabular-nums;color:var(--lw-ink,#182e28);background:var(--lw-paper,#fff)}.ds-rank-table th,.ds-rank-table td{padding:11px 13px;text-align:right;border-bottom:1px solid var(--lw-rule,#dce5df)}.ds-rank-table thead th{padding-block:9px;background:var(--lw-tint,#edf3ef);font-size:10px;color:var(--lw-muted,#596b64);font-weight:400}.ds-rank-table th:nth-child(2){text-align:left}.ds-rank-table tbody th{padding-left:0;font-weight:400}.ds-rank-table tbody tr{transition:background 160ms ease-out}.ds-rank-table tbody tr:hover{background:var(--lw-bg,#f6f8f7)}.ds-rank-table .ds-selected{background:var(--lw-tint,#edf3ef)}.ds-rank-table .ds-score{font-weight:500;color:var(--lw-accent,#1c684e)}.ds-rank-table button{border:0;padding:0;background:transparent;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:9px;width:100%;min-height:28px;cursor:pointer;font:inherit}.ds-rank-table button:focus-visible{outline:2px solid var(--lw-accent,#1c684e);outline-offset:4px}@media(prefers-reduced-motion:reduce){.ds-rank-table tbody tr{transition:none}}"
     }
   ],
   "narrative": {
-    "northStar": "The Team-Golf Broadcast Desk",
-    "overview": "The desk takes its visual character from international team-golf broadcast graphics: an evergreen masthead, cool pale surfaces, condensed headings and aligned numerical comparisons. It is compact and factual, with visible rules separating records and a small amount of yellow-green used in the masthead and browser selection.\n\nThis system applies to the implemented Markets (`/`), My card (`/card`) and Results (`/evidence`) surfaces. The dark theme translates the same structure into green-black ground and pale foliage accents. Retained research and operations routes use their incumbent styles; their terminal tokens have not been redesigned or absorbed into this system.",
+    "northStar": "The Club Field Index",
+    "overview": "A quiet field index pairs deep pine navigation with cool paper, pale sage selection and precise ruled records. Switzer carries headings, controls and tabular data in one voice. The application is compact enough to compare a full field while keeping source dates, model identity and uncertain evidence close to the values they qualify.\n\nThis system covers the shipped Rankings, Markets, Performance, Models, My card and Season archive workspace. Light and dark themes share structure and semantic roles. Embedded market and archive surfaces inherit the new palette and heading family while retaining their existing record geometry. Linked player, research, evaluation and system tools retain their earlier terminal system; the standalone shared-card reader retains the earlier desk shell.",
     "keyCharacteristics": [
-      "Evergreen masthead with a yellow-green active navigation rule.",
-      "Self-hosted Barlow Condensed headings and Barlow body text with tabular numerals.",
-      "Flat, ruled records and minimally rounded controls.",
-      "A shared probability scale distinguished by a round model marker and a vertical bookmaker marker.",
-      "Visible labels and text explanations for saved, stale, unavailable and research-only states."
+      "Pine navigation with a pale, text-labeled active item.",
+      "Self-hosted Switzer throughout the workspace, with tabular numerals.",
+      "Flat paper panels, thin rules and modest control corners.",
+      "Persistent selected-player identity with a shared field distribution and component bars.",
+      "Charts and tables that keep units, cohort, model version and missing evidence visible."
     ],
     "rules": [
       {
         "name": "The Paired State Rule",
-        "body": "Use color with text, shape or an underline: a selected tab has an underline, a saved quote has a check, and a warning has an explanation.",
+        "body": "Pair state color with text, a marker or a structural change: selected records retain their identity, warnings explain the limitation, and saved quotes show a check.",
         "section": "colors"
       },
       {
-        "name": "The Two Voices Rule",
-        "body": "Use Barlow Condensed for headings and Barlow for controls, prose and data; keep numerical columns tabular and aligned.",
+        "name": "The One Typeface Rule",
+        "body": "Use Switzer for workspace headings, controls, prose and data. Keep numerical comparisons tabular and aligned.",
         "section": "typography"
       },
       {
         "name": "The Ruled Surface Rule",
-        "body": "Use tonal fills and thin rules to separate records. The More tools menu is the only desk surface with an ambient shadow.",
+        "body": "Separate records with tonal fills and thin rules. Keep data panels flat; the small pressed-segment shadow is a control state, not a card treatment.",
         "section": "elevation"
       }
     ],
     "dos": [
-      "Do keep the light and dark semantic palettes paired; the gold masthead accent stays the same in both themes.",
-      "Do preserve text labels and distinct marker shapes alongside state color.",
-      "Do use the same tabular number treatment for prices, probabilities, EV and evidence tables.",
-      "Do reflow a record into labeled values on narrow screens while retaining its identity and source context.",
-      "Do show the probability comparison only when both supplied probabilities exist; missing values remain explicit.",
-      "Do keep actual table headers and market labels; they identify data and are not decorative heading labels."
+      "Do use the paired light and dark semantic palettes and the visible pale navigation selection.",
+      "Do keep units, source age, model identity and evidence limitations next to the affected values.",
+      "Do preserve stable player identity and a shared comparison scale when selection changes.",
+      "Do retain horizontal comparison for the Rankings table and use labeled mobile records only for the tables that implement that pattern.",
+      "Do keep color accompanied by text, marker shape or selection structure.",
+      "Do retain semantic table headers when mobile presentation visually hides them."
     ],
     "donts": [
-      "Don't extend this desk specification to retained legacy routes without an explicit design change.",
-      "Don't turn saved research selections or recorded model results into visual claims of placed bets or verified profit.",
-      "Don't replace the round model marker and vertical bookmaker marker with a filled proportion that implies an opponent complement.",
-      "Don't add decorative kickers, hard offset shadows, glyph icons or system-font display headings.",
-      "Don't prohibit cards globally: saved selections and mobile result records are flat bordered containers in the shipped system."
+      "Don't present recorded model selections or paper returns as verified placed bets or profit.",
+      "Don't erase missing data, uncertain provenance or research status with a success treatment.",
+      "Don't extend the retained terminal or standalone shared-reader styling into the new workspace by default.",
+      "Don't add decorative kickers, glyph icons, hard offset shadows or system-font display headings.",
+      "Don't turn the observed 9–10px supporting annotations into a reusable primary-text standard."
     ]
   }
 }
