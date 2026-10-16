@@ -127,7 +127,7 @@ def test_projection_accepts_explicit_tour_without_observed_tour_but_never_withou
     assert current_field_input({"historical_event_info": calendar}, snapshot, "2026-10-16")["players"] == []
 
 
-def test_mutable_sqlite_training_input_is_replayable_after_correction(tmp_path):
+def test_mutable_sqlite_training_input_is_replayable_after_correction(tmp_path, monkeypatch):
     path = tmp_path / "weekly.sqlite"
     writer = sqlite3.connect(path)
     writer.execute("PRAGMA journal_mode=WAL")
@@ -142,11 +142,22 @@ def test_mutable_sqlite_training_input_is_replayable_after_correction(tmp_path):
     reference = tables["rounds"][0]["_source_refs"][0]
     assert reference["row_sha256"] == hashlib.sha256(json.dumps(original_row, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
     tables, source = deduplicate(tables, [source])
+    from backtester import learning_corpus
+
+    def reject_full_reload(*args, **kwargs):
+        raise AssertionError("Readback must not allocate a second full training corpus")
+
+    monkeypatch.setattr(learning_corpus, "load_source", reject_full_reload)
+    model = {**_model(), "minimum_history_rounds": 1}
+    players = [{"player_key": "zach_johnson", "dg_id": 6986}]
+    expected_predictions = rank_players(model, tables["rounds"], players, as_of="2025-10-10")
+    assert expected_predictions
     preserved = preserve_training_snapshot(tmp_path / "output", tables, source)
     writer.execute("UPDATE rounds SET sg_total=99")
     writer.commit()
     restored, _ = v1.load_source(preserved["path"], include_quotes=False)
     assert restored["rounds"] == tables["rounds"] and restored["rounds"][0]["sg_total"] == 1.25
+    assert rank_players(model, restored["rounds"], players, as_of="2025-10-10") == expected_predictions
     assert preserve_training_snapshot(tmp_path / "output", tables, source) == preserved
     assert preserved["readback_verified"] is True
     writer.close()

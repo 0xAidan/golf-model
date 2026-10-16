@@ -117,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
             for table in ("rounds", "historical_event_info"):
                 seed.setdefault(table, []).extend(tables.get(table, []))
             tables, manifest = deduplicate(seed, historical.get("origins", []) + [manifest])
+            # The deduplicated rows retain all provenance. Release the raw seed
+            # and its overlapping live-row containers before snapshot readback.
+            del seed, historical
         elif args.protocol == "recovered-v2":
             from backtester.learning_corpus import add_snapshot_references, deduplicate
 
@@ -153,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
             args.public_report.parent.mkdir(parents=True, exist_ok=True)
             temp = args.public_report.with_suffix(".json.tmp")
             temp.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
+            # The service keeps private artifacts at 0600; sanitized public bytes
+            # must already be readable when the atomic replacement becomes live.
+            temp.chmod(0o644)
             temp.replace(args.public_report)
             from src.learning_run_history import publish_run_history
 

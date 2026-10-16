@@ -97,5 +97,6 @@ def publish_run_history(output: Path, destination: Path, *, latest_report_sha256
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
+    temporary.chmod(0o644)
     temporary.replace(destination)
     return report

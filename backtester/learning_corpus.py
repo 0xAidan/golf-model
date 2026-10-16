@@ -172,9 +172,18 @@ def preserve_training_snapshot(output: Path, tables: dict, source: dict) -> dict
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists():
         save_cache(destination, selected, {k: v for k, v in source.items() if k != "training_snapshot"})
-    retained, _ = load_source(destination, include_quotes=False)
-    verified = canonical_hash({table: sorted(canonical_hash(row) for row in retained.get(table, [])) for table in sorted(TABLES)})
-    if verified != digest:
+    # Read back one row at a time. Loading another full object graph (and its
+    # sorted JSON source hash) can exceed the isolated service's memory cap.
+    hashes = {table: [] for table in sorted(TABLES)}
+    with gzip.open(destination, "rt") as stream:
+        for line in stream:
+            item = json.loads(line)
+            if item["table"] in hashes:
+                hashes[item["table"]].append(canonical_hash(item["row"]))
+            elif item["table"] != "_manifest":
+                raise ValueError("Unexpected table in retained training corpus")
+    verified = canonical_hash({table: sorted(rows) for table, rows in hashes.items()})
+    if verified != digest or any(len(hashes[table]) != len(selected[table]) for table in hashes):
         raise ValueError("Retained training corpus readback mismatch")
     with destination.open("rb") as handle:
         compressed_hash = hashlib.file_digest(handle, "sha256").hexdigest()
