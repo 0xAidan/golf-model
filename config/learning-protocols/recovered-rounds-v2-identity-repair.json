@@ -1,0 +1,89 @@
+{
+  "id": "recovered-rounds-shadow-v2-provider-identity-repair",
+  "pinned_at": "2026-10-16",
+  "target": "mean_sg_over_actual_played_rounds",
+  "tour": "pga",
+  "train_start": "2020-01-01",
+  "validation_start": "2025-01-01",
+  "test_start": "2026-01-01",
+  "test_status": "exposed_retrospective_2026_identity_integrity_repair",
+  "selection_objective": "validation_pair_log_loss_then_sg_rmse",
+  "calibration": "four expanding event blocks, completed training events only",
+  "minimum_history_rounds": 8,
+  "minimum_event_players": 20,
+  "history": "verified calendar aligned PGA rounds; team/sealed events excluded from features and targets",
+  "course_feature": "single official calendar course only; unknown/multi-course features omitted",
+  "candidates": [
+    {
+      "id": "sg50-prior8",
+      "kind": "sg50_shrink",
+      "prior_rounds": 8
+    },
+    {
+      "id": "recency-ridge-001",
+      "kind": "ridge",
+      "ridge": 0.01
+    },
+    {
+      "id": "recency-ridge-01",
+      "kind": "ridge",
+      "ridge": 0.1
+    },
+    {
+      "id": "recency-ridge-1",
+      "kind": "ridge",
+      "ridge": 1.0
+    },
+    {
+      "id": "spline-ridge-01",
+      "kind": "spline_ridge",
+      "ridge": 0.1
+    },
+    {
+      "id": "stumps-120",
+      "kind": "boosted_stumps",
+      "iterations": 120,
+      "learning_rate": 0.05
+    },
+    {
+      "id": "stumps-240",
+      "kind": "boosted_stumps",
+      "iterations": 240,
+      "learning_rate": 0.03
+    }
+  ],
+  "stump_quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "stump_min_leaf_event_weight": 0.02,
+  "stump_leaf_l2": 0.01,
+  "bootstrap": {
+    "unit": "paired event",
+    "resamples": 2000,
+    "seed": 20261016
+  },
+  "automatic_promotion": false,
+  "market_probability": "conditional decisive finish-order shadow probability only",
+  "roi_clv_inferred": false,
+  "parent_protocol_hash": "239b49279de7a5a2074202150a4c522f33b8659fdf9b58e399b1ac1d58481194",
+  "integrity_repair": {
+    "player_identity": "tour:datagolf:dg_id; no alias-based history or target grouping",
+    "aliases": "source player_key/name values retained as provenance; ambiguous missing-ID projections withheld",
+    "selection": "same seven predetermined candidate specifications and original date splits; no test-based tuning",
+    "reproducibility": "exact merged training corpus retained before fitting, all SQLite source rows hashed, admission dependencies archived",
+    "projection": "tour and year resolved only by explicit year and/or unique bounded dated calendar match",
+    "frozen_at": "2026-10-16T04:11:09.077345+00:00",
+    "initial_repaired_seed": {
+      "sha256": "77fa175573bd03b214984de193e20466ecb4c0f045e7bd3e9a3b6ab722afb418",
+      "canonical_corpus_sha256": "afb4d9f0039b8c0d21517ce4faafc1126dfd9464bae8538202396b8e67b3f26d"
+    }
+  }
+}
