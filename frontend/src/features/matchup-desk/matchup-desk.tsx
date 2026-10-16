@@ -36,6 +36,7 @@ import {
   type SavedPick,
 } from "./market-rows"
 import { CardPage } from "./card-page"
+import { MarketGenerationControls } from "./market-generation-controls"
 import "./matchup-desk.css"
 import "./season-results.css"
 
@@ -498,6 +499,7 @@ function MarketBoard({
           <p>Visibility changes your workspace. Quotes appear when the source publishes them.</p>
           {preferenceError && <p role="status">Browser storage is blocked. This selection applies for this session.</p>}
         </details>
+        <MarketGenerationControls/>
         <div
           className="md-market-tabs"
           role="group"

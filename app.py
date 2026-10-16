@@ -226,6 +226,10 @@ async def _mutating_api_auth(request: Request, call_next):
         return await call_next(request)
     if not request.url.path.startswith("/api/"):
         return await call_next(request)
+    if request.url.path == "/api/market-generation-policy":
+        # This route always authenticates writes itself, including deployments
+        # with only its dedicated market-control credential configured.
+        return await call_next(request)
 
     expected = _expected_dashboard_api_key()
     if not expected:
@@ -270,6 +274,7 @@ from src.routes.ops import router as ops_router
 from src.routes.ops_jobs import router as ops_jobs_router
 from src.routes.operator_ui import router as operator_ui_router
 from src.routes.market_evidence import router as market_evidence_router
+from src.routes.market_generation_policy import router as market_generation_policy_router
 from src.routes.autoresearch_tier2 import router as autoresearch_tier2_router
 from src.routes.autoresearch_view import router as autoresearch_view_router
 
@@ -290,6 +295,7 @@ app.include_router(ops_router)
 app.include_router(ops_jobs_router)
 app.include_router(operator_ui_router)
 app.include_router(market_evidence_router)
+app.include_router(market_generation_policy_router)
 from src.routes.analytics import router as analytics_router
 from src.routes.grading_season import router as grading_season_router
 
@@ -2028,6 +2034,9 @@ async def run_analysis(
 ):
     """Upload CSVs and run the model."""
     global _last_analysis
+    from src.market_generation_policy import get_market_generation_policy, market_enabled
+
+    generation_policy = get_market_generation_policy()
 
     # Create temp folder for this upload batch
     upload_dir = tempfile.mkdtemp(prefix="golf_csvs_")
@@ -2088,6 +2097,8 @@ async def run_analysis(
             try:
                 all_odds = []
                 for market in ["outrights", "top_5", "top_10", "top_20"]:
+                    if not market_enabled(market, generation_policy):
+                        continue
                     api_odds = fetch_odds_api(market)
                     all_odds.extend(api_odds)
                 if all_odds:
@@ -2098,6 +2109,8 @@ async def run_analysis(
                             odds_by_market[m] = []
                         odds_by_market[m].append(o)
                     for market, market_odds in odds_by_market.items():
+                        if not market_enabled(market, generation_policy):
+                            continue
                         best = get_best_odds(market_odds)
                         bt = "outright" if market == "outrights" else market.replace("top_", "top")
                         vb = find_value_bets(
@@ -2123,12 +2136,15 @@ async def run_analysis(
             "value_bets": value_bets,
             "weights": weights,
             "timestamp": datetime.now().isoformat(),
+            "market_generation_policy": generation_policy,
         }
 
         # Also log top picks to DB
         pick_rows = []
         for r in composite[:20]:
             for bt in ["outright", "top5", "top10", "top20"]:
+                if not market_enabled(bt, generation_policy):
+                    continue
                 pick_rows.append({
                     "tournament_id": tournament_id,
                     "model_variant": config.DEFAULT_MODEL_VARIANT,
@@ -2159,6 +2175,7 @@ async def run_analysis(
             "files_skipped": skipped,
             "players_scored": len(composite),
             "odds_status": odds_status,
+            "market_generation_policy": generation_policy,
             "summary": {fname: {"type": s.get("type"), "rows": s.get("rows", 0)}
                         for fname, s in summary.items()},
         }

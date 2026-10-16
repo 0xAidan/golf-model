@@ -58,6 +58,7 @@ describe("matchup desk user flow", () => {
     expect(screen.getByRole("heading", { name: "Top 20 is hidden." })).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem(VISIBLE_MARKETS_KEY)!)).not.toContain("top20")
     expect(localStorage.getItem(CARD_KEY)).toBeNull()
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false)
     first.unmount()
     renderDesk("/?market=top20")
     expect(screen.getByRole("heading", { name: "Top 20 is hidden." })).toBeInTheDocument()

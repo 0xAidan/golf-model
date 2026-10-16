@@ -19,6 +19,11 @@ from src.field_selection import filter_rows_to_field
 from src.player_normalizer import normalize_name, display_name
 from src.run_provenance import write_run_provenance
 from src.strategy_resolution import build_pipeline_strategy_config
+from src.market_generation_policy import (
+    get_market_generation_policy,
+    market_enabled,
+    placement_generation_enabled,
+)
 
 logger = logging.getLogger("golf_model_service")
 
@@ -108,12 +113,17 @@ class GolfModelService:
           - run_metadata
         """
         run_start = datetime.now()
+        # Freeze one policy for the complete run; edits affect the next run.
+        self._generation_policy = get_market_generation_policy()
         result = {
             "status": "running",
             "errors": [],
             "warnings": [],
             "model_variant": self.model_variant,
+            "market_generation_policy": self._generation_policy,
         }
+        if self._generation_policy["state"] == "unavailable":
+            result["warnings"].append(self._generation_policy["error"]["message"])
 
         # Resolve output_dir to project output so app can read card regardless of cwd
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -303,6 +313,7 @@ class GolfModelService:
                 result["strategy_meta"] = pipeline_meta
         if isinstance(result.get("strategy_meta"), dict):
             result["strategy_meta"].setdefault("model_variant", self.model_variant)
+            result["strategy_meta"]["market_generation_policy"] = self._generation_policy
 
         # Step 8: Run composite model
         print("  Running composite model...")
@@ -365,7 +376,7 @@ class GolfModelService:
         print("  Fetching odds & computing value bets...")
         all_odds = {}
         value_bets = {}
-        if mode in ("full", "placements-only"):
+        if mode in ("full", "placements-only") and placement_generation_enabled(self._generation_policy):
             all_odds = self._fetch_odds()
             value_bets = self._compute_value_bets(composite, all_odds, tid)
         result["value_bets"] = value_bets
@@ -386,7 +397,9 @@ class GolfModelService:
             "state": "not_requested",
             "errors": [],
         }
-        if mode in ("full", "matchups-only", "round-matchups"):
+        if mode in ("full", "matchups-only", "round-matchups") and any(
+            market_enabled(key, self._generation_policy) for key in ("72h", "18h")
+        ):
             matchup_bets, matchup_bets_all_books, matchup_diagnostics = self._fetch_matchup_value_bets(
                 composite, tid, mode=mode
             )
@@ -399,7 +412,7 @@ class GolfModelService:
         result["matchup_bets"] = matchup_bets
         result["matchup_bets_all_books"] = matchup_bets_all_books
         result["matchup_diagnostics"] = matchup_diagnostics
-        if mode in ("full", "matchups-only"):
+        if mode in ("full", "matchups-only") and market_enabled("group", self._generation_policy):
             threeball_bets = self._fetch_3ball_value_bets(composite, tid)
             if threeball_bets:
                 value_bets.setdefault("3ball", []).extend(threeball_bets)
@@ -878,6 +891,7 @@ class GolfModelService:
         if self.strategy_config:
             ev_threshold = self.strategy_config.get("ev_threshold")
             allowed = self.strategy_config.get("allowed_markets")
+        generation_policy = getattr(self, "_generation_policy", None)
 
         value_bets = {}
         _fstr = get_field_strength(composite)
@@ -891,6 +905,8 @@ class GolfModelService:
                 bt = "frl"
             else:
                 bt = market_key.replace("top_", "top")
+            if not market_enabled(bt, generation_policy):
+                continue
             if allowed is not None and bt not in allowed:
                 continue
             # top15: DG renormalization / softmax / dead-heat / EV thresholds are not fully
@@ -948,6 +964,12 @@ class GolfModelService:
                 markets = [("round_matchups", "round"), ("tournament_matchups", "72-hole fallback")]
             else:
                 markets = [("tournament_matchups", "72-hole")]
+            generation_policy = getattr(self, "_generation_policy", None)
+            markets = [(key, label) for key, label in markets if market_enabled(key, generation_policy)]
+            if not markets:
+                diagnostics["state"] = "policy_disabled"
+                diagnostics["reason_codes"] = {"market_generation_disabled": 1}
+                return [], [], diagnostics
             aggregated_card = []
             aggregated_all_books = []
             books_seen: set[str] = set()
@@ -1078,6 +1100,8 @@ class GolfModelService:
 
     def _fetch_3ball_value_bets(self, composite, tid) -> list:
         """Fetch 3-ball odds and return value bets across all available books."""
+        if not market_enabled("group", getattr(self, "_generation_policy", None)):
+            return []
         try:
             from src.datagolf import fetch_matchup_odds
             from src.value import find_3ball_value_bets
@@ -1477,6 +1501,7 @@ class GolfModelService:
                          "field_size": result.get("field_size"),
                          "duration_s": result.get("run_duration_seconds"),
                          "errors": result.get("errors", []),
+                         "market_generation_policy": result.get("market_generation_policy"),
                      })),
                 )
                 conn.commit()
