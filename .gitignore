@@ -6,6 +6,8 @@ venv/
 data/golf.db
 data/golf.db-*
 data/tmp/
+data/research/
+output/learning/
 data/local_recovery/
 data/exports/
 data/csvs/*.csv

@@ -63,8 +63,9 @@ def _table(match):
 class CoreStatementScanner:
     """Split SQL without retaining unknown-table payloads or unbounded statements."""
 
-    def __init__(self, max_statement_bytes=8 << 20):
+    def __init__(self, max_statement_bytes=8 << 20, tables=TABLES):
         self.max_statement_bytes = max_statement_bytes
+        self.tables = tables
         self.pending = b""
         self.quote = None
         self.comment = None
@@ -97,7 +98,7 @@ class CoreStatementScanner:
         if self.trigger_active:
             return
         if match:
-            if _table(match) in TABLES:
+            if self.tables is None or _table(match) in self.tables:
                 self.body = self.prefix
                 self.prefix = bytearray()
                 self._add(data[retained:])
@@ -253,14 +254,14 @@ def _literal(text):
     raise ValueError("unsupported_literal_expression")
 
 
-def parse_core_insert(statement):
+def parse_core_insert(statement, *, approved_tables=TABLES):
     """Parse explicit-column INSERT literals; never evaluate expressions or SQL."""
     try:
         sql = statement.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError("invalid_utf8_sql") from exc
     match = _PREFIX.match(sql)
-    if not match or _table(match) not in TABLES:
+    if not match or (approved_tables is not None and _table(match) not in approved_tables):
         raise ValueError("unapproved_table_or_statement")
     rest = sql[match.end() :]
     # Column identifiers cannot contain unquoted closing parentheses. Use the
