@@ -58,9 +58,16 @@ completion check is not proof of provider schedule or full sweep success.
 
 `/api/ops/health` returned `ok=true` with `summary=grading_discrepancies` after the
 restart. Existing discrepancies remain visible and are not relabeled success.
-The last sweep state was failed; its next normal timer run still needs review.
+The next normal timer run started at 04:47:34 UTC and completed at 04:47:38 UTC
+with `Result=success` and `ExecMainStatus=0`. The full structured result is
+retained privately: `ok=true`, 39 admitted events, 36 skipped for no inventory,
+three already graded, zero orphan outcomes and zero events with ungraded
+positive-EV inventory in that reconciliation. Upcoming event 528 was absent.
+No new event was graded by this run. This successful job exit does not resolve every previously
+recorded grading discrepancy or establish results for every recovered event.
 The disk-watchdog unit points at a missing script and remains disabled. Capacity
-planning must preserve historical bytes; no old source was deleted for space.
+was restored by a [verified lossless quarantine representation change](2026-10-16-lossless-quarantine-storage.md),
+with all historical bytes retained and a guarded exact-path restore script.
 
 ## Validation
 
@@ -69,6 +76,7 @@ planning must preserve historical bytes; no old source was deleted for space.
 - Independent review verified the preservation corrections and identified the
   staged grading-identity adaptation before installation.
 - Complete clone startup conservation and live hash/readback checks above passed.
+- Final combined backend suite: 1,258 tests passed (eight warnings).
 
 Private execution receipts, database snapshots, complete source originals and
 clone comparison details are under the matching local reconciliation release

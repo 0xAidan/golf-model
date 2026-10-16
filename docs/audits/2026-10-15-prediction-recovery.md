@@ -6,8 +6,11 @@ not the set of tournaments for which this project made predictions.
 
 The recovered evidence is preserved separately from the live application. This
 is a recovery checkpoint, **not a claim that every prediction has been found**.
-Original source databases, cards, archives and histories have not been deleted
-or rewritten by the recovery.
+Historical bytes remain preserved. Cards, active databases and original archives
+were not rewritten by the recovery. One inactive server quarantine was later
+switched to a verified lossless gzip representation, with an independently
+verified off-server archive and an exact-path restore script retained; see the
+[storage receipt](2026-10-16-lossless-quarantine-storage.md).
 
 ## What was recovered
 
@@ -197,10 +200,14 @@ timers remain paused. See [the preservation release audit](2026-10-16-preservati
 continue to write successfully even when historical duplicates prevent a unique
 index, which has its own dirty-database and concurrent-writer regression cases.
 
-Only working copies created during this recovery were compressed or removed
-after byte-for-byte decompressed hash verification. Originals and the original
-preservation archives remain intact. The temporary low-space condition was
-resolved without deleting historical source data.
+Recovery working copies were compressed only after byte-for-byte decompressed
+hash verification. At 04:44:55 UTC, one inactive 6,835,355,648-byte server
+quarantine was also switched to a 382,825,848-byte lossless gzip representation.
+The uncompressed physical file was released after exact raw/compressed hash,
+sidecar and open-handle checks; its historical bytes remain in that server gzip
+and the independently verified off-server archive. A path receipt and guarded
+restore script preserve its original identity. The active database and sidecars
+were unchanged. Free server space measured 12,694,892,544 bytes after cutover.
 
 ## Detailed audits
 
