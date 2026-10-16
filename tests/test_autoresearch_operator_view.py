@@ -149,26 +149,12 @@ def test_eras_measures_from_activation(track_db):
         VALUES ('lab', '{}', 'baseline', 'abc123', 'tier1-abc123', 'active', 'operator', 'test')
         """
     )
+    track_db.execute("UPDATE track_configs SET activated_at = '2026-01-01 00:00:00' WHERE config_hash = 'abc123'")
+    track_db.execute(
+        "UPDATE picks SET source = 'lab_sandbox', model_config_hash = 'abc123', created_at = '2026-01-02 00:00:00' WHERE id = 1"
+    )
     track_db.commit()
-
-    class _ConnProxy:
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, params=()):
-            return self._real.execute(sql, params)
-
-        def close(self):
-            return None
-
-    import src.db as db_mod
-
-    original = db_mod.get_conn
-    db_mod.get_conn = lambda: _ConnProxy(track_db)
-    try:
-        eras = op.get_algorithm_eras()
-    finally:
-        db_mod.get_conn = original
+    eras = op.get_algorithm_eras()
 
     lab_eras = [e for e in eras["eras"] if e["config_hash"] == "abc123"]
     assert len(lab_eras) == 1

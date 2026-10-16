@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -204,10 +205,13 @@ def rollback_lab() -> dict[str, Any]:
 
 
 def get_algorithm_eras(*, window_days: int | None = None) -> dict[str, Any]:
+    """Attribute graded matchups to disjoint lab activation/config intervals.
+
+    Hashless history remains in the all-time record, never in an invented era.
+    Bounds use pick creation time, not the time its outcome was graded.
     """
-    Per-algorithm graded matchup ROI/W-L measured strictly AFTER each lab-track
-    config's activation timestamp, plus an all-time aggregate.
-    """
+    as_of = datetime.now(timezone.utc)
+    window_start = as_of - timedelta(days=window_days) if window_days and window_days > 0 else None
     conn = db.get_conn()
     try:
         rows = conn.execute(
@@ -218,17 +222,29 @@ def get_algorithm_eras(*, window_days: int | None = None) -> dict[str, Any]:
             ORDER BY id ASC
             """
         ).fetchall()
+        graded = _graded_matchup_rows(conn)
     finally:
         conn.close()
 
+    lab_rows = [dict(row) for row in rows if row["track"] == "lab"]
+    lab_rows.sort(key=lambda row: (_era_timestamp(row["activated_at"]) or datetime.max.replace(tzinfo=timezone.utc), row["id"]))
     eras: list[dict[str, Any]] = []
-    all_time = {"picks": 0, "wins": 0, "staked": 0.0, "returned": 0.0}
-
-    for row in rows:
-        if row["track"] != "lab":
-            continue
-        started_at = row["activated_at"]
-        metrics = _graded_metrics_since(conn, started_at, window_days=window_days)
+    bounds: list[tuple[datetime | None, datetime]] = []
+    for index, row in enumerate(lab_rows):
+        start = _era_timestamp(row["activated_at"])
+        next_start = next(
+            (_era_timestamp(later["activated_at"]) for later in lab_rows[index + 1:] if _era_timestamp(later["activated_at"]) is not None),
+            None,
+        )
+        end = min(next_start, as_of) if next_start is not None else as_of
+        bounds.append((start, end))
+        status = "attributable"
+        if start is None:
+            status = "missing_activation_time"
+        elif not str(row["config_hash"] or "").strip():
+            status = "missing_config_hash"
+        elif start >= end:
+            status = "empty_activation_interval"
         eras.append(
             {
                 "track_config_id": row["id"],
@@ -236,88 +252,125 @@ def get_algorithm_eras(*, window_days: int | None = None) -> dict[str, Any]:
                 "label": row["label"],
                 "model_variant": row["model_variant"],
                 "status": row["status"],
-                "activated_at": started_at,
+                "activated_at": row["activated_at"],
+                "ended_at": end.isoformat(),
+                "interval_end_basis": "next_activation" if next_start is not None and next_start <= as_of else "report_as_of",
+                "attribution_status": status,
                 "activated_by": row["activated_by"],
                 "activation_reason": row["activation_reason"],
-                **metrics,
             }
         )
 
-    conn2 = db.get_conn()
+    attributed: list[list[dict[str, Any]]] = [[] for _ in eras]
+    excluded: dict[str, int] = {}
+    for pick in graded:
+        reason = None
+        created_at = _era_timestamp(pick["created_at"])
+        config_hash = str(pick["model_config_hash"] or "").strip()
+        if pick["source"] not in {"lab_sandbox", "lab_sandbox_candidate"}:
+            reason = "different_or_unknown_lane"
+        elif not config_hash:
+            reason = "missing_config_hash"
+        elif not str(pick["event_id"] or "").strip():
+            reason = "missing_event_identity"
+        elif created_at is None:
+            reason = "missing_or_invalid_pick_time"
+        elif window_start is not None and created_at < window_start:
+            reason = "outside_report_window"
+        else:
+            intervals = [
+                i for i, (start, end) in enumerate(bounds)
+                if start is not None and start <= created_at < end and eras[i]["attribution_status"] == "attributable"
+            ]
+            matching = [i for i in intervals if str(eras[i]["config_hash"]).strip() == config_hash]
+            if not intervals:
+                reason = "outside_activation_intervals"
+            elif not matching:
+                reason = "config_hash_mismatch"
+            elif str(pick["model_variant"] or "").strip() != str(eras[matching[0]]["model_variant"] or "").strip():
+                reason = "model_variant_mismatch"
+            else:
+                attributed[matching[0]].append(pick)
+        if reason:
+            excluded[reason] = excluded.get(reason, 0) + 1
+
+    for era, picks in zip(eras, attributed):
+        era.update(_matchup_metrics(picks))
+    attributed_count = sum(len(picks) for picks in attributed)
+    return {
+        "eras": eras,
+        "all_time": _matchup_metrics(graded),
+        "attribution": {
+            "version": "bounded_lab_config_v1",
+            "as_of": as_of.isoformat(),
+            "lane": "lab",
+            "interval": "activation_inclusive_to_next_activation_exclusive",
+            "window_days": window_days,
+            "graded_matchup_rows": len(graded),
+            "attributed_picks": attributed_count,
+            "unattributed_picks": len(graded) - attributed_count,
+            "excluded": excluded,
+            "all_time_scope": "all_lanes_all_dates_including_unattributed",
+            "limitation": "Creation-time attribution; edits and rollback reactivations without a new activation record cannot be reconstructed.",
+        },
+    }
+
+
+def _era_timestamp(value: object) -> datetime | None:
+    if not value:
+        return None
     try:
-        all_time = _alltime_matchup_stats(conn2)
-    finally:
-        conn2.close()
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
-    return {"eras": eras, "all_time": all_time}
 
-
-def _graded_metrics_since(conn: sqlite3.Connection, since_ts: str | None, *, window_days: int | None = None) -> dict[str, Any]:
-    params: list[Any] = []
-    where = ["t.event_id IS NOT NULL"]
-    if since_ts:
-        where.append("p.created_at >= ?")
-        params.append(_iso_to_sqlite(since_ts))
-    if window_days:
-        where.append("p.created_at >= datetime('now', ?)")
-        params.append(f"-{int(window_days)} days")
-
-    query = f"""
-        SELECT po.hit, po.stake, po.profit
+def _graded_matchup_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    # One authoritative/latest outcome per pick; keep all original rows intact.
+    return [dict(row) for row in conn.execute(
+        """
+        WITH ranked_outcomes AS (
+            SELECT pick_id, hit, stake, profit,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY pick_id ORDER BY COALESCE(outcome_locked, 0) DESC, id DESC
+                   ) AS outcome_rank
+            FROM pick_outcomes
+        )
+        SELECT p.id, p.source, p.model_variant, p.model_config_hash, p.created_at,
+               t.event_id, po.hit, po.stake, po.profit
         FROM picks p
-        JOIN pick_outcomes po ON po.pick_id = p.id
-        JOIN tournaments t ON t.id = p.tournament_id
-        WHERE p.bet_type LIKE '%match%' AND {' AND '.join(where)}
-    """
-    picks = wins = 0
-    staked = returned = 0.0
-    for hit, stake, profit in conn.execute(query, params):
-        picks += 1
-        staked += float(stake or 1.0)
-        returned += float(stake or 1.0) + float(profit or 0.0)
-        wins += 1 if hit == 1 else 0
-    roi = ((returned - staked) / staked * 100.0) if staked else 0.0
+        JOIN ranked_outcomes po ON po.pick_id = p.id AND po.outcome_rank = 1
+        LEFT JOIN tournaments t ON t.id = p.tournament_id
+        WHERE LOWER(p.bet_type) LIKE '%match%' AND po.hit IN (0, 1)
+        """
+    ).fetchall()]
+
+
+def _matchup_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    picks = len(rows)
+    wins = sum(row["hit"] == 1 for row in rows)
+    staked = profit = 0.0
+    roi_picks = 0
+    for row in rows:
+        try:
+            stake, pick_profit = float(row["stake"]), float(row["profit"])
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not math.isfinite(stake) or not math.isfinite(pick_profit) or stake <= 0:
+            continue
+        staked += stake
+        profit += pick_profit
+        roi_picks += 1
     return {
         "picks": picks,
         "wins": wins,
         "win_rate_pct": round(wins / picks * 100.0, 2) if picks else None,
         "staked_units": round(staked, 2),
-        "roi_pct": round(roi, 2),
+        "roi_pct": round(profit / staked * 100.0, 2) if staked else None,
+        "roi_picks": roi_picks,
+        "missing_financials": picks - roi_picks,
     }
-
-
-def _alltime_matchup_stats(conn: sqlite3.Connection) -> dict[str, Any]:
-    row = conn.execute(
-        """
-        SELECT COUNT(*), SUM(CASE WHEN po.hit = 1 THEN 1 ELSE 0 END),
-               SUM(COALESCE(po.stake, 1.0)), SUM(COALESCE(po.stake, 1.0) + COALESCE(po.profit, 0.0))
-        FROM picks p
-        JOIN pick_outcomes po ON po.pick_id = p.id
-        WHERE p.bet_type LIKE '%match%'
-        """
-    ).fetchone()
-    picks = int(row[0] or 0)
-    wins = int(row[1] or 0)
-    staked = float(row[2] or 0.0)
-    returned = float(row[3] or 0.0)
-    roi = ((returned - staked) / staked * 100.0) if staked else 0.0
-    return {
-        "picks": picks,
-        "wins": wins,
-        "win_rate_pct": round(wins / picks * 100.0, 2) if picks else None,
-        "staked_units": round(staked, 2),
-        "roi_pct": round(roi, 2),
-    }
-
-
-def _iso_to_sqlite(ts: str) -> str:
-    try:
-        dt = datetime.fromisoformat(str(ts))
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    except (TypeError, ValueError):
-        return "1970-01-01 00:00:00"
 
 
 # ---------------------------------------------------------------------------
