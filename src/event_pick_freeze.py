@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from src import db
@@ -444,7 +444,9 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
 
     def _add(event_id: str, event_year: int, event_name: str | None) -> None:
         normalized_id = str(event_id or "").strip()
-        if not normalized_id:
+        if not normalized_id.isascii() or not normalized_id.isdecimal() or int(normalized_id) <= 0:
+            return
+        if event_year != year or event_year > today.year:
             return
         key = (normalized_id, int(event_year))
         by_key[key] = {
@@ -461,6 +463,21 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
         WHERE t.year = ?
           AND t.event_id IS NOT NULL AND TRIM(t.event_id) != ''
           AND p.ev IS NOT NULL AND p.ev > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM historical_event_info h
+            WHERE h.event_id = t.event_id AND h.year = t.year
+              AND LOWER(TRIM(COALESCE(h.tour, ''))) NOT IN ('', 'pga')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM rounds other
+            WHERE other.event_id = t.event_id AND other.year = t.year
+              AND LOWER(TRIM(COALESCE(other.tour, ''))) NOT IN ('', 'pga')
+              AND NOT EXISTS (
+                SELECT 1 FROM rounds pga
+                WHERE pga.event_id = t.event_id AND pga.year = t.year
+                  AND LOWER(TRIM(COALESCE(pga.tour, ''))) = 'pga'
+              )
+          )
           AND (
             EXISTS (
                 SELECT 1 FROM results r
@@ -470,7 +487,8 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
             OR EXISTS (
                 SELECT 1 FROM historical_event_info h
                 WHERE h.event_id = t.event_id AND h.year = t.year
-                  AND LOWER(COALESCE(h.tour, 'pga')) = 'pga'
+                  AND LOWER(TRIM(COALESCE(h.tour, ''))) = 'pga'
+                  AND strftime('%Y', h.end_date) = CAST(t.year AS TEXT)
                   AND date(h.end_date) < date(?)
             )
           )
@@ -485,8 +503,9 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
         SELECT r.event_id, r.event_name, r.year
         FROM rounds r
         WHERE r.year = ?
-          AND LOWER(COALESCE(r.tour, 'pga')) = 'pga'
+          AND LOWER(TRIM(COALESCE(r.tour, ''))) = 'pga'
           AND r.event_id IS NOT NULL AND TRIM(r.event_id) != ''
+          AND strftime('%Y', r.event_completed) = CAST(r.year AS TEXT)
           AND date(r.event_completed) <= date(?)
         GROUP BY r.event_id, r.event_name, r.year
         """,
@@ -501,8 +520,22 @@ def _completed_events_for_sweep(conn, *, year: int) -> list[dict[str, Any]]:
         schedule = _call_api("get-schedule", {"tour": "pga"})
         events = schedule if isinstance(schedule, list) else schedule.get("schedule", [])
         for event in events or []:
-            event_year = int(event.get("calendar_year") or event.get("year") or year)
+            if not isinstance(event, dict):
+                continue
+            # Missing or contradictory source identity cannot be repaired by
+            # assigning the sweep's requested year to an old/fixture event.
+            end_raw = str(event.get("end_date") or "").strip()
+            declared_year = event.get("calendar_year") or event.get("year")
+            try:
+                end_date = date.fromisoformat(end_raw) if end_raw else None
+                event_year = int(declared_year) if declared_year else (end_date.year if end_date else None)
+            except (ValueError, TypeError):
+                continue
             if event_year != year:
+                continue
+            if str(event.get("tour") or "pga").strip().lower() != "pga":
+                continue
+            if end_date and (end_date.year != event_year or end_date > today):
                 continue
             if not is_schedule_event_completed(event, today=today):
                 continue
@@ -557,9 +590,13 @@ def ensure_all_completed_pga_events_graded(*, year: int | None = None) -> dict[s
                 "year": event_year,
                 "error": error_type,
             }
+        if result.get("reason") == "awaiting_results":
+            # Capturing inventory is useful progress, but a completed-event
+            # grading sweep has not succeeded until results become available.
+            result = {**result, "status": "unavailable"}
         results.append(result)
 
-    success_statuses = {"ok", "captured", "skipped", "success", "complete"}
+    success_statuses = {"ok", "skipped", "success", "complete"}
     failures = []
     for result in results:
         if result.get("status") == "skipped" and result.get("reason") == "no_inventory":

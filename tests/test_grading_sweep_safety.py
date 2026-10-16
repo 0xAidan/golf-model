@@ -105,15 +105,15 @@ def test_completed_rounds_remain_eligible_without_picks(tmp_db, monkeypatch):
 def test_schedule_needs_finished_status_or_past_end_date(tmp_db, monkeypatch):
     today = datetime.now(timezone.utc).date()
     schedule = [
-        {"event_id": "future", "year": today.year, "status": "upcoming"},
-        {"event_id": "today", "year": today.year, "end_date": today.isoformat()},
-        {"event_id": "finished", "year": today.year, "status": "completed"},
-        {"event_id": "past", "year": today.year, "end_date": (today - timedelta(days=1)).isoformat()},
+        {"event_id": "1", "year": today.year, "status": "upcoming"},
+        {"event_id": "2", "year": today.year, "end_date": today.isoformat()},
+        {"event_id": "3", "year": today.year, "status": "completed"},
+        {"event_id": "4", "year": today.year, "end_date": (today - timedelta(days=1)).isoformat()},
     ]
     monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: {"schedule": schedule})
     conn = db.get_conn()
     try:
-        assert {row["event_id"] for row in _completed_events_for_sweep(conn, year=today.year)} == {"finished", "past"}
+        assert {row["event_id"] for row in _completed_events_for_sweep(conn, year=today.year)} == {"3", "4"}
     finally:
         conn.close()
 
@@ -166,3 +166,135 @@ def test_schedule_failure_logs_no_credentials_and_preserves_local_evidence(tmp_d
     assert "RuntimeError" in caplog.text
     assert "secret-token" not in caplog.text
     assert "https://" not in caplog.text
+
+
+def test_prior_season_bermuda_sources_do_not_complete_current_season_picks(tmp_db, monkeypatch):
+    today = datetime.now(timezone.utc).date()
+    monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: [])
+    conn = db.get_conn()
+    try:
+        _pick(conn, "528", year=today.year, name="Butterfield Bermuda Championship")
+        conn.execute(
+            "INSERT INTO rounds (dg_id,event_id,event_name,year,tour,round_num,event_completed) "
+            "VALUES (1,'528','Butterfield Bermuda Championship',?,'pga',4,?)",
+            (today.year - 1, f"{today.year - 1}-11-16"),
+        )
+        conn.execute(
+            "INSERT INTO historical_event_info(event_id,year,tour,end_date) VALUES ('528',?,'pga',?)",
+            (today.year - 1, f"{today.year - 1}-11-16"),
+        )
+        conn.commit()
+        assert _completed_events_for_sweep(conn, year=today.year) == []
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("source", ["rounds", "historical_event_info"])
+def test_completion_date_must_belong_to_the_requested_season(tmp_db, monkeypatch, source):
+    today = datetime.now(timezone.utc).date()
+    monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: [])
+    conn = db.get_conn()
+    try:
+        _pick(conn, "528", year=today.year)
+        if source == "rounds":
+            conn.execute(
+                "INSERT INTO rounds(dg_id,event_id,year,tour,round_num,event_completed) "
+                "VALUES (1,'528',?,'pga',4,?)", (today.year, f"{today.year - 1}-11-16"),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO historical_event_info(event_id,year,tour,end_date) VALUES ('528',?,'pga',?)",
+                (today.year, f"{today.year - 1}-11-16"),
+            )
+        conn.commit()
+        assert _completed_events_for_sweep(conn, year=today.year) == []
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("source", ["rounds", "historical_event_info"])
+def test_known_other_tour_results_are_not_pga_completion_evidence(tmp_db, monkeypatch, source):
+    today = datetime.now(timezone.utc).date()
+    monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: [])
+    conn = db.get_conn()
+    try:
+        tid = _pick(conn, "528", year=today.year)
+        conn.execute(
+            "INSERT INTO results(tournament_id,player_key,finish_position,finish_text) "
+            "VALUES (?,'test_player',1,'1')", (tid,),
+        )
+        if source == "rounds":
+            conn.execute(
+                "INSERT INTO rounds(dg_id,event_id,year,tour,round_num,event_completed) "
+                "VALUES (1,'528',?,'euro',4,?)", (today.year, today.isoformat()),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO historical_event_info(event_id,year,tour,end_date) VALUES ('528',?,'euro',?)",
+                (today.year, (today - timedelta(days=1)).isoformat()),
+            )
+        conn.commit()
+        assert _completed_events_for_sweep(conn, year=today.year) == []
+    finally:
+        conn.close()
+
+
+def test_schedule_rejects_unknown_or_contradictory_identity_without_hiding_valid_events(tmp_db, monkeypatch):
+    today = datetime.now(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    schedule = [
+        {"event_id": "1", "year": "invalid", "status": "completed"},
+        {"event_id": "2", "status": "completed"},
+        {"event_id": "3", "end_date": f"{today.year - 1}-11-16"},
+        {"event_id": "4", "year": today.year, "tour": "euro", "status": "completed"},
+        {"event_id": "5", "year": today.year, "end_date": f"{today.year - 1}-11-16"},
+        {"event_id": "6", "year": today.year, "status": "completed", "end_date": (today + timedelta(days=1)).isoformat()},
+        {"event_id": "fixture-event", "year": today.year, "status": "completed"},
+        {"event_id": "30", "year": today.year, "status": "completed"},
+        {"event_id": "31", "end_date": yesterday},
+    ]
+    monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: {"schedule": schedule})
+    conn = db.get_conn()
+    try:
+        assert {r["event_id"] for r in _completed_events_for_sweep(conn, year=today.year)} == {"30", "31"}
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("provider_error", [False, True])
+def test_missing_results_never_run_grading_or_learning_or_report_success(tmp_db, monkeypatch, caplog, provider_error):
+    today = datetime.now(timezone.utc).date()
+    monkeypatch.setattr("src.datagolf._call_api", lambda *_args, **_kwargs: [])
+    conn = db.get_conn()
+    tid = _pick(conn, "30", year=today.year, name="John Deere Classic")
+    conn.execute(
+        "INSERT INTO historical_event_info(event_id,year,tour,end_date) VALUES ('30',?,'pga',?)",
+        (today.year, (today - timedelta(days=1)).isoformat()),
+    )
+    conn.commit()
+    originals = [dict(r) for r in conn.execute("SELECT * FROM picks WHERE tournament_id=?", (tid,))]
+    conn.close()
+
+    def acquire(*_args, **_kwargs):
+        if provider_error:
+            raise RuntimeError("https://feeds.example/results?key=secret-token")
+        return {"status": "no_data", "results_stored": 0}
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Missing results must not trigger scoring or learning")
+
+    monkeypatch.setattr("src.event_results.acquire_event_results", acquire)
+    monkeypatch.setattr("scripts.grade_tournament.grade_tournament", forbidden)
+    monkeypatch.setattr("src.learning.post_tournament_learn", forbidden)
+    report = ensure_all_completed_pga_events_graded(year=today.year)
+    assert report["ok"] is False
+    assert report["events_processed"] == 1
+    assert report["results"][0]["status"] == ("error" if provider_error else "unavailable")
+    assert "secret-token" not in json.dumps(report) + caplog.text
+    conn = db.get_conn()
+    try:
+        assert [dict(r) for r in conn.execute("SELECT * FROM picks WHERE tournament_id=?", (tid,))] == originals
+        assert conn.execute("SELECT COUNT(*) FROM results").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM pick_outcomes").fetchone()[0] == 0
+    finally:
+        conn.close()
