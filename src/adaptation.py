@@ -187,7 +187,13 @@ def get_adaptation_state(market_type: str, min_bets: int = 15) -> dict:
         return {**base, "state": "normal", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_NORMAL,
                 "stake_multiplier": 1.0, "suppress": False}
 
-    if consecutive_losses >= config.ADAPTATION_CONSECUTIVE_LOSSES_FROZEN:
+    # With freezing off (the default) the worst state is "cold". A frozen market
+    # places no bets, so nothing could ever lift it out again.
+    from src.safety_flags import adaptation_freeze_enabled
+
+    freeze_enabled = adaptation_freeze_enabled()
+
+    if freeze_enabled and consecutive_losses >= config.ADAPTATION_CONSECUTIVE_LOSSES_FROZEN:
         return {**base, "state": "frozen", "ev_threshold": None,
                 "stake_multiplier": 0, "suppress": True}
 
@@ -199,7 +205,7 @@ def get_adaptation_state(market_type: str, min_bets: int = 15) -> dict:
         return {**base, "state": "caution", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_CAUTION,
                 "stake_multiplier": 1.0, "suppress": False}
 
-    if roi_pct > config.ADAPTATION_ROI_COLD:
+    if roi_pct > config.ADAPTATION_ROI_COLD or not freeze_enabled:
         return {**base, "state": "cold", "ev_threshold": config.ADAPTATION_EV_THRESHOLD_COLD,
                 "stake_multiplier": config.ADAPTATION_STAKE_MULTIPLIER_COLD, "suppress": False}
 

@@ -94,9 +94,19 @@ def _estimate_matchup_tie_probability(gap: float, uncertainty: float | None) -> 
 
 
 def _v5_matchup_ev_void_tie(model_win_prob: float, decimal_odds: float, tie_prob: float) -> float:
-    """EV per unit stake when ties push (profit win, loss lose, tie refund)."""
-    p_loss = max(1e-9, 1.0 - float(model_win_prob) - float(tie_prob))
-    return float(model_win_prob) * (float(decimal_odds) - 1.0) - p_loss
+    """EV per unit stake when a tie voids the bet (stake refunded).
+
+    ``model_win_prob`` is a two-way probability: it and the opponent's sum to 1,
+    so it is conditional on the matchup not being tied. With tie probability t the
+    bet wins with probability (1 - t) * p, loses with (1 - t) * (1 - p) and is
+    refunded with probability t, giving EV = (1 - t) * (p * d - 1).
+
+    The earlier form, p * (d - 1) - (1 - p - t), took the tie mass out of the
+    loss side only, which added about t / 2 to every EV: a fair coin at -110
+    showed +6.5% instead of -4.0%.
+    """
+    t = min(max(float(tie_prob), 0.0), 1.0)
+    return (1.0 - t) * (float(model_win_prob) * float(decimal_odds) - 1.0)
 
 _platt_cache = None
 _platt_cache_time = 0

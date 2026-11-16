@@ -1,0 +1,16 @@
+[Unit]
+Description=Golf Model Disk Free-Space Watchdog (read-only report)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+EnvironmentFile=-/opt/golf-model/.env
+Nice=10
+# Exits 2 (unit shows failed) when free space is under DISK_FREE_MB_HARD.
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/disk_watchdog.py --json
+
+[Install]
+WantedBy=multi-user.target

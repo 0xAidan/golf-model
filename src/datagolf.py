@@ -181,10 +181,18 @@ def _call_api(endpoint: str, params: dict = None, *, cache_ttl_seconds: int = 30
 
     try:
         data = resp.json()
-        REQUEST_MANAGER.set_cached(cache_key, data, ttl_seconds=cache_ttl_seconds)
-        return data
     except ValueError:
         raise RuntimeError(f"Data Golf API returned non-JSON for {endpoint}: {resp.text[:200]}")
+    REQUEST_MANAGER.set_cached(cache_key, data, ttl_seconds=cache_ttl_seconds)
+    # Keep the odds responses as received (all books, tie rules, player ids).
+    # capture_response swallows its own errors; the guard here covers import failure.
+    try:
+        from src.raw_capture import capture_response
+
+        capture_response(endpoint, cache_params, data)
+    except Exception:
+        logger.debug("raw capture unavailable for %s", endpoint, exc_info=True)
+    return data
 
 
 def get_datagolf_throttle_status() -> dict:
