@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "U.S. Open",
+    "course_name": "Shinnecock Hills Golf Club",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Very Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.336,
+    "app_impact": 0.4109,
+    "arg_impact": 0.1647,
+    "putt_impact": 0.2016,
+    "total_fit_spread": 0.3985,
+    "sg_category_spread": 0.6718
+  },
+  "characteristics": {}
+}

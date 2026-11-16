@@ -1,0 +1,33 @@
+{
+  "course_facts": {
+    "tournament": "Wyndham Championship",
+    "course_name": "Sedgefield Country Club",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": [
+      "Colonial CC",
+      "Harbour Town Golf Links",
+      "Sea Island GC (Seaside)"
+    ]
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 1.0252,
+    "app_impact": 0.34,
+    "arg_impact": 0.0884,
+    "putt_impact": 0.1737,
+    "total_fit_spread": 0.8917,
+    "sg_category_spread": 0.5789
+  },
+  "characteristics": {
+    "grass": "bermuda",
+    "climate": "southeast",
+    "sg_ott_emphasis": "easy",
+    "sg_app_emphasis": "average",
+    "scoring": "easy"
+  }
+}

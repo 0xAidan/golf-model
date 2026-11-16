@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Travelers Championship",
+    "course_name": "TPC River Highlands",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.6667,
+    "app_impact": 0.2266,
+    "arg_impact": 0.2022,
+    "putt_impact": 0.1665,
+    "total_fit_spread": 0.6453,
+    "sg_category_spread": 0.5549
+  },
+  "characteristics": {}
+}

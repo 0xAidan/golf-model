@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "FedEx St. Jude Championship",
+    "course_name": "TPC Southwind",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Average",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.3288,
+    "app_impact": 0.2341,
+    "arg_impact": 0.0591,
+    "putt_impact": 0.1638,
+    "total_fit_spread": 0.3187,
+    "sg_category_spread": 0.5461
+  },
+  "characteristics": {}
+}

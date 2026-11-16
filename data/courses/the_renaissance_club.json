@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Genesis Scottish Open",
+    "course_name": "The Renaissance Club",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.7644,
+    "app_impact": 0.4603,
+    "arg_impact": 0.1961,
+    "putt_impact": 0.1991,
+    "total_fit_spread": 0.7412,
+    "sg_category_spread": 0.6637
+  },
+  "characteristics": {}
+}

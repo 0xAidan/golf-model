@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Bank of Utah Championship",
+    "course_name": "Black Desert Resort",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.39,
+    "app_impact": 0.1999,
+    "arg_impact": 0.1766,
+    "putt_impact": 0.133,
+    "total_fit_spread": 0.2835,
+    "sg_category_spread": 0.4434
+  },
+  "characteristics": {}
+}

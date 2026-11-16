@@ -1,0 +1,181 @@
+[
+ {
+  "receipt": "/opt/golf-frontend/releases/market-generation-20261016-02ca588/install-result.json",
+  "state": "installed",
+  "release": "market-generation-20261016-02ca588",
+  "files": 99,
+  "index_sha256": "53ca3f3684127013c4a11b3b7a70df68e38e6223ba1b4e94af918763c59d45b5"
+ },
+ {
+  "receipt": "/opt/golf-frontend/releases/rankings-workspace-20261016-23a1c3d/install-result.json",
+  "state": "installed",
+  "release": "rankings-workspace-20261016-23a1c3d",
+  "files": 101,
+  "index_sha256": "843ec9669165959f7b0b7e9715643e833c39f6b15bbc2701da239e164fadec37"
+ },
+ {
+  "receipt": "/opt/golf-model-releases/20261016-market-policy-02ca588/install-result.json",
+  "state": "installed",
+  "source_commit": "02ca588",
+  "completed_at": "2026-10-16T05:14:52.715101+00:00",
+  "files": [
+   {
+    "path": "app.py",
+    "expected_live_sha256": "9ac93ab35d474f3b1ac36e64309ca301741ecc9536e4dd17461b06c0de46c068",
+    "staged_sha256": "e10ee9fae4c9d2a611b3b7084d657e1a6fb66a7c03990b930b7ddc52118438d0",
+    "bytes": 175531
+   },
+   {
+    "path": "analyze.py",
+    "expected_live_sha256": "2bbe88f6ad7273475850f4545b98b3b5c0d435272126ee5cfb5c320527095a53",
+    "staged_sha256": "50fc2926ecea23f05bb02a467a17efebe907934d5ecc6906b75b4afa47e9362e",
+    "bytes": 17309
+   },
+   {
+    "path": "run_predictions.py",
+    "expected_live_sha256": "8489e1833ff6cdb01b255b20ad48fb44a3594096d939b543e24c0c43b9d6021b",
+    "staged_sha256": "a880343bdf88972f76eb4fd1a2b3603846bb824a2a74de4259f6fd09a951ecd6",
+    "bytes": 66741
+   },
+   {
+    "path": "src/services/golf_model_service.py",
+    "expected_live_sha256": "7248c7eea864a9747c916789b87e7b3b6ffb0b6f757a45d3f4e73be71bdafbbd",
+    "staged_sha256": "2a5cd36af570648bf6fb6e737bae22727f5f90a9b05fb425adecd05855fd18c8",
+    "bytes": 70154
+   },
+   {
+    "path": "src/services/live_snapshot_service.py",
+    "expected_live_sha256": "b33a5b2b846786e4c644015db12683387d946c3f00a0c249fd62f1940b5fa5e3",
+    "staged_sha256": "2a3a1114bf77e8c49c5f0dac9c227acedb16eb12e3d7a69165ac7df506d5d667",
+    "bytes": 5315
+   },
+   {
+    "path": "src/market_generation_policy.py",
+    "expected_live_sha256": null,
+    "staged_sha256": "8c762fbe6404458652057c6fefd33a9392e2ee0037efc4491b9c63543b459a28",
+    "bytes": 10073
+   },
+   {
+    "path": "src/routes/market_generation_policy.py",
+    "expected_live_sha256": null,
+    "staged_sha256": "a1d310248e7ea61906b4fc75fe769fdf5c1aded5b86f7747ee8d3d714eeafd84",
+    "bytes": 2425
+   }
+  ]
+ },
+ {
+  "receipt": "/opt/golf-model-releases/20261016-preservation-bcf97a3/install-result.json",
+  "state": "installed",
+  "source_commits": [
+   "bcf97a33fb3925b0a0421ee0bfcbe962f2cb6648",
+   "2b6b34b"
+  ],
+  "completed_at": "2026-10-16T04:22:52.036188+00:00",
+  "files": [
+   {
+    "original_sha256": "91f1477e6215d196896303f645e0fd756e260a1b685ecfbec8b6c4340225e7ea",
+    "path": "backtester/dashboard_runtime.py",
+    "staged_sha256": "bc8ca218f8dd8c912533d86b96d28bed75fad9c742ecb119b3336cf08246a067"
+   },
+   {
+    "original_sha256": "16333c6b5e9d4a58b93e23a0d54b6254c8b978c7f6b9c295d102c2ca81296788",
+    "path": "backtester/model_registry.py",
+    "staged_sha256": "f65e3836d4eb7cb6356a0eb952ee3acb5f7ef7232d2376a8f92248b09e1c1e18"
+   },
+   {
+    "original_sha256": "15dc210b0773d55c2aa3d68fba8abd4e4ab908f4ad0a4051e991fca0edac16a8",
+    "path": "scripts/grade_tournament.py",
+    "staged_sha256": "9d18e3d21ff086c26f0d57e0bfaec9c0ff316f401b0cafe76d931a0c399015b1"
+   },
+   {
+    "original_sha256": "025d52307d4b2bbed148a24d98804bd81864349463bbd2c78baec3c278246579",
+    "path": "scripts/run_retention_cycle.py",
+    "staged_sha256": "1ea0b6d062a72e779ee766574bce4021935eed3dffa4c66ab3fabf6a17009188"
+   },
+   {
+    "original_sha256": "cbfa97f02c50e227e094811e618c2244638855fa75b5994fdc46b3283713fbd4",
+    "path": "src/adaptation.py",
+    "staged_sha256": "4cd93f9d8c583679e6f74aa8fd7661792670dabdbe2d295c5ddfa6f0ab1f5742"
+   },
+   {
+    "original_sha256": "546fec4483995b6d67217e67bb003cde311398a111858a61dbae87c6c3f9b412",
+    "path": "src/backup.py",
+    "staged_sha256": "04f5e05e6a251d9528a9301c6dac0c3ab16acece0c46e00eb1cdbc7fcfb0d831"
+   },
+   {
+    "original_sha256": "b2e8ecfe026e265e0ce6ccdc742eb326776d7b5a1c27fffc03ac0478750cc2d5",
+    "path": "src/calibration.py",
+    "staged_sha256": "17fa9ac73ebc96a2f35948ae34f7f0bb95b740bce351192a9b10a28f96283949"
+   },
+   {
+    "original_sha256": "082d3ae0678289d6a85984a064ffa9fa1c68eb482f5718acf3be0c4a9d5982ad",
+    "path": "src/card.py",
+    "staged_sha256": "d7ee59bf1f750790f44b6488c0b1204d891677b873afe2386bcaffa5e5b523e2"
+   },
+   {
+    "original_sha256": "a5f8dfbae87504d9b0ce9874fea292ea187dcdab612f4dd18fe36763600cefd3",
+    "path": "src/cold_archive.py",
+    "staged_sha256": "50fc1d6adda419a1034ecb6720d69de8a4c131fba1aa069a87994110cff7b3ca"
+   },
+   {
+    "original_sha256": "e8a297f85e7ac7c9ec66851dfb8406334bcd191d0fe1f521d033bee59fcd8815",
+    "path": "src/db.py",
+    "staged_sha256": "d6dee614488d23d0ab950db23c7db3bdd39c061b479e646da00ba8ef1176bbd3"
+   },
+   {
+    "original_sha256": null,
+    "path": "src/history_preservation.py",
+    "staged_sha256": "26f4042fe0f838b573ca8eeb9cd1365e32764b69c6b422b67caadff45e759c6b"
+   },
+   {
+    "original_sha256": "da2fa8b3609f4a16628d5ea4a86e4c5a780d305fec1b88cf25bed907dbd94e28",
+    "path": "src/learning.py",
+    "staged_sha256": "08912db19a9645de89a91931188213eb1d19f2942ad6d6cd35cc91be4a887eb6"
+   },
+   {
+    "original_sha256": "542454ad51e390e33a551eeb88cfa9d26fb18ae16a3031f67578192b80c6a820",
+    "path": "src/methodology.py",
+    "staged_sha256": "14de305b3f53937f67090219ffbe9e554e8bbaafde8848215ef1f279a88b4449"
+   },
+   {
+    "original_sha256": "9107f96269c125e45da0f021d06ec2a6a42824b718beea33207590a53d3275c2",
+    "path": "src/official_pick_record.py",
+    "staged_sha256": "25f8b71faa6bf8c89ec5efca1a5327ce1152d89a77deaecdc6eff0484df6e4e6"
+   },
+   {
+    "original_sha256": "b3afaa3ff9cff2f33fac5b6903650619b1c044e6b8c27b253e7ae51120534380",
+    "path": "src/ops_jobs.py",
+    "staged_sha256": "98d44b41c0db4c117d90e53b21aaf464cc0efbf67fd70d25f5bbd807514531a7"
+   },
+   {
+    "original_sha256": "9d185d35923f5b0937e642a14daaadd559230abe9280065bf1142e26e15a6822",
+    "path": "src/output_manager.py",
+    "staged_sha256": "df3e54e5fb14bb6b1ac2074df569b48fdbbbd475bef1d51f2e805cf8457e14ef"
+   },
+   {
+    "original_sha256": "9bfc33ca9298681f0bbbae80c1a25541f766e8fafc737c0070a3231b0a20870b",
+    "path": "src/pick_ledger.py",
+    "staged_sha256": "ea0bbf6c33f6b19c1c7438fe30e5a31c64a1d880a5d45eaf00de812ba94ff00e"
+   },
+   {
+    "original_sha256": "8dc40bc4f475c4876f50b7a1e56a8e1980b9df893f779fc3a05ae457491ec513",
+    "path": "src/run_provenance.py",
+    "staged_sha256": "14ef81ba5a11f36b0ddf112da795456ae4bb6cc5c786a64076d5a1bf681fff10"
+   },
+   {
+    "original_sha256": "df4423d18947352582c6beeb7f08dd185e22dc053d2ffab5e5b252f07a825da1",
+    "path": "src/storage_janitor.py",
+    "staged_sha256": "fad68f1a4200310ae0b9c973cc5d899c34f3f260f55dc42e2a7fd9588d001b99"
+   },
+   {
+    "original_sha256": "e217001b4aa7405c81a24fca2cb171ed4a979031a4864d2014d6bba2b99f0071",
+    "path": "src/event_pick_freeze.py",
+    "staged_sha256": "8476f5fb0a066e6446ba179a2c0fecb882dea1fe7690d0c9232400c378b6b5e3"
+   }
+  ]
+ },
+ {
+  "receipt": "/opt/golf-model-releases/20261016-report-delivery/install-result.json",
+  "state": "installed"
+ }
+]

@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "John Deere Classic",
+    "course_name": "TPC Deere Run",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.3411,
+    "app_impact": 0.2716,
+    "arg_impact": 0.2159,
+    "putt_impact": 0.1945,
+    "total_fit_spread": 0.348,
+    "sg_category_spread": 0.6484
+  },
+  "characteristics": {}
+}

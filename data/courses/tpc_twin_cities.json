@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "3M Open",
+    "course_name": "TPC Twin Cities",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Easy",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.774,
+    "app_impact": 0.306,
+    "arg_impact": 0.0035,
+    "putt_impact": 0.1488,
+    "total_fit_spread": 0.6543,
+    "sg_category_spread": 0.496
+  },
+  "characteristics": {}
+}

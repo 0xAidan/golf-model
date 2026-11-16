@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Butterfield Bermuda Championship",
+    "course_name": "Port Royal Golf Course",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Difficult",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Average",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.8305,
+    "app_impact": 0.3562,
+    "arg_impact": 0.0369,
+    "putt_impact": 0.1579,
+    "total_fit_spread": 0.5117,
+    "sg_category_spread": 0.5263
+  },
+  "characteristics": {}
+}

@@ -1,0 +1,502 @@
+{
+ "compared_at_utc": "2026-11-16T20:11:45Z",
+ "server_tree": "/opt/golf-model",
+ "server_git_head": "cb86850 (main) plus uncommitted release installs",
+ "branch_commit": "a87d42f4fa1fd4bc6d87c4ed4d633c98715c3ed1",
+ "counts": {
+  "identical": 1190,
+  "server_has_older_main_version": 45,
+  "not_installed_on_server": 196,
+  "server_differs": 1
+ },
+ "server_differs": [
+  {
+   "path": "app.py",
+   "branch_blob": "678cd588464d4d3f2192df5d77e715f5504a542a",
+   "server_blob": "4b2c648292349453a9ecce4515a7e17cdb937b44",
+   "server_sha256": "6cef92d2ad88a14be9f7c2639ae3dd62fba059857c8daf473883a8f5648cf231"
+  }
+ ],
+ "server_has_older_main_version": [
+  {
+   "path": ".gitignore",
+   "branch_blob": "1b133239c860fdf36609cd54ae812a9050c0a925",
+   "server_blob": "12bd175216761176cfeee8bc5b626d9c9df44cf9",
+   "server_sha256": "cfd993d230904bb8413269c6cd085f949b6cea281705947b5d8d1bdc2eafa6a6"
+  },
+  {
+   "path": "README.md",
+   "branch_blob": "468ce8e5add6c32a2eb9bd608cd02f92f89e7858",
+   "server_blob": "2f8f86f06e1ac779a3e2b02d45d221259980d4cf",
+   "server_sha256": "db6ed067bead2537d71eb8b3d5adceb664b6441be2cb9b80ec0778ee767e9322"
+  },
+  {
+   "path": "deploy/caddy/Caddyfile",
+   "branch_blob": "85216679882ee15fa76170d2f85e934d926a0231",
+   "server_blob": "3e13688e6341751bd92a5b7a6be4ccc02ce6d421",
+   "server_sha256": "663cc7dadd735ea50ccb0f5437511761360a3e5afc098d0ad769d50cde0b0d8b"
+  },
+  {
+   "path": "docs/frontend-overhaul/performance-baseline.json",
+   "branch_blob": "d87e2d3044750d848aae3cc62b8464334bd448b8",
+   "server_blob": "f0c5dc51a0c979c0267b553527400276d71e3c48",
+   "server_sha256": "cbd92763b776db8dadabc175e93bd8c639323af003fe877029b25c06a4bd3dc7"
+  },
+  {
+   "path": "docs/research/PROGRAM.md",
+   "branch_blob": "c8b3c4af0d5925acbcdd00c230ef19f3d3c3d988",
+   "server_blob": "144f7d19faa0a0a10e64e584a59300cbecdd8467",
+   "server_sha256": "da748de8e766d296c84271ba799d1a5727b283b070830c8dd093eed502fd72af"
+  },
+  {
+   "path": "frontend/e2e/a11y-monitoring.spec.ts",
+   "branch_blob": "e5ef01cf642cdbec60d47a676f277e765e7f215c",
+   "server_blob": "78c63487931583bd511254e5dc8a50b66ac678cc",
+   "server_sha256": "83eac6d823ce3fcceca1439fe6304d539061f01826c480c7274288a4c68ac196"
+  },
+  {
+   "path": "frontend/e2e/operator-terminal.spec.ts",
+   "branch_blob": "fe338695b64ebd1a3a6b554aac5b86b750a2f2dc",
+   "server_blob": "009587c6b1887bc6d57b0b1b2d3a9df50c526825",
+   "server_sha256": "5a0dc8b004e58fa2cc79dfc5e236d5c52924a011c3473cc0705b060e4294d0a3"
+  },
+  {
+   "path": "frontend/package-lock.json",
+   "branch_blob": "1d7f82ec479d841013f54e23b0ccab44663068b1",
+   "server_blob": "168a37bc9da78d7eb07a8817e6152d5f0657b798",
+   "server_sha256": "07575e0670401cd0fa21fef2c4b93d3664f4ee591d124f25118f601b80972cf2"
+  },
+  {
+   "path": "frontend/package.json",
+   "branch_blob": "8a251f8f7a4900bc9a7d7a1a91df98c212324334",
+   "server_blob": "48ad81df31d32d521be94e1d74c952fcc6de05e5",
+   "server_sha256": "5c4b364da03e6c06db97754ff244bcef6d0a7ac9224b4af85a1a6ec0337e192a"
+  },
+  {
+   "path": "frontend/playwright.config.ts",
+   "branch_blob": "27cee1eff4470e5460bc20e6f67aa5a7f7dc685a",
+   "server_blob": "4f0917a0253c8d44e973fe5eed081c8688785a22",
+   "server_sha256": "7c2d33f858dd143d7a7f65b4f010ca9a98d8bac3ec65ed80464b8fc363bb7ae1"
+  },
+  {
+   "path": "frontend/scripts/check-bundle-budget.mjs",
+   "branch_blob": "60c05585707d957b9d08577b0884f633c858d1f8",
+   "server_blob": "ebcb0b329ece1f55f64eddf9a5554f708e4e0f38",
+   "server_sha256": "ec39b48ed2f1b050767a0325bba5a71fd63699129d60efd7908d89b3aaa7d1b0"
+  },
+  {
+   "path": "frontend/src/App.route-gating.test.tsx",
+   "branch_blob": "7355de7ecd89c7600aeda73855c9c85f82fba343",
+   "server_blob": "d93f5d5d26a4e2af115b541eed61c37920d3b48a",
+   "server_sha256": "69906c6833667e2e441d2c1ecd87f20474015910ca3079ff5c23c2d81852803e"
+  },
+  {
+   "path": "frontend/src/App.tsx",
+   "branch_blob": "426bda914b81ae3fa97d23dcdee7fb078280bd21",
+   "server_blob": "8a509ffe93c881a08f8b8f2f1492cd19ba6e53cb",
+   "server_sha256": "ed6d52988287aaf255d9dec545ba4c30d91a7b8a2dac096b03e5ba6d10904cf3"
+  },
+  {
+   "path": "frontend/src/app/app-content.tsx",
+   "branch_blob": "62ad3bf3fd3c24e0fc7c7dfb2815a1ec0dafa522",
+   "server_blob": "844b608be7922105fce0921e9f55f83a2255e50f",
+   "server_sha256": "40799ae0629c12c68351083d51324bc75493239e48223664ff8cff63b896045a"
+  },
+  {
+   "path": "frontend/src/components/chart-theme-provider.tsx",
+   "branch_blob": "ade53c47f758679d11b95c2d0f61a9b7f23cb0fa",
+   "server_blob": "380a419332c309ff97952644e659379038be81cd",
+   "server_sha256": "b6a0ed88d4f036ab37b6f19a9ec9c2cc176099ce8e6d1f2b1334d48cdd569054"
+  },
+  {
+   "path": "frontend/src/features/operator-data/operator-api.test.ts",
+   "branch_blob": "7e3b7169a096356a767d38403d5fc4157bcd4a5a",
+   "server_blob": "cdaced7d4ccf04e030158e83a8e3a4021d72f9e6",
+   "server_sha256": "bd67cecbc2d7ef2f2cffdbc2ed6dfb3fe8240a6c07c41f8cbaeda2ca8aba23da"
+  },
+  {
+   "path": "frontend/src/features/operator-data/operator-api.ts",
+   "branch_blob": "6776a3c58a1ecf6e864ad5aca8c61286a98bef7c",
+   "server_blob": "3f19ea3f9c98eb0e4367696355f4b321acbf7e69",
+   "server_sha256": "b9d4f09de1e8c2a8d18b896fcc0d49f1b114f25bbb78004765159cca3cb095fe"
+  },
+  {
+   "path": "frontend/src/main.tsx",
+   "branch_blob": "c7707a746b5154936f62843a8e780af5c244c8b9",
+   "server_blob": "669e236cf76f93a2c2f863b13ae2074aa6c2aae8",
+   "server_sha256": "14a44df5caac0ed5881bbdf13b235e9498354bf8a2e0eb7d67f4a2a98526f901"
+  },
+  {
+   "path": "frontend/src/observability/sentry.test.ts",
+   "branch_blob": "82cc3b9452ea44ffb2ded9550caf9fd21561c42d",
+   "server_blob": "2ffad7fb510f6bc4271878b01509d5a66a3c3e2e",
+   "server_sha256": "38ee787ca920b6f2367ca51d48918aa3f6ee194c451df8d754b5c0c04bfc6dea"
+  },
+  {
+   "path": "frontend/src/observability/sentry.ts",
+   "branch_blob": "1c1def7f9235b62b07ccb6bfcfe9173074b88e65",
+   "server_blob": "b226e9a530e116e9e36cd7193a9d484177b56310",
+   "server_sha256": "5396e605e04e60b079491e2966522282b2d2eb1705e789fed5e929106bb1d34b"
+  },
+  {
+   "path": "frontend/src/providers/live-snapshot-provider.tsx",
+   "branch_blob": "8db12f202c829690c0b3d32ca2d7b3b2bf999645",
+   "server_blob": "056e81430b8c765ea7c0dccd2f453af25d2b16db",
+   "server_sha256": "682e96242d1b7d7656e7b5f4cd7522254fa379ef12b08472ceed80c76d0a026a"
+  },
+  {
+   "path": "src/autoresearch_operator.py",
+   "branch_blob": "d0849918759dd50dfa88de853c3503133322e5f0",
+   "server_blob": "3d19eca9355561838c233b61892726e09b29a473",
+   "server_sha256": "822e703d135ef1055b82f468ecd3ec354c7336ae27a4112812dd52d69f18d9f8"
+  },
+  {
+   "path": "src/clv.py",
+   "branch_blob": "ca8f9f7b16c42e2cf27d842488251de3437d4acb",
+   "server_blob": "8cf33e0f3e8c552fbbf21f6f3cd36674a810479d",
+   "server_sha256": "f7de486ff5fc68fa8eeaa00f540d99b2fba71a8f2ae08accd568654ba8b32272"
+  },
+  {
+   "path": "src/operator_contract.py",
+   "branch_blob": "5bd12f6d2f702c8d3ff7f70db300b8e0012da95a",
+   "server_blob": "4489283bdea3043219e79312ebf986374ff73e45",
+   "server_sha256": "864a6a0711f2bc04fcf7ee9b46515de2dc3eb1be084dae720a509afcd7207ea5"
+  },
+  {
+   "path": "src/operator_read_model.py",
+   "branch_blob": "440bea9a7e15a01d24ec216c0f889dfd1a54b468",
+   "server_blob": "fdadc2e9cd21b8ce4540c9424def0cbfbd2c85e8",
+   "server_sha256": "6b99ba2552f89aacebc4710b56e678d3303929789501ed44a9aae869849f2433"
+  },
+  {
+   "path": "src/routes/grading_season.py",
+   "branch_blob": "c046f4f7755382107af63c2ad83a55e2b7d360df",
+   "server_blob": "36065c1a9470cd3f024da1f0604ff42cb4d39ab7",
+   "server_sha256": "0e464eedf7dc0e2161cc0eab7ebc99918d04dfecd01c3d27c7a269b11ce05f8c"
+  },
+  {
+   "path": "src/routes/operator_ui.py",
+   "branch_blob": "fb64c84384f631c75c97ef1dd968efdb2b33a21c",
+   "server_blob": "119570c0a44063ffd759594941d88da25618cbb3",
+   "server_sha256": "27331c85420ebd0ab6fcf1a70c91f2840955ae25744262e433811adf06003f1f"
+  },
+  {
+   "path": "tests/test_api_concurrency.py",
+   "branch_blob": "c584d6333275ceca65f96a8f40aea712a06fede1",
+   "server_blob": "eadf45c7b02560728882ecad0714b5a8c89ed913",
+   "server_sha256": "2c18b5100ce80f4765ea0807cd0698507105f283ed0a6cfc9335570e44b0fc7d"
+  },
+  {
+   "path": "tests/test_archive_before_prune.py",
+   "branch_blob": "bef970ed6d936a415d4664f1ede20a17bc3bb830",
+   "server_blob": "bb36a3a801bab76d3ef479d93ebaa4782e1fcef2",
+   "server_sha256": "621aeec01d812217559a54353f33cdf19a4ff51e2e0c7542f4fc8ab5b33fd1bc"
+  },
+  {
+   "path": "tests/test_autoresearch_operator_view.py",
+   "branch_blob": "c71965c6dde3fef7b26fdc0211a0cd13020a5bfd",
+   "server_blob": "2d6d8ec01a8d92025f4d4ecc25ad391c0262c724",
+   "server_sha256": "175df47ce3dcc027f69a00e4e9dc4f8b388d2e020f3a87fc6907bfc0c5a110f5"
+  },
+  {
+   "path": "tests/test_backup.py",
+   "branch_blob": "9af2fa2a39c5420b73f27b66e370267b81f32775",
+   "server_blob": "51a2f137176572fee2f895820ffcc80225c198f5",
+   "server_sha256": "606c61ae7dd46e62b8e7ff0cfce803291d2a8bf73a557bfeb86dc030bc3bf387"
+  },
+  {
+   "path": "tests/test_calibration.py",
+   "branch_blob": "6d53ee916b2625981f551a91f6914b464811b344",
+   "server_blob": "b25bcd01e9a15d35d8fd058a5fd7053434c87b0b",
+   "server_sha256": "53c97de72838a6b602811daf09fcf8e769c05d6034ffb429362a451e3395c9fe"
+  },
+  {
+   "path": "tests/test_data_health.py",
+   "branch_blob": "78646f22b98d0f651d21c40ce11c00a7b652bde6",
+   "server_blob": "a59121375ab626bc8d2f2f2a08fa92e03effbbcc",
+   "server_sha256": "a8cead11b62ffb1256bdef9e7f7a085530842b13a69f7864766fe196478825a2"
+  },
+  {
+   "path": "tests/test_db.py",
+   "branch_blob": "203f02bbf850db1124314e37e2129742c7e39974",
+   "server_blob": "1e097f4b50e207c148209e1c82dfe98eef87584a",
+   "server_sha256": "d4dcfa33250907a9d13ce7f3b3d86d084919b11cc77c32979ef67546e0ac8e5f"
+  },
+  {
+   "path": "tests/test_event_grading_readiness.py",
+   "branch_blob": "78699992f0e443ff61ab60e78beddb0302ba3a64",
+   "server_blob": "37a1a7cb74d15337e1c48428eb14de1215f1f22a",
+   "server_sha256": "96c7adb6e6adb33c98e910f0b804c28dd70e16eb15897b5d66a2632d9b762971"
+  },
+  {
+   "path": "tests/test_grading_season_api.py",
+   "branch_blob": "80321f69f2ea2c7bb09c07ee3d7bc35cef9bad25",
+   "server_blob": "44773c3834730035ce6dd9cb518187e07eca48dc",
+   "server_sha256": "dec629316724bbf51a3439c9276e05464d3d1d8082d2760f2f82bdc922e7f526"
+  },
+  {
+   "path": "tests/test_operator_read_model.py",
+   "branch_blob": "470bffd49f44ca67a649c4abb48881047e2f3ae2",
+   "server_blob": "6f066fc7bc9a1e93cc3f3c1d0f86491138a03194",
+   "server_sha256": "b0afd9e76b58c088ccb2716b43298fbf48e695eee178c5f3eef4c24ad1d96c09"
+  },
+  {
+   "path": "tests/test_operator_ui_api.py",
+   "branch_blob": "5c8dd0f2d2387e786ff8cb9626ff59e75f1b6e0b",
+   "server_blob": "43720615ac8f345f5d5fe2aa66f7c96c9afa2916",
+   "server_sha256": "528140c52bf97bac42f00c7ba5a876a52696b46f080719497957531920b2ba49"
+  },
+  {
+   "path": "tests/test_ops_cleanup_job.py",
+   "branch_blob": "34e9127d9878fdf3bdc97bfca94120dd1bfb0819",
+   "server_blob": "ccf6b6b89bf9fc8983f3984669a9079fe74f5308",
+   "server_sha256": "262b14c855f2842acef4adbc5e747eca8c937f04bcecd68d523ba94319de2227"
+  },
+  {
+   "path": "tests/test_pick_ledger.py",
+   "branch_blob": "6dd3d4db80680715e9c5b65170ae1b6db3c7d9d0",
+   "server_blob": "3a5e38cfc5ea8f52754de3fd2cc09212599015b1",
+   "server_sha256": "3c78164cd93e64fd6a31790f617c19236732553bd5048725bca81079499648f8"
+  },
+  {
+   "path": "tests/test_pipeline_replay_fixture.py",
+   "branch_blob": "bfa95e9fa50140b2d1e3b33fcd8ce48e3fe8aa46",
+   "server_blob": "be0668ac53090f6d3049b10416197b8c25f110c3",
+   "server_sha256": "cac223047d7210ec9a90f19acee512fd52025bc5a42ce64c1fe679f1dbe6ae3e"
+  },
+  {
+   "path": "tests/test_prune_snapshot_history.py",
+   "branch_blob": "2f9c2961bdd41f472d09578a4a0684580029ee0d",
+   "server_blob": "0c91e6bdcfb3842013814c0ee39096f9c54a3d7f",
+   "server_sha256": "00c972c572845259f217a982ea6e097e8921c0b88bce5d5b5394129ef87c55cd"
+  },
+  {
+   "path": "tests/test_research_rotation.py",
+   "branch_blob": "0dc445fb9666459d6dfe65f3e0395ca42ca6392f",
+   "server_blob": "292e1cc14767536f7db991333627587c2c9d53ec",
+   "server_sha256": "c55c0358e9b43a78925d10be06d63f9a2b01bf9bbebaced96f19dce3b6464f6a"
+  },
+  {
+   "path": "tests/test_retention_cycle.py",
+   "branch_blob": "5543656cb59c12ff4324b4dc4cda8ed5010468c3",
+   "server_blob": "16fa0c8ea59d9ceb5b9597b8199a906068e194cb",
+   "server_sha256": "ba15da079c7f8289d95c4839a6d084891aa4000cf1be85b50b8c7e98684bcf35"
+  },
+  {
+   "path": "tests/test_storage_janitor.py",
+   "branch_blob": "a270b81954b8466dfe521c3679b930193ab39c6b",
+   "server_blob": "6d54543f9be1f0d0063685abbf0d79cc9eae8c21",
+   "server_sha256": "39057af5f1e54e72ca882536d75b9cb3dd0834ac4857035e795e1dfbc918207a"
+  }
+ ],
+ "not_installed_on_server": [
+  ".impeccable/design.json",
+  ".impeccable/history/matchup-desk-before-learning-workspace-20261016T043353Z/DESIGN.md",
+  ".impeccable/history/matchup-desk-before-learning-workspace-20261016T043353Z/design.json",
+  ".impeccable/questions/roll.json",
+  ".impeccable/review/card-mobile-fixture.jpg",
+  ".impeccable/review/desktop.jpg",
+  ".impeccable/review/detector.json",
+  ".impeccable/review/detector.stderr.txt",
+  ".impeccable/review/experience-detector.json",
+  ".impeccable/review/learning-workspace-verdict.md",
+  ".impeccable/review/markets-desktop.jpg",
+  ".impeccable/review/markets-mobile.jpg",
+  ".impeccable/review/mobile.jpg",
+  ".impeccable/review/models-desktop.jpg",
+  ".impeccable/review/models-mobile.jpg",
+  ".impeccable/review/performance-desktop.jpg",
+  ".impeccable/review/performance-mobile.jpg",
+  ".impeccable/review/populated-desktop-fixture.jpg",
+  ".impeccable/review/populated-mobile-fixture.jpg",
+  ".impeccable/review/public-rankings.jpg",
+  ".impeccable/review/rankings-dark.jpg",
+  ".impeccable/review/results-desktop.jpg",
+  ".impeccable/review/results-mobile-dark.jpg",
+  ".impeccable/review/season-desktop-final.png",
+  ".impeccable/review/season-desktop.png",
+  ".impeccable/review/season-live.png",
+  ".impeccable/review/season-mobile-final.png",
+  ".impeccable/review/season-mobile.png",
+  ".impeccable/review/share-composer-668.png",
+  ".impeccable/review/share-composer-desktop.png",
+  ".impeccable/review/share-composer-mobile.png",
+  ".impeccable/review/shared-reader-desktop.png",
+  ".impeccable/review/shared-reader-live-fixture.png",
+  ".impeccable/review/shared-reader-mobile.png",
+  ".impeccable/review/tablet.jpg",
+  ".impeccable/review/user-668.jpg",
+  ".impeccable/surfaces/learning-workspace.md",
+  ".impeccable/surfaces/matchup-desk.md",
+  "DESIGN.md",
+  "PRODUCT.md",
+  "backtester/learning_challenger.py",
+  "backtester/learning_challenger_v2.py",
+  "backtester/learning_corpus.py",
+  "config/learning-protocols/recovered-rounds-v2-identity-repair.json",
+  "config/learning-protocols/recovered-rounds-v2.json",
+  "config/model-baselines/original-453f49ec24f0e48a.json",
+  "config/reporting/season_2026_calendar.json",
+  "deploy/systemd/golf-backup.service.d/readonly-snapshot.conf",
+  "deploy/systemd/golf-dashboard.service.d/market-generation-auth.conf",
+  "deploy/systemd/golf-evidence.service",
+  "deploy/systemd/golf-learning-refresh.service",
+  "deploy/systemd/golf-learning-refresh.service.d/privacy.conf",
+  "deploy/systemd/golf-learning-refresh.timer",
+  "docs/audits/2026-10-13-delivery.md",
+  "docs/audits/2026-10-13-experience-performance.md",
+  "docs/audits/2026-10-13-history-reconciliation.md",
+  "docs/audits/2026-10-13-market-findings.md",
+  "docs/audits/2026-10-13-project-map.md",
+  "docs/audits/2026-10-13-server-and-data-audit.md",
+  "docs/audits/2026-10-14-season-reconciliation.md",
+  "docs/audits/2026-10-15-cursor-git-history-discovery.md",
+  "docs/audits/2026-10-15-database-history-discovery.md",
+  "docs/audits/2026-10-15-local-history-discovery.md",
+  "docs/audits/2026-10-15-prediction-recovery.md",
+  "docs/audits/2026-10-15-server-history-discovery.md",
+  "docs/audits/2026-10-16-frontend-verification.md",
+  "docs/audits/2026-10-16-full-forensic-sql-salvage.md",
+  "docs/audits/2026-10-16-isolated-weekly-learning-release.md",
+  "docs/audits/2026-10-16-lossless-quarantine-storage.md",
+  "docs/audits/2026-10-16-preservation-release.md",
+  "docs/audits/2026-10-16-rankings-workspace-release.md",
+  "docs/frontend-overhaul/delivery-2026-10-13.md",
+  "docs/market-evidence.md",
+  "docs/research/2026-10-16-learning-identity-integrity-repair.md",
+  "docs/research/2026-10-historical-market-quote-collector.md",
+  "docs/research/2026-10-rankings-learning-research.md",
+  "docs/research/2026-10-recovered-price-evidence.md",
+  "docs/research/learning-challenger-v2.md",
+  "docs/research/learning-challenger.md",
+  "docs/research/legacy-program.md",
+  "docs/runbooks/historical-reconciliation.md",
+  "docs/runbooks/market-generation-controls.md",
+  "docs/runbooks/matchup-desk-deployment.md",
+  "frontend/public/fonts/Barlow-Regular.ttf",
+  "frontend/public/fonts/Barlow-SemiBold.ttf",
+  "frontend/public/fonts/BarlowCondensed-SemiBold.ttf",
+  "frontend/public/fonts/OFL-Barlow.txt",
+  "frontend/public/reports/history-coverage.json",
+  "frontend/public/reports/learning-history.json",
+  "frontend/public/reports/learning-latest.json",
+  "frontend/public/reports/performance-2026.json",
+  "frontend/public/reports/season-2026-decisions.csv",
+  "frontend/public/reports/season-2026.json",
+  "frontend/src/App.delivery.test.tsx",
+  "frontend/src/app/legacy-app.tsx",
+  "frontend/src/features/learning-workspace/charts.tsx",
+  "frontend/src/features/learning-workspace/history-coverage.tsx",
+  "frontend/src/features/learning-workspace/learning-report.ts",
+  "frontend/src/features/learning-workspace/learning-workspace.css",
+  "frontend/src/features/learning-workspace/learning-workspace.test.tsx",
+  "frontend/src/features/learning-workspace/learning-workspace.tsx",
+  "frontend/src/features/learning-workspace/models-page.tsx",
+  "frontend/src/features/learning-workspace/performance-page.tsx",
+  "frontend/src/features/learning-workspace/research-controls.test.tsx",
+  "frontend/src/features/learning-workspace/research-controls.tsx",
+  "frontend/src/features/learning-workspace/run-history.tsx",
+  "frontend/src/features/learning-workspace/types.ts",
+  "frontend/src/features/matchup-desk/card-page.tsx",
+  "frontend/src/features/matchup-desk/market-generation-api.test.ts",
+  "frontend/src/features/matchup-desk/market-generation-api.ts",
+  "frontend/src/features/matchup-desk/market-generation-controls.css",
+  "frontend/src/features/matchup-desk/market-generation-controls.test.tsx",
+  "frontend/src/features/matchup-desk/market-generation-controls.tsx",
+  "frontend/src/features/matchup-desk/market-rows.test.ts",
+  "frontend/src/features/matchup-desk/market-rows.ts",
+  "frontend/src/features/matchup-desk/matchup-desk.css",
+  "frontend/src/features/matchup-desk/matchup-desk.test.tsx",
+  "frontend/src/features/matchup-desk/matchup-desk.tsx",
+  "frontend/src/features/matchup-desk/quote-display.ts",
+  "frontend/src/features/matchup-desk/season-results.css",
+  "frontend/src/features/matchup-desk/season-results.test.tsx",
+  "frontend/src/features/matchup-desk/season-results.tsx",
+  "frontend/src/features/matchup-desk/shared-card-page.test.tsx",
+  "frontend/src/features/matchup-desk/shared-card-page.tsx",
+  "frontend/src/features/matchup-desk/shared-card.test.ts",
+  "frontend/src/features/matchup-desk/shared-card.ts",
+  "frontend/src/observability/sentry-startup.test.ts",
+  "frontend/src/observability/sentry-startup.ts",
+  "frontend/src/providers/live-snapshot-polling.test.ts",
+  "frontend/src/providers/live-snapshot-polling.ts",
+  "frontend/src/providers/live-snapshot-provider.test.tsx",
+  "scripts/build_history_evidence_vault.py",
+  "scripts/build_performance_analytics.py",
+  "scripts/build_prediction_archive.py",
+  "scripts/build_prediction_history_coverage.py",
+  "scripts/build_prediction_recovery_browser.py",
+  "scripts/collect_historical_market_quotes.py",
+  "scripts/collect_prediction_database_vault.py",
+  "scripts/discover_local_history.py",
+  "scripts/discover_resident_json_history.py",
+  "scripts/discover_resident_markdown_history.py",
+  "scripts/export_server_prediction_cards.py",
+  "scripts/package_learning_release.py",
+  "scripts/preview_matchup_desk.py",
+  "scripts/reconcile_history.py",
+  "scripts/recover_history_core.py",
+  "scripts/recover_history_full_sql.py",
+  "scripts/rescue_known_original_cards.py",
+  "scripts/rescue_targeted_cloud_history.py",
+  "scripts/serve_matchup_reports.py",
+  "scripts/snapshot_backup.py",
+  "scripts/summarize_forensic_sql_prefixes.py",
+  "scripts/train_learning_challenger.py",
+  "scripts/validate_preservation_archive.py",
+  "scripts/weekly_learning_refresh.py",
+  "src/historical_market_quotes.py",
+  "src/history_reconciliation.py",
+  "src/learning_run_history.py",
+  "src/market_evidence.py",
+  "src/models/learning_challenger.py",
+  "src/performance_analytics.py",
+  "src/prediction_archive.py",
+  "src/prediction_history_coverage.py",
+  "src/routes/market_evidence.py",
+  "src/selection_evidence.py",
+  "tests/test_autoresearch_eras.py",
+  "tests/test_clv_conventions.py",
+  "tests/test_forensic_sql_prefixes.py",
+  "tests/test_grading_identity_event_isolation.py",
+  "tests/test_grading_sweep_safety.py",
+  "tests/test_historical_market_quotes.py",
+  "tests/test_history_evidence_vault.py",
+  "tests/test_history_preservation_mutations.py",
+  "tests/test_history_reconciliation.py",
+  "tests/test_learning_challenger.py",
+  "tests/test_learning_challenger_v2.py",
+  "tests/test_learning_identity_repair.py",
+  "tests/test_learning_run_history.py",
+  "tests/test_market_evidence.py",
+  "tests/test_market_generation_paths.py",
+  "tests/test_market_generation_policy.py",
+  "tests/test_matchup_report_sidecar.py",
+  "tests/test_performance_analytics.py",
+  "tests/test_prediction_archive.py",
+  "tests/test_prediction_database_vault.py",
+  "tests/test_prediction_history_coverage.py",
+  "tests/test_prediction_retention_preservation.py",
+  "tests/test_preserved_duplicate_writers.py",
+  "tests/test_preserved_grading_corrections.py",
+  "tests/test_preserved_log_learning.py",
+  "tests/test_preserved_metric_migrations.py",
+  "tests/test_recover_history_core.py",
+  "tests/test_recover_history_full_sql.py",
+  "tests/test_report_delivery.py",
+  "tests/test_selection_evidence.py",
+  "tests/test_snapshot_backup.py"
+ ],
+ "patch_covers": [
+  "app.py",
+  ".gitignore",
+  "README.md",
+  "deploy/caddy/Caddyfile",
+  "src/autoresearch_operator.py",
+  "src/clv.py",
+  "src/operator_contract.py",
+  "src/operator_read_model.py",
+  "src/routes/grading_season.py",
+  "src/routes/operator_ui.py"
+ ]
+}

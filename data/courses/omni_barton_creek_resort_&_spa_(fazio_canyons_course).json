@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "Austin Championship presented by Compliance Solutions",
+    "course_name": "Omni Barton Creek Resort & Spa (Fazio Canyons Course)",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Very Easy",
+    "sg_app": "Difficult",
+    "sg_arg": "Very Easy",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0,
+    "app_impact": 0.2159,
+    "arg_impact": 0,
+    "putt_impact": 0.1619,
+    "total_fit_spread": 0,
+    "sg_category_spread": 0.5398
+  },
+  "characteristics": {}
+}

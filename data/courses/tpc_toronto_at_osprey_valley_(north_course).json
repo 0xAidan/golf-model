@@ -1,0 +1,23 @@
+{
+  "course_facts": {
+    "tournament": "RBC Canadian Open",
+    "course_name": "TPC Toronto at Osprey Valley (North Course)",
+    "source": "auto_generated_from_dg_decompositions",
+    "correlated_courses": []
+  },
+  "skill_ratings": {
+    "sg_ott": "Average",
+    "sg_app": "Very Difficult",
+    "sg_arg": "Very Difficult",
+    "sg_putting": "Difficult"
+  },
+  "fit_spreads": {
+    "ott_impact": 0.0693,
+    "app_impact": 0.2782,
+    "arg_impact": 0.1231,
+    "putt_impact": 0.1598,
+    "total_fit_spread": 0.1974,
+    "sg_category_spread": 0.5326
+  },
+  "characteristics": {}
+}
