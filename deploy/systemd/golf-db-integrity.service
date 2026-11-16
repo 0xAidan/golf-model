@@ -1,5 +1,5 @@
 [Unit]
-Description=Golf Model SQLite integrity probe (auto-restore only if malformed)
+Description=Golf Model SQLite integrity probe (report only; auto-restore off)
 After=network.target
 
 [Service]
@@ -7,7 +7,9 @@ Type=oneshot
 WorkingDirectory=/opt/golf-model
 Environment=GOLF_APP_ROOT=/opt/golf-model
 Environment=GOLF_DATA_DIR=/opt/golf-model/data
-Environment=AUTO_RESTORE_ON_CORRUPT=1
+# Report only. An unattended restore can replace the live database with an older
+# backup; keep it off until a restore has been rehearsed. Set to 1 to re-enable.
+Environment=AUTO_RESTORE_ON_CORRUPT=0
 EnvironmentFile=-/opt/golf-model/.env
 Nice=10
 ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/db_integrity_probe.py --json

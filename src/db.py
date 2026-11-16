@@ -1702,6 +1702,11 @@ def store_metrics(rows: list[dict]):
         "tournament_id", "player_key", "metric_category", "data_mode",
         "round_window", "metric_name",
     )
+    # csv_import_id records which fetch last confirmed a value; it is not an
+    # observation. Every sync stamps a new import id on every row, so treating
+    # it as a change journaled the whole table on every sync (21.9M rows and
+    # 11.5 GB in one month). Only a changed observation gets a before-image.
+    observation_columns = tuple(column for column in columns if column != "csv_import_id")
     conn = get_conn()
     try:
         # Protect the identity read, before-image, and update together even on a
@@ -1723,9 +1728,10 @@ def store_metrics(rows: list[dict]):
             original = dict(existing)
             if all(original[column] == row[column] for column in columns):
                 continue
-            preserve_prediction_row_versions(
-                conn, "metrics", [original], reason="store_metrics_update"
-            )
+            if any(original[column] != row[column] for column in observation_columns):
+                preserve_prediction_row_versions(
+                    conn, "metrics", [original], reason="store_metrics_update"
+                )
             conn.execute(
                 f"UPDATE metrics SET {', '.join(f'{column} = ?' for column in columns)} WHERE id = ?",
                 (*values, original["id"]),

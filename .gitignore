@@ -36,3 +36,10 @@ frontend/dist/
 # Generated local browser verification artifacts
 frontend/test-results/
 frontend/playwright-report/
+
+# Raw DataGolf odds captures, recovery extracts and compressed DB snapshots (server-local)
+data/raw_dg/
+data/recovery/
+data/golf.db.malformed_*
+data/db_integrity_state.json
+backups/

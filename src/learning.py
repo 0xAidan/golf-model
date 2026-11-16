@@ -1454,24 +1454,38 @@ def post_tournament_learn(tournament_id: int,
         logger.warning("AI adjustment evaluation failed: %s", e)
         summary["steps"]["ai_adjustment_eval"] = {"error": str(e)}
 
+    # Automatic weight changes are gated: they fit to a handful of picks from one
+    # event (5 for course weights, 10 for the global retune) and ran after every
+    # grading sweep. Off unless AUTO_RETUNE_ENABLED is set.
+    from src.safety_flags import auto_retune_enabled
+
+    auto_retune = auto_retune_enabled()
+    retune_skipped = {"skipped": True, "saved": False, "reason": "AUTO_RETUNE_ENABLED is off"}
+
     # 4. Update course-specific weights
     if course_num and course_name:
-        course_result = update_course_weights(tournament_id, course_num, course_name)
-        summary["steps"]["course_weights"] = course_result
+        if auto_retune:
+            course_result = update_course_weights(tournament_id, course_num, course_name)
+            summary["steps"]["course_weights"] = course_result
+        else:
+            summary["steps"]["course_weights"] = dict(retune_skipped)
 
     # 5. Global weight retune
-    try:
-        from src.models.weights import retune
+    if auto_retune:
+        try:
+            from src.models.weights import retune
 
-        retune_result = retune(dry_run=False)
-        summary["steps"]["global_retune"] = {
-            "saved": retune_result.get("saved", False),
-            "insights": retune_result.get("insights", []),
-            "changes": retune_result.get("changes", {}),
-        }
-    except Exception as e:
-        logger.warning("Global weight retune failed: %s", e)
-        summary["steps"]["global_retune"] = {"error": str(e)}
+            retune_result = retune(dry_run=False)
+            summary["steps"]["global_retune"] = {
+                "saved": retune_result.get("saved", False),
+                "insights": retune_result.get("insights", []),
+                "changes": retune_result.get("changes", {}),
+            }
+        except Exception as e:
+            logger.warning("Global weight retune failed: %s", e)
+            summary["steps"]["global_retune"] = {"error": str(e)}
+    else:
+        summary["steps"]["global_retune"] = dict(retune_skipped)
 
     # 6. Compute calibration summary and update calibration curve
     cal = compute_calibration()
