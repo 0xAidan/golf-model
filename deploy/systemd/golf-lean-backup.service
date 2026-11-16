@@ -1,0 +1,13 @@
+[Unit]
+Description=Golf Model lean nightly backup (all tables except the history journal, plus journal delta)
+
+[Service]
+Type=oneshot
+UMask=0077
+WorkingDirectory=/opt/golf-model
+Nice=10
+# Source is opened read-only. Never deletes anything.
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/lean_backup.py --source /opt/golf-model/data/golf.db --output-dir /opt/golf-model/backups/lean --min-free-mib 5120
+
+[Install]
+WantedBy=multi-user.target
