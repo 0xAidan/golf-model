@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# research-run: run a heavy research/backtest job without endangering production.
+#
+#   research-run [--mem 1536M] [--slots 2] [--name tag] -- python3 script.py args...
+#
+# - Waits for one of N shared slots (default 2, env RESEARCH_SLOTS), so several
+#   sessions can launch jobs at once and they queue instead of piling up in RAM.
+# - Runs the job in its own cgroup under user-research.slice with a hard memory
+#   cap (default 1536M, env RESEARCH_MEM, plus 256M swap). If the job exceeds
+#   it, only that job is killed and this wrapper says so (exit 137).
+# - Low CPU/IO priority and a high OOM score, so production always wins.
+# Installed 2026-11-19. Limits for the whole research slice live in
+# /etc/systemd/system/user-research.slice.d/50-memory-budget.conf.
+set -uo pipefail
+
+mem="${RESEARCH_MEM:-1536M}"
+slots="${RESEARCH_SLOTS:-2}"
+name="job"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mem) mem="$2"; shift 2 ;;
+    --slots) slots="$2"; shift 2 ;;
+    --name) name="$2"; shift 2 ;;
+    --) shift; break ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    *) break ;;
+  esac
+done
+if [[ $# -eq 0 ]]; then
+  echo "research-run: no command given (usage: research-run [--mem 2G] -- cmd ...)" >&2
+  exit 2
+fi
+
+lockdir=/run/research-slots
+mkdir -p "$lockdir"
+slot=""
+waited=0
+while [[ -z "$slot" ]]; do
+  for i in $(seq 1 "$slots"); do
+    exec {fd}>"$lockdir/slot$i"
+    if flock -n "$fd"; then slot=$i; break; fi
+    exec {fd}>&-
+  done
+  if [[ -z "$slot" ]]; then
+    if [[ $waited -eq 0 ]]; then
+      echo "research-run: all $slots research slots busy; queued (see: systemctl list-units 'research-*' --no-pager)" >&2
+    fi
+    waited=$((waited + 1))
+    sleep 5
+  fi
+done
+[[ $waited -gt 0 ]] && echo "research-run: got slot $slot after ~$((waited * 5))s" >&2
+
+safe_name="$(printf %s "$name" | tr -c 'A-Za-z0-9_-' '-' | cut -c1-40)"
+unit="research-${safe_name}-$$"
+
+systemd-run --scope --quiet --collect \
+  --slice=user-research.slice --unit="$unit" \
+  -p MemoryMax="$mem" -p MemorySwapMax=256M \
+  -- choom -n 800 -- nice -n 10 ionice -c2 -n7 "$@"
+rc=$?
+if [[ $rc -eq 137 ]]; then
+  echo "research-run: job was killed (likely hit its ${mem} memory cap). Re-run with --mem 2560M or make it use less data." >&2
+fi
+exit $rc

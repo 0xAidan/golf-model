@@ -111,12 +111,32 @@ install_systemd_units() {
         echo "[deploy] deploy/systemd missing; skipping unit sync"
         return 0
     fi
-    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer golf-storage-janitor.service golf-storage-janitor.timer golf-db-integrity.service golf-db-integrity.timer; do
+    for unit in golf-dashboard.service golf-live-refresh.service golf-agent.service golf-live-refresh-watchdog.service golf-live-refresh-watchdog.timer golf-grading-sweep.service golf-grading-sweep.timer golf-retention.service golf-retention.timer golf-storage-janitor.service golf-storage-janitor.timer golf-db-integrity.service golf-db-integrity.timer golf-history-archive.service golf-history-archive.timer; do
         if [ -f "${DEPLOY_PATH}/deploy/systemd/${unit}" ]; then
             cp "${DEPLOY_PATH}/deploy/systemd/${unit}" "/etc/systemd/system/${unit}"
             echo "[deploy] synced ${unit}"
         fi
     done
+    # Memory guard: per-unit drop-ins (session budget, service caps, OOM order).
+    # Copies only our 50-*.conf files; other drop-ins in the same folders are left alone.
+    if [ -d "${DEPLOY_PATH}/deploy/systemd/dropins" ]; then
+        for dir in "${DEPLOY_PATH}"/deploy/systemd/dropins/*.d; do
+            [ -d "${dir}" ] || continue
+            name="$(basename "${dir}")"
+            mkdir -p "/etc/systemd/system/${name}"
+            cp "${dir}"/50-*.conf "/etc/systemd/system/${name}/"
+            echo "[deploy] synced drop-ins for ${name}"
+        done
+    fi
+    if [ -f "${DEPLOY_PATH}/deploy/host/research-run" ]; then
+        install -m 0755 "${DEPLOY_PATH}/deploy/host/research-run" /usr/local/bin/research-run
+        echo "[deploy] installed /usr/local/bin/research-run"
+    fi
+    if [ -f "${DEPLOY_PATH}/deploy/host/60-golf-memory.conf" ]; then
+        cp "${DEPLOY_PATH}/deploy/host/60-golf-memory.conf" /etc/sysctl.d/60-golf-memory.conf
+        sysctl -q -p /etc/sysctl.d/60-golf-memory.conf || true
+        echo "[deploy] applied vm.swappiness from 60-golf-memory.conf"
+    fi
     if [ -f "${DEPLOY_PATH}/deploy/systemd/journald-golf-model.conf" ]; then
         mkdir -p /etc/systemd/journald.conf.d
         cp "${DEPLOY_PATH}/deploy/systemd/journald-golf-model.conf" "/etc/systemd/journald.conf.d/golf-model.conf"
@@ -144,6 +164,10 @@ install_systemd_units() {
     if systemctl list-unit-files golf-db-integrity.timer >/dev/null 2>&1; then
         systemctl enable --now golf-db-integrity.timer || true
         echo "[deploy] enabled golf-db-integrity.timer"
+    fi
+    if systemctl list-unit-files golf-history-archive.timer >/dev/null 2>&1; then
+        systemctl enable --now golf-history-archive.timer || true
+        echo "[deploy] enabled golf-history-archive.timer"
     fi
 }
 

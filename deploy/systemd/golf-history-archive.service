@@ -1,0 +1,20 @@
+[Unit]
+Description=Golf Model monthly history-journal archive (move journal rows older than 30 days into verified zstd files)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/golf-model
+Environment=GOLF_APP_ROOT=/opt/golf-model
+Environment=GOLF_DATA_DIR=/opt/golf-model/data
+Nice=10
+IOSchedulingClass=idle
+MemoryHigh=768M
+MemoryMax=1G
+# Rows leave golf.db only after the archive file holding them re-reads identical
+# to the database (see the script header). Copies are hard-linked into the
+# off-box pull folder.
+ExecStart=/opt/golf-model/venv/bin/python /opt/golf-model/scripts/history_journal_archive.py cycle --db /opt/golf-model/data/golf.db --archive /opt/golf-model/data/history_archive/prediction_history_versions --older-than-days 30 --mirror /opt/golf-model/backups/offbox/history_archive
+
+[Install]
+WantedBy=multi-user.target

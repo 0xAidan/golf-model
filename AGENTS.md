@@ -31,6 +31,12 @@ Both services must run simultaneously for full-stack development. Start the back
 - The live-refresh worker (`workers/live_refresh_worker.py`) is a separate daemon for production. For local dev, the FastAPI app handles everything — do not run the worker unless specifically testing it.
 - Frontend build chunk warning (>500KB) is expected and harmless.
 
+### Production server memory (8 GB box shared with agent sessions)
+
+- Sessions and everything they start share a 4.5 GB budget (`user.slice`); production services are protected and capped separately (`deploy/systemd/dropins/`).
+- Run heavy research/backtest jobs through `research-run --name tag -- python3 script.py ...` (installed from `deploy/host/research-run`). It queues for one of 2 shared slots and caps each job at 1.5 GB (`--mem` to raise). Do not launch several heavy jobs in parallel by hand.
+- `prediction_history_versions` rows older than 30 days move to verified zstd files in `data/history_archive/` (`scripts/history_journal_archive.py`, monthly `golf-history-archive.timer`). Use its `restore` command to bring rows back.
+
 ### Standard workflows
 
 See `README.md` for full quick-start and deployment. See `docs/AGENTS_KNOWLEDGE.md` for comprehensive architecture reference.
